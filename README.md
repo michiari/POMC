@@ -1,1 +1,3 @@
-# Model checking tool for POTL
+# POMC
+
+A model-checking tool for POTL.

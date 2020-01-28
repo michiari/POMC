@@ -1,0 +1,45 @@
+name:                POMC
+version:             0.1
+license:             BSD3
+author:              "daberg"
+maintainer:          "davide.bergamaschi@protonmail.com"
+copyright:           "2020 daberg"
+
+extra-source-files:
+- README.md
+
+category:            Formal methods
+description:         A model-checking tool for POTL.
+synopsis:            A model-checking tool for POTL.
+
+dependencies:
+- base >= 4.7 && < 5
+
+library:
+  source-dirs: src
+
+executables:
+  pomc:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -Wall
+    dependencies:
+    - POMC
+
+tests:
+  test-pomc:
+    main:                Test.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -Wall
+    dependencies:
+    - POMC
+    - tasty
+    - tasty-hunit
