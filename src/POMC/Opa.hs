@@ -52,16 +52,22 @@ run (Opa _ prec _ initials finals dshift dpush dpop) ts =
             t   = head tokens -- safe due to laziness
             recurse = run' prec dshift dpush dpop fs
 
+-- Partial: assumes token list not empty
+push :: (s -> t -> [s]) -> Config s t -> [Config s t]
 push dpush (Config s stack (t:ts)) =
   map
     (\s' -> (Config s' ((t, s):stack) ts))
     (dpush s t)
 
+-- Partial: assumes token list and stack not empty
+shift :: (s -> t -> [s]) -> Config s t -> [Config s t]
 shift dshift (Config s stack (t:ts)) =
   map
     (\s' -> (Config s' ((t, (snd (head stack))):(tail stack)) ts))
     (dshift s t)
 
+-- Partial: assumes stack not empty
+pop :: (s -> s -> [s]) -> Config s t -> [Config s t]
 pop dpop (Config s stack tokens) =
   map
     (\s' -> (Config s' (tail stack) tokens))
