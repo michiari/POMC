@@ -8,7 +8,16 @@ import POMC.Util
 
 arithOpa :: Opa Int Char
 arithOpa =
-  let
+  Opa
+    "+xn()"
+    (\t1 t2 -> unsafeLookup (t1, t2) arithOpaPrecMatrix)
+    [0, 1, 2, 3]
+    [0]
+    [1, 3]
+    (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaShift [])
+    (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaPush  [])
+    (\s1 s2 -> lookupOrDefault (s1, s2) arithOpaDeltaPop   [])
+  where
     arithOpaPrecMatrix =
       [ (('+', '+'), Take)
       , (('+', 'x'), Yield)
@@ -30,15 +39,11 @@ arithOpa =
 
       , ((')', '+'), Take)
       , ((')', 'x'), Take)
-      , ((')', '('), Equal) -- not needed
       , ((')', ')'), Take)
-      , ((')', 'n'), Equal) -- not needed
 
       , (('n', '+'), Take)
       , (('n', 'x'), Take)
-      , (('n', '('), Equal) -- not needed
       , (('n', ')'), Take)
-      , (('n', 'n'), Equal) -- not needed
       ]
     arithOpaDeltaShift = [((3, ')'), [3])]
     arithOpaDeltaPush =
@@ -63,18 +68,105 @@ arithOpa =
       , ((3, 2), [3])
       , ((3, 3), [3])
       ]
-  in Opa
-    "+xn()"
-    (\t1 t2 -> unsafeLookup (t1, t2) arithOpaPrecMatrix)
-    [0, 1, 2, 3]
-    [0]
-    [1, 3]
-    (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaShift [])
-    (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaPush  [])
-    (\s1 s2 -> lookupOrDefault (s1, s2) arithOpaDeltaPop   [])
+
+vcOpa :: Opa [Char] [Char]
+vcOpa =
+  Opa
+    ["sv", "rb", "wr", "ud"]
+    (\t1 t2 -> unsafeLookup (t1, t2) vcOpaPrecMatrix)
+    ["q0", "q1", "q4", "0", "1", "2"]
+    ["q0"]
+    ["q0"]
+    (\s  t  -> lookupOrDefault (s,  t)  vcOpaDeltaShift [])
+    (\s  t  -> lookupOrDefault (s,  t)  vcOpaDeltaPush  [])
+    (\s1 s2 -> lookupOrDefault (s1, s2) vcOpaDeltaPop   [])
+  where
+    vcOpaPrecMatrix =
+      [ (("sv", "sv"), Yield)
+      , (("sv", "rb"), Equal)
+      , (("sv", "wr"), Yield)
+
+      , (("rb", "sv"), Take)
+      , (("rb", "rb"), Take)
+      , (("rb", "wr"), Take)
+      , (("rb", "ud"), Take)
+
+      , (("wr", "sv"), Yield)
+      , (("wr", "rb"), Take)
+      , (("wr", "wr"), Yield)
+      , (("wr", "ud"), Equal)
+
+      , (("ud", "sv"), Take)
+      , (("ud", "rb"), Take)
+      , (("ud", "wr"), Take)
+      , (("ud", "ud"), Take)
+      ]
+
+    vcOpaDeltaShift =
+      [ (("q4", "ud"), ["q4"])
+
+      , (("0",  "rb"), ["q1"])
+      ]
+
+    vcOpaDeltaPush =
+      [ (("q0", "sv"), ["0"])
+
+      , (("q4",  "wr"), ["q4"])
+
+      , (("0",  "sv"), ["0"])
+      , (("0",  "wr"), ["1", "q4"])
+
+      , (("1",  "sv"), ["0"])
+      , (("1",  "wr"), ["2", "q4"])
+
+      , (("2",  "sv"), ["0"])
+      , (("2",  "wr"), ["q4"])
+      ]
+
+    vcOpaDeltaPop =
+      [ (("q0",  "q0"), ["q0"])
+      , (("q0",   "0"), ["q0"])
+      , (("q0",   "1"), ["q0"])
+
+      , (("q1", "q0"), ["q0"])
+      , (("q1",  "0"),  ["0"])
+      , (("q1",  "1"),  ["1"])
+      , (("q1",  "2"),  ["2"])
+
+      , (("q4", "q4"), ["q4"])
+      , (("q4",  "0"),  ["0"])
+      , (("q4",  "1"),  ["1"])
+      , (("q4",  "2"),  ["2"])
+
+      , (("0", "q0"), ["q0"])
+      , (("0",  "0"), ["q0"])
+      , (("0",  "1"), ["q0"])
+      , (("0",  "2"), ["q0"])
+
+      , (("1", "0"), ["0"])
+
+      , (("2", "1"), ["1"])
+      ]
 
 tests :: TestTree
 tests = testGroup "OPA tests"
   [ testCase "Arithmetic OPA run with \"(n+n)xn\"" $
-      assertBool "Automaton does not accept" $ run arithOpa "(n+n)xn"
+      run arithOpa "(n+n)xn" @? acceptFail
+
+  , testCase "Arithmetic OPA run with \"(+\"" $
+      not (run arithOpa "(+") @? rejectFail
+
+  , testCase "Arithmetic OPA run with empty input" $
+      not (run arithOpa "") @? rejectFail
+
+  , testCase "VC OPA run with \"sv wr ud rb sv wr wr ud sv wr rb wr sv\"" $
+      run vcOpa (words "sv wr ud rb sv wr wr ud sv wr rb wr sv") @? acceptFail
+
+  , testCase "VC OPA run with \"sv wr wr wr sv\"" $
+      not (run vcOpa $ words "sv wr wr wr sv") @? rejectFail
+
+  , testCase "VC OPA run with empty input" $
+      run vcOpa [] @? acceptFail
   ]
+  where acceptFail = "Automaton should accept!"
+        rejectFail  = "Automaton should reject!"
