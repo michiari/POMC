@@ -1,9 +1,10 @@
 module POMC.Opa ( Prec(..)
                 , Opa(..)
+                , runOpa
                 , run
                 ) where
 
-data Prec = Yield | Equal | Take deriving (Eq, Show)
+data Prec = Yield | Equal | Take deriving (Eq, Ord, Show)
 
 data Opa s t = Opa
     { alphabet   :: [t]
@@ -22,16 +23,26 @@ data Config s t = Config
     , confInput :: [t]
     } deriving (Show)
 
-run :: (Eq s) => Opa s t -> [t] -> Bool
-run (Opa _ prec _ initials finals dshift dpush dpop) ts =
-  any
-    (run' prec dshift dpush dpop finals)
-    (map (\i -> Config i [] ts) initials)
+runOpa :: (Eq s) => Opa s t -> [t] -> Bool
+runOpa (Opa _ prec _ initials finals dshift dpush dpop) tokens =
+  run prec initials (`elem` finals) dshift dpush dpop tokens
 
+run :: (t -> t -> Prec)
+    -> [s]
+    -> (s -> Bool)
+    -> (s -> t -> [s])
+    -> (s -> t -> [s])
+    -> (s -> s -> [s])
+    -> [t]
+    -> Bool
+run prec initials isFinal deltaShift deltaPush deltaPop tokens =
+  any
+    (run' prec deltaShift deltaPush deltaPop isFinal)
+    (map (\i -> Config i [] tokens) initials)
   where
-    run' prec dshift dpush dpop fs conf@(Config s stack tokens)
+    run' prec dshift dpush dpop isFinal conf@(Config s stack tokens)
       -- No more input and empty stack: accept / reject
-      | null tokens && null stack = s `elem` fs
+      | null tokens && null stack = isFinal s
 
       -- No more input but stack non empty: pop
       | null tokens = any recurse (pop dpop conf)
@@ -50,7 +61,7 @@ run (Opa _ prec _ initials finals dshift dpush dpop) ts =
 
       where top = head stack  --
             t   = head tokens -- safe due to laziness
-            recurse = run' prec dshift dpush dpop fs
+            recurse = run' prec dshift dpush dpop isFinal
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]

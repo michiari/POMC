@@ -151,22 +151,22 @@ vcOpa =
 tests :: TestTree
 tests = testGroup "OPA tests"
   [ testCase "Arithmetic OPA run with \"(n+n)xn\"" $
-      run arithOpa "(n+n)xn" @? acceptFail
+      runOpa arithOpa "(n+n)xn" @? acceptFail
 
   , testCase "Arithmetic OPA run with \"(+\"" $
-      not (run arithOpa "(+") @? rejectFail
+      not (runOpa arithOpa "(+") @? rejectFail
 
   , testCase "Arithmetic OPA run with empty input" $
-      not (run arithOpa "") @? rejectFail
+      not (runOpa arithOpa "") @? rejectFail
 
   , testCase "VC OPA run with \"sv wr ud rb sv wr wr ud sv wr rb wr sv\"" $
-      run vcOpa (words "sv wr ud rb sv wr wr ud sv wr rb wr sv") @? acceptFail
+      runOpa vcOpa (words "sv wr ud rb sv wr wr ud sv wr rb wr sv") @? acceptFail
 
   , testCase "VC OPA run with \"sv wr wr wr sv\"" $
-      not (run vcOpa $ words "sv wr wr wr sv") @? rejectFail
+      not (runOpa vcOpa $ words "sv wr wr wr sv") @? rejectFail
 
   , testCase "VC OPA run with empty input" $
-      run vcOpa [] @? acceptFail
+      runOpa vcOpa [] @? acceptFail
   ]
   where acceptFail = "Automaton should accept!"
         rejectFail  = "Automaton should reject!"
