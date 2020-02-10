@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 869d5ba7d103cc4fffa740940aa50ef2629d4da60eef22afce766887188caf87
+-- hash: cd9581988609ddc7b966265f52ba908d9eed965bd3a171c7821595901a5ebffd
 
 name:           POMC
 version:        0.1
@@ -22,7 +22,9 @@ extra-source-files:
 
 library
   exposed-modules:
+      POMC.Check
       POMC.Opa
+      POMC.Potl
       POMC.Util
   other-modules:
       Paths_POMC
@@ -30,6 +32,7 @@ library
       src
   build-depends:
       base >=4.7 && <5
+    , containers
   default-language: Haskell2010
 
 executable pomc
