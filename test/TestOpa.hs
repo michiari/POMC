@@ -149,7 +149,7 @@ vcOpa =
       ]
 
 tests :: TestTree
-tests = testGroup "OPA tests"
+tests = testGroup "Opa.hs tests"
   [ testCase "Arithmetic OPA run with \"(n+n)xn\"" $
       runOpa arithOpa "(n+n)xn" @? acceptFail
 

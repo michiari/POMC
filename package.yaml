@@ -43,5 +43,6 @@ tests:
     - -Wall
     dependencies:
     - POMC
+    - containers
     - tasty
     - tasty-hunit

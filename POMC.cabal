@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cd9581988609ddc7b966265f52ba908d9eed965bd3a171c7821595901a5ebffd
+-- hash: 8c9d527c2bc4c73b5f5313adc1d8a409bd6863c1cf1fed03390e4cc1dc61e665
 
 name:           POMC
 version:        0.1
@@ -51,6 +51,7 @@ test-suite test-pomc
   type: exitcode-stdio-1.0
   main-is: Test.hs
   other-modules:
+      TestCheck
       TestOpa
       Paths_POMC
   hs-source-dirs:
@@ -59,6 +60,7 @@ test-suite test-pomc
   build-depends:
       POMC
     , base >=4.7 && <5
+    , containers
     , tasty
     , tasty-hunit
   default-language: Haskell2010

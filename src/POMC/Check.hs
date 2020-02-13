@@ -1,13 +1,21 @@
 module POMC.Check ( clos
                   , atoms
                   , consistent
-                  , printAtoms
+                  , initials
+                  , showAtoms
+                  , showStates
+                  , State(..)
+                  , check
                   ) where
 
+import POMC.Opa (Prec, run)
 import POMC.Potl
 
 import Data.Set (Set)
 import qualified Data.Set as S
+
+-- TODO: remove
+import qualified Debug.Trace as DT
 
 clos :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
 clos phi props = let propClos = concatMap (\p -> closList $ Atomic p) props
@@ -46,5 +54,145 @@ consistent atom = negcons atom && andorcons atom
                          _       -> True
                        ) atom)
 
-printAtoms :: Show a => Set (Set (Formula a)) -> IO ()
-printAtoms = putStr . unlines . (map (\at -> show (S.toList at))) . S.toList
+data State a = State
+    { current :: Set (Formula a)
+    , pending :: Set (Formula a)
+    }
+
+instance (Show a) => Show (State a) where
+  show (State c p) = "\n{ C: "  ++ show (S.toList c) ++
+                     "\n, P: " ++ show (S.toList p) ++ "\n}"
+
+atomicSet :: Set (Formula a) -> Set (Formula a)
+atomicSet = S.filter atomic
+
+showAtoms :: Show a => Set (Set (Formula a)) -> String
+showAtoms = unlines . map (show . S.toList) . S.toList
+
+showStates :: Show a => [State a] -> String
+showStates = unlines . map show
+
+initials :: Ord a => Formula a -> Set (Set (Formula a)) -> [State a]
+initials phi atoms = let initialAtoms = S.filter (phi `S.member`) atoms
+                     in map (\s -> State s S.empty) $ S.toList initialAtoms
+
+-- Checks if an atom is compatible (reachable with a shift/push move) with
+-- current state s w.r.t. PrecNext formulas contained in s.
+--
+-- For every PrecNext[PI](f) belonging to s, we check that:
+-- - f is present in the atom
+-- - pi belongs to PI, where pi is the precedence relation between current
+--   input propositions and the atomic set of the atom
+precNextCompatible :: (Ord a)
+                   => (Set (Prop a) -> Set (Prop a) -> Prec)
+                   -> State a
+                   -> Set (Prop a)
+                   -> Set (Formula a)
+                   -> Bool
+precNextCompatible prec s props atom =
+  let precnexts = [(f,pset) | PrecNext pset f <- S.toList (current s)]
+      nextfs = map (\(f, p) -> f) precnexts
+      precSets = map (\(f, p) -> p) precnexts
+
+      atomProps = S.fromList [p | Atomic p <- S.toList atom]
+      atomPrec = prec props atomProps
+
+      fspresent = (S.fromList nextfs) `S.isSubsetOf` atom
+      rightprecs = all (atomPrec `S.member`) precSets
+  in fspresent && rightprecs
+
+-- Checks if an atom is compatible (reachable with a shift/push move) with
+-- current state s w.r.t. PrecBack formulas contained in the atom.
+--
+-- For every PrecBack[PI](f) belonging to the atom, we check that:
+-- - f is present in s
+-- - pi belongs to PI, where pi is the precedence relation between current
+--   input propositions and the atomic set of the atom
+precBackCompatible :: (Ord a)
+                   => (Set (Prop a) -> Set (Prop a) -> Prec)
+                   -> State a
+                   -> Set (Prop a)
+                   -> Set (Formula a)
+                   -> Bool
+precBackCompatible prec s props atom =
+  let precbacks = [(f,pset) | PrecBack pset f <- S.toList atom]
+      backfs = map (\(f, p) -> f) precbacks
+      precSets = map (\(f, p) -> p) precbacks
+
+      atomProps = S.fromList [p | Atomic p <- S.toList atom]
+      atomPrec = prec props atomProps
+
+      fspresent = (S.fromList backfs) `S.isSubsetOf` (current s)
+      rightprecs = all (atomPrec `S.member`) precSets
+  in fspresent && rightprecs
+
+deltaShift :: (Eq a, Ord a, Show a)
+           => Set (Set (Formula a))
+           -> (Set (Prop a) -> Set (Prop a) -> Prec)
+           -> State a
+           -> Set (Prop a)
+           -> [State a]
+deltaShift atoms prec s props =
+  let currAtomic = atomicSet (current s)
+  in DT.trace ("\nShift with: " ++ show (S.toList props) ++
+               "\nFrom:\n" ++ show s ++ "\nResult:") $ DT.traceShowId $
+     if currAtomic == S.map Atomic props
+       then map
+              (\a -> State a (pending s))
+              (S.toList $
+                S.filter (precBackCompatible prec s props) $
+                  S.filter (precNextCompatible prec s props) atoms)
+       else []
+
+deltaPush :: (Eq a, Ord a, Show a)
+          => Set (Set (Formula a))
+          -> (Set (Prop a) -> Set (Prop a) -> Prec)
+          -> State a
+          -> Set (Prop a)
+          -> [State a]
+deltaPush atoms prec s props =
+  let currAtomic = atomicSet (current s)
+  in DT.trace ("\nPush with: " ++ show (S.toList props) ++
+               "\nFrom:\n" ++ show s ++ "\nResult:") $ DT.traceShowId $
+     if currAtomic == S.map Atomic props
+       then map
+              (\a -> State a (pending s))
+              (S.toList $
+                S.filter (precBackCompatible prec s props) $
+                  S.filter (precNextCompatible prec s props) atoms)
+       else []
+
+deltaPop :: (Eq a, Ord a, Show a)
+         => Set (Set (Formula a))
+         -> (Set (Prop a) -> Set (Prop a) -> Prec)
+         -> State a
+         -> State a
+         -> [State a]
+deltaPop atoms prec s popped =
+  let currAtomic = atomicSet (current s)
+      compatible atom = (S.filter atomic atom) == currAtomic
+                        && (current s) `S.isSubsetOf` atom
+  in DT.trace ("\nPop with popped:\n" ++ show popped ++
+               "\nFrom:\n" ++ show s ++ "\nResult:") $ DT.traceShowId $
+     map (\at -> State at (pending s)) $ S.toList $ S.filter compatible atoms
+
+isFinal :: (Show a) => State a -> Bool
+isFinal s =
+  let currAtomic = S.filter atomic (current s)
+  in DT.trace ("\nIs state final?" ++ show s) $ DT.traceShowId $
+     S.null currAtomic && S.null (pending s)
+
+check :: (Ord a, Show a)
+      => Formula a
+      -> [Prop a]
+      -> (Set (Prop a) -> Set (Prop a) -> Prec)
+      -> [Set (Prop a)]
+      -> Bool
+check phi props prec ts =
+  let as = atoms $ clos phi props
+      is = initials phi $ as
+  in DT.trace ("\nRun with:\nPhi: " ++ show phi ++ "\nProps:" ++ show props ++
+               "\nAtoms:\n" ++ showAtoms as ++
+               "\nInitial states:\n" ++ showStates is) $
+     run prec is isFinal
+         (deltaShift as prec) (deltaPush as prec) (deltaPop as prec) ts
