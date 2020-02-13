@@ -2,11 +2,13 @@ module POMC.Potl ( Formula(..)
                  , ExtFormula(..)
                  , Prop(..)
                  , negation
+                 , atomic
                  ) where
 
-import POMC.Opa
+import POMC.Opa (Prec)
 
 import Data.Set (Set)
+import qualified Data.Set as S
 
 data Prop a = Prop a deriving (Eq, Ord, Show)
 
@@ -24,7 +26,7 @@ data Formula a = Atomic    (Prop a)
                | HierBack  (Set Prec) (Formula a)
                | HierUntil (Set Prec) (Formula a) (Formula a)
                | HierSince (Set Prec) (Formula a) (Formula a)
-               deriving (Eq, Ord, Show)
+               deriving (Eq, Ord)
 
 data ExtFormula a = Normal     (Formula a)
                   | Xor        (Formula a) (Formula a)
@@ -37,6 +39,31 @@ data ExtFormula a = Normal     (Formula a)
 -- data Pi = YET | YE | YT | Y | ET | E | T
 -- data Mi = YT | Y | T
 
+instance (Show a) => Show (Formula a) where
+  show (Atomic (Prop p))  = show p
+  show (Not a@(Atomic _)) = "¬" ++ show a
+  show (Not f)            = "¬(" ++ show f ++ ")"
+  show (Or g h)           = "(" ++ show g ++ ")∨(" ++ show h ++ ")"
+  show (And g h)          = "(" ++ show g ++ ")∧(" ++ show h ++ ")"
+  show (PrecNext ps g)    = "○" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (PrecBack ps g)    = "⊝" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (ChainNext ps g)   = "χf" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (ChainBack ps g)   = "χp" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (Until ps g h)     = "(" ++ show g ++ ")U" ++ show (S.toList ps) ++
+                            "(" ++ show h ++ ")"
+  show (Since ps g h)     = "(" ++ show g ++ ")S" ++ show (S.toList ps) ++
+                            "(" ++ show h ++ ")"
+  show (HierNext ps g)    = "H○" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (HierBack ps g)    = "H⊝" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (HierUntil ps g h) = "(" ++ show g ++ ")HU" ++ show (S.toList ps) ++
+                            "(" ++ show h ++ ")"
+  show (HierSince ps g h) = "(" ++ show g ++ ")HS" ++ show (S.toList ps) ++
+                            "(" ++ show h ++ ")"
+
 negation :: Formula a -> Formula a
 negation (Not f) = f
 negation f = Not f
+
+atomic :: Formula a -> Bool
+atomic (Atomic _) = True
+atomic _ = False
