@@ -1,14 +1,13 @@
 module POMC.Check ( clos
                   , atoms
                   , consistent
-                  , initials
                   , showAtoms
                   , showStates
                   , State(..)
                   , check
                   ) where
 
-import POMC.Opa (Prec, run)
+import POMC.Opa (Prec(..), run)
 import POMC.Potl
 
 import Data.Set (Set)
@@ -63,6 +62,8 @@ instance (Show a) => Show (State a) where
   show (State c p) = "\n{ C: "  ++ show (S.toList c) ++
                      "\n, P: " ++ show (S.toList p) ++ "\n}"
 
+emptyState = State S.empty S.empty
+
 atomicSet :: Set (Formula a) -> Set (Formula a)
 atomicSet = S.filter atomic
 
@@ -71,10 +72,6 @@ showAtoms = unlines . map (show . S.toList) . S.toList
 
 showStates :: Show a => [State a] -> String
 showStates = unlines . map show
-
-initials :: Ord a => Formula a -> Set (Set (Formula a)) -> [State a]
-initials phi atoms = let initialAtoms = S.filter (phi `S.member`) atoms
-                     in map (\s -> State s S.empty) $ S.toList initialAtoms
 
 -- Checks if an atom is compatible (reachable with a shift/push move) with
 -- current state s w.r.t. PrecNext formulas contained in s.
@@ -190,7 +187,11 @@ check :: (Ord a, Show a)
       -> Bool
 check phi props prec ts =
   let as = atoms $ clos phi props
-      is = initials phi $ as
+      initialAtoms = S.filter (phi `S.member`) as
+      compatIas = S.filter (
+                    \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]
+                    ) initialAtoms
+      is = map (\s -> State s S.empty) $ S.toList compatIas
   in DT.trace ("\nRun with:\nPhi: " ++ show phi ++ "\nProps:" ++ show props ++
                "\nAtoms:\n" ++ showAtoms as ++
                "\nInitial states:\n" ++ showStates is) $

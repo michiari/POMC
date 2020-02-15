@@ -63,6 +63,20 @@ testTuples =
     , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
+  , ( "Test 8 (stack trace language)" -- OOB PrecBack is rejected
+    , False
+    , PrecBack (S.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
+    , [Prop "call", Prop "ret"]
+    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
+    )
+  , ( "Test 9 (stack trace language)" -- OOB PrecBack is rejected
+    , False
+    , PrecBack (S.fromList [Yield, Equal, Take]) $ PrecBack (S.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
+    , [Prop "call", Prop "ret"]
+    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
+    )
   ]
 
 tests :: TestTree
