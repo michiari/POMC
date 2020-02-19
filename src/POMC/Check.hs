@@ -231,10 +231,10 @@ deltaPop atoms prec s popped
     compAtoms = S.filter popComp atoms
 
 isFinal :: (Show a) => State a -> Bool
-isFinal s =
-  let currAtomic = S.filter atomic (current s)
-  in DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId $
-     S.null currAtomic && S.null (pending s)
+isFinal s = debug $ S.null currAtomic && S.null currFuture && S.null (pending s)
+  where currAtomic = S.filter atomic (current s)
+        currFuture = S.filter future (current s)
+        debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
 check :: (Ord a, Show a)
       => Formula a

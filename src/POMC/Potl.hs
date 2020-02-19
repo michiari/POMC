@@ -3,6 +3,7 @@ module POMC.Potl ( Formula(..)
                  , Prop(..)
                  , negation
                  , atomic
+                 , future
                  ) where
 
 import POMC.Opa (Prec)
@@ -67,3 +68,11 @@ negation f = Not f
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
 atomic _ = False
+
+future :: Formula a -> Bool
+future (PrecNext  {}) = True
+future (ChainNext {}) = True
+future (Until     {}) = True
+future (HierNext  {}) = True
+future (HierUntil {}) = True
+future _ = False
