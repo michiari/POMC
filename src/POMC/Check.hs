@@ -1,6 +1,7 @@
-module POMC.Check ( clos
+module POMC.Check ( closure
                   , atoms
-                  , isAtom
+                  , consistent
+                  , complete
                   , showAtoms
                   , showStates
                   , State(..)
@@ -16,32 +17,32 @@ import qualified Data.Set as S
 -- TODO: remove
 import qualified Debug.Trace as DT
 
-clos :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
-clos phi props = let propClos = concatMap (\p -> closList $ Atomic p) props
-                     phiClos  = closList phi
-                 in S.fromList (propClos ++ phiClos)
-                 where
-                   closList f = case f of
-                     Atomic _        -> [f, Not f]
-                     Not g           -> [f] ++ closList g
-                     Or g h          -> [f, Not f] ++ closList g ++ closList h
-                     And g h         -> [f, Not f] ++ closList g ++ closList h
-                     PrecNext _ g    -> [f, Not f] ++ closList g
-                     PrecBack _ g    -> [f, Not f] ++ closList g
-                     ChainNext _ g   -> [f, Not f] ++ closList g
-                     ChainBack _ g   -> [f, Not f] ++ closList g
-                     Until _ g h     -> [f, Not f] ++ closList g ++ closList h
-                     Since _ g h     -> [f, Not f] ++ closList g ++ closList h
-                     HierNext _ g    -> [f, Not f] ++ closList g
-                     HierBack _ g    -> [f, Not f] ++ closList g
-                     HierUntil _ g h -> [f, Not f] ++ closList g ++ closList h
-                     HierSince _ g h -> [f, Not f] ++ closList g ++ closList h
+closure :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
+closure phi props = let propClos = concatMap (closList . Atomic) props
+                        phiClos  = closList phi
+                    in S.fromList (propClos ++ phiClos)
+  where closList f = case f of
+          Atomic _        -> [f, Not f]
+          Not g           -> [f] ++ closList g
+          Or g h          -> [f, Not f] ++ closList g ++ closList h
+          And g h         -> [f, Not f] ++ closList g ++ closList h
+          PrecNext _ g    -> [f, Not f] ++ closList g
+          PrecBack _ g    -> [f, Not f] ++ closList g
+          ChainNext _ g   -> [f, Not f] ++ closList g
+          ChainBack _ g   -> [f, Not f] ++ closList g
+          Until _ g h     -> [f, Not f] ++ closList g ++ closList h
+          Since _ g h     -> [f, Not f] ++ closList g ++ closList h
+          HierNext _ g    -> [f, Not f] ++ closList g
+          HierBack _ g    -> [f, Not f] ++ closList g
+          HierUntil _ g h -> [f, Not f] ++ closList g ++ closList h
+          HierSince _ g h -> [f, Not f] ++ closList g ++ closList h
 
 atoms :: Ord a => Set (Formula a) -> Set (Set (Formula a))
-atoms = S.filter isAtom . S.powerSet
+atoms clos = filterAtoms $ S.powerSet clos
+  where filterAtoms = S.filter consistent . S.filter (complete clos)
 
-isAtom :: Ord a => Set (Formula a) -> Bool
-isAtom set = negcons set && andorcons set
+consistent :: Ord a => Set (Formula a) -> Bool
+consistent set = negcons set && andorcons set
   where
     negcons set   = True  `S.notMember` (S.map
                       (\f -> (negation f) `S.member` set
@@ -52,6 +53,11 @@ isAtom set = negcons set && andorcons set
                         Or  g h -> g `S.member` set || h `S.member` set
                         _       -> True
                       ) set)
+
+complete :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+complete clos atom = all present clos
+  where present nf@(Not f) = f `S.member` atom || nf      `S.member` atom
+        present f          = f `S.member` atom || (Not f) `S.member` atom
 
 data State a = State
     { current     :: Set (Formula a)
@@ -146,7 +152,7 @@ deltaShift atoms prec s props
   -- If new pending set is empty, then we don't need XL. Correct??
   | null pend = debug $ map defaultState . S.toList $ compAtoms
   -- New pending set must be consistent
-  | isAtom pend = debug $ map ((flip chainLeftState) pend) . S.toList $ compAtoms
+  | consistent pend = debug $ map ((flip chainLeftState) pend) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
@@ -177,7 +183,7 @@ deltaPush atoms prec s props
   -- If new pending set is empty, then we don't need XL. Correct??
   | null pend = debug $ map defaultState . S.toList $ compAtoms
   -- New pending set must be consistent
-  | isAtom pend = debug $ map ((flip chainLeftState) pend) . S.toList $ compAtoms
+  | consistent pend = debug $ map ((flip chainLeftState) pend) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
@@ -204,7 +210,7 @@ deltaPop atoms prec s popped
   | startsChain s = []
   -- ChainNext Equal rule 2
   | not (null pendingCnefs) = []
-  | isAtom pend = debug $ map (\atom -> State atom pend False) . S.toList $ compAtoms
+  | consistent pend = debug $ map (\atom -> State atom pend False) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
@@ -239,7 +245,7 @@ check :: (Ord a, Show a)
 check phi props prec ts =
   debug $ run prec is isFinal
     (deltaShift as prec) (deltaPush as prec) (deltaPop as prec) ts
-  where as = atoms $ clos phi props
+  where as = atoms $ closure phi props
         initialAtoms = S.filter (phi `S.member`) as
         compatIas = S.filter (
                       \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]

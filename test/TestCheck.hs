@@ -129,14 +129,14 @@ testTuples =
     , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "call"), S.singleton (Prop "han"), S.singleton (Prop "ret"), S.singleton (Prop "ret")]
     )
-  -- Takes ~2 minutes
-  -- , ( "Stack trace lang: rejecting inner ChainNext Equal"
-  --   , False
-  --   , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Equal) (Atomic $ Prop "call")
-  --   , [Prop "call", Prop "han", Prop "ret"]
-  --   , stlPrec
-  --   , [S.singleton (Prop "call"), S.singleton (Prop "call"), S.singleton (Prop "han"), S.singleton (Prop "ret"), S.singleton (Prop "ret")]
-  --   )
+   -- Takes slightly longer
+   , ( "Stack trace lang: rejecting inner ChainNext Equal"
+     , False
+     , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Equal) (Atomic $ Prop "call")
+     , [Prop "call", Prop "han", Prop "ret"]
+     , stlPrec
+     , [S.singleton (Prop "call"), S.singleton (Prop "call"), S.singleton (Prop "han"), S.singleton (Prop "ret"), S.singleton (Prop "ret")]
+     )
   ]
 
 tests :: TestTree
