@@ -1,6 +1,6 @@
 module POMC.Check ( clos
                   , atoms
-                  , consistent
+                  , isAtom
                   , showAtoms
                   , showStates
                   , State(..)
@@ -38,31 +38,38 @@ clos phi props = let propClos = concatMap (\p -> closList $ Atomic p) props
                      HierSince _ g h -> [f, Not f] ++ closList g ++ closList h
 
 atoms :: Ord a => Set (Formula a) -> Set (Set (Formula a))
-atoms = S.filter consistent . S.powerSet
+atoms = S.filter isAtom . S.powerSet
 
-consistent :: Ord a => Set (Formula a) -> Bool
-consistent atom = negcons atom && andorcons atom
+isAtom :: Ord a => Set (Formula a) -> Bool
+isAtom set = negcons set && andorcons set
   where
-    negcons atom   = True  `S.notMember` (S.map
-                       (\f -> (negation f) `S.member` atom
-                       ) atom)
-    andorcons atom = False `S.notMember` (S.map
-                       (\f -> case f of
-                         And g h -> g `S.member` atom && h `S.member` atom
-                         Or  g h -> g `S.member` atom || h `S.member` atom
-                         _       -> True
-                       ) atom)
+    negcons set   = True  `S.notMember` (S.map
+                      (\f -> (negation f) `S.member` set
+                      ) set)
+    andorcons set = False `S.notMember` (S.map
+                      (\f -> case f of
+                        And g h -> g `S.member` set && h `S.member` set
+                        Or  g h -> g `S.member` set || h `S.member` set
+                        _       -> True
+                      ) set)
 
 data State a = State
-    { current :: Set (Formula a)
-    , pending :: Set (Formula a)
+    { current     :: Set (Formula a)
+    , pending     :: Set (Formula a)
+    , startsChain :: Bool
     }
 
 instance (Show a) => Show (State a) where
-  show (State c p) = "\n{ C: "  ++ show (S.toList c) ++
-                     "\n, P: " ++ show (S.toList p) ++ "\n}"
+  show (State c p xl) = "\n{ C: "  ++ show (S.toList c) ++
+                        "\n, P: "  ++ show (S.toList p) ++
+                        "\n, XL: " ++ show xl ++ "\n}"
 
-emptyState = State S.empty S.empty
+
+emptyState = State S.empty S.empty False
+
+defaultState atom = State atom S.empty False
+
+chainLeftState currentAtom pendingAtom = State currentAtom pendingAtom True
 
 atomicSet :: Set (Formula a) -> Set (Formula a)
 atomicSet = S.filter atomic
@@ -80,13 +87,13 @@ showStates = unlines . map show
 -- - f is present in the atom
 -- - pi belongs to PI, where pi is the precedence relation between current
 --   input propositions and the atomic set of the atom
-precNextCompatible :: (Ord a)
+precNextComp :: (Ord a)
                    => (Set (Prop a) -> Set (Prop a) -> Prec)
                    -> State a
                    -> Set (Prop a)
                    -> Set (Formula a)
                    -> Bool
-precNextCompatible prec s props atom =
+precNextComp prec s props atom =
   let precnexts = [(f,pset) | PrecNext pset f <- S.toList (current s)]
       nextfs = map (\(f, p) -> f) precnexts
       precSets = map (\(f, p) -> p) precnexts
@@ -105,13 +112,13 @@ precNextCompatible prec s props atom =
 -- - f is present in s
 -- - pi belongs to PI, where pi is the precedence relation between current
 --   input propositions and the atomic set of the atom
-precBackCompatible :: (Ord a)
+precBackComp :: (Ord a)
                    => (Set (Prop a) -> Set (Prop a) -> Prec)
                    -> State a
                    -> Set (Prop a)
                    -> Set (Formula a)
                    -> Bool
-precBackCompatible prec s props atom =
+precBackComp prec s props atom =
   let precbacks = [(f,pset) | PrecBack pset f <- S.toList atom]
       backfs = map (\(f, p) -> f) precbacks
       precSets = map (\(f, p) -> p) precbacks
@@ -129,17 +136,34 @@ deltaShift :: (Eq a, Ord a, Show a)
            -> State a
            -> Set (Prop a)
            -> [State a]
-deltaShift atoms prec s props =
-  let currAtomic = atomicSet (current s)
-  in DT.trace ("\nShift with: " ++ show (S.toList props) ++
-               "\nFrom:\n" ++ show s ++ "\nResult:") $ DT.traceShowId $
-     if currAtomic == S.map Atomic props
-       then map
-              (\a -> State a (pending s))
-              (S.toList $
-                S.filter (precBackCompatible prec s props) $
-                  S.filter (precNextCompatible prec s props) atoms)
-       else []
+deltaShift atoms prec s props
+  -- Shift rule
+  | currAtomic /= S.map Atomic props = []
+  -- XL rule
+  | startsChain s = []
+  -- ChainNext Equal rule 3
+  | not (all (`S.member` (current s)) pendingSubCnefs) = []
+  -- If new pending set is empty, then we don't need XL. Correct??
+  | null pend = debug $ map defaultState . S.toList $ compAtoms
+  -- New pending set must be consistent
+  | isAtom pend = debug $ map ((flip chainLeftState) pend) . S.toList $ compAtoms
+  | otherwise = []
+  where
+    debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
+                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    currAtomic = atomicSet (current s)
+    --  ChainNext Equal subformulas in the pending set
+    pendingSubCnefs = [f | ChainNext pset f <- S.toList (pending s),
+                                               pset == (S.singleton Equal)]
+    -- ChainNext Equal formulas
+    currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
+                                             pset == (S.singleton Equal)]
+    -- Pending set for destination states. Constructed from:
+    -- - ChainNext Equal rule 1
+    pend = S.fromList currCnefs
+    -- Atoms compatible with PrecNext rule, PrecBack rule
+    compAtoms = S.filter (precBackComp prec s props) .
+                S.filter (precNextComp prec s props) $ atoms
 
 deltaPush :: (Eq a, Ord a, Show a)
           => Set (Set (Formula a))
@@ -147,17 +171,27 @@ deltaPush :: (Eq a, Ord a, Show a)
           -> State a
           -> Set (Prop a)
           -> [State a]
-deltaPush atoms prec s props =
-  let currAtomic = atomicSet (current s)
-  in DT.trace ("\nPush with: " ++ show (S.toList props) ++
-               "\nFrom:\n" ++ show s ++ "\nResult:") $ DT.traceShowId $
-     if currAtomic == S.map Atomic props
-       then map
-              (\a -> State a (pending s))
-              (S.toList $
-                S.filter (precBackCompatible prec s props) $
-                  S.filter (precNextCompatible prec s props) atoms)
-       else []
+deltaPush atoms prec s props
+  -- Push rule
+  | currAtomic /= S.map Atomic props = []
+  -- If new pending set is empty, then we don't need XL. Correct??
+  | null pend = debug $ map defaultState . S.toList $ compAtoms
+  -- New pending set must be consistent
+  | isAtom pend = debug $ map ((flip chainLeftState) pend) . S.toList $ compAtoms
+  | otherwise = []
+  where
+    debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
+                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    currAtomic = atomicSet (current s)
+    -- ChainNext Equal formulas
+    currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
+                                             pset == (S.singleton Equal)]
+    -- Pending set for destination states. Constructed from:
+    -- - ChainNext Equal rule 1
+    pend = S.fromList currCnefs
+    -- Atoms compatible with PrecNext rule, PrecBack rule
+    compAtoms = S.filter (precBackComp prec s props) .
+                S.filter (precNextComp prec s props) $ atoms
 
 deltaPop :: (Eq a, Ord a, Show a)
          => Set (Set (Formula a))
@@ -165,18 +199,35 @@ deltaPop :: (Eq a, Ord a, Show a)
          -> State a
          -> State a
          -> [State a]
-deltaPop atoms prec s popped =
-  let currAtomic = atomicSet (current s)
-      compatible atom = (S.filter atomic atom) == currAtomic
-                        && (current s) `S.isSubsetOf` atom
-  in DT.trace ("\nPop with popped:\n" ++ show popped ++
-               "\nFrom:\n" ++ show s ++ "\nResult:") $ DT.traceShowId $
-     map (\at -> State at (pending s)) $ S.toList $ S.filter compatible atoms
+deltaPop atoms prec s popped
+  -- XL rule
+  | startsChain s = []
+  -- ChainNext Equal rule 2
+  | not (null pendingCnefs) = []
+  | isAtom pend = debug $ map (\atom -> State atom pend False) . S.toList $ compAtoms
+  | otherwise = []
+  where
+    debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
+                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    currAtomic = atomicSet (current s)
+    -- ChainNext Equal formulas in the pending set
+    pendingCnefs = [f | f@(ChainNext pset _) <- S.toList (pending s),
+                                            pset == (S.singleton Equal)]
+    -- Pending ChainNext Equal formulas of popped state
+    poppedCnefs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
+                                           pset == (S.singleton Equal)]
+    -- Pending set for destination states. Constructed from:
+    -- - ChainNext Equal rule 2
+    pend = S.fromList poppedCnefs
+    -- Pop rule
+    popComp atom = (S.filter atomic atom) == currAtomic
+                   && (current s) `S.isSubsetOf` atom
+    compAtoms = S.filter popComp atoms
 
 isFinal :: (Show a) => State a -> Bool
 isFinal s =
   let currAtomic = S.filter atomic (current s)
-  in DT.trace ("\nIs state final?" ++ show s) $ DT.traceShowId $
+  in DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId $
      S.null currAtomic && S.null (pending s)
 
 check :: (Ord a, Show a)
@@ -186,14 +237,15 @@ check :: (Ord a, Show a)
       -> [Set (Prop a)]
       -> Bool
 check phi props prec ts =
-  let as = atoms $ clos phi props
-      initialAtoms = S.filter (phi `S.member`) as
-      compatIas = S.filter (
-                    \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]
-                    ) initialAtoms
-      is = map (\s -> State s S.empty) $ S.toList compatIas
-  in DT.trace ("\nRun with:\nPhi: " ++ show phi ++ "\nProps:" ++ show props ++
-               "\nAtoms:\n" ++ showAtoms as ++
-               "\nInitial states:\n" ++ showStates is) $
-     run prec is isFinal
-         (deltaShift as prec) (deltaPush as prec) (deltaPop as prec) ts
+  debug $ run prec is isFinal
+    (deltaShift as prec) (deltaPush as prec) (deltaPop as prec) ts
+  where as = atoms $ clos phi props
+        initialAtoms = S.filter (phi `S.member`) as
+        compatIas = S.filter (
+                      \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]
+                      ) initialAtoms
+        is = map defaultState $ S.toList compatIas
+        debug = DT.trace ("\nRun with:\nPhi: " ++ show phi ++
+                          "\nProps:" ++ show props ++
+                          "\nAtoms:\n" ++ showAtoms as ++
+                          "\nInitial states:\n" ++ showStates is)

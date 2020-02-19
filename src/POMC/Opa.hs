@@ -9,7 +9,7 @@ data Prec = Yield | Equal | Take deriving (Eq, Ord)
 instance Show Prec where
   show Yield = "<"
   show Equal = "="
-  show Take = ">"
+  show Take  = ">"
 
 data Opa s t = Opa
     { alphabet   :: [t]

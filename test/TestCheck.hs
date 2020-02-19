@@ -10,73 +10,133 @@ import POMC.Check
 import POMC.Opa (Prec(..))
 import POMC.Potl (Formula(..), Prop(..))
 
+stlPrec s1 s2
+  | s2 == S.empty = Take -- Can happen with e.g. PrecNext checks
+  | (Prop "call") `S.member` s1 = callPrec s2
+  | (Prop  "ret") `S.member` s1 =  retPrec s2
+  | (Prop  "han") `S.member` s1 =  hanPrec s2
+  | (Prop  "thr") `S.member` s1 =  thrPrec s2
+  | otherwise = error "Incompatible tokens"
+  where callPrec s
+          | (Prop "call") `S.member` s = Yield
+          | (Prop  "ret") `S.member` s = Equal
+          | (Prop  "han") `S.member` s = Yield
+          | (Prop  "thr") `S.member` s = Take
+          | otherwise = error "Incompatible tokens"
+        retPrec s
+          | (Prop "call") `S.member` s = Take
+          | (Prop  "ret") `S.member` s = Take
+          | (Prop  "han") `S.member` s = Yield
+          | (Prop  "thr") `S.member` s = Take
+          | otherwise = error "Incompatible tokens"
+        hanPrec s
+          | (Prop "call") `S.member` s = Yield
+          | (Prop  "ret") `S.member` s = Take
+          | (Prop  "han") `S.member` s = Yield
+          | (Prop  "thr") `S.member` s = Yield
+          | otherwise = error "Incompatible tokens"
+        thrPrec s
+          | (Prop "call") `S.member` s = Take
+          | (Prop  "ret") `S.member` s = Take
+          | (Prop  "han") `S.member` s = Take
+          | (Prop  "thr") `S.member` s = Take
+          | otherwise = error "Incompatible tokens"
+
 -- Each test is a tuple of the type:
 -- (name, expected check result, phi, props, prec, input)
-
 testTuples =
-  [ ( "Test 1 (stack trace language)" -- Accepting predicate on first word position
+  [ ( "Stack trace lang: accepting predicate on first word position"
     , True
     , And (Atomic $ Prop "call") (Not $ Atomic $ Prop "ret")
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
-  , ( "Test 2 (stack trace language)" -- Rejecting predicate on first word position
+  , ( "Stack trace lang: rejecting predicate on first word position"
     , False
     , Atomic $ Prop "ret"
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
-  , ( "Test 3 (stack trace language)" -- Accepting PrecNext
+  , ( "Stack trace lang: accepting PrecNext"
     , True
     , PrecNext (S.singleton Equal) (Atomic $ Prop "ret")
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
-  , ( "Test 4 (stack trace language)" -- Rejecting PrecNext
+  , ( "Stack trace lang: rejecting PrecNext"
     , False
     , PrecNext (S.singleton Equal) (Atomic $ Prop "call")
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
-  , ( "Test 5 (stack trace language)" -- OOB PrecNext is rejected
+  , ( "Stack trace lang: OOB PrecNext is rejected"
     , False
     , PrecNext (S.singleton Equal) (PrecNext (S.singleton Take) (Atomic $ Prop "call"))
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
-  , ( "Test 6 (stack trace language)" -- Accepting PrecBack
+  , ( "Stack trace lang: accepting PrecBack"
     , True
     , PrecNext (S.singleton Equal) (PrecBack (S.singleton Equal) (Atomic $ Prop "call"))
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
-  , ( "Test 7 (stack trace language)" -- Rejecting PrecBack
+  , ( "Stack trace lang: rejecting PrecBack"
     , False
     , PrecNext (S.singleton Equal) (PrecBack (S.fromList [Yield, Take]) (Atomic $ Prop "call"))
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
-  , ( "Test 8 (stack trace language)" -- OOB PrecBack is rejected
+  , ( "Stack trace lang: OOB PrecBack is rejected"
     , False
     , PrecBack (S.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
-  , ( "Test 9 (stack trace language)" -- OOB PrecBack is rejected
+  , ( "Stack trace lang: OOB PrecBack is rejected"
     , False
     , PrecBack (S.fromList [Yield, Equal, Take]) $ PrecBack (S.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
     , [Prop "call", Prop "ret"]
-    , \s1 s2 -> if (Prop "call") `S.member` s1 then Equal else Take
+    , stlPrec
     , [S.singleton (Prop "call"), S.singleton (Prop "ret")]
     )
+  , ( "Stack trace lang: accepting ChainNext Equal"
+    , True
+    , ChainNext (S.singleton Equal) (Atomic $ Prop "ret")
+    , [Prop "call", Prop "han", Prop "ret"]
+    , stlPrec
+    , [S.singleton (Prop "call"), S.singleton (Prop "han"), S.singleton (Prop "ret")]
+    )
+  , ( "Stack trace lang: rejecting ChainNext Equal"
+    , False
+    , ChainNext (S.singleton Equal) (Atomic $ Prop "han")
+    , [Prop "call", Prop "han", Prop "ret"]
+    , stlPrec
+    , [S.singleton (Prop "call"), S.singleton (Prop "han"), S.singleton (Prop "ret")]
+    )
+  , ( "Stack trace lang: accepting inner ChainNext Equal"
+    , True
+    , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Equal) (Atomic $ Prop "ret")
+    , [Prop "call", Prop "han", Prop "ret"]
+    , stlPrec
+    , [S.singleton (Prop "call"), S.singleton (Prop "call"), S.singleton (Prop "han"), S.singleton (Prop "ret"), S.singleton (Prop "ret")]
+    )
+  -- Takes ~2 minutes
+  -- , ( "Stack trace lang: rejecting inner ChainNext Equal"
+  --   , False
+  --   , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Equal) (Atomic $ Prop "call")
+  --   , [Prop "call", Prop "han", Prop "ret"]
+  --   , stlPrec
+  --   , [S.singleton (Prop "call"), S.singleton (Prop "call"), S.singleton (Prop "han"), S.singleton (Prop "ret"), S.singleton (Prop "ret")]
+  --   )
   ]
 
 tests :: TestTree
