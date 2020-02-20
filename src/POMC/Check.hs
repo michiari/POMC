@@ -101,7 +101,7 @@ precNextComp :: (Ord a)
                    -> Bool
 precNextComp prec s props atom =
   let precnexts = [(f,pset) | PrecNext pset f <- S.toList (current s)]
-      nextfs = map (\(f, p) -> f) precnexts
+      nextfs   = map (\(f, p) -> f) precnexts
       precSets = map (\(f, p) -> p) precnexts
 
       atomProps = S.fromList [p | Atomic p <- S.toList atom]
@@ -126,7 +126,7 @@ precBackComp :: (Ord a)
                    -> Bool
 precBackComp prec s props atom =
   let precbacks = [(f,pset) | PrecBack pset f <- S.toList atom]
-      backfs = map (\(f, p) -> f) precbacks
+      backfs   = map (\(f, p) -> f) precbacks
       precSets = map (\(f, p) -> p) precbacks
 
       atomProps = S.fromList [p | Atomic p <- S.toList atom]
@@ -152,7 +152,7 @@ deltaShift atoms prec s props
   -- If new pending set is empty, then we don't need XL. Correct??
   | null pend = debug $ map defaultState . S.toList $ compAtoms
   -- New pending set must be consistent
-  | consistent pend = debug $ map ((flip chainLeftState) pend) . S.toList $ compAtoms
+  | consistent pend = debug $ map (\a -> State a pend chainLeft) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
@@ -164,9 +164,15 @@ deltaShift atoms prec s props
     -- ChainNext Equal formulas
     currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
                                              pset == (S.singleton Equal)]
+    -- ChainNext Yield formulas
+    currCnyfs = [f | f@(ChainNext pset _) <- S.toList (current s),
+                                             pset == (S.singleton Yield)]
+    -- Do we need Xl? We do if there are any ChainNext's in the current set
+    chainLeft = not (null currCnefs && null currCnyfs)
     -- Pending set for destination states. Constructed from:
     -- - ChainNext Equal rule 1
-    pend = S.fromList currCnefs
+    -- - ChainNext Yield rule 1
+    pend = S.fromList (currCnefs ++ currCnyfs)
     -- Atoms compatible with PrecNext rule, PrecBack rule
     compAtoms = S.filter (precBackComp prec s props) .
                 S.filter (precNextComp prec s props) $ atoms
@@ -183,7 +189,7 @@ deltaPush atoms prec s props
   -- If new pending set is empty, then we don't need XL. Correct??
   | null pend = debug $ map defaultState . S.toList $ compAtoms
   -- New pending set must be consistent
-  | consistent pend = debug $ map ((flip chainLeftState) pend) . S.toList $ compAtoms
+  | consistent pend = debug $ map (\a -> State a pend chainLeft) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
@@ -192,9 +198,16 @@ deltaPush atoms prec s props
     -- ChainNext Equal formulas
     currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
                                              pset == (S.singleton Equal)]
+    -- ChainNext Yield formulas
+    currCnyfs = [f | f@(ChainNext pset _) <- S.toList (current s),
+                                             pset == (S.singleton Yield)]
+
+    -- Do we need Xl? We do if there are any ChainNext's in the current set
+    chainLeft = not (null currCnefs && null currCnyfs)
     -- Pending set for destination states. Constructed from:
     -- - ChainNext Equal rule 1
-    pend = S.fromList currCnefs
+    -- - ChainNext Yield rule 1
+    pend = S.fromList (currCnefs ++ currCnyfs)
     -- Atoms compatible with PrecNext rule, PrecBack rule
     compAtoms = S.filter (precBackComp prec s props) .
                 S.filter (precNextComp prec s props) $ atoms
@@ -210,7 +223,8 @@ deltaPop atoms prec s popped
   | startsChain s = []
   -- ChainNext Equal rule 2
   | not (null pendingCnefs) = []
-  | consistent pend = debug $ map (\atom -> State atom pend False) . S.toList $ compAtoms
+  | consistent pend = debug $ map (\atom -> State atom pend chainLeft) $
+                        S.toList compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
@@ -221,11 +235,22 @@ deltaPop atoms prec s popped
                                             pset == (S.singleton Equal)]
     -- Pending ChainNext Equal formulas of popped state
     poppedCnefs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
-                                           pset == (S.singleton Equal)]
+                                               pset == (S.singleton Equal)]
+    -- Pending ChainNext Yield formulas of popped state
+    poppedCnyfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
+                                               pset == (S.singleton Yield)]
+    -- ChainNext Yield formulas to be put in next state's pending set
+    -- ChainNext Yield rule 2
+    nextPendCnyfs = [f | f@(ChainNext _ sf) <- poppedCnyfs,
+                                               not $ sf `S.member` (current s)]
+    -- We need Xl iff there are pending ChainNext Yield's in popped state
+    -- ChainNext Yield rule 2
+    chainLeft = not (null poppedCnyfs)
     -- Pending set for destination states. Constructed from:
     -- - ChainNext Equal rule 2
-    pend = S.fromList poppedCnefs
-    -- Pop rule
+    -- - ChainNext Yield rule 2
+    pend = S.fromList (poppedCnefs ++ nextPendCnyfs)
+    -- Is an atom compatible with pop rule?
     popComp atom = (S.filter atomic atom) == currAtomic
                    && (current s) `S.isSubsetOf` atom
     compAtoms = S.filter popComp atoms
