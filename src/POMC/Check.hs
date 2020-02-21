@@ -283,6 +283,8 @@ isFinal s = debug $ S.null currAtomic && S.null currFuture && S.null (pending s)
         currFuture = S.filter future (current s)
         debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
+-- Assumes that all tokens in ts are present in props
+-- Maybe it would be safer to construct props from ts
 check :: (Ord a, Show a)
       => Formula a
       -> [Prop a]

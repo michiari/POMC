@@ -11,7 +11,7 @@ import POMC.Opa (Prec(..))
 import POMC.Potl (Formula(..), Prop(..))
 
 stlPrec s1 s2
-  | s2 == S.empty = Take -- Can happen with e.g. PrecNext checks
+  | null s2 = Take -- Can happen with e.g. PrecNext checks
   | (Prop "call") `S.member` s1 = callPrec s2
   | (Prop  "ret") `S.member` s1 =  retPrec s2
   | (Prop  "han") `S.member` s1 =  hanPrec s2
@@ -140,14 +140,14 @@ testTuples =
    , ( "Stack trace lang, accepting ChainNext Yield"
      , True
      , ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
-     , [Prop "call", Prop "han", Prop "ret"]
+     , [Prop "call", Prop "han", Prop "thr"]
      , stlPrec
      , map (S.singleton . Prop) ["han", "call", "thr"]
      )
    , ( "Stack trace lang, accepting inner ChainNext Yield"
      , True
      , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
-     , [Prop "call", Prop "han", Prop "ret"]
+    , [Prop "call", Prop "han", Prop "thr", Prop "ret"]
      , stlPrec
      , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
      )
@@ -162,7 +162,7 @@ testTuples =
    , ( "Stack trace lang, rejecting inner ChainNext Yield"
      , False
      , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "ret")
-     , [Prop "call", Prop "han", Prop "ret"]
+     , [Prop "call", Prop "han", Prop "thr", Prop "ret"]
      , stlPrec
      , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
      )
