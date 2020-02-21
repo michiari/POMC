@@ -6,6 +6,7 @@ module POMC.Check ( closure
                   , showStates
                   , State(..)
                   , check
+                  , expandUntil
                   ) where
 
 import POMC.Opa (Prec(..), run)
@@ -135,6 +136,27 @@ precBackComp prec s props atom =
       fspresent = (S.fromList backfs) `S.isSubsetOf` (current s)
       rightprecs = all (atomPrec `S.member`) precSets
   in fspresent && rightprecs
+
+-- Returns all the combinations of expansions of Until formulas in a set
+-- Each Until produces three expansions (Until rule)
+--
+-- This is achieved in the following way:
+-- - each until is mapped to the 3-element list of its expansions
+-- - the cartesian products of all the resulting lists is computed, thereby
+--   obtaining combinations of expansions in the form of lists of #U lists
+-- - #U-element lists are concatenated, turned into a set and merged with the
+--   starting set
+-- where #U is the number of Until formulas.
+expandUntil :: (Ord a) => Set (Formula a) -> [Set (Formula a)]
+expandUntil set =
+  let untilTuples = [(f, pset, sf1, sf2) | f@(Until pset sf1 sf2) <- S.toList set]
+      expansions :: [(Formula a, Set Prec, Formula a, Formula a) -> [Formula a]]
+      expansions = [ (\(_,    _,   _, sf2) -> [sf2])
+                   , (\(f, pset, sf1,   _) -> [sf1, PrecNext  pset f])
+                   , (\(f, pset, sf1,   _) -> [sf1, ChainNext pset f])
+                   ]
+      combinations = sequence [[e (t) | e <- expansions] | t <- untilTuples]
+  in map ((set `S.union`) . S.fromList . concat) combinations
 
 deltaShift :: (Eq a, Ord a, Show a)
            => Set (Set (Formula a))
