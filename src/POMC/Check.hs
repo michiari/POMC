@@ -158,6 +158,12 @@ expandUntil set =
       combinations = sequence [[e (t) | e <- expansions] | t <- untilTuples]
   in map ((set `S.union`) . S.fromList . concat) combinations
 
+expandState s =
+  let expanded  = expandUntil (current s)
+      consAtoms = filter consistent expanded
+      newStates = map (\a -> State a (pending s) (startsChain s)) consAtoms
+  in newStates
+
 deltaShift :: (Eq a, Ord a, Show a)
            => Set (Set (Formula a))
            -> (Set (Prop a) -> Set (Prop a) -> Prec)
@@ -277,6 +283,15 @@ deltaPop atoms prec s popped
                    && (current s) `S.isSubsetOf` atom
     compAtoms = S.filter popComp atoms
 
+expDeltaShift atoms prec s props =
+  concatMap (\expS -> deltaShift atoms prec expS props) (expandState s)
+
+expDeltaPush atoms prec s props =
+  concatMap (\expS -> deltaPush atoms prec expS props) (expandState s)
+
+expDeltaPop atoms prec s popped =
+  concatMap (\expS -> deltaPop atoms prec expS popped) (expandState s)
+
 isFinal :: (Show a) => State a -> Bool
 isFinal s = debug $ S.null currAtomic && S.null currFuture && S.null (pending s)
   where currAtomic = S.filter atomic (current s)
@@ -293,7 +308,7 @@ check :: (Ord a, Show a)
       -> Bool
 check phi props prec ts =
   debug $ run prec is isFinal
-    (deltaShift as prec) (deltaPush as prec) (deltaPop as prec) ts
+    (expDeltaShift as prec) (expDeltaPush as prec) (expDeltaPop as prec) ts
   where as = atoms $ closure phi props
         initialAtoms = S.filter (phi `S.member`) as
         compatIas = S.filter (
