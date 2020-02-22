@@ -48,84 +48,72 @@ testTuples =
   [ ( "Stack trace lang, accepting predicate on first word position"
     , True
     , And (Atomic $ Prop "call") (Not $ Atomic $ Prop "ret")
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, rejecting predicate on first word position"
     , False
     , Atomic $ Prop "ret"
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, accepting PrecNext"
     , True
     , PrecNext (S.singleton Equal) (Atomic $ Prop "ret")
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, rejecting PrecNext"
     , False
     , PrecNext (S.singleton Equal) (Atomic $ Prop "call")
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, OOB PrecNext is rejected"
     , False
     , PrecNext (S.singleton Equal) (PrecNext (S.singleton Take) (Atomic $ Prop "call"))
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, accepting PrecBack"
     , True
     , PrecNext (S.singleton Equal) (PrecBack (S.singleton Equal) (Atomic $ Prop "call"))
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, rejecting PrecBack"
     , False
     , PrecNext (S.singleton Equal) (PrecBack (S.fromList [Yield, Take]) (Atomic $ Prop "call"))
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, OOB PrecBack is rejected"
     , False
     , PrecBack (S.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, OOB PrecBack is rejected"
     , False
     , PrecBack (S.fromList [Yield, Equal, Take]) $ PrecBack (S.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
-    , [Prop "call", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, accepting ChainNext Equal"
     , True
     , ChainNext (S.singleton Equal) (Atomic $ Prop "ret")
-    , [Prop "call", Prop "han", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "ret"]
     )
   , ( "Stack trace lang, rejecting ChainNext Equal"
     , False
     , ChainNext (S.singleton Equal) (Atomic $ Prop "han")
-    , [Prop "call", Prop "han", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "ret"]
     )
   , ( "Stack trace lang, accepting inner ChainNext Equal"
     , True
     , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Equal) (Atomic $ Prop "ret")
-    , [Prop "call", Prop "han", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
     )
@@ -133,28 +121,24 @@ testTuples =
   , ( "Stack trace lang, rejecting inner ChainNext Equal"
     , False
     , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Equal) (Atomic $ Prop "call")
-    , [Prop "call", Prop "han", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
     )
   , ( "Stack trace lang, accepting ChainNext Yield"
     , True
     , ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
-    , [Prop "call", Prop "han", Prop "thr"]
     , stlPrec
     , map (S.singleton . Prop) ["han", "call", "thr"]
     )
   , ( "Stack trace lang, accepting inner ChainNext Yield"
     , True
     , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
-    , [Prop "call", Prop "han", Prop "thr", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
     )
   , ( "Stack trace lang, rejecting ChainNext Yield"
     , False
     , ChainNext (S.singleton Yield) (Atomic $ Prop "ret")
-    , [Prop "call", Prop "han", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "ret"]
     )
@@ -162,21 +146,18 @@ testTuples =
   , ( "Stack trace lang, rejecting inner ChainNext Yield"
     , False
     , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "ret")
-    , [Prop "call", Prop "han", Prop "thr", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
     )
   , ( "Stack trace lang, accepting Until YET"
     , True
     , Until (S.singleton Yield) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "han")
-    , [Prop "call", Prop "han", Prop "thr", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
     )
   , ( "Stack trace lang, rejecting Until Y"
     , False
     , Until (S.singleton Yield) (Not . Atomic . Prop $ "han") (Atomic $ Prop "thr")
-    , [Prop "call", Prop "han", Prop "thr", Prop "ret"]
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
     )
@@ -186,7 +167,7 @@ tests :: TestTree
 tests = testGroup "Check.hs tests" (map makeTestCase testTuples)
   where acceptFail = "Formula should hold for given word!"
         rejectFail = "Formula should not hold for given word!"
-        makeTestCase (name, expected, phi, props, prec, ts) =
+        makeTestCase (name, expected, phi, prec, ts) =
           if expected == True
-            then testCase name $ check phi props prec ts @? acceptFail
-            else testCase name $ not (check phi props prec ts) @? rejectFail
+            then testCase name $ check phi prec ts @? acceptFail
+            else testCase name $ not (check phi prec ts) @? rejectFail

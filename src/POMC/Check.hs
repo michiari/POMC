@@ -15,13 +15,15 @@ import POMC.Potl
 import Data.Set (Set)
 import qualified Data.Set as S
 
+import Data.List (foldl')
+
 -- TODO: remove
 import qualified Debug.Trace as DT
 
 closure :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
-closure phi props = let propClos = concatMap (closList . Atomic) props
-                        phiClos  = closList phi
-                    in S.fromList (propClos ++ phiClos)
+closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
+                             phiClos  = closList phi
+                         in S.fromList (propClos ++ phiClos)
   where closList f = case f of
           Atomic _        -> [f, Not f]
           Not g           -> [f] ++ closList g
@@ -44,16 +46,15 @@ atoms clos = filterAtoms $ S.powerSet clos
 
 consistent :: Ord a => Set (Formula a) -> Bool
 consistent set = negcons set && andorcons set
-  where
-    negcons set   = True  `S.notMember` (S.map
-                      (\f -> (negation f) `S.member` set
-                      ) set)
-    andorcons set = False `S.notMember` (S.map
-                      (\f -> case f of
-                        And g h -> g `S.member` set && h `S.member` set
-                        Or  g h -> g `S.member` set || h `S.member` set
-                        _       -> True
-                      ) set)
+  where negcons set   = True  `S.notMember` (S.map
+                          (\f -> (negation f) `S.member` set
+                          ) set)
+        andorcons set = False `S.notMember` (S.map
+                          (\f -> case f of
+                            And g h -> g `S.member` set && h `S.member` set
+                            Or  g h -> g `S.member` set || h `S.member` set
+                            _       -> True
+                          ) set)
 
 complete :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 complete clos atom = all present clos
@@ -298,24 +299,24 @@ isFinal s = debug $ S.null currAtomic && S.null currFuture && S.null (pending s)
         currFuture = S.filter future (current s)
         debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
--- Assumes that all tokens in ts are present in props
--- Maybe it would be safer to construct props from ts
 check :: (Ord a, Show a)
       => Formula a
-      -> [Prop a]
       -> (Set (Prop a) -> Set (Prop a) -> Prec)
       -> [Set (Prop a)]
       -> Bool
-check phi props prec ts =
+check phi prec ts =
   debug $ run prec is isFinal
     (expDeltaShift as prec) (expDeltaPush as prec) (expDeltaPop as prec) ts
-  where as = atoms $ closure phi props
+  where tsprops = S.toList $ foldl' (S.union) S.empty ts
+        as = atoms $ closure phi tsprops
         initialAtoms = S.filter (phi `S.member`) as
         compatIas = S.filter (
                       \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]
                       ) initialAtoms
         is = map defaultState $ S.toList compatIas
-        debug = DT.trace ("\nRun with:\nPhi: " ++ show phi ++
-                          "\nProps:" ++ show props ++
-                          "\nAtoms:\n" ++ showAtoms as ++
+        debug = DT.trace ("\nRun with:"         ++
+                          "\nPhi:    "          ++ show phi       ++
+                          "\nTokens: "          ++ show ts        ++
+                          "\nToken props:\n"    ++ show tsprops   ++
+                          "\nAtoms:\n"          ++ showAtoms as   ++
                           "\nInitial states:\n" ++ showStates is)
