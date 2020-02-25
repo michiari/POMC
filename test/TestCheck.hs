@@ -124,23 +124,47 @@ testTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
     )
+  , ( "Stack trace lang, accepting ChainNext Take"
+    , True
+    , ChainNext (S.singleton Take) (Atomic $ Prop "ret")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting ChainNext Take"
+    , False
+    , ChainNext (S.singleton Take) (Atomic $ Prop "ret")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "ret"]
+    )
+  , ( "Stack trace lang, accepting inner ChainNext Take"
+    , True
+    , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Take) (Atomic $ Prop "ret")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting inner ChainNext Take"
+    , False
+    , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Take) (Atomic $ Prop "ret")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
+    )
   , ( "Stack trace lang, accepting ChainNext Yield"
     , True
     , ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
     , stlPrec
     , map (S.singleton . Prop) ["han", "call", "thr"]
     )
-  , ( "Stack trace lang, accepting inner ChainNext Yield"
-    , True
-    , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
-    , stlPrec
-    , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
-    )
   , ( "Stack trace lang, rejecting ChainNext Yield"
     , False
     , ChainNext (S.singleton Yield) (Atomic $ Prop "ret")
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "ret"]
+    )
+  , ( "Stack trace lang, accepting inner ChainNext Yield"
+    , True
+    , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
     )
   -- Takes slightly longer
   , ( "Stack trace lang, rejecting inner ChainNext Yield"
