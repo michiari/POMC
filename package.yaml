@@ -46,3 +46,4 @@ tests:
     - containers
     - tasty
     - tasty-hunit
+    - tasty-quickcheck

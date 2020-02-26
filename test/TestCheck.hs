@@ -1,10 +1,14 @@
-module TestCheck (tests) where
+module TestCheck ( tests
+                 , termTrace) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
 import Data.Set (Set)
 import qualified Data.Set as S
+
+import Control.Monad
 
 import POMC.Check
 import POMC.Opa (Prec(..))
@@ -42,9 +46,9 @@ stlPrec s1 s2
           | (Prop  "thr") `S.member` s = Take
           | otherwise = error "Incompatible tokens"
 
--- Each test is a tuple of the type:
--- (name, expected check result, phi, props, prec, input)
-testTuples =
+-- Each unit test is a tuple of the type:
+-- (name, expected check result, phi, prec, input)
+unitTuples =
   [ ( "Stack trace lang, accepting predicate on first word position"
     , True
     , And (Atomic $ Prop "call") (Not $ Atomic $ Prop "ret")
@@ -173,7 +177,7 @@ testTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
     )
-  , ( "Stack trace lang, accepting Until YET"
+  , ( "Stack trace lang, accepting Until Y"
     , True
     , Until (S.singleton Yield) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "han")
     , stlPrec
@@ -185,13 +189,56 @@ testTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
     )
+  , ( "Stack trace lang, accepting Until YET"
+    , True
+    , Until (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "han")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
+    )
   ]
 
-tests :: TestTree
-tests = testGroup "Check.hs tests" (map makeTestCase testTuples)
+unitTests = testGroup "Unit" (map makeTestCase unitTuples)
   where acceptFail = "Formula should hold for given word!"
         rejectFail = "Formula should not hold for given word!"
         makeTestCase (name, expected, phi, prec, ts) =
           if expected == True
             then testCase name $ check phi prec ts @? acceptFail
             else testCase name $ not (check phi prec ts) @? rejectFail
+
+termTrace :: Int -> Gen [String]
+termTrace m = return ["call"] `gconcat` (arb m) `gconcat` return ["ret"]
+  where gconcat = liftM2 (++)
+        arb 0 = return []
+        arb m = do n <- choose (0, m `div` 2)
+                   oneof [ return ["call"] `gconcat` (arb n) `gconcat` return ["ret"] `gconcat` (arb n)
+                         , return ["han"]  `gconcat` (arb n) `gconcat` (arbStr "thr" 3) `gconcat` (arb n)
+                         ]
+        arbStr str m = do n <- choose (0, m)
+                          return (replicate n str)
+
+-- Each property test is a tuple of the type:
+-- (name, expected check result, phi, prec, generator)
+propTuples =
+  [ ( "Well formed stack traces"
+    , True
+    , (Atomic . Prop $ "call") `And` ((PrecNext (S.singleton Equal) (Atomic . Prop $ "ret")) `Or` (ChainNext (S.singleton Equal) (Atomic . Prop $ "ret")))
+    , stlPrec
+    , \m -> map (S.singleton . Prop) <$> termTrace m
+    )
+  , ( "Well formed stack traces, no throw before handle"
+    , True
+    , Until (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "han")
+    , stlPrec
+    , \m -> map (S.singleton . Prop) <$> termTrace m
+    )
+  ]
+
+properties :: TestTree
+properties = testGroup "QuickCheck tests" (map makePropTest propTuples)
+  where makePropTest (name, expected, phi, prec, gen) =
+          testProperty name $
+            forAll (sized gen) $ \input -> check phi stlPrec input == expected
+
+tests :: TestTree
+tests = testGroup "Check.hs tests" [unitTests, properties]
+

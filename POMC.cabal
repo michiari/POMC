@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8c9d527c2bc4c73b5f5313adc1d8a409bd6863c1cf1fed03390e4cc1dc61e665
+-- hash: 0ad510067ab2de44b7fa69d19fc1cb62cef62b9af9e0e90500a266f18d36b307
 
 name:           POMC
 version:        0.1
@@ -63,4 +63,5 @@ test-suite test-pomc
     , containers
     , tasty
     , tasty-hunit
+    , tasty-quickcheck
   default-language: Haskell2010
