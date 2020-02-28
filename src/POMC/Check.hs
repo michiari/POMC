@@ -1,12 +1,14 @@
-module POMC.Check ( closure
+module POMC.Check ( State(..)
+                  , closure
                   , atoms
                   , consistent
                   , complete
                   , showAtoms
                   , showStates
-                  , State(..)
-                  , check
                   , expandUntil
+                  , expandChainNext
+                  , expandState
+                  , check
                   ) where
 
 import POMC.Opa (Prec(..), run)
@@ -88,6 +90,48 @@ showAtoms = unlines . map (show . S.toList) . S.toList
 showStates :: Show a => [State a] -> String
 showStates = unlines . map show
 
+-- Returns all the combinations of expansions of Until formulas in a set
+-- Each Until produces three expansions (Until rule)
+--
+-- This is achieved in the following way:
+-- - each until is mapped to the 3-element list of its expansions
+-- - the cartesian products of all the resulting lists is computed, thereby
+--   obtaining combinations of expansions in the form of lists of #U lists
+-- - #U-element lists are concatenated, turned into a set and merged with the
+--   starting set
+-- where #U is the number of Until formulas.
+expandUntil :: (Ord a) => Set (Formula a) -> [Set (Formula a)]
+expandUntil set =
+  let untilTuples = [(f, pset, sf1, sf2) | f@(Until pset sf1 sf2) <- S.toList set]
+      expansions :: [(Formula a, Set Prec, Formula a, Formula a) -> [Formula a]]
+      expansions = [ (\(_,    _,   _, sf2) -> [sf2])
+                   , (\(f, pset, sf1,   _) -> [sf1, PrecNext  pset f])
+                   , (\(f, pset, sf1,   _) -> [sf1, ChainNext pset f])
+                   ]
+      combinations = sequence [[e (t) | e <- expansions] | t <- untilTuples]
+  in map ((set `S.union`) . S.fromList . concat) combinations
+
+-- Returns all the combination of expansions of ChainNext formulas with
+-- multiple precedences in a set
+expandChainNext :: (Ord a) => Set (Formula a) -> [Set (Formula a)]
+expandChainNext set =
+  let chainTuples = [(pset, sf) | f@(ChainNext pset sf) <- S.toList set,
+                                                           S.size pset > 1]
+      expansion :: (Set Prec, Formula a) -> [[Formula a]]
+      expansion (pset, sf) =
+        let pcombs = S.toList $ S.powerSet pset `S.difference` S.singleton (S.empty)
+        in map (\s -> map (\p -> ChainNext (S.singleton p) sf) (S.toList s)) pcombs
+
+      combinations = sequence (map expansion chainTuples)
+  in map ((set `S.union`) . S.fromList . concat) combinations
+
+expandState :: (Ord a) => State a -> [State a]
+expandState s =
+  let expanded  = (concatMap expandChainNext . expandUntil) (current s)
+      consAtoms = filter consistent expanded
+      newStates = map (\a -> State a (pending s) (startsChain s)) consAtoms
+  in newStates
+
 -- Checks if an atom is compatible (reachable with a shift/push move) with
 -- current state s w.r.t. PrecNext formulas contained in s.
 --
@@ -137,33 +181,6 @@ precBackComp prec s props atom =
       fspresent = (S.fromList backfs) `S.isSubsetOf` (current s)
       rightprecs = all (atomPrec `S.member`) precSets
   in fspresent && rightprecs
-
--- Returns all the combinations of expansions of Until formulas in a set
--- Each Until produces three expansions (Until rule)
---
--- This is achieved in the following way:
--- - each until is mapped to the 3-element list of its expansions
--- - the cartesian products of all the resulting lists is computed, thereby
---   obtaining combinations of expansions in the form of lists of #U lists
--- - #U-element lists are concatenated, turned into a set and merged with the
---   starting set
--- where #U is the number of Until formulas.
-expandUntil :: (Ord a) => Set (Formula a) -> [Set (Formula a)]
-expandUntil set =
-  let untilTuples = [(f, pset, sf1, sf2) | f@(Until pset sf1 sf2) <- S.toList set]
-      expansions :: [(Formula a, Set Prec, Formula a, Formula a) -> [Formula a]]
-      expansions = [ (\(_,    _,   _, sf2) -> [sf2])
-                   , (\(f, pset, sf1,   _) -> [sf1, PrecNext  pset f])
-                   , (\(f, pset, sf1,   _) -> [sf1, ChainNext pset f])
-                   ]
-      combinations = sequence [[e (t) | e <- expansions] | t <- untilTuples]
-  in map ((set `S.union`) . S.fromList . concat) combinations
-
-expandState s =
-  let expanded  = expandUntil (current s)
-      consAtoms = filter consistent expanded
-      newStates = map (\a -> State a (pending s) (startsChain s)) consAtoms
-  in newStates
 
 deltaShift :: (Eq a, Ord a, Show a)
            => Set (Set (Formula a))
