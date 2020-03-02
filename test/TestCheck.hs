@@ -305,4 +305,3 @@ properties = testGroup "QuickCheck tests" (map makePropTest propTuples)
 
 tests :: TestTree
 tests = testGroup "Check.hs tests" [unitTests, properties]
-

@@ -199,31 +199,35 @@ deltaShift atoms prec s props
   | not (all (`elem` pendingCbefs) currCbefs) = []
 
   -- New pending set must be consistent
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight) . S.toList $ compAtoms
+  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
+                                  ) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
                       "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
     currAtomic = atomicSet (current s)
 
-    --  ChainNext Equal subformulas in the pending set
-    pendingSubCnefs = [f | ChainNext pset f <- S.toList (pending s),
-                                               pset == (S.singleton Equal)]
-    -- ChainNext Take formulas in the pending set
-    pendingCntfs = [f | f@(ChainNext pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Take)]
-    -- ChainNext Equal formulas
-    currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
-                                             pset == (S.singleton Equal)]
-    -- ChainNext Take formulas
-    currCntfs = [f | f@(ChainNext pset _) <- S.toList (current s),
-                                             pset == (S.singleton Take)]
     -- ChainNext Yield formulas
     currCnyfs = [f | f@(ChainNext pset _) <- S.toList (current s),
                                              pset == (S.singleton Yield)]
+    --  ChainNext Equal subformulas in the pending set
+    pendingSubCnefs = [f | ChainNext pset f <- S.toList (pending s),
+                                               pset == (S.singleton Equal)]
+    -- ChainNext Equal formulas
+    currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
+                                             pset == (S.singleton Equal)]
+    -- ChainNext Take formulas in the pending set
+    pendingCntfs = [f | f@(ChainNext pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Take)]
+    -- ChainNext Take formulas
+    currCntfs = [f | f@(ChainNext pset _) <- S.toList (current s),
+                                             pset == (S.singleton Take)]
     -- Do we need Xl? We do if there are any ChainNext's in the current set
     chainLeft = not (null currCnefs && null currCntfs && null currCnyfs)
 
+    -- ChainBack Yield formulas
+    currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+                                             pset == (S.singleton Yield)]
     -- ChainBack Equal formulas in the pending set
     pendingCbefs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Equal)]
@@ -262,22 +266,23 @@ deltaPush atoms prec s props
   | not (null currCbefs) = []
 
   -- New pending set must be consistent
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight) . S.toList $ compAtoms
+  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
+                                  ) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
                       "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
     currAtomic = atomicSet (current s)
 
+    -- ChainNext Yield formulas
+    currCnyfs = [f | f@(ChainNext pset _) <- S.toList (current s),
+                                             pset == (S.singleton Yield)]
     -- ChainNext Equal formulas
     currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
                                              pset == (S.singleton Equal)]
     -- ChainNext Take formulas
     currCntfs = [f | f@(ChainNext pset _) <- S.toList (current s),
                                              pset == (S.singleton Take)]
-    -- ChainNext Yield formulas
-    currCnyfs = [f | f@(ChainNext pset _) <- S.toList (current s),
-                                             pset == (S.singleton Yield)]
     -- Do we need Xl? We do if there are any ChainNext's in the current set
     chainLeft = not (null currCnefs && null currCntfs && null currCnyfs)
 
@@ -316,26 +321,14 @@ deltaPop atoms prec s popped
   -- ChainNext Take rule 2
   | not (all (`S.member` (current s)) pendingSubCntfs) = []
 
-  | consistent pend = debug $ map (\atom -> State atom pend chainLeft chainRight) $
-                        S.toList compAtoms
+  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
+                                  ) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
                       "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
     currAtomic = atomicSet (current s)
 
-    -- ChainNext Equal formulas in the pending set
-    pendingCnefs = [f | f@(ChainNext pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Equal)]
-    -- ChainNext Take subformulas in the pending set
-    pendingSubCntfs = [f | ChainNext pset f <- S.toList (pending s),
-                                               pset == (S.singleton Take)]
-    -- Pending ChainNext Equal formulas of popped state
-    poppedCnefs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
-                                               pset == (S.singleton Equal)]
-    -- Pending ChainNext Take formulas of popped state
-    poppedCntfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
-                                               pset == (S.singleton Take)]
     -- Pending ChainNext Yield formulas of popped state
     poppedCnyfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Yield)]
@@ -343,6 +336,18 @@ deltaPop atoms prec s popped
     -- ChainNext Yield rule 2
     nextPendCnyfs = [f | f@(ChainNext _ sf) <- poppedCnyfs,
                                                not $ sf `S.member` (current s)]
+    -- ChainNext Equal formulas in the pending set
+    pendingCnefs = [f | f@(ChainNext pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Equal)]
+    -- Pending ChainNext Equal formulas of popped state
+    poppedCnefs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
+                                               pset == (S.singleton Equal)]
+    -- ChainNext Take subformulas in the pending set
+    pendingSubCntfs = [f | ChainNext pset f <- S.toList (pending s),
+                                               pset == (S.singleton Take)]
+    -- Pending ChainNext Take formulas of popped state
+    poppedCntfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
+                                               pset == (S.singleton Take)]
     -- We need Xl iff there are pending ChainNext Yield's in popped state
     -- ChainNext Yield rule 2
     chainLeft = not (null poppedCnyfs)
