@@ -194,6 +194,8 @@ deltaShift atoms prec s props
   -- ChainNext Take rule 3
   | not (null pendingCntfs) = []
 
+  -- ChainBack Yield rule 2
+  | not (null currCbyfs) = []
   -- ChainBack Equal rule 1
   | not (null currCbefs) && not (endsChain s) = []
   | not (all (`elem` pendingCbefs) currCbefs) = []
@@ -228,6 +230,8 @@ deltaShift atoms prec s props
     -- ChainBack Yield formulas
     currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Yield)]
+    -- ChainBack Yield formulas to be put in next pending set
+    nextCbyfs = map (ChainBack (S.singleton Yield)) (S.toList $ current s)
     -- ChainBack Equal formulas in the pending set
     pendingCbefs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Equal)]
@@ -245,9 +249,10 @@ deltaShift atoms prec s props
     -- - ChainNext Take  rule 1
     -- - ChainNext Yield rule 1
     --
+    -- - ChainBack Yield rule 4
     -- - ChainBack Equal rule 4
     pend = S.fromList (currCnefs ++ currCntfs ++ currCnyfs ++
-                       nextCbefs)
+                       nextCbefs ++ nextCbyfs)
     -- Atoms compatible with PrecNext rule, PrecBack rule
     compAtoms = S.filter (precBackComp prec s props) .
                 S.filter (precNextComp prec s props) $ atoms
@@ -262,6 +267,9 @@ deltaPush atoms prec s props
   -- Push rule
   | currAtomic /= S.map Atomic props = []
 
+  -- ChainBack Yield rule 1
+  | not (null currCbyfs) && not (endsChain s) = []
+  | not (all (`elem` pendingCbyfs) currCbyfs) = []
   -- ChainBack Equal rule 2
   | not (null currCbefs) = []
 
@@ -286,6 +294,14 @@ deltaPush atoms prec s props
     -- Do we need Xl? We do if there are any ChainNext's in the current set
     chainLeft = not (null currCnefs && null currCntfs && null currCnyfs)
 
+    -- ChainBack Yield formulas in the pending set
+    pendingCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Yield)]
+    -- ChainBack Yield formulas
+    currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+                                             pset == (S.singleton Yield)]
+    -- ChainBack Yield formulas to be put in next pending set
+    nextCbyfs = map (ChainBack (S.singleton Yield)) (S.toList $ current s)
     -- ChainBack Equal formulas
     currCbefs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Equal)]
@@ -300,9 +316,10 @@ deltaPush atoms prec s props
     -- - ChainNext Take  rule 1
     -- - ChainNext Yield rule 1
     --
+    -- - ChainBack Yield rule 4
     -- - ChainBack Equal rule 4
     pend = S.fromList (currCnefs ++ currCntfs ++ currCnyfs ++
-                       nextCbefs)
+                       nextCbefs ++ nextCbyfs)
     -- Atoms compatible with PrecNext rule, PrecBack rule
     compAtoms = S.filter (precBackComp prec s props) .
                 S.filter (precNextComp prec s props) $ atoms
@@ -352,6 +369,9 @@ deltaPop atoms prec s popped
     -- ChainNext Yield rule 2
     chainLeft = not (null poppedCnyfs)
 
+    -- ChainBack Yield formulas
+    poppedCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
+                                               pset == (S.singleton Yield)]
     -- ChainBack Equal formulas
     poppedCbefs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Equal)]
@@ -364,9 +384,10 @@ deltaPop atoms prec s popped
     -- - ChainNext Take rule 2
     -- - ChainNext Yield rule 2
     --
+    -- - ChainBack Yield rule 3
     -- - ChainBack Equal rule 3
     pend = S.fromList (poppedCnefs ++ poppedCntfs ++ nextPendCnyfs ++
-                       poppedCbefs)
+                       poppedCbefs ++ poppedCbyfs)
     -- Is an atom compatible with pop rule?
     popComp atom = (S.filter atomic atom) == currAtomic
                    && (current s) `S.isSubsetOf` atom

@@ -259,6 +259,30 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "thr", "ret", "ret"]
     )
+  , ( "Stack trace lang, accepting ChainBack Yield"
+    , True
+    , formulaAt 3 $ ChainBack (S.singleton Yield) (Atomic $ Prop "han")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "thr"]
+    )
+  , ( "Stack trace lang, rejecting ChainBack Yield"
+    , False
+    , formulaAt 3 $ ChainBack (S.singleton Yield) (Atomic $ Prop "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "ret"]
+    )
+  , ( "Stack trace lang, accepting inner ChainBack Yield"
+    , True
+    , formulaAt 4 $ ChainBack (S.singleton Yield) (Atomic $ Prop "han")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "call", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting inner ChainBack Yield"
+    , False
+    , formulaAt 4 $ ChainBack (S.singleton Yield) (Atomic $ Prop "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
+    )
   ]
 
 unitTests = testGroup "Unit" (map makeTestCase unitTuples)
