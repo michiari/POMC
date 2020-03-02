@@ -12,7 +12,7 @@ import Control.Monad
 
 import POMC.Check
 import POMC.Opa (Prec(..))
-import POMC.Potl (Formula(..), Prop(..))
+import POMC.Potl (Formula(..), Prop(..), formulaAt)
 
 stlPrec s1 s2
   | null s2 = Take -- Can happen with e.g. PrecNext checks
@@ -121,12 +121,11 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
     )
-  -- Takes slightly longer
   , ( "Stack trace lang, rejecting inner ChainNext Equal"
     , False
-    , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Equal) (Atomic $ Prop "call")
+    , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Equal) (Atomic $ Prop "ret")
     , stlPrec
-    , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret", "ret"]
     )
   , ( "Stack trace lang, accepting ChainNext Take"
     , True
@@ -170,7 +169,6 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
     )
-  -- Takes slightly longer
   , ( "Stack trace lang, rejecting inner ChainNext Yield"
     , False
     , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "ret")
@@ -236,6 +234,30 @@ unitTuples =
     , Until (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "han")
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
+    )
+  , ( "Stack trace lang, accepting ChainBack Equal"
+    , True
+    , formulaAt 3 $ ChainBack (S.singleton Equal) (Atomic $ Prop "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "ret"]
+    )
+  , ( "Stack trace lang, rejecting ChainBack Equal"
+    , False
+    , formulaAt 3 $ ChainBack (S.singleton Equal) (Atomic $ Prop "han")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, accepting inner ChainBack Equal"
+    , True
+    , formulaAt 4 $ ChainBack (S.singleton Equal) (Atomic $ Prop "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
+    )
+  , ( "Stack trace lang, rejecting inner ChainBack Equal"
+    , False
+    , formulaAt 4 $ ChainBack (S.singleton Equal) (Atomic $ Prop "han")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret", "ret"]
     )
   ]
 

@@ -186,12 +186,18 @@ deltaShift :: (Eq a, Ord a, Show a)
 deltaShift atoms prec s props
   -- Shift rule
   | currAtomic /= S.map Atomic props = []
+
   -- XL rule
   | startsChain s = []
   -- ChainNext Equal rule 3
   | not (all (`S.member` (current s)) pendingSubCnefs) = []
   -- ChainNext Take rule 3
   | not (null pendingCntfs) = []
+
+  -- ChainBack Equal rule 1
+  | not (null currCbefs) && not (endsChain s) = []
+  | not (all (`elem` pendingCbefs) currCbefs) = []
+
   -- New pending set must be consistent
   | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight) . S.toList $ compAtoms
   | otherwise = []
@@ -218,17 +224,26 @@ deltaShift atoms prec s props
     -- Do we need Xl? We do if there are any ChainNext's in the current set
     chainLeft = not (null currCnefs && null currCntfs && null currCnyfs)
 
+    -- ChainBack Equal formulas in the pending set
+    pendingCbefs = [f | f@(ChainBack pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Equal)]
     -- ChainBack Equal formulas
     currCbefs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Equal)]
+    -- ChainBack Equal formulas to be put in next pending set
+    nextCbefs = map (ChainBack (S.singleton Equal)) (S.toList $ current s)
     -- XR illegal coming from push / shift
     chainRight = False
 
     -- Pending set for destination states. Constructed from:
+    --
     -- - ChainNext Equal rule 1
     -- - ChainNext Take  rule 1
     -- - ChainNext Yield rule 1
-    pend = S.fromList (currCnefs ++ currCntfs ++ currCnyfs)
+    --
+    -- - ChainBack Equal rule 4
+    pend = S.fromList (currCnefs ++ currCntfs ++ currCnyfs ++
+                       nextCbefs)
     -- Atoms compatible with PrecNext rule, PrecBack rule
     compAtoms = S.filter (precBackComp prec s props) .
                 S.filter (precNextComp prec s props) $ atoms
@@ -242,6 +257,10 @@ deltaPush :: (Eq a, Ord a, Show a)
 deltaPush atoms prec s props
   -- Push rule
   | currAtomic /= S.map Atomic props = []
+
+  -- ChainBack Equal rule 2
+  | not (null currCbefs) = []
+
   -- New pending set must be consistent
   | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight) . S.toList $ compAtoms
   | otherwise = []
@@ -262,14 +281,23 @@ deltaPush atoms prec s props
     -- Do we need Xl? We do if there are any ChainNext's in the current set
     chainLeft = not (null currCnefs && null currCntfs && null currCnyfs)
 
+    -- ChainBack Equal formulas
+    currCbefs = [f | f@(ChainBack pset _) <- S.toList (current s),
+                                             pset == (S.singleton Equal)]
+    -- ChainBack Equal formulas to be put in next pending set
+    nextCbefs = map (ChainBack (S.singleton Equal)) (S.toList $ current s)
     -- XR illegal coming from push / shift
     chainRight = False
 
     -- Pending set for destination states. Constructed from:
+    --
     -- - ChainNext Equal rule 1
     -- - ChainNext Take  rule 1
     -- - ChainNext Yield rule 1
-    pend = S.fromList (currCnefs ++ currCntfs ++ currCnyfs)
+    --
+    -- - ChainBack Equal rule 4
+    pend = S.fromList (currCnefs ++ currCntfs ++ currCnyfs ++
+                       nextCbefs)
     -- Atoms compatible with PrecNext rule, PrecBack rule
     compAtoms = S.filter (precBackComp prec s props) .
                 S.filter (precNextComp prec s props) $ atoms
@@ -287,6 +315,7 @@ deltaPop atoms prec s popped
   | not (null pendingCnefs) = []
   -- ChainNext Take rule 2
   | not (all (`S.member` (current s)) pendingSubCntfs) = []
+
   | consistent pend = debug $ map (\atom -> State atom pend chainLeft chainRight) $
                         S.toList compAtoms
   | otherwise = []
@@ -318,14 +347,21 @@ deltaPop atoms prec s popped
     -- ChainNext Yield rule 2
     chainLeft = not (null poppedCnyfs)
 
+    -- ChainBack Equal formulas
+    poppedCbefs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
+                                               pset == (S.singleton Equal)]
     -- XR always inserted after pop - TODO: CHANGE!
-    chainRight = False
+    chainRight = True
 
     -- Pending set for destination states. Constructed from:
+    --
     -- - ChainNext Equal rule 2
     -- - ChainNext Take rule 2
     -- - ChainNext Yield rule 2
-    pend = S.fromList (poppedCnefs ++ poppedCntfs ++ nextPendCnyfs)
+    --
+    -- - ChainBack Equal rule 3
+    pend = S.fromList (poppedCnefs ++ poppedCntfs ++ nextPendCnyfs ++
+                       poppedCbefs)
     -- Is an atom compatible with pop rule?
     popComp atom = (S.filter atomic atom) == currAtomic
                    && (current s) `S.isSubsetOf` atom

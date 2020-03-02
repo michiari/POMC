@@ -4,9 +4,10 @@ module POMC.Potl ( Formula(..)
                  , negation
                  , atomic
                  , future
+                 , formulaAt
                  ) where
 
-import POMC.Opa (Prec)
+import POMC.Opa (Prec(..))
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -76,3 +77,8 @@ future (Until     {}) = True
 future (HierNext  {}) = True
 future (HierUntil {}) = True
 future _ = False
+
+formulaAt :: Integral n => n -> Formula a -> Formula a
+formulaAt n f
+  | n <= 1    = f
+  | otherwise = formulaAt (n-1) (PrecNext (S.fromList [Yield, Equal, Take]) f)
