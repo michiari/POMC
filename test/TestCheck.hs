@@ -15,7 +15,7 @@ import POMC.Opa (Prec(..))
 import POMC.Potl (Formula(..), Prop(..), formulaAt)
 
 stlPrec s1 s2
-  | null s2 = Take -- Can happen with e.g. PrecNext checks
+  | S.null s2 = Take -- Can happen with e.g. PrecNext checks
   | (Prop "call") `S.member` s1 = callPrec s2
   | (Prop  "ret") `S.member` s1 =  retPrec s2
   | (Prop  "han") `S.member` s1 =  hanPrec s2
@@ -282,6 +282,30 @@ unitTuples =
     , formulaAt 4 $ ChainBack (S.singleton Yield) (Atomic $ Prop "call")
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
+    )
+  , ( "Stack trace lang, accepting ChainBack Take"
+    , True
+    , formulaAt 3 $ ChainBack (S.singleton Take) (Atomic $ Prop "han")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting ChainBack Take"
+    , False
+    , formulaAt 3 $ ChainBack (S.singleton Take) (Atomic $ Prop "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "ret"]
+    )
+  , ( "Stack trace lang, accepting inner ChainBack Take"
+    , True
+    , formulaAt 4 $ ChainBack (S.singleton Take) (Atomic $ Prop "han")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting inner ChainBack Take"
+    , False
+    , formulaAt 4 $ ChainBack (S.singleton Take) (Atomic $ Prop "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
     )
   ]
 

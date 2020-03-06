@@ -74,13 +74,16 @@ data State a = State
     , pending     :: Set (Formula a)
     , startsChain :: Bool
     , endsChain   :: Bool
+    , prevCurrent :: Set (Formula a)
     }
 
 instance (Show a) => Show (State a) where
-  show (State c p xl xr) = "\n{ C: "  ++ show (S.toList c) ++
-                           "\n, P: "  ++ show (S.toList p) ++
-                           "\n, XL: " ++ show xl ++ "\n}"  ++
-                           "\n, XR: " ++ show xr ++ "\n}"
+  show (State c p xl xr pc) = "\n{ C: "     ++ show (S.toList c)  ++
+                              "\n, P: "     ++ show (S.toList p)  ++
+                              "\n, XL: "    ++ show xl            ++
+                              "\n, XR: "    ++ show xr            ++
+                              "\n, PrecC: " ++ show (S.toList pc) ++
+                              "\n}"
 
 showStates :: Show a => [State a] -> String
 showStates = unlines . map show
@@ -121,10 +124,10 @@ expandChainNext set =
   in map ((set `S.union`) . S.fromList . concat) combinations
 
 expandState :: (Ord a) => State a -> [State a]
-expandState s =
+expandState s@(State c p xl xr pc) =
   let expanded  = (concatMap expandChainNext . expandUntil) (current s)
       consAtoms = filter consistent expanded
-      newStates = map (\a -> State a (pending s) (startsChain s) (endsChain s)) consAtoms
+      newStates = map (\a -> State a p xl xr pc) consAtoms
   in newStates
 
 -- Checks if an atom is compatible (reachable with a shift/push move) with
@@ -199,9 +202,12 @@ deltaShift atoms prec s props
   -- ChainBack Equal rule 1
   | not (null currCbefs) && not (endsChain s) = []
   | not (all (`elem` pendingCbefs) currCbefs) = []
+  -- ChainBack Take rule 2
+  | not (null currCbtfs) && not (endsChain s) = []
+  | not (all (`elem` pendingCbtfs) currCbtfs) = []
 
   -- New pending set must be consistent
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
+  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight S.empty
                                   ) . S.toList $ compAtoms
   | otherwise = []
   where
@@ -240,6 +246,12 @@ deltaShift atoms prec s props
                                              pset == (S.singleton Equal)]
     -- ChainBack Equal formulas to be put in next pending set
     nextCbefs = map (ChainBack (S.singleton Equal)) (S.toList $ current s)
+    -- ChainBack Take formulas in the pending set
+    pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Take)]
+    -- ChainBack Take formulas
+    currCbtfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+                                             pset == (S.singleton Take)]
     -- XR illegal coming from push / shift
     chainRight = False
 
@@ -272,9 +284,12 @@ deltaPush atoms prec s props
   | not (all (`elem` pendingCbyfs) currCbyfs) = []
   -- ChainBack Equal rule 2
   | not (null currCbefs) = []
+  -- ChainBack Take rule 2
+  | not (null currCbtfs) && not (endsChain s) = []
+  | not (all (`elem` pendingCbtfs) currCbtfs) = []
 
   -- New pending set must be consistent
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
+  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight (current s)
                                   ) . S.toList $ compAtoms
   | otherwise = []
   where
@@ -307,6 +322,12 @@ deltaPush atoms prec s props
                                              pset == (S.singleton Equal)]
     -- ChainBack Equal formulas to be put in next pending set
     nextCbefs = map (ChainBack (S.singleton Equal)) (S.toList $ current s)
+    -- ChainBack Take formulas in the pending set
+    pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Take)]
+    -- ChainBack Take formulas
+    currCbtfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+                                             pset == (S.singleton Take)]
     -- XR illegal coming from push / shift
     chainRight = False
 
@@ -338,8 +359,10 @@ deltaPop atoms prec s popped
   -- ChainNext Take rule 2
   | not (all (`S.member` (current s)) pendingSubCntfs) = []
 
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
-                                  ) . S.toList $ compAtoms
+  | consistent pend = debug $ concatMap (\a ->
+      [ State a (pend `S.union` (S.fromList pendingCbtfs)) chainLeft True S.empty
+      , State a (pend `S.union` (S.fromList nextPendCbtfs)) chainLeft False S.empty
+      ]) . S.toList $ compAtoms
   | otherwise = []
   where
     debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
@@ -375,8 +398,18 @@ deltaPop atoms prec s popped
     -- ChainBack Equal formulas
     poppedCbefs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Equal)]
-    -- XR always inserted after pop - TODO: CHANGE!
-    chainRight = True
+    -- ChainBack Take formulas in the pending set
+    pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Take)]
+    -- ChainBack Yield formulas that must be turned into ChainBack Take
+    validPoppedSubCbyfs = [f | ChainBack pset f <- S.toList (pending popped),
+                                                   pset == (S.singleton Yield)
+                                                   && endsChain popped]
+    -- ChainNext Yield formulas to be put in next state's pending set, in the
+    -- XR=False case
+    nextPendCbtfs = pendingCbtfs
+                    ++ map (ChainBack (S.singleton Take))
+                           (validPoppedSubCbyfs ++ S.toList (prevCurrent popped))
 
     -- Pending set for destination states. Constructed from:
     --
@@ -422,7 +455,7 @@ check phi prec ts =
         compatIas = S.filter (
                       \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]
                       ) initialAtoms
-        is = map (\ia -> State ia S.empty False False) $ S.toList compatIas
+        is = map (\ia -> State ia S.empty False False S.empty) $ S.toList compatIas
         debug = DT.trace ("\nRun with:"         ++
                           "\nPhi:    "          ++ show phi       ++
                           "\nTokens: "          ++ show ts        ++
