@@ -27,20 +27,28 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
   where closList f = case f of
-          Atomic _        -> [f, Not f]
-          Not g           -> [f] ++ closList g
-          Or g h          -> [f, Not f] ++ closList g ++ closList h
-          And g h         -> [f, Not f] ++ closList g ++ closList h
-          PrecNext _ g    -> [f, Not f] ++ closList g
-          PrecBack _ g    -> [f, Not f] ++ closList g
-          ChainNext _ g   -> [f, Not f] ++ closList g
-          ChainBack _ g   -> [f, Not f] ++ closList g
-          Until _ g h     -> [f, Not f] ++ closList g ++ closList h
-          Since _ g h     -> [f, Not f] ++ closList g ++ closList h
-          HierNext _ g    -> [f, Not f] ++ closList g
-          HierBack _ g    -> [f, Not f] ++ closList g
-          HierUntil _ g h -> [f, Not f] ++ closList g ++ closList h
-          HierSince _ g h -> [f, Not f] ++ closList g ++ closList h
+          Atomic _         -> [f, Not f]
+          Not g            -> [f] ++ closList g
+          Or g h           -> [f, Not f] ++ closList g ++ closList h
+          And g h          -> [f, Not f] ++ closList g ++ closList h
+          PrecNext _ g     -> [f, Not f] ++ closList g
+          PrecBack _ g     -> [f, Not f] ++ closList g
+          ChainNext _ g    -> [f, Not f] ++ closList g
+          ChainBack pset g -> [f, Not f] ++
+                              closList g ++
+                              if Take `S.member` pset
+                                then [ PrecBack (S.singleton Yield) g
+                                     , Not (PrecBack (S.singleton Yield) g)
+                                     , ChainBack (S.singleton Yield) g
+                                     , Not (ChainBack (S.singleton Yield) g)
+                                     ]
+                                else []
+          Until _ g h      -> [f, Not f] ++ closList g ++ closList h
+          Since _ g h      -> [f, Not f] ++ closList g ++ closList h
+          HierNext _ g     -> [f, Not f] ++ closList g
+          HierBack _ g     -> [f, Not f] ++ closList g
+          HierUntil _ g h  -> [f, Not f] ++ closList g ++ closList h
+          HierSince _ g h  -> [f, Not f] ++ closList g ++ closList h
 
 atoms :: Ord a => Set (Formula a) -> Set (Set (Formula a))
 atoms clos = filterAtoms $ S.powerSet clos
@@ -74,16 +82,14 @@ data State a = State
     , pending     :: Set (Formula a)
     , startsChain :: Bool
     , endsChain   :: Bool
-    , prevCurrent :: Set (Formula a)
     }
 
 instance (Show a) => Show (State a) where
-  show (State c p xl xr pc) = "\n{ C: "     ++ show (S.toList c)  ++
-                              "\n, P: "     ++ show (S.toList p)  ++
-                              "\n, XL: "    ++ show xl            ++
-                              "\n, XR: "    ++ show xr            ++
-                              "\n, PrecC: " ++ show (S.toList pc) ++
-                              "\n}"
+  show (State c p xl xr) = "\n{ C: "  ++ show (S.toList c)  ++
+                           "\n, P: "  ++ show (S.toList p)  ++
+                           "\n, XL: " ++ show xl            ++
+                           "\n, XR: " ++ show xr            ++
+                           "\n}"
 
 showStates :: Show a => [State a] -> String
 showStates = unlines . map show
@@ -124,10 +130,10 @@ expandChainNext set =
   in map ((set `S.union`) . S.fromList . concat) combinations
 
 expandState :: (Ord a) => State a -> [State a]
-expandState s@(State c p xl xr pc) =
+expandState s@(State c p xl xr) =
   let expanded  = (concatMap expandChainNext . expandUntil) (current s)
       consAtoms = filter consistent expanded
-      newStates = map (\a -> State a p xl xr pc) consAtoms
+      newStates = map (\a -> State a p xl xr) consAtoms
   in newStates
 
 -- Checks if an atom is compatible (reachable with a shift/push move) with
@@ -181,12 +187,13 @@ precBackComp prec s props atom =
   in fspresent && rightprecs
 
 deltaShift :: (Eq a, Ord a, Show a)
-           => Set (Set (Formula a))
+           => Set (Formula a)
+           -> Set (Set (Formula a))
            -> (Set (Prop a) -> Set (Prop a) -> Prec)
            -> State a
            -> Set (Prop a)
            -> [State a]
-deltaShift atoms prec s props
+deltaShift clos atoms prec s props
   -- Shift rule
   | currAtomic /= S.map Atomic props = []
 
@@ -200,14 +207,14 @@ deltaShift atoms prec s props
   -- ChainBack Yield rule 2
   | not (null currCbyfs) = []
   -- ChainBack Equal rule 1
-  | not (null currCbefs) && not (endsChain s) = []
-  | not (all (`elem` pendingCbefs) currCbefs) = []
+  | not (endsChain s) && not (null currCbefs) = []
+  | endsChain s && (S.fromList currCbefs /= S.fromList pendingCbefs) = []
   -- ChainBack Take rule 2
-  | not (null currCbtfs) && not (endsChain s) = []
-  | not (all (`elem` pendingCbtfs) currCbtfs) = []
+  | not (endsChain s) && not (null currCbtfs) = []
+  | endsChain s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
 
   -- New pending set must be consistent
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight S.empty
+  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
                                   ) . S.toList $ compAtoms
   | otherwise = []
   where
@@ -237,7 +244,8 @@ deltaShift atoms prec s props
     currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Yield)]
     -- ChainBack Yield formulas to be put in next pending set
-    nextCbyfs = map (ChainBack (S.singleton Yield)) (S.toList $ current s)
+    nextCbyfs = let cby = ChainBack (S.singleton Yield)
+                in [cby f | f <- S.toList (current s), cby f `S.member` clos]
     -- ChainBack Equal formulas in the pending set
     pendingCbefs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Equal)]
@@ -245,7 +253,8 @@ deltaShift atoms prec s props
     currCbefs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Equal)]
     -- ChainBack Equal formulas to be put in next pending set
-    nextCbefs = map (ChainBack (S.singleton Equal)) (S.toList $ current s)
+    nextCbefs = let cbe = ChainBack (S.singleton Equal)
+                in [cbe f | f <- S.toList (current s), cbe f `S.member` clos]
     -- ChainBack Take formulas in the pending set
     pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Take)]
@@ -270,26 +279,27 @@ deltaShift atoms prec s props
                 S.filter (precNextComp prec s props) $ atoms
 
 deltaPush :: (Eq a, Ord a, Show a)
-          => Set (Set (Formula a))
+          => Set (Formula a)
+          -> Set (Set (Formula a))
           -> (Set (Prop a) -> Set (Prop a) -> Prec)
           -> State a
           -> Set (Prop a)
           -> [State a]
-deltaPush atoms prec s props
+deltaPush clos atoms prec s props
   -- Push rule
   | currAtomic /= S.map Atomic props = []
 
   -- ChainBack Yield rule 1
-  | not (null currCbyfs) && not (endsChain s) = []
-  | not (all (`elem` pendingCbyfs) currCbyfs) = []
+  | not (endsChain s) && not (null currCbyfs) = []
+  | endsChain s && (S.fromList currCbyfs /= S.fromList pendingCbyfs) = []
   -- ChainBack Equal rule 2
   | not (null currCbefs) = []
   -- ChainBack Take rule 2
-  | not (null currCbtfs) && not (endsChain s) = []
-  | not (all (`elem` pendingCbtfs) currCbtfs) = []
+  | not (endsChain s) && not (null currCbtfs) = []
+  | endsChain s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
 
   -- New pending set must be consistent
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight (current s)
+  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
                                   ) . S.toList $ compAtoms
   | otherwise = []
   where
@@ -316,12 +326,14 @@ deltaPush atoms prec s props
     currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Yield)]
     -- ChainBack Yield formulas to be put in next pending set
-    nextCbyfs = map (ChainBack (S.singleton Yield)) (S.toList $ current s)
+    nextCbyfs = let cby = ChainBack (S.singleton Yield)
+                in [cby f | f <- S.toList (current s), cby f `S.member` clos]
     -- ChainBack Equal formulas
     currCbefs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Equal)]
     -- ChainBack Equal formulas to be put in next pending set
-    nextCbefs = map (ChainBack (S.singleton Equal)) (S.toList $ current s)
+    nextCbefs = let cbe = ChainBack (S.singleton Equal)
+                in [cbe f | f <- S.toList (current s), cbe f `S.member` clos]
     -- ChainBack Take formulas in the pending set
     pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Take)]
@@ -346,12 +358,13 @@ deltaPush atoms prec s props
                 S.filter (precNextComp prec s props) $ atoms
 
 deltaPop :: (Eq a, Ord a, Show a)
-         => Set (Set (Formula a))
+         => Set (Formula a)
+         -> Set (Set (Formula a))
          -> (Set (Prop a) -> Set (Prop a) -> Prec)
          -> State a
          -> State a
          -> [State a]
-deltaPop atoms prec s popped
+deltaPop clos atoms prec s popped
   -- XL rule
   | startsChain s = []
   -- ChainNext Equal rule 2
@@ -360,8 +373,8 @@ deltaPop atoms prec s popped
   | not (all (`S.member` (current s)) pendingSubCntfs) = []
 
   | consistent pend = debug $ concatMap (\a ->
-      [ State a (pend `S.union` (S.fromList pendingCbtfs)) chainLeft True S.empty
-      , State a (pend `S.union` (S.fromList nextPendCbtfs)) chainLeft False S.empty
+      [ State a (pend `S.union` (S.fromList pendingCbtfs)) chainLeft True
+      , State a (pend `S.union` (S.fromList nextPendCbtfs)) chainLeft False
       ]) . S.toList $ compAtoms
   | otherwise = []
   where
@@ -401,15 +414,15 @@ deltaPop atoms prec s popped
     -- ChainBack Take formulas in the pending set
     pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Take)]
-    -- ChainBack Yield formulas that must be turned into ChainBack Take
-    validPoppedSubCbyfs = [f | ChainBack pset f <- S.toList (pending popped),
-                                                   pset == (S.singleton Yield)
-                                                   && endsChain popped]
-    -- ChainNext Yield formulas to be put in next state's pending set, in the
-    -- XR=False case
-    nextPendCbtfs = pendingCbtfs
-                    ++ map (ChainBack (S.singleton Take))
-                           (validPoppedSubCbyfs ++ S.toList (prevCurrent popped))
+    -- ChainNext Yield formulas for next state's pending set when Xr is False
+    nextPendCbtfs = let cbt = ChainBack (S.singleton Take)
+                    in [cbt f | ChainBack pset f <- S.toList (current popped),
+                                                    pset == (S.singleton Yield)
+                                                    && cbt f `S.member` clos]
+                       ++ [cbt f | PrecBack pset f <- S.toList (current popped),
+                                                      pset == (S.singleton Yield)
+                                                      && cbt f `S.member` clos]
+                       ++ pendingCbtfs
 
     -- Pending set for destination states. Constructed from:
     --
@@ -426,14 +439,14 @@ deltaPop atoms prec s popped
                    && (current s) `S.isSubsetOf` atom
     compAtoms = S.filter popComp atoms
 
-expDeltaShift atoms prec s props =
-  concatMap (\expS -> deltaShift atoms prec expS props) (expandState s)
+expDeltaShift clos atoms prec s props =
+  concatMap (\expS -> deltaShift clos atoms prec expS props) (expandState s)
 
-expDeltaPush atoms prec s props =
-  concatMap (\expS -> deltaPush atoms prec expS props) (expandState s)
+expDeltaPush clos atoms prec s props =
+  concatMap (\expS -> deltaPush clos atoms prec expS props) (expandState s)
 
-expDeltaPop atoms prec s popped =
-  concatMap (\expS -> deltaPop atoms prec expS popped) (expandState s)
+expDeltaPop clos atoms prec s popped =
+  concatMap (\expS -> deltaPop clos atoms prec expS popped) (expandState s)
 
 isFinal :: (Show a) => State a -> Bool
 isFinal s = debug $ S.null currAtomic && S.null currFuture && S.null (pending s)
@@ -448,14 +461,15 @@ check :: (Ord a, Show a)
       -> Bool
 check phi prec ts =
   debug $ run prec is isFinal
-    (expDeltaShift as prec) (expDeltaPush as prec) (expDeltaPop as prec) ts
+    (expDeltaShift cl as prec) (expDeltaPush cl as prec) (expDeltaPop cl as prec) ts
   where tsprops = S.toList $ foldl' (S.union) S.empty ts
-        as = atoms $ closure phi tsprops
+        cl = closure phi tsprops
+        as = atoms cl
         initialAtoms = S.filter (phi `S.member`) as
         compatIas = S.filter (
                       \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]
                       ) initialAtoms
-        is = map (\ia -> State ia S.empty False False S.empty) $ S.toList compatIas
+        is = map (\ia -> State ia S.empty False False) $ S.toList compatIas
         debug = DT.trace ("\nRun with:"         ++
                           "\nPhi:    "          ++ show phi       ++
                           "\nTokens: "          ++ show ts        ++
