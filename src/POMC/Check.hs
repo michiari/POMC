@@ -2,11 +2,9 @@ module POMC.Check ( State(..)
                   , closure
                   , atoms
                   , consistent
-                  , complete
                   , showAtoms
                   , showStates
                   , expandUntil
-                  , expandChainNext
                   , expandState
                   , check
                   ) where
@@ -26,33 +24,57 @@ closure :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
 closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
-  where closList f = case f of
-          Atomic _         -> [f, Not f]
-          Not g            -> [f] ++ closList g
-          Or g h           -> [f, Not f] ++ closList g ++ closList h
-          And g h          -> [f, Not f] ++ closList g ++ closList h
-          PrecNext _ g     -> [f, Not f] ++ closList g
-          PrecBack _ g     -> [f, Not f] ++ closList g
-          ChainNext _ g    -> [f, Not f] ++ closList g
-          ChainBack pset g -> [f, Not f] ++
-                              closList g ++
-                              if Take `S.member` pset
-                                then [ PrecBack (S.singleton Yield) g
-                                     , Not (PrecBack (S.singleton Yield) g)
-                                     , ChainBack (S.singleton Yield) g
-                                     , Not (ChainBack (S.singleton Yield) g)
-                                     ]
-                                else []
-          Until _ g h      -> [f, Not f] ++ closList g ++ closList h
-          Since _ g h      -> [f, Not f] ++ closList g ++ closList h
-          HierNext _ g     -> [f, Not f] ++ closList g
-          HierBack _ g     -> [f, Not f] ++ closList g
-          HierUntil _ g h  -> [f, Not f] ++ closList g ++ closList h
-          HierSince _ g h  -> [f, Not f] ++ closList g ++ closList h
+  where
+    chainNextExp pset g = concatMap (\p -> [ ChainNext (S.singleton p) g
+                                           , Not (ChainNext (S.singleton p) g)
+                                           ]
+                                    ) (S.toList pset)
+    chainBackExp pset g = concatMap (\p -> [ ChainBack (S.singleton p) g
+                                           , Not (ChainBack (S.singleton p) g)
+                                           ]
+                                    ) (S.toList pset) ++
+                          if Take `S.member` pset
+                            then [ PrecBack (S.singleton Yield) g
+                                 , Not (PrecBack (S.singleton Yield) g)
+                                 , ChainBack (S.singleton Yield) g
+                                 , Not (ChainBack (S.singleton Yield) g)
+                                 ]
+                            else []
+    closList f = case f of
+      Atomic _         -> [f, Not f]
+      Not g            -> [f] ++ closList g
+      Or g h           -> [f, Not f] ++ closList g ++ closList h
+      And g h          -> [f, Not f] ++ closList g ++ closList h
+      PrecNext _ g     -> [f, Not f] ++ closList g
+      PrecBack _ g     -> [f, Not f] ++ closList g
+      ChainNext pset g -> [f, Not f] ++ closList g ++ chainNextExp pset g
+      ChainBack pset g -> [f, Not f] ++ closList g ++ chainBackExp pset g
+      Until _ g h      -> [f, Not f] ++ closList g ++ closList h
+      Since _ g h      -> [f, Not f] ++ closList g ++ closList h
+      HierNext _ g     -> [f, Not f] ++ closList g
+      HierBack _ g     -> [f, Not f] ++ closList g
+      HierUntil _ g h  -> [f, Not f] ++ closList g ++ closList h
+      HierSince _ g h  -> [f, Not f] ++ closList g ++ closList h
 
 atoms :: Ord a => Set (Formula a) -> Set (Set (Formula a))
-atoms clos = filterAtoms $ S.powerSet clos
-  where filterAtoms = S.filter consistent . S.filter (complete clos)
+atoms clos = S.filter consistent .       -- order matters ;)
+             S.map complete .
+             S.filter chainNextCons .
+             S.powerSet $
+             positiveClos
+  where positiveClos = S.filter (\f -> case f of
+                                         Not f -> False
+                                         _     -> True
+                                ) clos
+        complete a = a `S.union` (S.map Not $ positiveClos `S.difference` a)
+
+chainNextCons :: Ord a => Set (Formula a) -> Bool
+chainNextCons set =
+  null [f | f@(ChainNext pset g) <- S.toList set,
+                                    S.size pset > 1 &&
+                                    not (valid pset g)]
+  where valid pset g = any (\p -> ChainNext (S.singleton p) g `S.member` set)
+                           (S.toList pset)
 
 consistent :: Ord a => Set (Formula a) -> Bool
 consistent set = negcons set && andorcons set
@@ -65,11 +87,6 @@ consistent set = negcons set && andorcons set
                             Or  g h -> g `S.member` set || h `S.member` set
                             _       -> True
                           ) set)
-
-complete :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
-complete clos atom = all present clos
-  where present nf@(Not f) = f `S.member` atom || nf      `S.member` atom
-        present f          = f `S.member` atom || (Not f) `S.member` atom
 
 atomicSet :: Set (Formula a) -> Set (Formula a)
 atomicSet = S.filter atomic
@@ -115,23 +132,9 @@ expandUntil set =
       combinations = sequence [[e (t) | e <- expansions] | t <- untilTuples]
   in map ((set `S.union`) . S.fromList . concat) combinations
 
--- Returns all the combination of expansions of ChainNext formulas with
--- multiple precedences in a set
-expandChainNext :: (Ord a) => Set (Formula a) -> [Set (Formula a)]
-expandChainNext set =
-  let chainTuples = [(pset, sf) | f@(ChainNext pset sf) <- S.toList set,
-                                                           S.size pset > 1]
-      expansion :: (Set Prec, Formula a) -> [[Formula a]]
-      expansion (pset, sf) =
-        let pcombs = S.toList $ S.powerSet pset `S.difference` S.singleton (S.empty)
-        in map (\s -> map (\p -> ChainNext (S.singleton p) sf) (S.toList s)) pcombs
-
-      combinations = sequence (map expansion chainTuples)
-  in map ((set `S.union`) . S.fromList . concat) combinations
-
 expandState :: (Ord a) => State a -> [State a]
 expandState s@(State c p xl xr) =
-  let expanded  = (concatMap expandChainNext . expandUntil) (current s)
+  let expanded  = expandUntil (current s)
       consAtoms = filter consistent expanded
       newStates = map (\a -> State a p xl xr) consAtoms
   in newStates
