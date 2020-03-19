@@ -4,8 +4,6 @@ module POMC.Check ( State(..)
                   , consistent
                   , showAtoms
                   , showStates
-                  , expandUntil
-                  , expandState
                   , check
                   ) where
 
@@ -27,12 +25,10 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
   where
     chainNextExp pset g = concatMap (\p -> [ ChainNext (S.singleton p) g
                                            , Not (ChainNext (S.singleton p) g)
-                                           ]
-                                    ) (S.toList pset)
+                                           ]) (S.toList pset)
     chainBackExp pset g = concatMap (\p -> [ ChainBack (S.singleton p) g
                                            , Not (ChainBack (S.singleton p) g)
-                                           ]
-                                    ) (S.toList pset) ++
+                                           ]) (S.toList pset) ++
                           if Take `S.member` pset
                             then [ PrecBack (S.singleton Yield) g
                                  , Not (PrecBack (S.singleton Yield) g)
@@ -40,6 +36,11 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                                  , Not (ChainBack (S.singleton Yield) g)
                                  ]
                             else []
+    untilExp pset g h = [ PrecNext  pset (Until pset g h)
+                        , Not $ PrecNext  pset (Until pset g h)
+                        , ChainNext pset (Until pset g h)
+                        , Not $ ChainNext pset (Until pset g h)
+                        ] ++ chainNextExp pset (Until pset g h)
     closList f = case f of
       Atomic _         -> [f, Not f]
       Not g            -> [f] ++ closList g
@@ -49,7 +50,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       PrecBack _ g     -> [f, Not f] ++ closList g
       ChainNext pset g -> [f, Not f] ++ closList g ++ chainNextExp pset g
       ChainBack pset g -> [f, Not f] ++ closList g ++ chainBackExp pset g
-      Until _ g h      -> [f, Not f] ++ closList g ++ closList h
+      Until pset g h   -> [f, Not f] ++ closList g ++ closList h ++ untilExp pset g h
       Since _ g h      -> [f, Not f] ++ closList g ++ closList h
       HierNext _ g     -> [f, Not f] ++ closList g
       HierBack _ g     -> [f, Not f] ++ closList g
@@ -57,24 +58,15 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierSince _ g h  -> [f, Not f] ++ closList g ++ closList h
 
 atoms :: Ord a => Set (Formula a) -> Set (Set (Formula a))
-atoms clos = S.filter consistent .       -- order matters ;)
-             S.map complete .
+atoms clos = S.filter consistent .
+             S.filter untilCons .
              S.filter chainNextCons .
-             S.powerSet $
-             positiveClos
-  where positiveClos = S.filter (\f -> case f of
-                                         Not f -> False
-                                         _     -> True
-                                ) clos
-        complete a = a `S.union` (S.map Not $ positiveClos `S.difference` a)
+             S.filter (complete clos) $ S.powerSet clos
 
-chainNextCons :: Ord a => Set (Formula a) -> Bool
-chainNextCons set =
-  null [f | f@(ChainNext pset g) <- S.toList set,
-                                    S.size pset > 1 &&
-                                    not (valid pset g)]
-  where valid pset g = any (\p -> ChainNext (S.singleton p) g `S.member` set)
-                           (S.toList pset)
+complete :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+complete clos atom = all present clos
+  where present nf@(Not f) = f `S.member` atom || nf      `S.member` atom
+        present f          = f `S.member` atom || (Not f) `S.member` atom
 
 consistent :: Ord a => Set (Formula a) -> Bool
 consistent set = negcons set && andorcons set
@@ -88,11 +80,44 @@ consistent set = negcons set && andorcons set
                             _       -> True
                           ) set)
 
+chainNextCons :: Ord a => Set (Formula a) -> Bool
+chainNextCons set = null [f | f@(ChainNext pset g) <- S.toList set,
+                                                      S.size pset > 1 &&
+                                                      not (valid pset g)]
+  where valid pset g = any (\p -> ChainNext (S.singleton p) g `S.member` set)
+                           (S.toList pset)
+
+untilCons :: Ord a => Set (Formula a) -> Bool
+untilCons set = null [f | f@(Until pset g h) <- S.toList set,
+                                                not (valid f pset g h)]
+  where valid u pset g h = (h `S.member` set) `xor`
+                           ((S.fromList [g, PrecNext  pset u]) `S.isSubsetOf` set) `xor`
+                           ((S.fromList [g, ChainNext pset u]) `S.isSubsetOf` set)
+
+pendCombs clos =
+  let cnfs = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
+      cbfs = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
+      cfset = S.fromList (cnfs ++ cbfs)
+  in S.foldl S.union S.empty .
+     S.map (S.fromList . combs) .
+     S.filter consistent $ S.powerSet cfset
+  where
+    consistent atom = True `S.notMember` (S.map
+      (\f -> case f of
+        ChainNext pset sf -> (ChainNext pset (negation sf)) `S.member` atom
+        ChainBack pset sf -> (ChainBack pset (negation sf)) `S.member` atom
+        _                 -> False
+      ) atom)
+    combs atom = [(atom, xl, xr) | xl <- [False, True], xr <- [False, True]]
+
 atomicSet :: Set (Formula a) -> Set (Formula a)
 atomicSet = S.filter atomic
 
 showAtoms :: Show a => Set (Set (Formula a)) -> String
 showAtoms = unlines . map (show . S.toList) . S.toList
+
+showPendCombs :: Show a => Set ((Set (Formula a), Bool, Bool)) -> String
+showPendCombs = unlines . map show . S.toList
 
 data State a = State
     { current     :: Set (Formula a)
@@ -110,34 +135,6 @@ instance (Show a) => Show (State a) where
 
 showStates :: Show a => [State a] -> String
 showStates = unlines . map show
-
--- Returns all the combinations of expansions of Until formulas in a set
--- Each Until produces three expansions (Until rule)
---
--- This is achieved in the following way:
--- - each until is mapped to the 3-element list of its expansions
--- - the cartesian products of all the resulting lists is computed, thereby
---   obtaining combinations of expansions in the form of lists of #U lists
--- - #U-element lists are concatenated, turned into a set and merged with the
---   starting set
--- where #U is the number of Until formulas.
-expandUntil :: (Ord a) => Set (Formula a) -> [Set (Formula a)]
-expandUntil set =
-  let untilTuples = [(f, pset, sf1, sf2) | f@(Until pset sf1 sf2) <- S.toList set]
-      expansions :: [(Formula a, Set Prec, Formula a, Formula a) -> [Formula a]]
-      expansions = [ (\(_,    _,   _, sf2) -> [sf2])
-                   , (\(f, pset, sf1,   _) -> [sf1, PrecNext  pset f])
-                   , (\(f, pset, sf1,   _) -> [sf1, ChainNext pset f])
-                   ]
-      combinations = sequence [[e (t) | e <- expansions] | t <- untilTuples]
-  in map ((set `S.union`) . S.fromList . concat) combinations
-
-expandState :: (Ord a) => State a -> [State a]
-expandState s@(State c p xl xr) =
-  let expanded  = expandUntil (current s)
-      consAtoms = filter consistent expanded
-      newStates = map (\a -> State a p xl xr) consAtoms
-  in newStates
 
 -- Checks if an atom is compatible (reachable with a shift/push move) with
 -- current state s w.r.t. PrecNext formulas contained in s.
@@ -192,11 +189,12 @@ precBackComp prec s props atom =
 deltaShift :: (Eq a, Ord a, Show a)
            => Set (Formula a)
            -> Set (Set (Formula a))
+           -> Set (Set (Formula a), Bool, Bool)
            -> (Set (Prop a) -> Set (Prop a) -> Prec)
            -> State a
            -> Set (Prop a)
            -> [State a]
-deltaShift clos atoms prec s props
+deltaShift clos atoms pends prec s props
   -- Shift rule
   | currAtomic /= S.map Atomic props = []
 
@@ -284,11 +282,12 @@ deltaShift clos atoms prec s props
 deltaPush :: (Eq a, Ord a, Show a)
           => Set (Formula a)
           -> Set (Set (Formula a))
+          -> Set (Set (Formula a), Bool, Bool)
           -> (Set (Prop a) -> Set (Prop a) -> Prec)
           -> State a
           -> Set (Prop a)
           -> [State a]
-deltaPush clos atoms prec s props
+deltaPush clos atoms pends prec s props
   -- Push rule
   | currAtomic /= S.map Atomic props = []
 
@@ -363,11 +362,12 @@ deltaPush clos atoms prec s props
 deltaPop :: (Eq a, Ord a, Show a)
          => Set (Formula a)
          -> Set (Set (Formula a))
+         -> Set (Set (Formula a), Bool, Bool)
          -> (Set (Prop a) -> Set (Prop a) -> Prec)
          -> State a
          -> State a
          -> [State a]
-deltaPop clos atoms prec s popped
+deltaPop clos atoms pends prec s popped
   -- XL rule
   | startsChain s = []
   -- ChainNext Equal rule 2
@@ -442,14 +442,8 @@ deltaPop clos atoms prec s popped
                    && (current s) `S.isSubsetOf` atom
     compAtoms = S.filter popComp atoms
 
-expDeltaShift clos atoms prec s props =
-  concatMap (\expS -> deltaShift clos atoms prec expS props) (expandState s)
 
-expDeltaPush clos atoms prec s props =
-  concatMap (\expS -> deltaPush clos atoms prec expS props) (expandState s)
 
-expDeltaPop clos atoms prec s popped =
-  concatMap (\expS -> deltaPop clos atoms prec expS popped) (expandState s)
 
 isFinal :: (Show a) => State a -> Bool
 isFinal s = debug $ S.null currAtomic && S.null currFuture && S.null (pending s)
@@ -463,19 +457,28 @@ check :: (Ord a, Show a)
       -> [Set (Prop a)]
       -> Bool
 check phi prec ts =
-  debug $ run prec is isFinal
-    (expDeltaShift cl as prec) (expDeltaPush cl as prec) (expDeltaPop cl as prec) ts
+  debug $ run
+            prec
+            is
+            isFinal
+            (deltaShift cl as pcs prec)
+            (deltaPush  cl as pcs prec)
+            (deltaPop   cl as pcs prec)
+            ts
   where tsprops = S.toList $ foldl' (S.union) S.empty ts
         cl = closure phi tsprops
         as = atoms cl
+        pcs = pendCombs cl
         initialAtoms = S.filter (phi `S.member`) as
         compatIas = S.filter (
                       \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]
                       ) initialAtoms
-        is = map (\ia -> State ia S.empty False False) $ S.toList compatIas
+        is = map (\ia -> State ia S.empty True False) $ S.toList compatIas
         debug = DT.trace ("\nRun with:"         ++
-                          "\nPhi:    "          ++ show phi       ++
-                          "\nTokens: "          ++ show ts        ++
-                          "\nToken props:\n"    ++ show tsprops   ++
-                          "\nAtoms:\n"          ++ showAtoms as   ++
+                          "\nPhi:    "          ++ show phi          ++
+                          "\nTokens: "          ++ show ts           ++
+                          "\nToken props:\n"    ++ show tsprops      ++
+                          "\nClosure:\n"        ++ show cl           ++
+                          "\nAtoms:\n"          ++ showAtoms as      ++
+                          "\nPending atoms:\n"  ++ showPendCombs pcs ++
                           "\nInitial states:\n" ++ showStates is)
