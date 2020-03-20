@@ -275,12 +275,19 @@ deltaShift clos atoms pends prec s props
       in (xl `implies` (S.fromList currCnefs == S.fromList pendCnefs)) &&
          ((not xl) `implies` (null currCnefs))
 
+    cntComp (pend, xl, _) =
+      let pendCntfs = [f | f@(ChainNext pset _) <- S.toList pend,
+                                                   pset == (S.singleton Take)]
+      in (xl `implies` (S.fromList currCntfs == S.fromList pendCntfs)) &&
+         ((not xl) `implies` (null currCntfs))
+
     cas = S.toList .
           S.filter (precBackComp prec s props) .
           S.filter (precNextComp prec s props) $ atoms
 
     cps = S.toList .
-          S.filter cneComp $ pends
+          S.filter cneComp .
+          S.filter cntComp $ pends
 
     ns = [State c p xl xr | c <- cas, (p, xl, xr) <- cps]
 
@@ -352,12 +359,19 @@ deltaPush clos atoms pends prec s props
       in (xl `implies` (S.fromList currCnefs == S.fromList pendCnefs)) &&
          ((not xl) `implies` (null currCnefs))
 
+    cntComp (pend, xl, _) =
+      let pendCntfs = [f | f@(ChainNext pset _) <- S.toList pend,
+                                                   pset == (S.singleton Take)]
+      in (xl `implies` (S.fromList currCntfs == S.fromList pendCntfs)) &&
+         ((not xl) `implies` (null currCntfs))
+
     cas = S.toList .
           S.filter (precBackComp prec s props) .
           S.filter (precNextComp prec s props) $ atoms
 
     cps = S.toList .
-          S.filter cneComp $ pends
+          S.filter cneComp .
+          S.filter cntComp $  pends
 
     ns = [State c p xl xr | c <- cas, (p, xl, xr) <- cps]
 
@@ -376,7 +390,7 @@ deltaPop clos atoms pends prec s popped
   -- ChainNext Equal rule 2
   | not (null pendingCnefs) = []
   -- ChainNext Take rule 2
-  | not (all (`S.member` (current s)) pendingSubCntfs) = []
+  | cntCheckSet /= S.fromList pendingSubCntfs = []
 
   | otherwise = debug ns
 
@@ -409,9 +423,6 @@ deltaPop clos atoms pends prec s popped
     -- Pending ChainNext Take formulas of popped state
     poppedCntfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Take)]
-    -- We need Xl iff there are pending ChainNext Yield's in popped state
-    -- ChainNext Yield rule 2
-    chainLeft = not (null poppedCnyfs)
 
     -- ChainBack Yield formulas
     poppedCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
@@ -436,16 +447,27 @@ deltaPop clos atoms pends prec s popped
     popComp atom = (S.filter atomic atom) == currAtomic
                    && (current s) `S.isSubsetOf` atom
 
+    -- Fomulas that have a corresponding ChainNext Take in the closure
+    cntCheckSet = S.filter
+                   (\f -> ChainNext (S.singleton Take) f `S.member` clos)
+                   (current s)
+
     cneComp (pend, _, _) =
       let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
                                                    pset == (S.singleton Equal)]
-      in poppedCnefs == pendCnefs
+      in S.fromList poppedCnefs == S.fromList pendCnefs
+
+    cntComp (pend, _, _) =
+      let pendCntfs = [f | f@(ChainNext pset _) <- S.toList pend,
+                                                   pset == (S.singleton Take)]
+      in S.fromList poppedCntfs == S.fromList pendCntfs
 
     cas = S.toList .
           S.filter popComp $ atoms
 
     cps = S.toList .
-          S.filter cneComp $ pends
+          S.filter cneComp .
+          S.filter cntComp $ pends
 
     ns = [State c p xl xr | c <- cas, (p, xl, xr) <- cps]
 
