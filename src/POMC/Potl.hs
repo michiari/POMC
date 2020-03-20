@@ -43,20 +43,20 @@ data ExtFormula a = Normal     (Formula a)
 
 instance (Show a) => Show (Formula a) where
   show (Atomic (Prop p))  = show p
-  show (Not a@(Atomic _)) = "¬" ++ show a
-  show (Not f)            = "¬(" ++ show f ++ ")"
-  show (Or g h)           = "(" ++ show g ++ ")∨(" ++ show h ++ ")"
-  show (And g h)          = "(" ++ show g ++ ")∧(" ++ show h ++ ")"
-  show (PrecNext ps g)    = "○" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (PrecBack ps g)    = "⊝" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (ChainNext ps g)   = "χf" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (ChainBack ps g)   = "χp" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (Not a@(Atomic _)) = "~" ++ show a
+  show (Not f)            = "~(" ++ show f ++ ")"
+  show (Or g h)           = "(" ++ show g ++ ")Or(" ++ show h ++ ")"
+  show (And g h)          = "(" ++ show g ++ ")And(" ++ show h ++ ")"
+  show (PrecNext ps g)    = "N" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (PrecBack ps g)    = "B" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (ChainNext ps g)   = "Xf" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (ChainBack ps g)   = "Xp" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
   show (Until ps g h)     = "(" ++ show g ++ ")U" ++ show (S.toList ps) ++
                             "(" ++ show h ++ ")"
   show (Since ps g h)     = "(" ++ show g ++ ")S" ++ show (S.toList ps) ++
                             "(" ++ show h ++ ")"
-  show (HierNext ps g)    = "H○" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (HierBack ps g)    = "H⊝" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (HierNext ps g)    = "HN" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
+  show (HierBack ps g)    = "HB" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
   show (HierUntil ps g h) = "(" ++ show g ++ ")HU" ++ show (S.toList ps) ++
                             "(" ++ show h ++ ")"
   show (HierSince ps g h) = "(" ++ show g ++ ")HS" ++ show (S.toList ps) ++
