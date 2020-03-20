@@ -9,6 +9,7 @@ module POMC.Check ( State(..)
 
 import POMC.Opa (Prec(..), run)
 import POMC.Potl
+import POMC.Util (xor, implies)
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -200,8 +201,9 @@ deltaShift clos atoms pends prec s props
 
   -- XL rule
   | startsChain s = []
+
   -- ChainNext Equal rule 3
-  | not (all (`S.member` (current s)) pendingSubCnefs) = []
+  | cneCheckSet /= S.fromList pendingSubCnefs = []
   -- ChainNext Take rule 3
   | not (null pendingCntfs) = []
 
@@ -214,10 +216,7 @@ deltaShift clos atoms pends prec s props
   | not (endsChain s) && not (null currCbtfs) = []
   | endsChain s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
 
-  -- New pending set must be consistent
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
-                                  ) . S.toList $ compAtoms
-  | otherwise = []
+  | otherwise = debug ns
   where
     debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
                       "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
@@ -238,8 +237,6 @@ deltaShift clos atoms pends prec s props
     -- ChainNext Take formulas
     currCntfs = [f | f@(ChainNext pset _) <- S.toList (current s),
                                              pset == (S.singleton Take)]
-    -- Do we need Xl? We do if there are any ChainNext's in the current set
-    chainLeft = not (null currCnefs && null currCntfs && null currCnyfs)
 
     -- ChainBack Yield formulas
     currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
@@ -262,22 +259,30 @@ deltaShift clos atoms pends prec s props
     -- ChainBack Take formulas
     currCbtfs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Take)]
-    -- XR illegal coming from push / shift
-    chainRight = False
 
-    -- Pending set for destination states. Constructed from:
-    --
-    -- - ChainNext Equal rule 1
-    -- - ChainNext Take  rule 1
-    -- - ChainNext Yield rule 1
-    --
-    -- - ChainBack Yield rule 4
-    -- - ChainBack Equal rule 4
-    pend = S.fromList (currCnefs ++ currCntfs ++ currCnyfs ++
-                       nextCbefs ++ nextCbyfs)
+    -- Fomulas that have a corresponding ChainNext Equal in the closure
+    cneCheckSet = S.filter
+                   (\f -> ChainNext (S.singleton Equal) f `S.member` clos)
+                   (current s)
+
     -- Atoms compatible with PrecNext rule, PrecBack rule
     compAtoms = S.filter (precBackComp prec s props) .
                 S.filter (precNextComp prec s props) $ atoms
+
+    cneComp (pend, xl, _) =
+      let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
+                                                   pset == (S.singleton Equal)]
+      in (xl `implies` (S.fromList currCnefs == S.fromList pendCnefs)) &&
+         ((not xl) `implies` (null currCnefs))
+
+    cas = S.toList .
+          S.filter (precBackComp prec s props) .
+          S.filter (precNextComp prec s props) $ atoms
+
+    cps = S.toList .
+          S.filter cneComp $ pends
+
+    ns = [State c p xl xr | c <- cas, (p, xl, xr) <- cps]
 
 deltaPush :: (Eq a, Ord a, Show a)
           => Set (Formula a)
@@ -291,6 +296,9 @@ deltaPush clos atoms pends prec s props
   -- Push rule
   | currAtomic /= S.map Atomic props = []
 
+  -- XL rule
+  | not (startsChain s) = []
+
   -- ChainBack Yield rule 1
   | not (endsChain s) && not (null currCbyfs) = []
   | endsChain s && (S.fromList currCbyfs /= S.fromList pendingCbyfs) = []
@@ -300,10 +308,7 @@ deltaPush clos atoms pends prec s props
   | not (endsChain s) && not (null currCbtfs) = []
   | endsChain s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
 
-  -- New pending set must be consistent
-  | consistent pend = debug $ map (\a -> State a pend chainLeft chainRight
-                                  ) . S.toList $ compAtoms
-  | otherwise = []
+  | otherwise = debug ns
   where
     debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
                       "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
@@ -318,8 +323,6 @@ deltaPush clos atoms pends prec s props
     -- ChainNext Take formulas
     currCntfs = [f | f@(ChainNext pset _) <- S.toList (current s),
                                              pset == (S.singleton Take)]
-    -- Do we need Xl? We do if there are any ChainNext's in the current set
-    chainLeft = not (null currCnefs && null currCntfs && null currCnyfs)
 
     -- ChainBack Yield formulas in the pending set
     pendingCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
@@ -342,22 +345,21 @@ deltaPush clos atoms pends prec s props
     -- ChainBack Take formulas
     currCbtfs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Take)]
-    -- XR illegal coming from push / shift
-    chainRight = False
 
-    -- Pending set for destination states. Constructed from:
-    --
-    -- - ChainNext Equal rule 1
-    -- - ChainNext Take  rule 1
-    -- - ChainNext Yield rule 1
-    --
-    -- - ChainBack Yield rule 4
-    -- - ChainBack Equal rule 4
-    pend = S.fromList (currCnefs ++ currCntfs ++ currCnyfs ++
-                       nextCbefs ++ nextCbyfs)
-    -- Atoms compatible with PrecNext rule, PrecBack rule
-    compAtoms = S.filter (precBackComp prec s props) .
-                S.filter (precNextComp prec s props) $ atoms
+    cneComp (pend, xl, _) =
+      let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
+                                                   pset == (S.singleton Equal)]
+      in (xl `implies` (S.fromList currCnefs == S.fromList pendCnefs)) &&
+         ((not xl) `implies` (null currCnefs))
+
+    cas = S.toList .
+          S.filter (precBackComp prec s props) .
+          S.filter (precNextComp prec s props) $ atoms
+
+    cps = S.toList .
+          S.filter cneComp $ pends
+
+    ns = [State c p xl xr | c <- cas, (p, xl, xr) <- cps]
 
 deltaPop :: (Eq a, Ord a, Show a)
          => Set (Formula a)
@@ -370,16 +372,19 @@ deltaPop :: (Eq a, Ord a, Show a)
 deltaPop clos atoms pends prec s popped
   -- XL rule
   | startsChain s = []
+
   -- ChainNext Equal rule 2
   | not (null pendingCnefs) = []
   -- ChainNext Take rule 2
   | not (all (`S.member` (current s)) pendingSubCntfs) = []
 
-  | consistent pend = debug $ concatMap (\a ->
-      [ State a (pend `S.union` (S.fromList pendingCbtfs)) chainLeft True
-      , State a (pend `S.union` (S.fromList nextPendCbtfs)) chainLeft False
-      ]) . S.toList $ compAtoms
-  | otherwise = []
+  | otherwise = debug ns
+
+  -- concatMap (\a ->
+  --   [ State a (pend `S.union` (S.fromList pendingCbtfs)) chainLeft True
+  --   , State a (pend `S.union` (S.fromList nextPendCbtfs)) chainLeft False
+  --   ]) . S.toList $ compAtoms
+
   where
     debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
                       "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
@@ -427,26 +432,29 @@ deltaPop clos atoms pends prec s popped
                                                       && cbt f `S.member` clos]
                        ++ pendingCbtfs
 
-    -- Pending set for destination states. Constructed from:
-    --
-    -- - ChainNext Equal rule 2
-    -- - ChainNext Take rule 2
-    -- - ChainNext Yield rule 2
-    --
-    -- - ChainBack Yield rule 3
-    -- - ChainBack Equal rule 3
-    pend = S.fromList (poppedCnefs ++ poppedCntfs ++ nextPendCnyfs ++
-                       poppedCbefs ++ poppedCbyfs)
     -- Is an atom compatible with pop rule?
     popComp atom = (S.filter atomic atom) == currAtomic
                    && (current s) `S.isSubsetOf` atom
-    compAtoms = S.filter popComp atoms
 
+    cneComp (pend, _, _) =
+      let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
+                                                   pset == (S.singleton Equal)]
+      in poppedCnefs == pendCnefs
 
+    cas = S.toList .
+          S.filter popComp $ atoms
 
+    cps = S.toList .
+          S.filter cneComp $ pends
+
+    ns = [State c p xl xr | c <- cas, (p, xl, xr) <- cps]
 
 isFinal :: (Show a) => State a -> Bool
-isFinal s = debug $ S.null currAtomic && S.null currFuture && S.null (pending s)
+isFinal s@(State c p xl xr) = debug $ S.null currAtomic &&
+                                      S.null currFuture &&
+                                      S.null (pending s) &&
+                                      not xl &&
+                                      not xr
   where currAtomic = S.filter atomic (current s)
         currFuture = S.filter future (current s)
         debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
