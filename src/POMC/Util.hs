@@ -2,6 +2,7 @@ module POMC.Util ( unsafeLookup
                  , lookupOrDefault
                  , xor
                  , implies
+                 , iff
                  ) where
 
 unsafeLookup :: Eq a => a -> [(a, b)] -> b
@@ -19,3 +20,6 @@ xor = (/=)
 
 implies :: Bool -> Bool -> Bool
 implies a b = (not a) || b
+
+iff :: Bool -> Bool -> Bool
+iff = (==)

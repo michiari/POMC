@@ -100,16 +100,19 @@ pendCombs clos =
       cbfs = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
       cfset = S.fromList (cnfs ++ cbfs)
   in S.foldl S.union S.empty .
-     S.map (S.fromList . combs) .
-     S.filter consistent $ S.powerSet cfset
+     S.map (S.fromList . combs) $
+     S.powerSet cfset
   where
-    consistent atom = True `S.notMember` (S.map
-      (\f -> case f of
-        ChainNext pset sf -> (ChainNext pset (negation sf)) `S.member` atom
-        ChainBack pset sf -> (ChainBack pset (negation sf)) `S.member` atom
-        _                 -> False
-      ) atom)
     combs atom = [(atom, xl, xr) | xl <- [False, True], xr <- [False, True]]
+
+initials phi clos atoms =
+  let compAtoms = S.filter (\atom ->  null [f | f@(PrecBack {}) <- S.toList atom]) .
+                  S.filter (phi `S.member`) $
+                  atoms
+      cnyfSet = S.fromList [f | f@(ChainNext pset _) <- S.toList clos,
+                                                        pset == (S.singleton Yield)]
+  in [State ia ip True False | ia <- S.toList compAtoms,
+                               ip <- S.toList (S.powerSet cnyfSet)]
 
 atomicSet :: Set (Formula a) -> Set (Formula a)
 atomicSet = S.filter atomic
@@ -269,6 +272,12 @@ deltaShift clos atoms pends prec s props
     compAtoms = S.filter (precBackComp prec s props) .
                 S.filter (precNextComp prec s props) $ atoms
 
+    cnyComp (pend, xl, _) =
+      let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
+                                                   pset == (S.singleton Yield)]
+      in (xl `implies` (S.fromList currCnyfs == S.fromList pendCnyfs)) &&
+         ((not xl) `implies` (null currCnyfs))
+
     cneComp (pend, xl, _) =
       let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
                                                    pset == (S.singleton Equal)]
@@ -286,6 +295,7 @@ deltaShift clos atoms pends prec s props
           S.filter (precNextComp prec s props) $ atoms
 
     cps = S.toList .
+          S.filter cnyComp .
           S.filter cneComp .
           S.filter cntComp $ pends
 
@@ -353,6 +363,12 @@ deltaPush clos atoms pends prec s props
     currCbtfs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Take)]
 
+    cnyComp (pend, xl, _) =
+      let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
+                                                   pset == (S.singleton Yield)]
+      in (xl `implies` (S.fromList currCnyfs == S.fromList pendCnyfs)) &&
+         ((not xl) `implies` (null currCnyfs))
+
     cneComp (pend, xl, _) =
       let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
                                                    pset == (S.singleton Equal)]
@@ -370,6 +386,7 @@ deltaPush clos atoms pends prec s props
           S.filter (precNextComp prec s props) $ atoms
 
     cps = S.toList .
+          S.filter cnyComp .
           S.filter cneComp .
           S.filter cntComp $  pends
 
@@ -447,15 +464,26 @@ deltaPop clos atoms pends prec s popped
     popComp atom = (S.filter atomic atom) == currAtomic
                    && (current s) `S.isSubsetOf` atom
 
-    -- Fomulas that have a corresponding ChainNext Take in the closure
-    cntCheckSet = S.filter
-                   (\f -> ChainNext (S.singleton Take) f `S.member` clos)
-                   (current s)
+    cnyComp (pend, xl, _) =
+      let currCheckSet = S.map (ChainNext (S.singleton Yield)) .
+                         S.filter (\f -> ChainNext (S.singleton Yield) f `S.member` clos) $
+                         (current s)
+          pendCheckSet = S.fromList [f | f@(ChainNext pset _) <- S.toList pend,
+                                                                 pset == (S.singleton Yield)]
+          checkSet = (currCheckSet `S.difference` pendCheckSet) `S.union`
+                     (pendCheckSet `S.difference` currCheckSet)
+      in (xl `implies` (S.fromList poppedCnyfs == checkSet)) &&
+         ((not xl) `implies` (null poppedCnyfs))
 
     cneComp (pend, _, _) =
       let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
                                                    pset == (S.singleton Equal)]
       in S.fromList poppedCnefs == S.fromList pendCnefs
+
+    -- Fomulas that have a corresponding ChainNext Take in the closure
+    cntCheckSet = S.filter
+                   (\f -> ChainNext (S.singleton Take) f `S.member` clos)
+                   (current s)
 
     cntComp (pend, _, _) =
       let pendCntfs = [f | f@(ChainNext pset _) <- S.toList pend,
@@ -466,6 +494,7 @@ deltaPop clos atoms pends prec s popped
           S.filter popComp $ atoms
 
     cps = S.toList .
+          S.filter cnyComp .
           S.filter cneComp .
           S.filter cntComp $ pends
 
@@ -499,11 +528,7 @@ check phi prec ts =
         cl = closure phi tsprops
         as = atoms cl
         pcs = pendCombs cl
-        initialAtoms = S.filter (phi `S.member`) as
-        compatIas = S.filter (
-                      \atom ->  null [f | f@(PrecBack {}) <- S.toList atom]
-                      ) initialAtoms
-        is = map (\ia -> State ia S.empty True False) $ S.toList compatIas
+        is = initials phi cl as
         debug = DT.trace ("\nRun with:"         ++
                           "\nPhi:    "          ++ show phi          ++
                           "\nTokens: "          ++ show ts           ++
