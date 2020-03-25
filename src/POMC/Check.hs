@@ -221,8 +221,9 @@ deltaShift clos atoms pends prec s props
 
   | otherwise = debug ns
   where
-    debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
-                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    debug = id
+    --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
+    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
     currAtomic = atomicSet (current s)
 
     -- ChainNext Yield formulas
@@ -327,8 +328,9 @@ deltaPush clos atoms pends prec s props
 
   | otherwise = debug ns
   where
-    debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
-                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    debug = id
+    -- debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
+    --                   "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
     currAtomic = atomicSet (current s)
 
     -- ChainNext Yield formulas
@@ -417,26 +419,28 @@ deltaPop clos atoms pends prec s popped
   --   ]) . S.toList $ compAtoms
 
   where
-    debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    debug = id
+    --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
+    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
     currAtomic = atomicSet (current s)
+
+    -- ChainNext Equal formulas in the pending set
+    pendingCnefs = [f | f@(ChainNext pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Equal)]
+    -- ChainNext Take subformulas in the pending set
+    pendingSubCntfs = [f | ChainNext pset f <- S.toList (pending s),
+                                               pset == (S.singleton Take)]
+    -- Fomulas that have a corresponding ChainNext Take in the closure
+    cntCheckSet = S.filter
+                   (\f -> ChainNext (S.singleton Take) f `S.member` clos)
+                   (current s)
 
     -- Pending ChainNext Yield formulas of popped state
     poppedCnyfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Yield)]
-    -- ChainNext Yield formulas to be put in next state's pending set
-    -- ChainNext Yield rule 2
-    nextPendCnyfs = [f | f@(ChainNext _ sf) <- poppedCnyfs,
-                                               not $ sf `S.member` (current s)]
-    -- ChainNext Equal formulas in the pending set
-    pendingCnefs = [f | f@(ChainNext pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Equal)]
     -- Pending ChainNext Equal formulas of popped state
     poppedCnefs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Equal)]
-    -- ChainNext Take subformulas in the pending set
-    pendingSubCntfs = [f | ChainNext pset f <- S.toList (pending s),
-                                               pset == (S.singleton Take)]
     -- Pending ChainNext Take formulas of popped state
     poppedCntfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Take)]
@@ -480,35 +484,29 @@ deltaPop clos atoms pends prec s popped
                                                    pset == (S.singleton Equal)]
       in S.fromList poppedCnefs == S.fromList pendCnefs
 
-    -- Fomulas that have a corresponding ChainNext Take in the closure
-    cntCheckSet = S.filter
-                   (\f -> ChainNext (S.singleton Take) f `S.member` clos)
-                   (current s)
-
     cntComp (pend, _, _) =
       let pendCntfs = [f | f@(ChainNext pset _) <- S.toList pend,
                                                    pset == (S.singleton Take)]
       in S.fromList poppedCntfs == S.fromList pendCntfs
 
-    cas = S.toList .
-          S.filter popComp $ atoms
+    pendComp atom = cnyComp atom && cneComp atom && cntComp atom
 
-    cps = S.toList .
-          S.filter cnyComp .
-          S.filter cneComp .
-          S.filter cntComp $ pends
+    cas = S.toList . S.filter popComp $ atoms
+
+    cps = S.toList . S.filter pendComp $ pends
 
     ns = [State c p xl xr | c <- cas, (p, xl, xr) <- cps]
 
 isFinal :: (Show a) => State a -> Bool
-isFinal s@(State c p xl xr) = debug $ S.null currAtomic &&
-                                      S.null currFuture &&
+isFinal s@(State c p xl xr) = debug $ not xl &&
+                                      not xr &&
                                       S.null (pending s) &&
-                                      not xl &&
-                                      not xr
+                                      S.null currAtomic &&
+                                      S.null currFuture
   where currAtomic = S.filter atomic (current s)
         currFuture = S.filter future (current s)
-        debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
+        debug = id
+        --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
 check :: (Ord a, Show a)
       => Formula a

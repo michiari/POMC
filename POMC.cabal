@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.31.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0ad510067ab2de44b7fa69d19fc1cb62cef62b9af9e0e90500a266f18d36b307
+-- hash: 139cef1a165b840df0925a6cae032a0d25ce33a3640c03a6540edd5cb50da194
 
 name:           POMC
 version:        0.1
@@ -30,6 +30,7 @@ library
       Paths_POMC
   hs-source-dirs:
       src
+  ghc-options: -threaded -Wall -O2
   build-depends:
       base >=4.7 && <5
     , containers
@@ -41,7 +42,7 @@ executable pomc
       Paths_POMC
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2
   build-depends:
       POMC
     , base >=4.7 && <5
@@ -56,7 +57,7 @@ test-suite test-pomc
       Paths_POMC
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2
   build-depends:
       POMC
     , base >=4.7 && <5

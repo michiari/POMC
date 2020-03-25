@@ -109,6 +109,12 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "ret"]
     )
+  , ( "Stack trace lang, rejecting Not ChainNext Equal"
+    , False
+    , Not $ ChainNext (S.singleton Equal) (Atomic $ Prop "ret")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "ret"]
+    )
   , ( "Stack trace lang, rejecting ChainNext Equal"
     , False
     , ChainNext (S.singleton Equal) (Atomic $ Prop "ret")
@@ -130,6 +136,12 @@ unitTuples =
   , ( "Stack trace lang, accepting ChainNext Take"
     , True
     , ChainNext (S.singleton Take) (Atomic $ Prop "ret")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not ChainNext Take"
+    , False
+    , Not $ ChainNext (S.singleton Take) (Atomic $ Prop "ret")
     , stlPrec
     , map (S.singleton . Prop) ["han", "thr", "ret"]
     )
@@ -157,6 +169,12 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["han", "call", "thr"]
     )
+  , ( "Stack trace lang, rejecting Not ChainNext Yield"
+    , False
+    , Not $ ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "thr"]
+    )
   , ( "Stack trace lang, rejecting ChainNext Yield"
     , False
     , ChainNext (S.singleton Yield) (Atomic $ Prop "ret")
@@ -167,13 +185,19 @@ unitTuples =
     , True
     , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "thr")
     , stlPrec
-    , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
+    , map (S.singleton . Prop) ["call", "han", "call", "thr", "ret"]
     )
   , ( "Stack trace lang, rejecting inner ChainNext Yield"
     , False
     , PrecNext (S.fromList [Yield, Equal, Take]) $ ChainNext (S.singleton Yield) (Atomic $ Prop "ret")
     , stlPrec
-    , map (S.singleton . Prop) ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"]
+    , map (S.singleton . Prop) ["call", "han", "call", "thr", "ret"]
+    )
+  , ( "Stack trace lang, push after pop with ChainNext Yield in closure"
+    , True
+    , Or (ChainNext (S.singleton Yield) (Atomic $ Prop "call")) (Atomic $ Prop "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "ret", "call", "ret"]
     )
   , ( "Stack trace lang, accepting ChainNext YTE through ChainNext Equal"
     , True
@@ -231,9 +255,9 @@ unitTuples =
     )
   , ( "Stack trace lang, accepting Until YET"
     , True
-    , Until (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "han")
+    , Until (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "ret") (Atomic $ Prop "han")
     , stlPrec
-    , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
+    , map (S.singleton . Prop) ["call", "han", "ret"]
     )
   , ( "Stack trace lang, accepting ChainBack Equal"
     , True
@@ -345,7 +369,7 @@ termTrace m = return ["call"] `gconcat` (arb m) `gconcat` return ["ret"]
 propTuples =
   [ ( "Well formed stack traces"
     , True
-    , (Atomic . Prop $ "call") `And` ((PrecNext (S.singleton Equal) (Atomic . Prop $ "ret")) `Or` (ChainNext (S.singleton Equal) (Atomic . Prop $ "ret")))
+    , ((Atomic . Prop $ "call") `And` (PrecNext (S.singleton Equal) (Atomic . Prop $ "ret"))) `Or` (ChainNext (S.singleton Equal) (Atomic . Prop $ "ret"))
     , stlPrec
     , \m -> map (S.singleton . Prop) <$> termTrace m
     )

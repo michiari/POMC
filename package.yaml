@@ -17,6 +17,10 @@ dependencies:
 
 library:
   source-dirs: src
+  ghc-options:
+  - -threaded
+  - -Wall
+  - -O2
   dependencies:
   - containers
 
@@ -29,6 +33,7 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     - -Wall
+    - -O2
     dependencies:
     - POMC
 
@@ -41,6 +46,7 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     - -Wall
+    - -O2
     dependencies:
     - POMC
     - containers
