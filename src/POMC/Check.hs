@@ -141,31 +141,6 @@ showStates :: Show a => [State a] -> String
 showStates = unlines . map show
 
 -- Checks if an atom is compatible (reachable with a shift/push move) with
--- current state s w.r.t. PrecNext formulas contained in s.
---
--- For every PrecNext[PI](f) belonging to s, we check that:
--- - f is present in the atom
--- - pi belongs to PI, where pi is the precedence relation between current
---   input propositions and the atomic set of the atom
-precNextComp :: (Ord a)
-                   => (Set (Prop a) -> Set (Prop a) -> Prec)
-                   -> State a
-                   -> Set (Prop a)
-                   -> Set (Formula a)
-                   -> Bool
-precNextComp prec s props atom =
-  let precnexts = [(f,pset) | PrecNext pset f <- S.toList (current s)]
-      nextfs   = map (\(f, p) -> f) precnexts
-      precSets = map (\(f, p) -> p) precnexts
-
-      atomProps = S.fromList [p | Atomic p <- S.toList atom]
-      atomPrec = prec props atomProps
-
-      fspresent = (S.fromList nextfs) `S.isSubsetOf` atom
-      rightprecs = all (atomPrec `S.member`) precSets
-  in fspresent && rightprecs
-
--- Checks if an atom is compatible (reachable with a shift/push move) with
 -- current state s w.r.t. PrecBack formulas contained in the atom.
 --
 -- For every PrecBack[PI](f) belonging to the atom, we check that:
@@ -291,9 +266,29 @@ deltaShift clos atoms pends prec s props
       in (xl `implies` (S.fromList currCntfs == S.fromList pendCntfs)) &&
          ((not xl) `implies` (null currCntfs))
 
+    -- PrecNext formulas in the current set
+    currPnfs = [f | f@(PrecNext _ _) <- S.toList (current s)]
+
+    precNextComp atom =
+      let atomProps = S.fromList [p | Atomic p <- S.toList atom]
+          atomPrec = prec props atomProps
+
+          -- If a PrecNext has wrong precedence, then it does not belong to the
+          -- current set
+          precComp = null [f | f@(PrecNext pset _) <- currPnfs,
+                                                      atomPrec `S.notMember` pset]
+
+          -- Fromulas of the next atom which have a compatible PrecNext in the
+          -- closure
+          checkSet = atom `S.intersection`
+                     S.fromList [sf | PrecNext pset sf <- S.toList clos,
+                                                          atomPrec `S.member` pset]
+          fsComp = S.fromList [sf | PrecNext _ sf <- currPnfs] == checkSet
+      in precComp && fsComp
+
     cas = S.toList .
           S.filter (precBackComp prec s props) .
-          S.filter (precNextComp prec s props) $ atoms
+          S.filter precNextComp $ atoms
 
     cps = S.toList .
           S.filter cnyComp .
@@ -383,9 +378,29 @@ deltaPush clos atoms pends prec s props
       in (xl `implies` (S.fromList currCntfs == S.fromList pendCntfs)) &&
          ((not xl) `implies` (null currCntfs))
 
+    -- PrecNext formulas in the current set
+    currPnfs = [f | f@(PrecNext _ _) <- S.toList (current s)]
+
+    precNextComp atom =
+      let atomProps = S.fromList [p | Atomic p <- S.toList atom]
+          atomPrec = prec props atomProps
+
+          -- If a PrecNext has wrong precedence, then it does not belong to the
+          -- current set
+          precComp = null [f | f@(PrecNext pset _) <- currPnfs,
+                                                      atomPrec `S.notMember` pset]
+
+          -- Fromulas of the next atom which have a compatible PrecNext in the
+          -- closure
+          checkSet = atom `S.intersection`
+                     S.fromList [sf | PrecNext pset sf <- S.toList clos,
+                                                          atomPrec `S.member` pset]
+          fsComp = S.fromList [sf | PrecNext _ sf <- currPnfs] == checkSet
+      in precComp && fsComp
+
     cas = S.toList .
           S.filter (precBackComp prec s props) .
-          S.filter (precNextComp prec s props) $ atoms
+          S.filter precNextComp $ atoms
 
     cps = S.toList .
           S.filter cnyComp .
