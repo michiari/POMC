@@ -67,6 +67,12 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
+  , ( "Stack trace lang, rejecting Not PrecNext"
+    , False
+    , Not $ PrecNext (S.singleton Equal) (Atomic $ Prop "ret")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "ret"]
+    )
   , ( "Stack trace lang, rejecting PrecNext"
     , False
     , PrecNext (S.singleton Equal) (Atomic $ Prop "call")
@@ -82,6 +88,12 @@ unitTuples =
   , ( "Stack trace lang, accepting PrecBack"
     , True
     , PrecNext (S.singleton Equal) (PrecBack (S.singleton Equal) (Atomic $ Prop "call"))
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not PrecBack"
+    , False
+    , PrecNext (S.singleton Equal) $ Not (PrecBack (S.singleton Equal) (Atomic $ Prop "call"))
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
@@ -265,6 +277,12 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "ret"]
     )
+  , ( "Stack trace lang, rejecting Not ChainBack Equal"
+    , False
+    , formulaAt 3 $ Not (ChainBack (S.singleton Equal) (Atomic $ Prop "call"))
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "ret"]
+    )
   , ( "Stack trace lang, rejecting ChainBack Equal"
     , False
     , formulaAt 3 $ ChainBack (S.singleton Equal) (Atomic $ Prop "han")
@@ -289,6 +307,12 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["han", "call", "thr"]
     )
+  , ( "Stack trace lang, rejecting Not ChainBack Yield"
+    , False
+    , formulaAt 3 $ Not (ChainBack (S.singleton Yield) (Atomic $ Prop "han"))
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "thr"]
+    )
   , ( "Stack trace lang, rejecting ChainBack Yield"
     , False
     , formulaAt 3 $ ChainBack (S.singleton Yield) (Atomic $ Prop "call")
@@ -310,6 +334,12 @@ unitTuples =
   , ( "Stack trace lang, accepting ChainBack Take"
     , True
     , formulaAt 3 $ ChainBack (S.singleton Take) (Atomic $ Prop "han")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not ChainBack Take"
+    , False
+    , formulaAt 3 $ Not (ChainBack (S.singleton Take) (Atomic $ Prop "han"))
     , stlPrec
     , map (S.singleton . Prop) ["han", "thr", "ret"]
     )
