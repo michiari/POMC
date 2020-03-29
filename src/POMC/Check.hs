@@ -185,12 +185,12 @@ deltaShift clos atoms pends prec s props
   -- ChainNext Take rule 3
   | not (null pendingCntfs) = []
 
+  -- ChainBack Yield rule 2
+  | not (null currCbyfs) = []
   -- ChainBack Equal rule 1
   | not (endsChain s) && not (null currCbefs) = []
   | endsChain s && (S.fromList currCbefs /= S.fromList pendingCbefs) = []
 
-  -- -- ChainBack Yield rule 2
-  -- | not (null currCbyfs) = []
   -- -- ChainBack Equal rule 1
   -- | not (endsChain s) && not (null currCbefs) = []
   -- | endsChain s && (S.fromList currCbefs /= S.fromList pendingCbefs) = []
@@ -232,13 +232,10 @@ deltaShift clos atoms pends prec s props
     -- ChainBack Equal formulas in the pending set
     pendingCbefs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Equal)]
+    -- ChainBack Yield formulas
+    currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+                                             pset == (S.singleton Yield)]
 
-    -- -- ChainBack Yield formulas
-    -- currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
-    --                                          pset == (S.singleton Yield)]
-    -- -- ChainBack Yield formulas to be put in next pending set
-    -- nextCbyfs = let cby = ChainBack (S.singleton Yield)
-    --             in [cby f | f <- S.toList (current s), cby f `S.member` clos]
     -- -- ChainBack Take formulas in the pending set
     -- pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
     --                                             pset == (S.singleton Take)]
@@ -264,6 +261,14 @@ deltaShift clos atoms pends prec s props
       in (xl `implies` (S.fromList currCntfs == S.fromList pendCntfs)) &&
          ((not xl) `implies` (null currCntfs))
 
+    cbyComp pend =
+      let pendSubCbyfs = [sf | ChainBack pset sf <- S.toList pend,
+                                                    pset == (S.singleton Yield)]
+          checkSet = S.filter
+                       (\f -> ChainBack (S.singleton Yield) f `S.member` clos)
+                       (current s)
+      in S.fromList pendSubCbyfs == checkSet
+
     cbeComp pend =
       let pendSubCbefs = [sf | ChainBack pset sf <- S.toList pend,
                                                     pset == (S.singleton Equal)]
@@ -276,6 +281,7 @@ deltaShift clos atoms pends prec s props
                               cnyComp pend xl &&
                               cneComp pend xl &&
                               cntComp pend xl &&
+                              cbyComp pend &&
                               cbeComp pend
 
     -- PrecNext formulas in the current set
@@ -341,12 +347,12 @@ deltaPush clos atoms pends prec s props
   -- XL rule
   | not (startsChain s) = []
 
+  -- ChainBack Yield rule 1
+  | not (endsChain s) && not (null currCbyfs) = []
+  | endsChain s && (S.fromList currCbyfs /= S.fromList pendingCbyfs) = []
   -- ChainBack Equal rule 2
   | not (null currCbefs) = []
 
-  -- -- ChainBack Yield rule 1
-  -- | not (endsChain s) && not (null currCbyfs) = []
-  -- | endsChain s && (S.fromList currCbyfs /= S.fromList pendingCbyfs) = []
   -- -- ChainBack Take rule 2
   -- | not (endsChain s) && not (null currCbtfs) = []
   -- | endsChain s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
@@ -368,19 +374,16 @@ deltaPush clos atoms pends prec s props
     currCntfs = [f | f@(ChainNext pset _) <- S.toList (current s),
                                              pset == (S.singleton Take)]
 
+    -- ChainBack Yield formulas in the pending set
+    pendingCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
+                                                pset == (S.singleton Yield)]
+    -- ChainBack Yield formulas
+    currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+                                             pset == (S.singleton Yield)]
     -- ChainBack Equal formulas
     currCbefs = [f | f@(ChainBack pset _) <- S.toList (current s),
                                              pset == (S.singleton Equal)]
 
-    -- -- ChainBack Yield formulas in the pending set
-    -- pendingCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
-    --                                             pset == (S.singleton Yield)]
-    -- -- ChainBack Yield formulas
-    -- currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
-    --                                          pset == (S.singleton Yield)]
-    -- -- ChainBack Yield formulas to be put in next pending set
-    -- nextCbyfs = let cby = ChainBack (S.singleton Yield)
-    --             in [cby f | f <- S.toList (current s), cby f `S.member` clos]
     -- -- ChainBack Take formulas in the pending set
     -- pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
     --                                             pset == (S.singleton Take)]
@@ -406,6 +409,14 @@ deltaPush clos atoms pends prec s props
       in (xl `implies` (S.fromList currCntfs == S.fromList pendCntfs)) &&
          ((not xl) `implies` (null currCntfs))
 
+    cbyComp pend =
+      let pendSubCbyfs = [sf | ChainBack pset sf <- S.toList pend,
+                                                    pset == (S.singleton Yield)]
+          checkSet = S.filter
+                       (\f -> ChainBack (S.singleton Yield) f `S.member` clos)
+                       (current s)
+      in S.fromList pendSubCbyfs == checkSet
+
     cbeComp pend =
       let pendSubCbefs = [sf | ChainBack pset sf <- S.toList pend,
                                                     pset == (S.singleton Equal)]
@@ -418,6 +429,7 @@ deltaPush clos atoms pends prec s props
                               cnyComp pend xl &&
                               cneComp pend xl &&
                               cntComp pend xl &&
+                              cbyComp pend &&
                               cbeComp pend
 
     -- PrecNext formulas in the current set
@@ -519,13 +531,13 @@ deltaPop clos atoms pends prec s popped
     poppedCntfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Take)]
 
+    -- ChainBack Yield formulas
+    poppedCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
+                                               pset == (S.singleton Yield)]
     -- ChainBack Equal formulas
     poppedCbefs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
                                                pset == (S.singleton Equal)]
 
-    -- -- ChainBack Yield formulas
-    -- poppedCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
-    --                                            pset == (S.singleton Yield)]
     -- -- ChainBack Take formulas in the pending set
     -- pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
     --                                             pset == (S.singleton Take)]
@@ -564,6 +576,11 @@ deltaPop clos atoms pends prec s popped
                                                    pset == (S.singleton Take)]
       in S.fromList poppedCntfs == S.fromList pendCntfs
 
+    cbyComp pend =
+      let pendCbyfs = [f | f@(ChainBack pset _) <- S.toList pend,
+                                                   pset == (S.singleton Yield)]
+      in S.fromList poppedCbyfs == S.fromList pendCbyfs
+
     cbeComp pend =
       let pendCbefs = [f | f@(ChainBack pset _) <- S.toList pend,
                                                    pset == (S.singleton Equal)]
@@ -573,6 +590,7 @@ deltaPop clos atoms pends prec s popped
                               cnyComp pend xl &&
                               cneComp pend &&
                               cntComp pend &&
+                              cbyComp pend &&
                               cbeComp pend
 
     cas = S.toList . S.filter popComp $ atoms
@@ -583,7 +601,6 @@ deltaPop clos atoms pends prec s popped
 
 isFinal :: (Show a) => State a -> Bool
 isFinal s@(State c p xl xr) = debug $ not xl &&
-                                      -- not xr &&
                                       S.null (pending s) &&
                                       S.null currAtomic &&
                                       S.null currFuture
