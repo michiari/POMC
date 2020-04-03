@@ -1,6 +1,7 @@
 module POMC.Potl ( Formula(..)
                  , ExtFormula(..)
                  , Prop(..)
+                 , negative
                  , negation
                  , atomic
                  , future
@@ -47,20 +48,24 @@ instance (Show a) => Show (Formula a) where
   show (Not f)            = "~(" ++ show f ++ ")"
   show (Or g h)           = "(" ++ show g ++ ")Or(" ++ show h ++ ")"
   show (And g h)          = "(" ++ show g ++ ")And(" ++ show h ++ ")"
-  show (PrecNext ps g)    = "N" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (PrecBack ps g)    = "B" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (ChainNext ps g)   = "Xf" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (ChainBack ps g)   = "Xp" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (Until ps g h)     = "(" ++ show g ++ ")U" ++ show (S.toList ps) ++
+  show (PrecNext ps g)    = "N" ++ showps ps ++ "(" ++ show g ++ ")"
+  show (PrecBack ps g)    = "B" ++ showps ps ++ "(" ++ show g ++ ")"
+  show (ChainNext ps g)   = "Xf" ++ showps ps ++ "(" ++ show g ++ ")"
+  show (ChainBack ps g)   = "Xp" ++ showps ps ++ "(" ++ show g ++ ")"
+  show (Until ps g h)     = "(" ++ show g ++ ")U" ++ showps ps ++
                             "(" ++ show h ++ ")"
-  show (Since ps g h)     = "(" ++ show g ++ ")S" ++ show (S.toList ps) ++
+  show (Since ps g h)     = "(" ++ show g ++ ")S" ++ showps ps ++
                             "(" ++ show h ++ ")"
-  show (HierNext ps g)    = "HN" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (HierBack ps g)    = "HB" ++ show (S.toList ps) ++ "(" ++ show g ++ ")"
-  show (HierUntil ps g h) = "(" ++ show g ++ ")HU" ++ show (S.toList ps) ++
+  show (HierNext ps g)    = "HN" ++ showps ps ++ "(" ++ show g ++ ")"
+  show (HierBack ps g)    = "HB" ++ showps ps ++ "(" ++ show g ++ ")"
+  show (HierUntil ps g h) = "(" ++ show g ++ ")HU" ++ showps ps ++
                             "(" ++ show h ++ ")"
-  show (HierSince ps g h) = "(" ++ show g ++ ")HS" ++ show (S.toList ps) ++
+  show (HierSince ps g h) = "(" ++ show g ++ ")HS" ++ showps ps ++
                             "(" ++ show h ++ ")"
+
+negative :: Formula a -> Bool
+negative (Not f) = True
+negative f = False
 
 negation :: Formula a -> Formula a
 negation (Not f) = f
@@ -82,3 +87,5 @@ formulaAt :: Integral n => n -> Formula a -> Formula a
 formulaAt n f
   | n <= 1    = f
   | otherwise = formulaAt (n-1) (PrecNext (S.fromList [Yield, Equal, Take]) f)
+
+showps pset = "[" ++ concat (map show (S.toList pset)) ++ "]"

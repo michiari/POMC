@@ -1,7 +1,6 @@
 module POMC.Check ( State(..)
                   , closure
                   , atoms
-                  , consistent
                   , showAtoms
                   , showStates
                   , check
@@ -37,11 +36,16 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                                  , Not (ChainBack (S.singleton Yield) g)
                                  ]
                             else []
-    untilExp pset g h = [ PrecNext  pset (Until pset g h)
-                        , Not $ PrecNext  pset (Until pset g h)
+    untilExp pset g h = [ PrecNext pset (Until pset g h)
+                        , Not $ PrecNext pset (Until pset g h)
                         , ChainNext pset (Until pset g h)
                         , Not $ ChainNext pset (Until pset g h)
                         ] ++ chainNextExp pset (Until pset g h)
+    sinceExp pset g h = [ PrecBack pset (Since pset g h)
+                        , Not $ PrecBack pset (Since pset g h)
+                        , ChainBack pset (Since pset g h)
+                        , Not $ ChainBack pset (Since pset g h)
+                        ] ++ chainBackExp pset (Since pset g h)
     closList f = case f of
       Atomic _         -> [f, Not f]
       Not g            -> [f] ++ closList g
@@ -52,48 +56,91 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       ChainNext pset g -> [f, Not f] ++ closList g ++ chainNextExp pset g
       ChainBack pset g -> [f, Not f] ++ closList g ++ chainBackExp pset g
       Until pset g h   -> [f, Not f] ++ closList g ++ closList h ++ untilExp pset g h
-      Since _ g h      -> [f, Not f] ++ closList g ++ closList h
+      Since pset g h   -> [f, Not f] ++ closList g ++ closList h ++ sinceExp pset g h
       HierNext _ g     -> [f, Not f] ++ closList g
       HierBack _ g     -> [f, Not f] ++ closList g
       HierUntil _ g h  -> [f, Not f] ++ closList g ++ closList h
       HierSince _ g h  -> [f, Not f] ++ closList g ++ closList h
 
 atoms :: Ord a => Set (Formula a) -> Set (Set (Formula a))
-atoms clos = S.filter consistent .
-             S.filter untilCons .
-             S.filter chainNextCons .
-             S.filter (complete clos) $ S.powerSet clos
+atoms clos = S.filter (sinceCons     clos) .
+             S.filter (untilCons     clos) .
+             S.filter (chainBackCons clos) .
+             S.filter (chainNextCons clos) .
+             S.filter (orCons        clos) .
+             S.filter (andCons       clos) .
+             S.filter (complete      clos) $ S.powerSet clos
 
 complete :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
-complete clos atom = all present clos
-  where present nf@(Not f) = f `S.member` atom || nf      `S.member` atom
-        present f          = f `S.member` atom || (Not f) `S.member` atom
+complete clos set = all present (S.toList clos)
+  where present nf@(Not f) = (f `S.member` set) `xor` (nf    `S.member` set)
+        present f          = (f `S.member` set) `xor` (Not f `S.member` set)
 
-consistent :: Ord a => Set (Formula a) -> Bool
-consistent set = negcons set && andorcons set
-  where negcons set   = True  `S.notMember` (S.map
-                          (\f -> (negation f) `S.member` set
-                          ) set)
-        andorcons set = False `S.notMember` (S.map
-                          (\f -> case f of
-                            And g h -> g `S.member` set && h `S.member` set
-                            Or  g h -> g `S.member` set || h `S.member` set
-                            _       -> True
-                          ) set)
+andCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+andCons clos set = null [f | f@(And g h) <- S.toList set,
+                                            not (g `S.member` set) ||
+                                            not (h `S.member` set)]
+                   &&
+                   null [f | f@(And g h) <- S.toList clos,
+                                            (g `S.member` set) &&
+                                            (h `S.member` set) &&
+                                            not (f `S.member` set)]
 
-chainNextCons :: Ord a => Set (Formula a) -> Bool
-chainNextCons set = null [f | f@(ChainNext pset g) <- S.toList set,
-                                                      S.size pset > 1 &&
-                                                      not (valid pset g)]
-  where valid pset g = any (\p -> ChainNext (S.singleton p) g `S.member` set)
-                           (S.toList pset)
+orCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+orCons clos set = null [f | f@(Or g h) <- S.toList set,
+                                          not (g `S.member` set) &&
+                                          not (h `S.member` set)]
+                  &&
+                  null [f | f@(Or g h) <- S.toList clos,
+                                          ((g `S.member` set) ||
+                                           (h `S.member` set)
+                                          ) && not (f `S.member` set)]
 
-untilCons :: Ord a => Set (Formula a) -> Bool
-untilCons set = null [f | f@(Until pset g h) <- S.toList set,
-                                                not (valid f pset g h)]
-  where valid u pset g h = (h `S.member` set) `xor`
-                           ((S.fromList [g, PrecNext  pset u]) `S.isSubsetOf` set) `xor`
-                           ((S.fromList [g, ChainNext pset u]) `S.isSubsetOf` set)
+chainNextCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+chainNextCons clos set = null [f | f@(ChainNext pset g) <- S.toList set,
+                                                           S.size pset > 1 &&
+                                                           not (present pset g)]
+                         &&
+                         null [f | f@(ChainNext pset g) <- S.toList clos,
+                                                           S.size pset > 1 &&
+                                                           present pset g &&
+                                                           not (f `S.member` set)]
+  where present pset g = any (\p -> ChainNext (S.singleton p) g `S.member` set)
+                             (S.toList pset)
+
+chainBackCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+chainBackCons clos set = null [f | f@(ChainBack pset g) <- S.toList set,
+                                                           S.size pset > 1 &&
+                                                           not (present pset g)]
+                         &&
+                         null [f | f@(ChainBack pset g) <- S.toList clos,
+                                                           S.size pset > 1 &&
+                                                           present pset g &&
+                                                           not (f `S.member` set)]
+  where present pset g = any (\p -> ChainBack (S.singleton p) g `S.member` set)
+                             (S.toList pset)
+
+untilCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+untilCons clos set = null [f | f@(Until pset g h) <- S.toList set,
+                                                     not (present f pset g h)]
+                     &&
+                     null [f | f@(Until pset g h) <- S.toList clos,
+                                                     present f pset g h &&
+                                                     not (f `S.member` set)]
+  where present u pset g h = (h `S.member` set) ||
+                             ((S.fromList [g, PrecNext  pset u]) `S.isSubsetOf` set) ||
+                             ((S.fromList [g, ChainNext pset u]) `S.isSubsetOf` set)
+
+sinceCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
+                                                     not (present f pset g h)]
+                     &&
+                     null [f | f@(Since pset g h) <- S.toList clos,
+                                                     present f pset g h &&
+                                                     not (f `S.member` set)]
+  where present s pset g h = (h `S.member` set) ||
+                             ((S.fromList [g, PrecBack  pset s]) `S.isSubsetOf` set) ||
+                             ((S.fromList [g, ChainBack pset s]) `S.isSubsetOf` set)
 
 pendCombs clos =
   let cnfs = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
@@ -119,8 +166,14 @@ initials phi clos atoms =
 atomicSet :: Set (Formula a) -> Set (Formula a)
 atomicSet = S.filter atomic
 
+showAtom atom =
+  let fs = S.toList atom
+      posfs = filter (not . negative) fs
+      negfs = filter (negative) fs
+  in show (posfs ++ negfs)
+
 showAtoms :: Show a => Set (Set (Formula a)) -> String
-showAtoms = unlines . map (show . S.toList) . S.toList
+showAtoms = unlines . map showAtom . S.toList
 
 showPendCombs :: Show a => Set ((Set (Formula a), Bool, Bool, Bool)) -> String
 showPendCombs = unlines . map show . S.toList
@@ -134,7 +187,7 @@ data State a = State
     }
 
 instance (Show a) => Show (State a) where
-  show (State c p xl xe xr) = "\n{ C: "  ++ show (S.toList c)  ++
+  show (State c p xl xe xr) = "\n{ C: "  ++ showAtom c         ++
                               "\n, P: "  ++ show (S.toList p)  ++
                               "\n, XL: " ++ show xl            ++
                               "\n, X=: " ++ show xe            ++
@@ -527,8 +580,10 @@ deltaPop clos atoms pends prec s popped
                                                 pset == (S.singleton Take)]
 
     -- Is an atom compatible with pop rule?
-    popComp atom = (S.filter atomic atom) == currAtomic
-                   && (current s) `S.isSubsetOf` atom
+    popComp atom = (current s) `S.isSubsetOf` atom
+                   -- (current s) == atom
+                   -- (S.filter atomic atom) == currAtomic
+                   -- && (current s) `S.isSubsetOf` atom
 
     cnyComp pend xl =
       let currCheckSet = S.map (ChainNext (S.singleton Yield)) .
@@ -600,11 +655,15 @@ deltaPop clos atoms pends prec s popped
 isFinal :: (Show a) => State a -> Bool
 isFinal s@(State c p xl xe xr) = debug $ not xl &&
                                          not xe &&
-                                         S.null (pending s) &&
                                          S.null currAtomic &&
-                                         S.null currFuture
+                                         S.null currFuture &&
+                                         pendComb
   where currAtomic = S.filter atomic (current s)
         currFuture = S.filter future (current s)
+        pendComb = all (\f -> case f of  -- only ChainBack Take formulas are allowed
+                                ChainBack pset _ -> pset == S.singleton Take
+                                _ -> False
+                       ) (S.toList $ pending s)
         debug = id
         --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
