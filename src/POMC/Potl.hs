@@ -6,6 +6,7 @@ module POMC.Potl ( Formula(..)
                  , atomic
                  , future
                  , formulaAt
+                 , normalize
                  ) where
 
 import POMC.Opa (Prec(..))
@@ -89,3 +90,20 @@ formulaAt n f
   | otherwise = formulaAt (n-1) (PrecNext (S.fromList [Yield, Equal, Take]) f)
 
 showps pset = "[" ++ concat (map show (S.toList pset)) ++ "]"
+
+normalize f = case f of 
+                Atomic p           -> f
+                Not (Not g)        -> normalize g    -- remove double negation
+                Not g              -> Not (normalize g)
+                Or g h             -> Or  (normalize g) (normalize h)
+                And g h            -> And (normalize g) (normalize h)
+                PrecNext pset g    -> PrecNext pset (normalize g)
+                PrecBack pset g    -> PrecBack pset (normalize g)
+                ChainNext pset g   -> ChainNext pset (normalize g)
+                ChainBack pset g   -> ChainBack pset (normalize g)
+                Until pset g h     -> Until pset (normalize g) (normalize h)
+                Since pset g h     -> Since pset (normalize g) (normalize h)
+                HierNext pset g    -> HierNext pset (normalize g)
+                HierBack pset g    -> HierBack pset (normalize g)
+                HierUntil pset g h -> HierUntil pset (normalize g) (normalize h)
+                HierSince pset g h -> HierSince pset (normalize g) (normalize h)

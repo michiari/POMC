@@ -9,9 +9,13 @@ module POMC.Check ( State(..)
 import POMC.Opa (Prec(..), run)
 import POMC.Potl
 import POMC.Util (xor, implies)
+import POMC.Data
 
 import Data.Set (Set)
 import qualified Data.Set as S
+
+import Data.Vector (Vector)
+import qualified Data.Vector as V
 
 import Data.List (foldl')
 
@@ -62,14 +66,20 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierUntil _ g h  -> [f, Not f] ++ closList g ++ closList h
       HierSince _ g h  -> [f, Not f] ++ closList g ++ closList h
 
+--atoms :: Ord a => Set (Formula a) -> [EncodedSet]
 atoms :: Ord a => Set (Formula a) -> Set (Set (Formula a))
-atoms clos = S.filter (sinceCons     clos) .
-             S.filter (untilCons     clos) .
-             S.filter (chainBackCons clos) .
-             S.filter (chainNextCons clos) .
-             S.filter (orCons        clos) .
-             S.filter (andCons       clos) .
-             S.filter (complete      clos) $ S.powerSet clos
+atoms clos =
+  let pclos = V.fromList (S.toList . S.filter (not . negative) $ clos)
+      fetch i = pclos V.! i
+      consistent es = let a = explicit fetch es
+                      in sinceCons     clos a &&
+                         untilCons     clos a &&
+                         chainBackCons clos a &&
+                         chainNextCons clos a &&
+                         orCons        clos a &&
+                         andCons       clos a
+  in S.fromList $
+       map (explicit fetch) (filter consistent (permutations $ V.length pclos))
 
 complete :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 complete clos set = all present (S.toList clos)
@@ -681,14 +691,16 @@ check phi prec ts =
             (deltaPush  cl as pcs prec)
             (deltaPop   cl as pcs prec)
             ts
-  where tsprops = S.toList $ foldl' (S.union) S.empty ts
-        cl = closure phi tsprops
+  where nphi = normalize phi
+        tsprops = S.toList $ foldl' (S.union) S.empty ts
+        cl = closure nphi tsprops
         as = atoms cl
         pcs = pendCombs cl
-        is = initials phi cl as
+        is = initials nphi cl as
         debug = DT.trace ("\nRun with:"         ++
-                          "\nPhi:    "          ++ show phi          ++
-                          "\nTokens: "          ++ show ts           ++
+                          "\nPhi:          "    ++ show phi          ++
+                          "\nNorm. phi:    "    ++ show nphi         ++
+                          "\nTokens:       "    ++ show ts           ++
                           "\nToken props:\n"    ++ show tsprops      ++
                           "\nClosure:\n"        ++ show cl           ++
                           "\nAtoms:\n"          ++ showAtoms as      ++

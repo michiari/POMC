@@ -18,11 +18,12 @@ dependencies:
 library:
   source-dirs: src
   ghc-options:
-  - -threaded
   - -Wall
   - -O2
   dependencies:
+  - bitvec
   - containers
+  - vector
 
 executables:
   pomc:
