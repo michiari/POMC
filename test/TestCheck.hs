@@ -62,14 +62,32 @@ unitTuples =
     , map (S.singleton . Prop) ["call", "ret"]
     )
   , ( "Stack trace lang, accepting Not"
+    , True
+    , Not . Atomic . Prop  $ "ret"
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not Not"
+    , False
+    , Not . Not . Atomic . Prop  $ "ret"
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not"
     , False
     , Not . Atomic . Prop  $ "call"
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
-  , ( "Stack trace lang, rejecting Not Not"
+  , ( "Stack trace lang, accepting multiple negation"
     , True
-    , Not (Not . Atomic . Prop  $ "call")
+    , Not . Not . Not . Not . Atomic . Prop  $ "call"
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "ret"]
+    )
+  , ( "Stack trace lang, rejecting multiple negation"
+    , False
+    , Not . Not . Not . Not . Not . Atomic . Prop  $ "call"
     , stlPrec
     , map (S.singleton . Prop) ["call", "ret"]
     )
@@ -361,13 +379,13 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
     )
-  , ( "Stack trace lang, accepting Not Until YET weird"
-    , True
+  , ( "Stack trace lang, accepting Until YET" -- this fails if the Until conditions for an atom
+    , True                                    -- are implemented with XOR instead of OR
     , Until (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret")
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
     )
-  , ( "Stack trace lang, rejecting Not Until YET weird"
+  , ( "Stack trace lang, rejecting Not Until YET"
     , False
     , Not (Until (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret"))
     , stlPrec
@@ -609,7 +627,7 @@ unitTuples =
     )
   , ( "Stack trace lang, rejecting Since YET"
     , False
-    , formulaAt 4 $ Since (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "call")
+    , formulaAt 3 $ Since (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "call")
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "ret"]
     )
