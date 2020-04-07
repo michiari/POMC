@@ -1,5 +1,7 @@
-module POMC.Data ( explicit
-                 , permutations
+module POMC.Data ( decode
+                 , generate
+                 , EncodedSet
+                 , FormulaSet
                  ) where
 
 import POMC.Potl
@@ -16,10 +18,10 @@ import qualified Data.Bit.ThreadSafe as B
 type EncodedSet = Vector Bit
 type FormulaSet a = Set (Formula a)
 
-explicit :: Ord a => (Int -> Formula a) -> EncodedSet -> FormulaSet a
-explicit fetch bv = let pos = map fetch (B.listBits bv)
-                        neg = map (Not . fetch) (B.listBits . B.invertBits $ bv)
-                    in S.fromList pos `S.union` S.fromList neg
+decode :: Ord a => (Int -> Formula a) -> EncodedSet -> FormulaSet a
+decode fetch bv = let pos = map fetch (B.listBits bv)
+                      neg = map (Not . fetch) (B.listBits . B.invertBits $ bv)
+                  in S.fromList pos `S.union` S.fromList neg
 
-permutations :: Int -> [Vector Bit]
-permutations len = VU.replicateM len [B.Bit False, B.Bit True]
+generate :: Int -> [Vector Bit]
+generate len = VU.replicateM len [B.Bit False, B.Bit True]

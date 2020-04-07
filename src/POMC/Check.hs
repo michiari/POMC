@@ -22,6 +22,48 @@ import Data.List (foldl')
 -- TODO: remove
 import qualified Debug.Trace as DT
 
+data Atom a = Atom
+    { atomFormulaSet :: FormulaSet a
+    , atomEncodedSet :: EncodedSet
+    }
+
+data State a = State
+    { current   :: Atom a
+    , pending   :: Set (Formula a)
+    , mustPush  :: Bool
+    , mustShift :: Bool
+    , afterPop  :: Bool
+    }
+
+showFormulaSet :: (Show a) => FormulaSet a -> String
+showFormulaSet fset = let fs = S.toList fset
+                          posfs = filter (not . negative) fs
+                          negfs = filter (negative) fs
+                      in show (posfs ++ negfs)
+
+instance (Show a) => Show (Atom a) where
+  show (Atom fset eset) = "Fs: " ++ showFormulaSet fset ++ ", enc: " ++ show eset
+
+instance (Show a) => Show (State a) where
+  show (State c p xl xe xr) = "\n{ C: "  ++ show c             ++
+                              "\n, P: "  ++ show (S.toList p)  ++
+                              "\n, XL: " ++ show xl            ++
+                              "\n, X=: " ++ show xe            ++
+                              "\n, XR: " ++ show xr            ++
+                              "\n}"
+
+showAtoms :: Show a => [Atom a] -> String
+showAtoms = unlines . map show
+
+showPendCombs :: Show a => Set ((Set (Formula a), Bool, Bool, Bool)) -> String
+showPendCombs = unlines . map show . S.toList
+
+showStates :: Show a => [State a] -> String
+showStates = unlines . map show
+
+atomicSet :: Set (Formula a) -> Set (Formula a)
+atomicSet = S.filter atomic
+
 closure :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
 closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                              phiClos  = closList phi
@@ -66,25 +108,21 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierUntil _ g h  -> [f, Not f] ++ closList g ++ closList h
       HierSince _ g h  -> [f, Not f] ++ closList g ++ closList h
 
---atoms :: Ord a => Set (Formula a) -> [EncodedSet]
-atoms :: Ord a => Set (Formula a) -> Set (Set (Formula a))
+atoms :: Ord a => Set (Formula a) -> [Atom a]
 atoms clos =
-  let pclos = V.fromList (S.toList . S.filter (not . negative) $ clos)
+  let pclos = V.fromList (S.toAscList . S.filter (not . negative) $ clos)
       fetch i = pclos V.! i
-      consistent es = let a = explicit fetch es
-                      in sinceCons     clos a &&
-                         untilCons     clos a &&
-                         chainBackCons clos a &&
-                         chainNextCons clos a &&
-                         orCons        clos a &&
-                         andCons       clos a
-  in S.fromList $
-       map (explicit fetch) (filter consistent (permutations $ V.length pclos))
-
-complete :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
-complete clos set = all present (S.toList clos)
-  where present nf@(Not f) = (f `S.member` set) `xor` (nf    `S.member` set)
-        present f          = (f `S.member` set) `xor` (Not f `S.member` set)
+      consistent fset = sinceCons     clos fset &&
+                        untilCons     clos fset &&
+                        chainBackCons clos fset &&
+                        chainNextCons clos fset &&
+                        orCons        clos fset &&
+                        andCons       clos fset
+      prependCons atoms eset = let fset = decode fetch eset
+                               in if consistent fset
+                                    then (Atom fset eset) : atoms
+                                    else atoms
+  in foldl' prependCons [] (generate $ V.length pclos)
 
 andCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 andCons clos set = null [f | f@(And g h) <- S.toList set,
@@ -152,11 +190,12 @@ sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
                              ((S.fromList [g, PrecBack  pset s]) `S.isSubsetOf` set) ||
                              ((S.fromList [g, ChainBack pset s]) `S.isSubsetOf` set)
 
+pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bool))
 pendCombs clos =
   let cnfs = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
       cbfs = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
       cfset = S.fromList (cnfs ++ cbfs)
-  in S.foldl S.union S.empty .
+  in S.foldl' S.union S.empty .
      S.map (S.fromList . combs) $
      S.powerSet cfset
   where
@@ -164,52 +203,20 @@ pendCombs clos =
                                        xe <- [False, True],
                                        xr <- [False, True]]
 
+initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
 initials phi clos atoms =
-  let compAtoms = S.filter (\atom ->  null [f | f@(PrecBack {}) <- S.toList atom]) .
-                  S.filter (phi `S.member`) $
-                  atoms
+  let compatible atom = let fset = atomFormulaSet atom
+                        in phi `S.member` fset &&
+                           null [f | f@(PrecBack {}) <- S.toList fset]
+      compAtoms = filter compatible atoms
       cnyfSet = S.fromList [f | f@(ChainNext pset _) <- S.toList clos,
                                                         pset == (S.singleton Yield)]
-  in [State ia ip True False False | ia <- S.toList compAtoms,
+  in [State ia ip True False False | ia <- compAtoms,
                                      ip <- S.toList (S.powerSet cnyfSet)]
-
-atomicSet :: Set (Formula a) -> Set (Formula a)
-atomicSet = S.filter atomic
-
-showAtom atom =
-  let fs = S.toList atom
-      posfs = filter (not . negative) fs
-      negfs = filter (negative) fs
-  in show (posfs ++ negfs)
-
-showAtoms :: Show a => Set (Set (Formula a)) -> String
-showAtoms = unlines . map showAtom . S.toList
-
-showPendCombs :: Show a => Set ((Set (Formula a), Bool, Bool, Bool)) -> String
-showPendCombs = unlines . map show . S.toList
-
-data State a = State
-    { current     :: Set (Formula a)
-    , pending     :: Set (Formula a)
-    , mustPush    :: Bool
-    , mustShift   :: Bool
-    , afterPop    :: Bool
-    }
-
-instance (Show a) => Show (State a) where
-  show (State c p xl xe xr) = "\n{ C: "  ++ showAtom c         ++
-                              "\n, P: "  ++ show (S.toList p)  ++
-                              "\n, XL: " ++ show xl            ++
-                              "\n, X=: " ++ show xe            ++
-                              "\n, XR: " ++ show xr            ++
-                              "\n}"
-
-showStates :: Show a => [State a] -> String
-showStates = unlines . map show
 
 deltaShift :: (Eq a, Ord a, Show a)
            => Set (Formula a)
-           -> Set (Set (Formula a))
+           -> [Atom a]
            -> Set (Set (Formula a), Bool, Bool, Bool)
            -> (Set (Prop a) -> Set (Prop a) -> Prec)
            -> State a
@@ -243,7 +250,10 @@ deltaShift clos atoms pends prec s props
     debug = id
     --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-    currAtomic = atomicSet (current s)
+    --
+    currFset = atomFormulaSet (current s)
+
+    currAtomic = atomicSet currFset
 
     --  ChainNext Equal subformulas in the pending set
     pendingSubCnefs = [f | ChainNext pset f <- S.toList (pending s),
@@ -254,23 +264,23 @@ deltaShift clos atoms pends prec s props
     -- Fomulas that have a corresponding ChainNext Equal in the closure
     cneCheckSet = S.filter
                    (\f -> ChainNext (S.singleton Equal) f `S.member` clos)
-                   (current s)
+                   currFset
 
     -- ChainNext Yield formulas
-    currCnyfs = [f | f@(ChainNext pset _) <- S.toList (current s),
+    currCnyfs = [f | f@(ChainNext pset _) <- S.toList currFset,
                                              pset == (S.singleton Yield)]
     -- ChainNext Equal formulas
-    currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
+    currCnefs = [f | f@(ChainNext pset _) <- S.toList currFset,
                                              pset == (S.singleton Equal)]
     -- ChainNext Take formulas
-    currCntfs = [f | f@(ChainNext pset _) <- S.toList (current s),
+    currCntfs = [f | f@(ChainNext pset _) <- S.toList currFset,
                                              pset == (S.singleton Take)]
 
     -- ChainBack Yield formulas
-    currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+    currCbyfs = [f | f@(ChainBack pset _) <- S.toList currFset,
                                              pset == (S.singleton Yield)]
     -- ChainBack Equal formulas
-    currCbefs = [f | f@(ChainBack pset _) <- S.toList (current s),
+    currCbefs = [f | f@(ChainBack pset _) <- S.toList currFset,
                                              pset == (S.singleton Equal)]
     -- ChainBack Equal formulas in the pending set
     pendingCbefs = [f | f@(ChainBack pset _) <- S.toList (pending s),
@@ -279,7 +289,7 @@ deltaShift clos atoms pends prec s props
     pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Take)]
     -- ChainBack Take formulas
-    currCbtfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+    currCbtfs = [f | f@(ChainBack pset _) <- S.toList currFset,
                                              pset == (S.singleton Take)]
 
     cnyComp pend xl =
@@ -305,7 +315,7 @@ deltaShift clos atoms pends prec s props
                                                     pset == (S.singleton Yield)]
           checkSet = S.filter
                        (\f -> ChainBack (S.singleton Yield) f `S.member` clos)
-                       (current s)
+                       currFset
       in S.fromList pendSubCbyfs == checkSet
 
     cbeComp pend =
@@ -313,7 +323,7 @@ deltaShift clos atoms pends prec s props
                                                     pset == (S.singleton Equal)]
           checkSet = S.filter
                        (\f -> ChainBack (S.singleton Equal) f `S.member` clos)
-                       (current s)
+                       currFset
       in S.fromList pendSubCbefs == checkSet
 
     cbtComp pend =
@@ -330,7 +340,7 @@ deltaShift clos atoms pends prec s props
                                   cbtComp pend
 
     -- PrecNext formulas in the current set
-    currPnfs = [f | f@(PrecNext _ _) <- S.toList (current s)]
+    currPnfs = [f | f@(PrecNext _ _) <- S.toList currFset]
 
     precNextComp atom =
       let atomProps = S.fromList [p | Atomic p <- S.toList atom]
@@ -362,16 +372,16 @@ deltaShift clos atoms pends prec s props
 
           -- Formulas in the current set which have a compatible PrecBack in the
           -- closure
-          checkSet = (current s) `S.intersection`
+          checkSet = currFset `S.intersection`
                      S.fromList [sf | PrecBack pset sf <- S.toList clos,
                                                           atomPrec `S.member` pset]
 
           fsComp = checkSet == S.fromList [sf | PrecBack _ sf <- atomPbfs]
       in precComp && fsComp
 
-    cas = S.toList .
-          S.filter precBackComp .
-          S.filter precNextComp $ atoms
+    cas = filter (\(Atom fset eset) -> precBackComp fset &&
+                                       precNextComp fset
+                 ) atoms
 
     cps = S.toList . S.filter pendComp $ pends
 
@@ -379,7 +389,7 @@ deltaShift clos atoms pends prec s props
 
 deltaPush :: (Eq a, Ord a, Show a)
           => Set (Formula a)
-          -> Set (Set (Formula a))
+          -> [Atom a]
           -> Set (Set (Formula a), Bool, Bool, Bool)
           -> (Set (Prop a) -> Set (Prop a) -> Prec)
           -> State a
@@ -408,32 +418,35 @@ deltaPush clos atoms pends prec s props
     debug = id
     --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-    currAtomic = atomicSet (current s)
+
+    currFset = atomFormulaSet (current s)
+
+    currAtomic = atomicSet currFset
 
     -- ChainNext Yield formulas
-    currCnyfs = [f | f@(ChainNext pset _) <- S.toList (current s),
+    currCnyfs = [f | f@(ChainNext pset _) <- S.toList currFset,
                                              pset == (S.singleton Yield)]
     -- ChainNext Equal formulas
-    currCnefs = [f | f@(ChainNext pset _) <- S.toList (current s),
+    currCnefs = [f | f@(ChainNext pset _) <- S.toList currFset,
                                              pset == (S.singleton Equal)]
     -- ChainNext Take formulas
-    currCntfs = [f | f@(ChainNext pset _) <- S.toList (current s),
+    currCntfs = [f | f@(ChainNext pset _) <- S.toList currFset,
                                              pset == (S.singleton Take)]
 
     -- ChainBack Yield formulas in the pending set
     pendingCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Yield)]
     -- ChainBack Yield formulas
-    currCbyfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+    currCbyfs = [f | f@(ChainBack pset _) <- S.toList currFset,
                                              pset == (S.singleton Yield)]
     -- ChainBack Equal formulas
-    currCbefs = [f | f@(ChainBack pset _) <- S.toList (current s),
+    currCbefs = [f | f@(ChainBack pset _) <- S.toList currFset,
                                              pset == (S.singleton Equal)]
     -- ChainBack Take formulas in the pending set
     pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Take)]
     -- ChainBack Take formulas
-    currCbtfs = [f | f@(ChainBack pset _) <- S.toList (current s),
+    currCbtfs = [f | f@(ChainBack pset _) <- S.toList currFset,
                                              pset == (S.singleton Take)]
 
     cnyComp pend xl =
@@ -459,7 +472,7 @@ deltaPush clos atoms pends prec s props
                                                     pset == (S.singleton Yield)]
           checkSet = S.filter
                        (\f -> ChainBack (S.singleton Yield) f `S.member` clos)
-                       (current s)
+                       currFset
       in S.fromList pendSubCbyfs == checkSet
 
     cbeComp pend =
@@ -467,7 +480,7 @@ deltaPush clos atoms pends prec s props
                                                     pset == (S.singleton Equal)]
           checkSet = S.filter
                        (\f -> ChainBack (S.singleton Equal) f `S.member` clos)
-                       (current s)
+                       currFset
       in S.fromList pendSubCbefs == checkSet
 
     cbtComp pend =
@@ -484,7 +497,7 @@ deltaPush clos atoms pends prec s props
                                   cbtComp pend
 
     -- PrecNext formulas in the current set
-    currPnfs = [f | f@(PrecNext _ _) <- S.toList (current s)]
+    currPnfs = [f | f@(PrecNext _ _) <- S.toList currFset]
 
     precNextComp atom =
       let atomProps = S.fromList [p | Atomic p <- S.toList atom]
@@ -516,16 +529,16 @@ deltaPush clos atoms pends prec s props
 
           -- Formulas in the current set which have a compatible PrecBack in the
           -- closure
-          checkSet = (current s) `S.intersection`
+          checkSet = currFset `S.intersection`
                      S.fromList [sf | PrecBack pset sf <- S.toList clos,
                                                           atomPrec `S.member` pset]
 
           fsComp = checkSet == S.fromList [sf | PrecBack _ sf <- atomPbfs]
       in precComp && fsComp
 
-    cas = S.toList .
-          S.filter precBackComp .
-          S.filter precNextComp $ atoms
+    cas = filter (\(Atom fset eset) -> precBackComp fset &&
+                                       precNextComp fset
+                 ) atoms
 
     cps = S.toList . S.filter pendComp $ pends
 
@@ -533,7 +546,7 @@ deltaPush clos atoms pends prec s props
 
 deltaPop :: (Eq a, Ord a, Show a)
          => Set (Formula a)
-         -> Set (Set (Formula a))
+         -> [Atom a]
          -> Set (Set (Formula a), Bool, Bool, Bool)
          -> (Set (Prop a) -> Set (Prop a) -> Prec)
          -> State a
@@ -556,7 +569,11 @@ deltaPop clos atoms pends prec s popped
     debug = id
     --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-    currAtomic = atomicSet (current s)
+
+    currFset = atomFormulaSet (current s)
+    poppedCurrFset = atomFormulaSet (current popped)
+
+    currAtomic = atomicSet currFset
 
     -- ChainNext Equal formulas in the pending set
     pendingCnefs = [f | f@(ChainNext pset _) <- S.toList (pending s),
@@ -567,7 +584,7 @@ deltaPop clos atoms pends prec s popped
     -- Fomulas that have a corresponding ChainNext Take in the closure
     cntCheckSet = S.filter
                    (\f -> ChainNext (S.singleton Take) f `S.member` clos)
-                   (current s)
+                   currFset
 
     -- Pending ChainNext Yield formulas of popped state
     poppedCnyfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
@@ -590,15 +607,12 @@ deltaPop clos atoms pends prec s popped
                                                 pset == (S.singleton Take)]
 
     -- Is an atom compatible with pop rule?
-    popComp atom = (current s) `S.isSubsetOf` atom
-                   -- (current s) == atom
-                   -- (S.filter atomic atom) == currAtomic
-                   -- && (current s) `S.isSubsetOf` atom
+    popComp atom = atomEncodedSet (current s) == atomEncodedSet atom
 
     cnyComp pend xl =
       let currCheckSet = S.map (ChainNext (S.singleton Yield)) .
                          S.filter (\f -> ChainNext (S.singleton Yield) f `S.member` clos) $
-                         (current s)
+                         currFset
           pendCheckSet = S.fromList [f | f@(ChainNext pset _) <- S.toList pend,
                                                                  pset == (S.singleton Yield)]
           checkSet = (currCheckSet `S.difference` pendCheckSet) `S.union`
@@ -632,12 +646,12 @@ deltaPop clos atoms pends prec s popped
           -- These definitions could be moved out
           cbt f = ChainBack (S.singleton Take) f
           yieldCheckSet = S.fromList
-                           [cbt f | ChainBack pset f <- S.toList (current popped),
+                           [cbt f | ChainBack pset f <- S.toList poppedCurrFset,
                                                         pset == (S.singleton Yield)
                                                         && cbt f `S.member` clos]
                           `S.union`
                           S.fromList
-                            [cbt f | PrecBack pset f <- S.toList (current popped),
+                            [cbt f | PrecBack pset f <- S.toList poppedCurrFset,
                                                         pset == (S.singleton Yield)
                                                         && cbt f `S.member` clos]
           takeCheckSet = S.fromList pendingCbtfs
@@ -656,7 +670,7 @@ deltaPop clos atoms pends prec s popped
                                   cbeComp pend &&
                                   cbtComp pend xl xe
 
-    cas = S.toList . S.filter popComp $ atoms
+    cas = filter popComp atoms
 
     cps = S.toList . S.filter pendComp $ pends
 
@@ -668,8 +682,9 @@ isFinal s@(State c p xl xe xr) = debug $ not xl &&
                                          S.null currAtomic &&
                                          S.null currFuture &&
                                          pendComb
-  where currAtomic = S.filter atomic (current s)
-        currFuture = S.filter future (current s)
+  where currFset = atomFormulaSet (current s)
+        currAtomic = S.filter atomic currFset
+        currFuture = S.filter future currFset
         pendComb = all (\f -> case f of  -- only ChainBack Take formulas are allowed
                                 ChainBack pset _ -> pset == S.singleton Take
                                 _ -> False
