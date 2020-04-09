@@ -93,20 +93,24 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                         , Not $ ChainBack pset (Since pset g h)
                         ] ++ chainBackExp pset (Since pset g h)
     closList f = case f of
-      Atomic _         -> [f, Not f]
-      Not g            -> [f] ++ closList g
-      Or g h           -> [f, Not f] ++ closList g ++ closList h
-      And g h          -> [f, Not f] ++ closList g ++ closList h
-      PrecNext _ g     -> [f, Not f] ++ closList g
-      PrecBack _ g     -> [f, Not f] ++ closList g
-      ChainNext pset g -> [f, Not f] ++ closList g ++ chainNextExp pset g
-      ChainBack pset g -> [f, Not f] ++ closList g ++ chainBackExp pset g
-      Until pset g h   -> [f, Not f] ++ closList g ++ closList h ++ untilExp pset g h
-      Since pset g h   -> [f, Not f] ++ closList g ++ closList h ++ sinceExp pset g h
-      HierNext _ g     -> [f, Not f] ++ closList g
-      HierBack _ g     -> [f, Not f] ++ closList g
-      HierUntil _ g h  -> [f, Not f] ++ closList g ++ closList h
-      HierSince _ g h  -> [f, Not f] ++ closList g ++ closList h
+      Atomic _             -> [f, Not f]
+      Not g                -> [f] ++ closList g
+      Or g h               -> [f, Not f] ++ closList g ++ closList h
+      And g h              -> [f, Not f] ++ closList g ++ closList h
+      PrecNext _ g         -> [f, Not f] ++ closList g
+      PrecBack _ g         -> [f, Not f] ++ closList g
+      ChainNext pset g     -> [f, Not f] ++ closList g ++ chainNextExp pset g
+      ChainBack pset g     -> [f, Not f] ++ closList g ++ chainBackExp pset g
+      Until pset g h       -> [f, Not f] ++ closList g ++ closList h ++ untilExp pset g h
+      Since pset g h       -> [f, Not f] ++ closList g ++ closList h ++ sinceExp pset g h
+      (HierNextYield g)    -> [f, Not f] ++ closList g
+      (HierBackYield g)    -> [f, Not f] ++ closList g
+      (HierNextTake  g)    -> [f, Not f] ++ closList g
+      (HierBackTake  g)    -> [f, Not f] ++ closList g
+      (HierUntilYield g h) -> [f, Not f] ++ closList g ++ closList h
+      (HierSinceYield g h) -> [f, Not f] ++ closList g ++ closList h
+      (HierUntilTake  g h) -> [f, Not f] ++ closList g ++ closList h
+      (HierSinceTake  g h) -> [f, Not f] ++ closList g ++ closList h
 
 atoms :: Ord a => Set (Formula a) -> [Atom a]
 atoms clos =
