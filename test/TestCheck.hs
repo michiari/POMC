@@ -631,6 +631,24 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "ret"]
     )
+  , ( "Stack trace lang, accepting HierNextYield"
+    , True
+    , formulaAt 3 $ HierNextYield (Atomic . Prop $ "thr")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not HierNextYield"
+    , False
+    , formulaAt 3 $ Not (HierNextYield (Atomic . Prop $ "thr"))
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting HierNextYield"
+    , False
+    , formulaAt 3 $ HierNextYield (Atomic . Prop $ "thr")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "thr", "ret"]
+    )
   ]
 
 unitTests = testGroup "Unit" (map makeTestCase unitTuples)

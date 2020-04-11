@@ -42,7 +42,7 @@ showFormulaSet fset = let fs = S.toList fset
                       in show (posfs ++ negfs)
 
 instance (Show a) => Show (Atom a) where
-  show (Atom fset eset) = "Fs: " ++ showFormulaSet fset ++ ", enc: " ++ show eset
+  show (Atom fset eset) = "FS: " ++ showFormulaSet fset ++ "\t\tES: " ++ show eset
 
 instance (Show a) => Show (State a) where
   show (State c p xl xe xr) = "\n{ C: "  ++ show c             ++
@@ -93,24 +93,24 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                         , Not $ ChainBack pset (Since pset g h)
                         ] ++ chainBackExp pset (Since pset g h)
     closList f = case f of
-      Atomic _             -> [f, Not f]
-      Not g                -> [f] ++ closList g
-      Or g h               -> [f, Not f] ++ closList g ++ closList h
-      And g h              -> [f, Not f] ++ closList g ++ closList h
-      PrecNext _ g         -> [f, Not f] ++ closList g
-      PrecBack _ g         -> [f, Not f] ++ closList g
-      ChainNext pset g     -> [f, Not f] ++ closList g ++ chainNextExp pset g
-      ChainBack pset g     -> [f, Not f] ++ closList g ++ chainBackExp pset g
-      Until pset g h       -> [f, Not f] ++ closList g ++ closList h ++ untilExp pset g h
-      Since pset g h       -> [f, Not f] ++ closList g ++ closList h ++ sinceExp pset g h
-      (HierNextYield g)    -> [f, Not f] ++ closList g
-      (HierBackYield g)    -> [f, Not f] ++ closList g
-      (HierNextTake  g)    -> [f, Not f] ++ closList g
-      (HierBackTake  g)    -> [f, Not f] ++ closList g
-      (HierUntilYield g h) -> [f, Not f] ++ closList g ++ closList h
-      (HierSinceYield g h) -> [f, Not f] ++ closList g ++ closList h
-      (HierUntilTake  g h) -> [f, Not f] ++ closList g ++ closList h
-      (HierSinceTake  g h) -> [f, Not f] ++ closList g ++ closList h
+      Atomic _           -> [f, Not f]
+      Not g              -> [f] ++ closList g
+      Or g h             -> [f, Not f] ++ closList g ++ closList h
+      And g h            -> [f, Not f] ++ closList g ++ closList h
+      PrecNext _ g       -> [f, Not f] ++ closList g
+      PrecBack _ g       -> [f, Not f] ++ closList g
+      ChainNext pset g   -> [f, Not f] ++ closList g ++ chainNextExp pset g
+      ChainBack pset g   -> [f, Not f] ++ closList g ++ chainBackExp pset g
+      Until pset g h     -> [f, Not f] ++ closList g ++ closList h ++ untilExp pset g h
+      Since pset g h     -> [f, Not f] ++ closList g ++ closList h ++ sinceExp pset g h
+      HierNextYield g    -> [f, Not f] ++ closList g
+      HierBackYield g    -> [f, Not f] ++ closList g
+      HierNextTake  g    -> [f, Not f] ++ closList g
+      HierBackTake  g    -> [f, Not f] ++ closList g
+      HierUntilYield g h -> [f, Not f] ++ closList g ++ closList h
+      HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h
+      HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h
+      HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h
 
 atoms :: Ord a => Set (Formula a) -> [Atom a]
 atoms clos =
@@ -196,12 +196,12 @@ sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
 
 pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bool))
 pendCombs clos =
-  let cnfs = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
-      cbfs = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
-      cfset = S.fromList (cnfs ++ cbfs)
+  let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
+      cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
+      hnyfs = [f | f@(HierNextYield _)  <- S.toList clos]
   in S.foldl' S.union S.empty .
      S.map (S.fromList . combs) $
-     S.powerSet cfset
+     S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],
@@ -249,12 +249,15 @@ deltaShift clos atoms pends prec s props
   | not (afterPop s) && not (null currCbtfs) = []
   | afterPop s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
 
+  -- HierNextYield rule 5
+  | not (null currHnyfs) || not (null pendingHnyfs) = []
+
   | otherwise = debug ns
   where
     debug = id
     --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-    --
+
     currFset = atomFormulaSet (current s)
 
     currAtomic = atomicSet currFset
@@ -295,6 +298,11 @@ deltaShift clos atoms pends prec s props
     -- ChainBack Take formulas
     currCbtfs = [f | f@(ChainBack pset _) <- S.toList currFset,
                                              pset == (S.singleton Take)]
+
+    -- Hierarchical Next Yield formulas
+    currHnyfs = [f | f@(HierNextYield _) <- S.toList currFset]
+    -- Pending Hierarchical Next Yield formulas
+    pendingHnyfs = [f | f@(HierNextYield _) <- S.toList (pending s)]
 
     cnyComp pend xl =
       let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
@@ -417,6 +425,12 @@ deltaPush clos atoms pends prec s props
   | not (afterPop s) && not (null currCbtfs) = []
   | afterPop s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
 
+  -- HierNextYield rule 1
+  | not (afterPop s) && not (null currHnyfs) = []
+  -- HierNextYield rule 2
+  | not (afterPop s) && not (null pendingSubHnyfs) = []
+  | afterPop s && hnyCheckSet /= S.fromList pendingSubHnyfs = []
+
   | otherwise = debug ns
   where
     debug = id
@@ -452,6 +466,15 @@ deltaPush clos atoms pends prec s props
     -- ChainBack Take formulas
     currCbtfs = [f | f@(ChainBack pset _) <- S.toList currFset,
                                              pset == (S.singleton Take)]
+
+    -- Hierarchical Next Yield formulas
+    currHnyfs = [f | f@(HierNextYield _) <- S.toList currFset]
+    -- Pending Hierarchical Next Yield subformulas
+    pendingSubHnyfs = [g | HierNextYield g <- S.toList (pending s)]
+    -- Fomulas that have a corresponding Hierarchical Next Yield in the closure
+    hnyCheckSet = S.filter
+                   (\f -> HierNextYield f `S.member` clos)
+                   currFset
 
     cnyComp pend xl =
       let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
@@ -567,8 +590,10 @@ deltaPop clos atoms pends prec s popped
   -- ChainNext Take rule 2
   | cntCheckSet /= S.fromList pendingSubCntfs = []
 
-  | otherwise = debug ns
+  -- HierNextYield rule 4
+  | not (null pendingHnyfs) = []
 
+  | otherwise = debug ns
   where
     debug = id
     --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
@@ -609,6 +634,9 @@ deltaPop clos atoms pends prec s popped
     -- ChainBack Take formulas in the pending set
     pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
                                                 pset == (S.singleton Take)]
+
+    -- Pending Hierarchical Next Yield formulas
+    pendingHnyfs = [f | f@(HierNextYield _) <- S.toList (pending s)]
 
     -- Is an atom compatible with pop rule?
     popComp atom = atomEncodedSet (current s) == atomEncodedSet atom
@@ -666,13 +694,21 @@ deltaPop clos atoms pends prec s popped
            then S.fromList pendingCbtfs == S.fromList pendCbtfs
            else checkSet == S.fromList pendCbtfs
 
+    hnyComp pend xr =
+      let pendHnyfs = [f | f@(HierNextYield _) <- S.toList pend]
+          poppedCurrHnyfs = [f | f@(HierNextYield _) <- S.toList poppedCurrFset]
+      in if afterPop popped
+           then S.fromList poppedCurrHnyfs == S.fromList pendHnyfs
+           else True
+
     pendComp (pend, xl, xe, xr) = xr &&
                                   cnyComp pend xl &&
                                   cneComp pend &&
                                   cntComp pend &&
                                   cbyComp pend &&
                                   cbeComp pend &&
-                                  cbtComp pend xl xe
+                                  cbtComp pend xl xe &&
+                                  hnyComp pend xr
 
     cas = filter popComp atoms
 
@@ -721,7 +757,7 @@ check phi prec ts =
                           "\nNorm. phi:    "    ++ show nphi         ++
                           "\nTokens:       "    ++ show ts           ++
                           "\nToken props:\n"    ++ show tsprops      ++
-                          "\nClosure:\n"        ++ show cl           ++
+                          "\nClosure:\n"        ++ showFormulaSet cl ++
                           "\nAtoms:\n"          ++ showAtoms as      ++
                           "\nPending atoms:\n"  ++ showPendCombs pcs ++
                           "\nInitial states:\n" ++ showStates is)
