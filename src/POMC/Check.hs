@@ -198,7 +198,7 @@ pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bo
 pendCombs clos =
   let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
       cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
-      hnyfs = [f | f@(HierNextYield _)  <- S.toList clos]
+      hnyfs = [f | f@(HierNextYield _) <- S.toList clos]
   in S.foldl' S.union S.empty .
      S.map (S.fromList . combs) $
      S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs)
@@ -431,6 +431,9 @@ deltaPush clos atoms pends prec s props
   | not (afterPop s) && not (null pendingSubHnyfs) = []
   | afterPop s && hnyCheckSet /= S.fromList pendingSubHnyfs = []
 
+  -- HierBackYield rule 1
+  | not (null currHbyfs) && not (mustPush s && afterPop s) = []
+
   | otherwise = debug ns
   where
     debug = id
@@ -475,6 +478,9 @@ deltaPush clos atoms pends prec s props
     hnyCheckSet = S.filter
                    (\f -> HierNextYield f `S.member` clos)
                    currFset
+
+    -- Hierarchical Back Yield formulas
+    currHbyfs = [f | f@(HierBackYield _) <- S.toList currFset]
 
     cnyComp pend xl =
       let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
@@ -714,7 +720,19 @@ deltaPop clos atoms pends prec s popped
 
     cps = S.toList . S.filter pendComp $ pends
 
-    ns = [State c p xl xe xr | c <- cas, (p, xl, xe, xr) <- cps]
+    hbyCombComp curr xl =
+      let nextSubHbyfs = [g | HierBackYield g <- S.toList curr]
+          poppedCurrSubHbyfSet = S.filter
+                                   (\f -> HierBackYield f `S.member` clos) $
+                                   poppedCurrFset
+      in if xl
+           then if afterPop popped
+                  then S.fromList nextSubHbyfs == poppedCurrSubHbyfSet
+                  else null nextSubHbyfs
+           else True
+
+    ns = [State c p xl xe xr | c <- cas, (p, xl, xe, xr) <- cps,
+                               hbyCombComp (atomFormulaSet c) xl]
 
 isFinal :: (Show a) => State a -> Bool
 isFinal s@(State c p xl xe xr) = debug $ not xl &&
