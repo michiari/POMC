@@ -92,6 +92,11 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                         , ChainBack pset (Since pset g h)
                         , Not $ ChainBack pset (Since pset g h)
                         ] ++ chainBackExp pset (Since pset g h)
+    hntExp g = [ ChainBack (S.singleton Yield) g
+               , PrecBack  (S.singleton Yield) g
+               , ChainBack (S.singleton Yield) (HierNextTake g)
+               , PrecBack  (S.singleton Yield) (HierNextTake g)
+               ]
     closList f = case f of
       Atomic _           -> [f, Not f]
       Not g              -> [f] ++ closList g
@@ -105,7 +110,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       Since pset g h     -> [f, Not f] ++ closList g ++ closList h ++ sinceExp pset g h
       HierNextYield g    -> [f, Not f] ++ closList g
       HierBackYield g    -> [f, Not f] ++ closList g
-      HierNextTake  g    -> [f, Not f] ++ closList g
+      HierNextTake  g    -> [f, Not f] ++ closList g ++ hntExp g
       HierBackTake  g    -> [f, Not f] ++ closList g
       HierUntilYield g h -> [f, Not f] ++ closList g ++ closList h
       HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h
@@ -199,9 +204,10 @@ pendCombs clos =
   let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
       cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
       hnyfs = [f | f@(HierNextYield _) <- S.toList clos]
+      hntfs = [f | f@(HierNextTake _)  <- S.toList clos]
   in S.foldl' S.union S.empty .
      S.map (S.fromList . combs) $
-     S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs)
+     S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs ++ hntfs)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],
@@ -343,13 +349,18 @@ deltaShift clos atoms pends prec s props
                                                    pset == (S.singleton Take)]
       in null pendCbtfs
 
+    hntComp pend =
+      let pendHntfs = [f | f@(HierNextTake _) <- S.toList pend]
+      in null pendHntfs
+
     pendComp (pend, xl, xe, xr) = not xr &&
                                   cnyComp pend xl &&
                                   cneComp pend xl &&
                                   cntComp pend xl &&
                                   cbyComp pend &&
                                   cbeComp pend &&
-                                  cbtComp pend
+                                  cbtComp pend &&
+                                  hntComp pend
 
     -- PrecNext formulas in the current set
     currPnfs = [f | f@(PrecNext _ _) <- S.toList currFset]
@@ -521,13 +532,18 @@ deltaPush clos atoms pends prec s props
                                                    pset == (S.singleton Take)]
       in null pendCbtfs
 
+    hntComp pend =
+      let pendHntfs = [f | f@(HierNextTake _) <- S.toList pend]
+      in null pendHntfs
+
     pendComp (pend, xl, xe, xr) = not xr &&
                                   cnyComp pend xl &&
                                   cneComp pend xl &&
                                   cntComp pend xl &&
                                   cbyComp pend &&
                                   cbeComp pend &&
-                                  cbtComp pend
+                                  cbtComp pend &&
+                                  hntComp pend
 
     -- PrecNext formulas in the current set
     currPnfs = [f | f@(PrecNext _ _) <- S.toList currFset]
@@ -707,6 +723,22 @@ deltaPop clos atoms pends prec s popped
            then S.fromList poppedCurrHnyfs == S.fromList pendHnyfs
            else True
 
+    hntComp pend xl xe =
+      let cby f = ChainBack (S.singleton Yield) f
+          pby f = PrecBack (S.singleton Yield) f
+          pendSubHntfs = [g | HierNextTake g <- S.toList pend]
+          pendingSubHntfs = [g | HierNextTake g <- S.toList (pending s)]
+          pendCheckList = [g | HierNextTake g <- S.toList clos,
+                                                 cby g `S.member` poppedCurrFset ||
+                                                 pby g `S.member` poppedCurrFset]
+          pendingCheckList = [g | f@(HierNextTake g) <- S.toList clos,
+                                                        cby f `S.member` poppedCurrFset ||
+                                                        pby f `S.member` poppedCurrFset]
+      in if not xl && not xe
+         then (S.fromList pendCheckList == S.fromList pendSubHntfs) &&
+              (S.fromList pendingSubHntfs == S.fromList pendingCheckList)
+         else True
+
     pendComp (pend, xl, xe, xr) = xr &&
                                   cnyComp pend xl &&
                                   cneComp pend &&
@@ -714,7 +746,8 @@ deltaPop clos atoms pends prec s popped
                                   cbyComp pend &&
                                   cbeComp pend &&
                                   cbtComp pend xl xe &&
-                                  hnyComp pend xr
+                                  hnyComp pend xr &&
+                                  hntComp pend xl xe
 
     cas = filter popComp atoms
 
