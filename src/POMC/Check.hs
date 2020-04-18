@@ -369,9 +369,10 @@ deltaShift clos atoms pends prec s props
                                                    pset == (S.singleton Take)]
       in null pendCbtfs
 
-    hntComp pend =
+    hntComp pend xl =
       let pendHntfs = [f | f@(HierNextTake _) <- S.toList pend]
-      in null pendHntfs
+          currHntfs = [f | f@(HierNextTake _) <- S.toList currFset]
+      in null pendHntfs && (not (null currHntfs) `implies` xl)
 
     hbtComp pend xl =
       let currHbtfs = [f | f@(HierBackTake _) <- S.toList currFset]
@@ -386,7 +387,7 @@ deltaShift clos atoms pends prec s props
                                   cbyComp pend &&
                                   cbeComp pend &&
                                   cbtComp pend &&
-                                  hntComp pend &&
+                                  hntComp pend xl &&
                                   hbtComp pend xl
 
     -- PrecNext formulas in the current set
@@ -565,9 +566,10 @@ deltaPush clos atoms pends prec s props
                                                    pset == (S.singleton Take)]
       in null pendCbtfs
 
-    hntComp pend =
+    hntComp pend xl =
       let pendHntfs = [f | f@(HierNextTake _) <- S.toList pend]
-      in null pendHntfs
+          currHntfs = [f | f@(HierNextTake _) <- S.toList currFset]
+      in null pendHntfs && (not (null currHntfs) `implies` xl)
 
     hbtComp pend xl =
       let currHbtfs = [f | f@(HierBackTake _) <- S.toList currFset]
@@ -582,7 +584,7 @@ deltaPush clos atoms pends prec s props
                                   cbyComp pend &&
                                   cbeComp pend &&
                                   cbtComp pend &&
-                                  hntComp pend &&
+                                  hntComp pend xl &&
                                   hbtComp pend xl
 
     -- PrecNext formulas in the current set
@@ -774,7 +776,7 @@ deltaPop clos atoms pends prec s popped
           pendingCheckList = [g | f@(HierNextTake g) <- S.toList clos,
                                                         cby f `S.member` poppedCurrFset ||
                                                         pby f `S.member` poppedCurrFset]
-      in if not xl && not xe
+      in if not xl
          then (S.fromList pendCheckList == S.fromList pendSubHntfs) &&
               (S.fromList pendingSubHntfs == S.fromList pendingCheckList)
          else True
