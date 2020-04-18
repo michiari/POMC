@@ -685,6 +685,24 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "call", "thr"]
     )
+  , ( "Stack trace lang, accepting HierBackTake"
+    , True
+    , formulaAt 2 $ HierBackTake (Atomic . Prop $ "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "call", "call", "thr"]
+    )
+  , ( "Stack trace lang, rejecting Not HierBackTake"
+    , False
+    , formulaAt 2 $ Not (HierBackTake (Atomic . Prop $ "call"))
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "call", "call", "thr"]
+    )
+  , ( "Stack trace lang, rejecting HierBackTake"
+    , False
+    , formulaAt 3 $ HierBackTake (Atomic . Prop $ "call")
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "call", "call", "thr"]
+    )
   ]
 
 unitTests = testGroup "Unit" (map makeTestCase unitTuples)

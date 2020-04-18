@@ -76,26 +76,39 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                                            , Not (ChainBack (S.singleton p) g)
                                            ]) (S.toList pset) ++
                           if Take `S.member` pset
-                            then [ PrecBack (S.singleton Yield) g
-                                 , Not (PrecBack (S.singleton Yield) g)
+                            then [ PrecBack  (S.singleton Yield) g
                                  , ChainBack (S.singleton Yield) g
-                                 , Not (ChainBack (S.singleton Yield) g)
+                                 , Not $ PrecBack  (S.singleton Yield) g
+                                 , Not $ ChainBack (S.singleton Yield) g
                                  ]
                             else []
-    untilExp pset g h = [ PrecNext pset (Until pset g h)
-                        , Not $ PrecNext pset (Until pset g h)
+    untilExp pset g h = [ PrecNext pset  (Until pset g h)
                         , ChainNext pset (Until pset g h)
+                        , Not $ PrecNext  pset (Until pset g h)
                         , Not $ ChainNext pset (Until pset g h)
                         ] ++ chainNextExp pset (Until pset g h)
-    sinceExp pset g h = [ PrecBack pset (Since pset g h)
-                        , Not $ PrecBack pset (Since pset g h)
+    sinceExp pset g h = [ PrecBack pset  (Since pset g h)
                         , ChainBack pset (Since pset g h)
+                        , Not $ PrecBack  pset (Since pset g h)
                         , Not $ ChainBack pset (Since pset g h)
                         ] ++ chainBackExp pset (Since pset g h)
     hntExp g = [ ChainBack (S.singleton Yield) g
                , PrecBack  (S.singleton Yield) g
                , ChainBack (S.singleton Yield) (HierNextTake g)
                , PrecBack  (S.singleton Yield) (HierNextTake g)
+               , Not $ ChainBack (S.singleton Yield) g
+               , Not $ PrecBack  (S.singleton Yield) g
+               , Not $ ChainBack (S.singleton Yield) (HierNextTake g)
+               , Not $ PrecBack  (S.singleton Yield) (HierNextTake g)
+               ]
+    hbtExp g = [ ChainBack (S.singleton Yield) g
+               , PrecBack  (S.singleton Yield) g
+               , ChainBack (S.singleton Yield) (HierBackTake g)
+               , PrecBack  (S.singleton Yield) (HierBackTake g)
+               , Not $ ChainBack (S.singleton Yield) g
+               , Not $ PrecBack  (S.singleton Yield) g
+               , Not $ ChainBack (S.singleton Yield) (HierBackTake g)
+               , Not $ PrecBack  (S.singleton Yield) (HierBackTake g)
                ]
     closList f = case f of
       Atomic _           -> [f, Not f]
@@ -111,7 +124,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierNextYield g    -> [f, Not f] ++ closList g
       HierBackYield g    -> [f, Not f] ++ closList g
       HierNextTake  g    -> [f, Not f] ++ closList g ++ hntExp g
-      HierBackTake  g    -> [f, Not f] ++ closList g
+      HierBackTake  g    -> [f, Not f] ++ closList g ++ hbtExp g
       HierUntilYield g h -> [f, Not f] ++ closList g ++ closList h
       HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h
       HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h
@@ -205,9 +218,10 @@ pendCombs clos =
       cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
       hnyfs = [f | f@(HierNextYield _) <- S.toList clos]
       hntfs = [f | f@(HierNextTake _)  <- S.toList clos]
+      hbtfs = [f | f@(HierBackTake _)  <- S.toList clos]
   in S.foldl' S.union S.empty .
      S.map (S.fromList . combs) $
-     S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs ++ hntfs)
+     S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs ++ hntfs ++ hbtfs)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],
@@ -258,11 +272,14 @@ deltaShift clos atoms pends prec s props
   -- HierNextYield rule 5
   | not (null currHnyfs) || not (null pendingHnyfs) = []
 
+  -- HierBackTake rule 5
+  | not (null pendingHbtfs) = []
+
   | otherwise = debug ns
   where
-    debug = id
-    --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    --debug = id
+    debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
+                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
     currFset = atomFormulaSet (current s)
 
@@ -310,6 +327,9 @@ deltaShift clos atoms pends prec s props
     -- Pending Hierarchical Next Yield formulas
     pendingHnyfs = [f | f@(HierNextYield _) <- S.toList (pending s)]
 
+    -- Hierarchical Back Take formulas
+    pendingHbtfs = [f | f@(HierBackTake _) <- S.toList (pending s)]
+
     cnyComp pend xl =
       let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
                                                    pset == (S.singleton Yield)]
@@ -353,6 +373,12 @@ deltaShift clos atoms pends prec s props
       let pendHntfs = [f | f@(HierNextTake _) <- S.toList pend]
       in null pendHntfs
 
+    hbtComp pend xl =
+      let currHbtfs = [f | f@(HierBackTake _) <- S.toList currFset]
+      in if not (null currHbtfs)
+           then xl
+           else True
+
     pendComp (pend, xl, xe, xr) = not xr &&
                                   cnyComp pend xl &&
                                   cneComp pend xl &&
@@ -360,7 +386,8 @@ deltaShift clos atoms pends prec s props
                                   cbyComp pend &&
                                   cbeComp pend &&
                                   cbtComp pend &&
-                                  hntComp pend
+                                  hntComp pend &&
+                                  hbtComp pend xl
 
     -- PrecNext formulas in the current set
     currPnfs = [f | f@(PrecNext _ _) <- S.toList currFset]
@@ -445,11 +472,14 @@ deltaPush clos atoms pends prec s props
   -- HierBackYield rule 1
   | not (null currHbyfs) && not (mustPush s && afterPop s) = []
 
+  -- HierBackTake rule 5
+  | not (null pendingHbtfs) = []
+
   | otherwise = debug ns
   where
-    debug = id
-    --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    --debug = id
+    debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
+                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
     currFset = atomFormulaSet (current s)
 
@@ -492,6 +522,9 @@ deltaPush clos atoms pends prec s props
 
     -- Hierarchical Back Yield formulas
     currHbyfs = [f | f@(HierBackYield _) <- S.toList currFset]
+
+    -- Hierarchical Back Take formulas
+    pendingHbtfs = [f | f@(HierBackTake _) <- S.toList (pending s)]
 
     cnyComp pend xl =
       let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
@@ -536,6 +569,12 @@ deltaPush clos atoms pends prec s props
       let pendHntfs = [f | f@(HierNextTake _) <- S.toList pend]
       in null pendHntfs
 
+    hbtComp pend xl =
+      let currHbtfs = [f | f@(HierBackTake _) <- S.toList currFset]
+      in if not (null currHbtfs)
+           then xl
+           else True
+
     pendComp (pend, xl, xe, xr) = not xr &&
                                   cnyComp pend xl &&
                                   cneComp pend xl &&
@@ -543,7 +582,8 @@ deltaPush clos atoms pends prec s props
                                   cbyComp pend &&
                                   cbeComp pend &&
                                   cbtComp pend &&
-                                  hntComp pend
+                                  hntComp pend &&
+                                  hbtComp pend xl
 
     -- PrecNext formulas in the current set
     currPnfs = [f | f@(PrecNext _ _) <- S.toList currFset]
@@ -617,9 +657,9 @@ deltaPop clos atoms pends prec s popped
 
   | otherwise = debug ns
   where
-    debug = id
-    --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    --debug = id
+    debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
+                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
     currFset = atomFormulaSet (current s)
     poppedCurrFset = atomFormulaSet (current popped)
@@ -739,6 +779,23 @@ deltaPop clos atoms pends prec s popped
               (S.fromList pendingSubHntfs == S.fromList pendingCheckList)
          else True
 
+    hbtComp pend xl xe =
+      let cby f = ChainBack (S.singleton Yield) f
+          pby f = PrecBack (S.singleton Yield) f
+
+          pendSubHbtfs = [g | HierBackTake g <- S.toList pend]
+          pendingSubHbtfs = [g | HierBackTake g <- S.toList (pending s)]
+
+          pendCheckList = [g | f@(HierBackTake g) <- S.toList clos,
+                                                     cby f `S.member` poppedCurrFset ||
+                                                     pby f `S.member` poppedCurrFset]
+          pendingCheckList = [g | HierBackTake g <- S.toList clos,
+                                                    cby g `S.member` poppedCurrFset ||
+                                                    pby g `S.member` poppedCurrFset]
+      in (not (null pendingSubHbtfs) `implies` (not xl && not xe)) &&
+         (not xl `implies` ((S.fromList pendCheckList == S.fromList pendSubHbtfs) &&
+                            (S.fromList pendingSubHbtfs == S.fromList pendingCheckList)))
+
     pendComp (pend, xl, xe, xr) = xr &&
                                   cnyComp pend xl &&
                                   cneComp pend &&
@@ -747,7 +804,8 @@ deltaPop clos atoms pends prec s popped
                                   cbeComp pend &&
                                   cbtComp pend xl xe &&
                                   hnyComp pend xr &&
-                                  hntComp pend xl xe
+                                  hntComp pend xl xe &&
+                                  hbtComp pend xl xe
 
     cas = filter popComp atoms
 
@@ -780,8 +838,8 @@ isFinal s@(State c p xl xe xr) = debug $ not xl &&
                                 ChainBack pset _ -> pset == S.singleton Take
                                 _ -> False
                        ) (S.toList $ pending s)
-        debug = id
-        --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
+        --debug = id
+        debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
 check :: (Ord a, Show a)
       => Formula a
