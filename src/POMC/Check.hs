@@ -82,6 +82,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                                  , Not $ ChainBack (S.singleton Yield) g
                                  ]
                             else []
+
     untilExp pset g h = [ PrecNext pset  (Until pset g h)
                         , ChainNext pset (Until pset g h)
                         , Not $ PrecNext  pset (Until pset g h)
@@ -92,6 +93,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                         , Not $ PrecBack  pset (Since pset g h)
                         , Not $ ChainBack pset (Since pset g h)
                         ] ++ chainBackExp pset (Since pset g h)
+
     hntExp g = [ ChainBack (S.singleton Yield) g
                , PrecBack  (S.singleton Yield) g
                , ChainBack (S.singleton Yield) (HierNextTake g)
@@ -110,6 +112,14 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                , Not $ ChainBack (S.singleton Yield) (HierBackTake g)
                , Not $ PrecBack  (S.singleton Yield) (HierBackTake g)
                ]
+
+    huyExp g h = [ T
+                 , ChainBack (S.singleton Yield) T
+                 , HierNextYield (HierUntilYield g h)
+                 , Not $ T
+                 , Not $ ChainBack (S.singleton Yield) T
+                 , Not $ HierNextYield (HierUntilYield g h)
+                 ]
     closList f = case f of
       T                  -> [f, Not f]
       Atomic _           -> [f, Not f]
@@ -126,7 +136,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierBackYield g    -> [f, Not f] ++ closList g
       HierNextTake  g    -> [f, Not f] ++ closList g ++ hntExp g
       HierBackTake  g    -> [f, Not f] ++ closList g ++ hbtExp g
-      HierUntilYield g h -> [f, Not f] ++ closList g ++ closList h
+      HierUntilYield g h -> [f, Not f] ++ closList g ++ closList h ++ huyExp g h
       HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h
       HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h
       HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h
@@ -135,13 +145,14 @@ atoms :: Ord a => Set (Formula a) -> [Atom a]
 atoms clos =
   let pclos = V.fromList (S.toAscList . S.filter (not . negative) $ clos)
       fetch i = pclos V.! i
-      consistent fset = sinceCons     clos fset &&
-                        untilCons     clos fset &&
-                        chainBackCons clos fset &&
-                        chainNextCons clos fset &&
-                        orCons        clos fset &&
-                        andCons       clos fset &&
-                        tCons              fset
+      consistent fset = hierUntilYieldCons clos fset &&
+                        sinceCons          clos fset &&
+                        untilCons          clos fset &&
+                        chainBackCons      clos fset &&
+                        chainNextCons      clos fset &&
+                        orCons             clos fset &&
+                        andCons            clos fset &&
+                        tCons                   fset
       prependCons atoms eset = let fset = decode fetch eset
                                in if consistent fset
                                     then (Atom fset eset) : atoms
@@ -217,6 +228,16 @@ sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
                              ((S.fromList [g, PrecBack  pset s]) `S.isSubsetOf` set) ||
                              ((S.fromList [g, ChainBack pset s]) `S.isSubsetOf` set)
 
+hierUntilYieldCons clos set = null [f | f@(HierUntilYield g h) <- S.toList set,
+                                                                  not (present f g h)]
+                              &&
+                              null [f | f@(HierUntilYield g h) <- S.toList clos,
+                                                                  present f g h &&
+                                                                  not (f `S.member` set)]
+  where present huy g h =
+          ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
+          ((S.fromList [g, HierNextYield huy])               `S.isSubsetOf` set)
+
 pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bool))
 pendCombs clos =
   let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
@@ -282,9 +303,9 @@ deltaShift clos atoms pends prec s props
 
   | otherwise = debug ns
   where
-    --debug = id
-    debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
-                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    debug = id
+    --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
+    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
     currFset = atomFormulaSet (current s)
 
@@ -483,9 +504,9 @@ deltaPush clos atoms pends prec s props
 
   | otherwise = debug ns
   where
-    --debug = id
-    debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
-                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    debug = id
+    --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
+    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
     currFset = atomFormulaSet (current s)
 
@@ -664,9 +685,9 @@ deltaPop clos atoms pends prec s popped
 
   | otherwise = debug ns
   where
-    --debug = id
-    debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-                      "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    debug = id
+    --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
+    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
     currFset = atomFormulaSet (current s)
     poppedCurrFset = atomFormulaSet (current popped)
@@ -845,8 +866,8 @@ isFinal s@(State c p xl xe xr) = debug $ not xl &&
                                 ChainBack pset _ -> pset == S.singleton Take
                                 _ -> False
                        ) (S.toList $ pending s)
-        --debug = id
-        debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
+        debug = id
+        --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
 check :: (Ord a, Show a)
       => Formula a

@@ -735,6 +735,24 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
     )
+  , ( "Stack trace lang, HierUntilYield"
+    , True
+    , formulaAt 3 $ (Atomic . Prop $ "t") `HierUntilYield` (Atomic . Prop $ "tend")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "t", "t", "t", "tend", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not HierUntilYield"
+    , False
+    , formulaAt 3 $ Not ((Atomic . Prop $ "t") `HierUntilYield` (Atomic . Prop $ "tend"))
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "t", "t", "t", "tend", "ret"]
+    )
+  , ( "Stack trace lang, rejecting HierUntilYield"
+    , False
+    , formulaAt 3 $ (Not . Atomic . Prop $ "texc") `HierUntilYield` (Atomic . Prop $ "tend")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "t", "texc", "t", "tend", "ret"]
+    )
   ]
 
 unitTests = testGroup "Unit" (map makeTestCase unitTuples)
