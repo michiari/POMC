@@ -16,7 +16,8 @@ import qualified Data.Set as S
 
 data Prop a = Prop a deriving (Eq, Ord, Show)
 
-data Formula a = Atomic    (Prop a)
+data Formula a = T
+               | Atomic    (Prop a)
                | Not       (Formula a)
                | Or        (Formula a) (Formula a)
                | And       (Formula a) (Formula a)
@@ -48,6 +49,7 @@ data ExtFormula a = Normal     (Formula a)
 -- data Mi = YT | Y | T
 
 instance (Show a) => Show (Formula a) where
+  show T                    = "T"
   show (Atomic (Prop p))    = show p
   show (Not a@(Atomic _))   = "~" ++ show a
   show (Not g)              = "~(" ++ show g ++ ")"
@@ -98,6 +100,7 @@ formulaAt n f
 showps pset = "[" ++ concat (map show (S.toList pset)) ++ "]"
 
 normalize f = case f of
+                T                  -> f
                 Atomic p           -> f
                 Not (Not g)        -> normalize g    -- remove double negation
                 Not g              -> Not (normalize g)

@@ -111,6 +111,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                , Not $ PrecBack  (S.singleton Yield) (HierBackTake g)
                ]
     closList f = case f of
+      T                  -> [f, Not f]
       Atomic _           -> [f, Not f]
       Not g              -> [f] ++ closList g
       Or g h             -> [f, Not f] ++ closList g ++ closList h
@@ -139,12 +140,16 @@ atoms clos =
                         chainBackCons clos fset &&
                         chainNextCons clos fset &&
                         orCons        clos fset &&
-                        andCons       clos fset
+                        andCons       clos fset &&
+                        tCons              fset
       prependCons atoms eset = let fset = decode fetch eset
                                in if consistent fset
                                     then (Atom fset eset) : atoms
                                     else atoms
   in foldl' prependCons [] (generate $ V.length pclos)
+
+tCons :: Ord a => Set (Formula a) -> Bool
+tCons set = not (Not T `S.member` set)
 
 andCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 andCons clos set = null [f | f@(And g h) <- S.toList set,

@@ -703,6 +703,24 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "call", "call", "thr"]
     )
+  , ( "Stack trace lang, accepting T"
+    , True
+    , T
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not T"
+    , False
+    , Not T
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not T"
+    , False
+    , Not T
+    , stlPrec
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+    )
   ]
 
 unitTests = testGroup "Unit" (map makeTestCase unitTuples)
