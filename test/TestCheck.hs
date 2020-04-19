@@ -5,6 +5,8 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
+import Data.List
+
 import Data.Set (Set)
 import qualified Data.Set as S
 
@@ -15,36 +17,48 @@ import POMC.Opa (Prec(..))
 import POMC.Potl (Formula(..), Prop(..), formulaAt)
 
 stlPrec s1 s2
-  | S.null s2 = Take -- Can happen with e.g. PrecNext checks
-  | (Prop "call") `S.member` s1 = callPrec s2
-  | (Prop  "ret") `S.member` s1 =  retPrec s2
-  | (Prop  "han") `S.member` s1 =  hanPrec s2
-  | (Prop  "thr") `S.member` s1 =  thrPrec s2
-  | otherwise = error "Incompatible tokens"
-  where callPrec s
-          | (Prop "call") `S.member` s = Yield
-          | (Prop  "ret") `S.member` s = Equal
-          | (Prop  "han") `S.member` s = Yield
-          | (Prop  "thr") `S.member` s = Take
-          | otherwise = error "Incompatible tokens"
+  | isCallSet s1 = callPrec s2
+  | isRetSet  s1 = retPrec  s2
+  | isHanSet  s1 = hanPrec  s2
+  | isThrSet  s1 = thrPrec  s2
+  | otherwise = error "First set has invalid tokens"
+  where unprop (Prop p) = p
+        calls s = filter ("c" `isPrefixOf`) (map unprop . S.toList $ s)
+        rets  s = filter ("r" `isPrefixOf`) (map unprop . S.toList $ s)
+        hans  s = filter ("h" `isPrefixOf`) (map unprop . S.toList $ s)
+        thrs  s = filter ("t" `isPrefixOf`) (map unprop . S.toList $ s)
+        isCallSet = not . null . calls
+        isRetSet  = not . null .  rets
+        isHanSet  = not . null .  hans
+        isThrSet  = not . null .  thrs
+        callPrec s
+          | S.null    s = Take
+          | isCallSet s = Yield
+          | isRetSet  s = Equal
+          | isHanSet  s = Yield
+          | isThrSet  s = Take
+          | otherwise = error "Second set has invalid tokens"
         retPrec s
-          | (Prop "call") `S.member` s = Take
-          | (Prop  "ret") `S.member` s = Take
-          | (Prop  "han") `S.member` s = Yield
-          | (Prop  "thr") `S.member` s = Take
-          | otherwise = error "Incompatible tokens"
+          | S.null    s = Take
+          | isCallSet s = Take
+          | isRetSet  s = Take
+          | isHanSet  s = Yield
+          | isThrSet  s = Take
+          | otherwise = error "Second set has invalid tokens"
         hanPrec s
-          | (Prop "call") `S.member` s = Yield
-          | (Prop  "ret") `S.member` s = Take
-          | (Prop  "han") `S.member` s = Yield
-          | (Prop  "thr") `S.member` s = Yield
-          | otherwise = error "Incompatible tokens"
+          | S.null    s = Take
+          | isCallSet s = Yield
+          | isRetSet  s = Take
+          | isHanSet  s = Yield
+          | isThrSet  s = Yield
+          | otherwise = error "Second set has invalid tokens"
         thrPrec s
-          | (Prop "call") `S.member` s = Take
-          | (Prop  "ret") `S.member` s = Take
-          | (Prop  "han") `S.member` s = Take
-          | (Prop  "thr") `S.member` s = Take
-          | otherwise = error "Incompatible tokens"
+          | S.null    s = Take
+          | isCallSet s = Take
+          | isRetSet  s = Take
+          | isHanSet  s = Take
+          | isThrSet  s = Take
+          | otherwise = error "Second set has invalid tokens"
 
 -- Each unit test is a tuple of the type:
 -- (name, expected check result, phi, prec, input)
