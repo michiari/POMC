@@ -134,6 +134,13 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                  , Not $ ChainNext (S.singleton Take) T
                  , Not $ HierNextTake (HierUntilTake g h)
                  ] ++ hntExp (HierUntilTake g h)
+    hstExp g h = [ T
+                 , ChainNext (S.singleton Take) T
+                 , HierBackTake (HierSinceTake g h)
+                 , Not $ T
+                 , Not $ ChainNext (S.singleton Take) T
+                 , Not $ HierBackTake (HierSinceTake g h)
+                 ] ++ hbtExp (HierSinceTake g h)
     closList f = case f of
       T                  -> [f, Not f]
       Atomic _           -> [f, Not f]
@@ -153,13 +160,14 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierUntilYield g h -> [f, Not f] ++ closList g ++ closList h ++ huyExp g h
       HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h ++ hsyExp g h
       HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hutExp g h
-      HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h
+      HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hstExp g h
 
 atoms :: Ord a => Set (Formula a) -> [Atom a]
 atoms clos =
   let pclos = V.fromList (S.toAscList . S.filter (not . negative) $ clos)
       fetch i = pclos V.! i
-      consistent fset = hierUntilTakeCons  clos fset &&
+      consistent fset = hierSinceTakeCons  clos fset &&
+                        hierUntilTakeCons  clos fset &&
                         hierSinceYieldCons clos fset &&
                         hierUntilYieldCons clos fset &&
                         sinceCons          clos fset &&
@@ -276,6 +284,17 @@ hierUntilTakeCons clos set = null [f | f@(HierUntilTake g h) <- S.toList set,
   where present hut g h =
           ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
           ((S.fromList [g, HierNextTake hut])               `S.isSubsetOf` set)
+
+hierSinceTakeCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+hierSinceTakeCons clos set = null [f | f@(HierSinceTake g h) <- S.toList set,
+                                                                not (present f g h)]
+                             &&
+                             null [f | f@(HierSinceTake g h) <- S.toList clos,
+                                                                present f g h &&
+                                                                not (f `S.member` set)]
+  where present hst g h =
+          ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
+          ((S.fromList [g, HierBackTake hst])               `S.isSubsetOf` set)
 
 pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bool))
 pendCombs clos =
