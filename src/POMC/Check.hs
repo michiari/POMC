@@ -120,6 +120,13 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                  , Not $ ChainBack (S.singleton Yield) T
                  , Not $ HierNextYield (HierUntilYield g h)
                  ]
+    hsyExp g h = [ T
+                 , ChainBack (S.singleton Yield) T
+                 , HierBackYield (HierSinceYield g h)
+                 , Not $ T
+                 , Not $ ChainBack (S.singleton Yield) T
+                 , Not $ HierBackYield (HierSinceYield g h)
+                 ]
     closList f = case f of
       T                  -> [f, Not f]
       Atomic _           -> [f, Not f]
@@ -137,7 +144,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierNextTake  g    -> [f, Not f] ++ closList g ++ hntExp g
       HierBackTake  g    -> [f, Not f] ++ closList g ++ hbtExp g
       HierUntilYield g h -> [f, Not f] ++ closList g ++ closList h ++ huyExp g h
-      HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h
+      HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h ++ hsyExp g h
       HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h
       HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h
 
@@ -145,7 +152,8 @@ atoms :: Ord a => Set (Formula a) -> [Atom a]
 atoms clos =
   let pclos = V.fromList (S.toAscList . S.filter (not . negative) $ clos)
       fetch i = pclos V.! i
-      consistent fset = hierUntilYieldCons clos fset &&
+      consistent fset = hierSinceYieldCons clos fset &&
+                        hierUntilYieldCons clos fset &&
                         sinceCons          clos fset &&
                         untilCons          clos fset &&
                         chainBackCons      clos fset &&
@@ -228,6 +236,7 @@ sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
                              ((S.fromList [g, PrecBack  pset s]) `S.isSubsetOf` set) ||
                              ((S.fromList [g, ChainBack pset s]) `S.isSubsetOf` set)
 
+hierUntilYieldCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 hierUntilYieldCons clos set = null [f | f@(HierUntilYield g h) <- S.toList set,
                                                                   not (present f g h)]
                               &&
@@ -237,6 +246,17 @@ hierUntilYieldCons clos set = null [f | f@(HierUntilYield g h) <- S.toList set,
   where present huy g h =
           ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
           ((S.fromList [g, HierNextYield huy])               `S.isSubsetOf` set)
+
+hierSinceYieldCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+hierSinceYieldCons clos set = null [f | f@(HierSinceYield g h) <- S.toList set,
+                                                                  not (present f g h)]
+                              &&
+                              null [f | f@(HierSinceYield g h) <- S.toList clos,
+                                                                  present f g h &&
+                                                                  not (f `S.member` set)]
+  where present hsy g h =
+          ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
+          ((S.fromList [g, HierBackYield hsy])               `S.isSubsetOf` set)
 
 pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bool))
 pendCombs clos =

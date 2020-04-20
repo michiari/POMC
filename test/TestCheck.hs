@@ -735,7 +735,7 @@ unitTuples =
     , stlPrec
     , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
     )
-  , ( "Stack trace lang, HierUntilYield"
+  , ( "Stack trace lang, accepting HierUntilYield"
     , True
     , formulaAt 3 $ (Atomic . Prop $ "t") `HierUntilYield` (Atomic . Prop $ "tend")
     , stlPrec
@@ -752,6 +752,24 @@ unitTuples =
     , formulaAt 3 $ (Not . Atomic . Prop $ "texc") `HierUntilYield` (Atomic . Prop $ "tend")
     , stlPrec
     , map (S.singleton . Prop) ["han", "call", "t", "texc", "t", "tend", "ret"]
+    )
+  , ( "Stack trace lang, accepting HierSinceYield"
+    , True
+    , formulaAt 6 $ (Atomic . Prop $ "t") `HierSinceYield` (Atomic . Prop $ "tbeg")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "tbeg", "t", "t", "t", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not HierSinceYield"
+    , False
+    , formulaAt 6 $ Not ((Atomic . Prop $ "t") `HierSinceYield` (Atomic . Prop $ "tbeg"))
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "tbeg", "t", "t", "t", "ret"]
+    )
+  , ( "Stack trace lang, rejecting HierSinceYield"
+    , False
+    , formulaAt 6 $ (Not . Atomic . Prop $ "texc") `HierSinceYield` (Atomic . Prop $ "tbeg")
+    , stlPrec
+    , map (S.singleton . Prop) ["han", "call", "tbeg", "t", "texc", "t", "ret"]
     )
   ]
 
