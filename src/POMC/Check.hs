@@ -945,12 +945,13 @@ check phi prec ts =
         as = atoms cl
         pcs = pendCombs cl
         is = initials nphi cl as
-        debug = DT.trace ("\nRun with:"         ++
-                          "\nPhi:          "    ++ show phi          ++
-                          "\nNorm. phi:    "    ++ show nphi         ++
-                          "\nTokens:       "    ++ show ts           ++
-                          "\nToken props:\n"    ++ show tsprops      ++
-                          "\nClosure:\n"        ++ showFormulaSet cl ++
-                          "\nAtoms:\n"          ++ showAtoms as      ++
-                          "\nPending atoms:\n"  ++ showPendCombs pcs ++
-                          "\nInitial states:\n" ++ showStates is)
+        debug = id
+        --debug = DT.trace ("\nRun with:"         ++
+        --                  "\nPhi:          "    ++ show phi          ++
+        --                  "\nNorm. phi:    "    ++ show nphi         ++
+        --                  "\nTokens:       "    ++ show ts           ++
+        --                  "\nToken props:\n"    ++ show tsprops      ++
+        --                  "\nClosure:\n"        ++ showFormulaSet cl ++
+        --                  "\nAtoms:\n"          ++ showAtoms as      ++
+        --                  "\nPending atoms:\n"  ++ showPendCombs pcs ++
+        --                  "\nInitial states:\n" ++ showStates is)

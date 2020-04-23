@@ -54,3 +54,18 @@ tests:
     - tasty
     - tasty-hunit
     - tasty-quickcheck
+
+benchmarks:
+  bench-pomc:
+    main:                Bench.hs
+    source-dirs:         bench
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -Wall
+    - -O2
+    dependencies:
+    - POMC
+    - containers
+    - criterion-measurement
