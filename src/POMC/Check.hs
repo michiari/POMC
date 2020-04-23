@@ -835,9 +835,7 @@ deltaPop clos atoms pends prec s popped
                                                         pset == (S.singleton Yield)
                                                         && cbt f `S.member` clos]
           takeCheckSet = S.fromList pendingCbtfs
-          checkSet = (yieldCheckSet `S.difference` takeCheckSet)
-                     `S.union`
-                     (takeCheckSet `S.difference` yieldCheckSet)
+          checkSet = yieldCheckSet `S.union` takeCheckSet
       in if (xl || xe)
            then S.fromList pendingCbtfs == S.fromList pendCbtfs
            else checkSet == S.fromList pendCbtfs
