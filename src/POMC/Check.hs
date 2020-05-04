@@ -11,6 +11,8 @@ import POMC.Potl
 import POMC.Util (xor, implies)
 import POMC.Data
 
+import Data.Maybe (fromJust)
+
 import Data.Set (Set)
 import qualified Data.Set as S
 
@@ -322,592 +324,784 @@ initials phi clos atoms =
   in [State ia ip True False False | ia <- compAtoms,
                                      ip <- S.toList (S.powerSet cnyfSet)]
 
+resolve :: i -> [(i -> Bool, b)] -> [b]
+resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
+
+deltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
+deltaRules condInfo =
+  let shiftGroup = RuleGroup
+        { ruleGroupPrs  = resolve condInfo [ (const True, xlShiftPr)
+                                           , (const True, xeShiftPr)
+                                           , (const True, propShiftPr)
+                                           , (cneCond,    cneShiftPr)
+                                           , (cntCond,    cntShiftPr)
+                                           , (cbyCond,    cbyShiftPr)
+                                           , (cbeCond,    cbeShiftPr)
+                                           , (cbtCond,    cbtShiftPr)
+                                           , (hnyCond,    hnyShiftPr)
+                                           , (hbtCond,    hbtShiftPr)
+                                           ]
+        , ruleGroupFcrs = resolve condInfo [ (pnCond, pnShiftFcr)
+                                           , (pbCond, pbShiftFcr)
+                                           ]
+        , ruleGroupFprs = resolve condInfo [ (const True, xrShiftFpr)
+                                           , (cnyCond,    cnyShiftFpr)
+                                           , (cneCond,    cneShiftFpr)
+                                           , (cntCond,    cntShiftFpr)
+                                           , (cbyCond,    cbyShiftFpr)
+                                           , (cbeCond,    cbeShiftFpr)
+                                           , (cbtCond,    cbtShiftFpr)
+                                           , (hntCond,    hntShiftFpr1)
+                                           , (hntCond,    hntShiftFpr2)
+                                           , (hbtCond,    hbtShiftFpr)
+                                           ]
+        , ruleGroupFrs  = resolve condInfo []
+        }
+      pushGroup = RuleGroup
+        { ruleGroupPrs  = resolve condInfo [ (const True, xlPushPr)
+                                           , (const True, xePushPr)
+                                           , (const True, propPushPr)
+                                           , (cbyCond,    cbyPushPr)
+                                           , (cbeCond,    cbePushPr)
+                                           , (cbtCond,    cbtPushPr)
+                                           , (hnyCond,    hnyPushPr1)
+                                           , (hnyCond,    hnyPushPr2)
+                                           , (hbyCond,    hbyPushPr)
+                                           , (hbtCond,    hbtPushPr)
+                                           ]
+        , ruleGroupFcrs = resolve condInfo [ (pnCond, pnPushFcr)
+                                           , (pbCond, pbPushFcr)
+                                           ]
+        , ruleGroupFprs = resolve condInfo [ (const True, xrPushFpr)
+                                           , (cnyCond,    cnyPushFpr)
+                                           , (cneCond,    cnePushFpr)
+                                           , (cntCond,    cntPushFpr)
+                                           , (cbyCond,    cbyPushFpr)
+                                           , (cbeCond,    cbePushFpr)
+                                           , (cbtCond,    cbtPushFpr)
+                                           , (hntCond,    hntPushFpr1)
+                                           , (hntCond,    hntPushFpr2)
+                                           , (hbtCond,    hbtPushFpr)
+                                           ]
+        , ruleGroupFrs  = resolve condInfo []
+        }
+      popGroup = RuleGroup
+        { ruleGroupPrs  = resolve condInfo [ (const True, xlPopPr)
+                                           , (const True, xePopPr)
+                                           , (cneCond,    cnePopPr)
+                                           , (cntCond,    cntPopPr)
+                                           , (hnyCond,    hnyPopPr)
+                                           ]
+        , ruleGroupFcrs = resolve condInfo [(const True, currPopFcr)]
+        , ruleGroupFprs = resolve condInfo [ (const True, xrPopFpr)
+                                           , (cnyCond,    cnyPopFpr)
+                                           , (cneCond,    cnePopFpr)
+                                           , (cntCond,    cntPopFpr)
+                                           , (cbyCond,    cbyPopFpr)
+                                           , (cbeCond,    cbePopFpr)
+                                           , (cbtCond,    cbtPopFpr)
+                                           , (hnyCond,    hnyPopFpr)
+                                           , (hntCond,    hntPopFpr1)
+                                           , (hntCond,    hntPopFpr2)
+                                           , (hbtCond,    hbtPopFpr1)
+                                           , (hbtCond,    hbtPopFpr2)
+                                           , (hbtCond,    hbtPopFpr3)
+                                           ]
+        , ruleGroupFrs  = resolve condInfo [(hbyCond, hbyPopFr)]
+        }
+  in (shiftGroup, pushGroup, popGroup)
+  where
+    -- XL rules
+    xlShiftPr info = let pXl = mustPush (prState info) in not pXl
+    xlPushPr  info = let pXl = mustPush (prState info) in pXl
+    xlPopPr   info = let pXl = mustPush (prState info) in not pXl
+    --
+
+    -- XE rules
+    xeShiftPr info = let pXe = mustShift (prState info) in pXe
+    xePushPr  info = let pXe = mustShift (prState info) in not pXe
+    xePopPr   info = let pXe = mustShift (prState info) in not pXe
+    --
+
+    -- XR rules
+    xrShiftFpr info = let (_, _, _, fXr) = fprFuturePendComb info in not fXr
+    xrPushFpr  info = let (_, _, _, fXr) = fprFuturePendComb info in not fXr
+    xrPopFpr   info = let (_, _, _, fXr) = fprFuturePendComb info in fXr
+    --
+
+    -- Prop rules
+    propPushPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          props = fromJust (prProps info)
+      in atomicSet pCurr == S.map Atomic props
+
+    propShiftPr = propPushPr
+    --
+
+    -- Pop rule
+    currPopFcr info =
+      let pEncCurr = atomEncodedSet . current $ fcrState info
+          fEncCurr = atomEncodedSet (fcrFutureCurr info)
+      in pEncCurr == fEncCurr
+    --
+
+    -- PN rules
+    pnCond clos = not (null [f | f@(PrecNext _ _) <- S.toList clos])
+
+    pnPushFcr info =
+      let clos = fcrClos info
+          pCurr = atomFormulaSet . current $ fcrState info
+          precFunc = fcrPrecFunc info
+          props = fromJust (fcrProps info)
+          fCurr = atomFormulaSet (fcrFutureCurr info)
+
+          pCurrPnfs = [f | f@(PrecNext _ _) <- S.toList pCurr]
+
+          fCurrProps = S.fromList [p | Atomic p <- S.toList fCurr]
+          prec = precFunc props fCurrProps
+
+          precComp = null [f | f@(PrecNext pset _) <- pCurrPnfs,
+                                                      prec `S.notMember` pset]
+
+          fsComp = S.fromList pCurrPnfs == checkSet
+            where checkSet = S.fromList
+                               [f | f@(PrecNext pset g) <- S.toList clos,
+                                                           prec `S.member` pset &&
+                                                           g `S.member` fCurr]
+      in precComp && fsComp
+
+    pnShiftFcr = pnPushFcr
+    --
+
+    -- PB rules
+    pbCond clos = not (null [f | f@(PrecBack _ _) <- S.toList clos])
+
+    pbPushFcr info =
+      let clos = fcrClos info
+          pCurr = atomFormulaSet . current $ fcrState info
+          precFunc = fcrPrecFunc info
+          props = fromJust (fcrProps info)
+          fCurr = atomFormulaSet (fcrFutureCurr info)
+
+          fCurrPbfs = [f | f@(PrecBack _ _) <- S.toList fCurr]
+
+          fCurrProps = S.fromList [p | Atomic p <- S.toList fCurr]
+          prec = precFunc props fCurrProps
+
+          precComp = null [f | f@(PrecBack pset _) <- fCurrPbfs,
+                                                      prec `S.notMember` pset]
+
+          fsComp = S.fromList fCurrPbfs == checkSet
+            where checkSet = S.fromList
+                               [f | f@(PrecBack pset g) <- S.toList clos,
+                                                           prec `S.member` pset &&
+                                                           g `S.member` pCurr]
+      in precComp && fsComp
+
+    pbShiftFcr = pbPushFcr
+    --
+
+    -- CNY
+    cnyCond clos = not (null [f | f@(ChainNext pset _) <- S.toList clos,
+                                                          pset == S.singleton Yield])
+
+    cnyPushFpr info =
+      let pCurr = atomFormulaSet . current $ fprState info
+          (fPend, fXl, _, _) = fprFuturePendComb info
+          pCurrCnyfs = [f | f@(ChainNext pset _) <- S.toList pCurr,
+                                                    pset == S.singleton Yield]
+          fPendCnyfs = [f | f@(ChainNext pset _) <- S.toList fPend,
+                                                    pset == S.singleton Yield]
+      in if fXl
+           then S.fromList pCurrCnyfs == S.fromList fPendCnyfs
+           else null pCurrCnyfs
+
+    cnyShiftFpr = cnyPushFpr
+
+    cnyPopFpr info =
+      let clos = fprClos info
+          pCurr = atomFormulaSet . current $ fprState info
+          (fPend, fXl, _, _) = fprFuturePendComb info
+          ppPend = pending $ fromJust (fprPopped info)
+          ppPendCnyfs = [f | f@(ChainNext pset _) <- S.toList ppPend,
+                                                     pset == S.singleton Yield]
+          pCheckSet = S.fromList [f | f@(ChainNext pset g) <- S.toList clos,
+                                                              pset == S.singleton Yield &&
+                                                              g `S.member` pCurr]
+          fCheckSet = S.fromList [f | f@(ChainNext pset _) <- S.toList fPend,
+                                                              pset == S.singleton Yield]
+          checkSet = (pCheckSet `S.difference` fCheckSet) `S.union`
+                     (fCheckSet `S.difference` pCheckSet)
+      in if fXl
+           then S.fromList ppPendCnyfs == checkSet
+           else null ppPendCnyfs
+    --
+
+    -- CNE rules
+    cneCond clos = not (null [f | f@(ChainNext pset _) <- S.toList clos,
+                                                          pset == S.singleton Equal])
+
+    cnePushFpr info =
+      let pCurr = atomFormulaSet . current $ fprState info
+          (fPend, fXl, _, _) = fprFuturePendComb info
+          fPendCnefs = [f | f@(ChainNext pset _) <- S.toList fPend,
+                                                    pset == S.singleton Equal]
+          pCurrCnefs = [f | f@(ChainNext pset _) <- S.toList pCurr,
+                                                    pset == S.singleton Equal]
+      in if fXl
+           then S.fromList pCurrCnefs == S.fromList fPendCnefs
+           else null pCurrCnefs
+
+    cneShiftFpr = cnePushFpr
+
+    cnePopPr info =
+      let pPend = pending (prState info)
+          pPendCnefs = [f | f@(ChainNext pset _) <- S.toList pPend,
+                                                    pset == S.singleton Equal]
+      in null pPendCnefs
+
+    cnePopFpr info =
+      let ppPend = pending $ fromJust (fprPopped info)
+          (fPend, _, _, _) = fprFuturePendComb info
+          ppPendCnefs = [f | f@(ChainNext pset _) <- S.toList ppPend,
+                                                     pset == S.singleton Equal]
+          fPendCnefs = [f | f@(ChainNext pset _) <- S.toList fPend,
+                                                    pset == S.singleton Equal]
+      in S.fromList ppPendCnefs == S.fromList fPendCnefs
+
+    cneShiftPr info =
+      let clos = prClos info
+          pCurr = atomFormulaSet . current $ prState info
+          pPend = pending (prState info)
+          pPendCnefs = [f | f@(ChainNext pset _) <- S.toList pPend,
+                                                    pset == S.singleton Equal]
+          pCheckList = [f | f@(ChainNext pset g) <- S.toList clos,
+                                                    pset == S.singleton Equal,
+                                                    g `S.member` pCurr]
+      in S.fromList pCheckList == S.fromList pPendCnefs
+    --
+
+    -- CNT rules
+    cntCond clos = not (null [f | f@(ChainNext pset _) <- S.toList clos,
+                                                          pset == S.singleton Take])
+
+    cntPushFpr info =
+      let pCurr = atomFormulaSet . current $ fprState info
+          (fPend, fXl, _, _) = fprFuturePendComb info
+          fPendCntfs = [f | f@(ChainNext pset _) <- S.toList fPend,
+                                                    pset == S.singleton Take]
+          pCurrCntfs = [f | f@(ChainNext pset _) <- S.toList pCurr,
+                                                    pset == S.singleton Take]
+      in if fXl
+           then S.fromList pCurrCntfs == S.fromList fPendCntfs
+           else null pCurrCntfs
+
+    cntShiftFpr = cntPushFpr
+
+    cntPopPr info =
+      let clos = prClos info
+          pCurr = atomFormulaSet . current $ prState info
+          pPend = pending (prState info)
+          pPendCntfs = [f | f@(ChainNext pset _) <- S.toList pPend,
+                                                    pset == S.singleton Take]
+          pCheckList = [f | f@(ChainNext pset g) <- S.toList clos,
+                                                    pset == S.singleton Take,
+                                                    g `S.member` pCurr]
+      in S.fromList pCheckList == S.fromList pPendCntfs
+
+    cntPopFpr info =
+      let ppPend = pending $ fromJust (fprPopped info)
+          (fPend, _, _, _) = fprFuturePendComb info
+          ppPendCntfs = [f | f@(ChainNext pset _) <- S.toList ppPend,
+                                                     pset == S.singleton Take]
+          fPendCntfs = [f | f@(ChainNext pset _) <- S.toList fPend,
+                                                    pset == S.singleton Take]
+      in S.fromList ppPendCntfs == S.fromList fPendCntfs
+
+    cntShiftPr info =
+      let pPend = pending (prState info)
+          pPendCntfs = [f | f@(ChainNext pset _) <- S.toList pPend,
+                                                    pset == S.singleton Take]
+      in null pPendCntfs
+    --
+
+    -- CBY
+    cbyCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
+                                                          pset == S.singleton Yield])
+
+    cbyPushPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pPend = pending (prState info)
+          pXr = afterPop (prState info)
+          pCurrCbyfs = [f | f@(ChainBack pset _) <- S.toList pCurr,
+                                                    pset == S.singleton Yield]
+          pPendCbyfs = [f | f@(ChainBack pset _) <- S.toList pPend,
+                                                    pset == S.singleton Yield]
+      in if pXr
+           then S.fromList pCurrCbyfs == S.fromList pPendCbyfs
+           else null pCurrCbyfs
+
+    cbyShiftPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pCurrCbyfs = [f | f@(ChainBack pset _) <- S.toList pCurr,
+                                                    pset == S.singleton Yield]
+      in null pCurrCbyfs
+
+    cbyPopFpr info =
+      let ppPend = pending $ fromJust (fprPopped info)
+          (fPend, _, _, _) = fprFuturePendComb info
+          ppPendCbyfs = [f | f@(ChainBack pset _) <- S.toList ppPend,
+                                                     pset == S.singleton Yield]
+          fPendCbyfs = [f | f@(ChainBack pset _) <- S.toList fPend,
+                                                    pset == S.singleton Yield]
+      in S.fromList ppPendCbyfs == S.fromList fPendCbyfs
+
+    cbyPushFpr info =
+      let clos = fprClos info
+          pCurr = atomFormulaSet . current $ fprState info
+          (fPend, _, _, _) = fprFuturePendComb info
+          fPendCbyfs = [f | f@(ChainBack pset _) <- S.toList fPend,
+                                                    pset == S.singleton Yield]
+          pCheckSet = S.fromList [f | f@(ChainBack pset g) <- S.toList clos,
+                                                              pset == S.singleton Yield &&
+                                                              g `S.member` pCurr]
+      in S.fromList fPendCbyfs == pCheckSet
+
+    cbyShiftFpr = cbyPushFpr
+    --
+
+    -- CBE
+    cbeCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
+                                                          pset == S.singleton Equal])
+
+    cbeShiftPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pPend = pending (prState info)
+          pXr = afterPop (prState info)
+          pCurrCbefs = [f | f@(ChainBack pset _) <- S.toList pCurr,
+                                                    pset == S.singleton Equal]
+          pPendCbefs = [f | f@(ChainBack pset _) <- S.toList pPend,
+                                                    pset == S.singleton Equal]
+      in if pXr
+           then S.fromList pCurrCbefs == S.fromList pPendCbefs
+           else null pCurrCbefs
+
+    cbePushPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pCurrCbefs = [f | f@(ChainBack pset _) <- S.toList pCurr,
+                                                    pset == S.singleton Equal]
+      in null pCurrCbefs
+
+    cbePopFpr info =
+      let ppPend = pending $ fromJust (fprPopped info)
+          (fPend, _, _, _) = fprFuturePendComb info
+          ppPendCbefs = [f | f@(ChainBack pset _) <- S.toList ppPend,
+                                                     pset == S.singleton Equal]
+          fPendCbefs = [f | f@(ChainBack pset _) <- S.toList fPend,
+                                                    pset == S.singleton Equal]
+      in S.fromList ppPendCbefs == S.fromList fPendCbefs
+
+    cbePushFpr info =
+      let clos = fprClos info
+          pCurr = atomFormulaSet . current $ fprState info
+          (fPend, fXl, _, _) = fprFuturePendComb info
+
+          fPendCbefs = [f | f@(ChainBack pset _) <- S.toList fPend,
+                                                    pset == S.singleton Equal]
+          pCheckSet = S.fromList [f | f@(ChainBack pset g) <- S.toList clos,
+                                                              pset == S.singleton Equal &&
+                                                              g `S.member` pCurr]
+      in S.fromList fPendCbefs == pCheckSet
+
+    cbeShiftFpr = cbePushFpr
+    --
+
+    -- CBT
+    cbtCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
+                                                          pset == S.singleton Take])
+
+    cbtPushFpr info =
+      let (fPend, _, _, _) = fprFuturePendComb info
+          fPendCbtfs = [f | f@(ChainBack pset _) <- S.toList fPend,
+                                                    pset == S.singleton Take]
+      in null fPendCbtfs
+
+    cbtShiftFpr = cbtPushFpr
+
+    cbtPushPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pPend = pending (prState info)
+          pXr = afterPop (prState info)
+          pCurrCbtfs = [f | f@(ChainBack pset _) <- S.toList pCurr,
+                                                    pset == S.singleton Take]
+          pPendCbtfs = [f | f@(ChainBack pset _) <- S.toList pPend,
+                                                    pset == S.singleton Take]
+      in if pXr
+           then S.fromList pCurrCbtfs == S.fromList pPendCbtfs
+           else null pCurrCbtfs
+
+    cbtShiftPr = cbtPushPr
+
+    cbtPopFpr info =
+      let clos = fprClos info
+          pPend = pending (fprState info)
+          (fPend, fXl, fXe, _) = fprFuturePendComb info
+          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          pPendCbtfs = [f | f@(ChainBack pset _) <- S.toList pPend,
+                                                    pset == S.singleton Take]
+          fPendCbtfs = [f | f@(ChainBack pset _) <- S.toList fPend,
+                                                    pset == S.singleton Take]
+          cbt f = ChainBack (S.singleton Take) f
+          yieldCheckSet = S.fromList
+                           [cbt f | ChainBack pset f <- S.toList ppCurr,
+                                                        pset == (S.singleton Yield)
+                                                        && cbt f `S.member` clos]
+                          `S.union`
+                          S.fromList
+                            [cbt f | PrecBack pset f <- S.toList ppCurr,
+                                                        pset == (S.singleton Yield)
+                                                        && cbt f `S.member` clos]
+          takeCheckSet = S.fromList pPendCbtfs
+          checkSet = yieldCheckSet `S.union` takeCheckSet
+      in if fXl || fXe
+           then S.fromList pPendCbtfs == S.fromList fPendCbtfs
+           else checkSet == S.fromList fPendCbtfs
+    --
+
+    -- HNY
+    hnyCond clos = not (null [f | f@(HierNextYield _) <- S.toList clos])
+
+    hnyPushPr1 info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pXr = afterPop (prState info)
+          pCurrHnyfs = [f | f@(HierNextYield _) <- S.toList pCurr]
+      in if not (null pCurrHnyfs)
+           then pXr
+           else True
+
+    hnyPushPr2 info =
+      let clos = prClos info
+          pCurr = atomFormulaSet . current $ prState info
+          pPend = pending (prState info)
+          pXr = afterPop (prState info)
+          pPendHnyfs = [f | f@(HierNextYield _) <- S.toList pPend]
+          checkSet = S.fromList [f | f@(HierNextYield g) <- S.toList clos,
+                                                            g `S.member` pCurr]
+      in if pXr
+           then checkSet == S.fromList pPendHnyfs
+           else null pPendHnyfs
+
+    hnyPopFpr info =
+      let (fPend, _, _, _) = fprFuturePendComb info
+          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          ppXr = afterPop $ fromJust (fprPopped info)
+          fPendHnyfs = [f | f@(HierNextYield _) <- S.toList fPend]
+          ppCurrHnyfs = [f | f@(HierNextYield _) <- S.toList ppCurr]
+      in if ppXr
+           then S.fromList ppCurrHnyfs == S.fromList fPendHnyfs
+           else True
+
+    hnyPopPr info =
+      let pPend = pending (prState info)
+          pPendHnyfs = [f | f@(HierNextYield _) <- S.toList pPend]
+      in null pPendHnyfs
+
+    hnyShiftPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pPend = pending (prState info)
+          pCurrHnyfs = [f | f@(HierNextYield _) <- S.toList pCurr]
+          pPendHnyfs = [f | f@(HierNextYield _) <- S.toList pPend]
+      in null pCurrHnyfs && null pPendHnyfs
+    --
+
+    -- HBY
+    hbyCond clos = not (null [f | f@(HierBackYield _) <- S.toList clos])
+
+    hbyPushPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pXl = mustPush (prState info)
+          pXr = afterPop (prState info)
+          pCurrHbyfs = [f | f@(HierBackYield _) <- S.toList pCurr]
+      in if not (null pCurrHbyfs)
+           then pXl && pXr
+           else True
+
+    hbyPopFr info =
+      let clos = frClos info
+          (_, fXl, _, _) = frFuturePendComb info
+          fCurr = atomFormulaSet (frFutureCurr info)
+          ppCurr = atomFormulaSet . current $ fromJust (frPopped info)
+          ppXr = afterPop $ fromJust (frPopped info)
+          fCurrHbyfs = [f | f@(HierBackYield _) <- S.toList fCurr]
+          checkSet = S.fromList [f | f@(HierBackYield g) <- S.toList clos,
+                                                            g `S.member` ppCurr]
+      in if fXl
+           then if ppXr
+                  then S.fromList fCurrHbyfs == checkSet
+                  else null fCurrHbyfs
+           else True
+    --
+
+    -- HNT
+    hntCond clos = not (null [f | f@(HierNextTake _) <- S.toList clos])
+
+    hntPopFpr1 info =
+      let clos = fprClos info
+          (fPend, fXl, fXe, _) = fprFuturePendComb info
+          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+
+          fPendHntfs = [f | f@(HierNextTake _) <- S.toList fPend]
+
+          cby f = ChainBack (S.singleton Yield) f
+          pby f = PrecBack (S.singleton Yield) f
+          checkSet = S.fromList [f | f@(HierNextTake g) <- S.toList clos,
+                                                           cby g `S.member` ppCurr ||
+                                                           pby g `S.member` ppCurr]
+      in if not fXl && not fXe
+           then S.fromList fPendHntfs == checkSet
+           else True
+
+    hntPopFpr2 info =
+      let clos = fprClos info
+          pPend = pending (fprState info)
+          (_, fXl, _, _) = fprFuturePendComb info
+          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+
+          pPendHntfs = [f | f@(HierNextTake _) <- S.toList pPend]
+
+          cby f = ChainBack (S.singleton Yield) f
+          pby f = PrecBack (S.singleton Yield) f
+          checkSet = S.fromList [f | f@(HierNextTake _) <- S.toList clos,
+                                                           cby f `S.member` ppCurr ||
+                                                           pby f `S.member` ppCurr]
+      in if not fXl
+           then S.fromList pPendHntfs == checkSet
+           else True
+
+    hntPushFpr1 info =
+      let pCurr = atomFormulaSet . current $ fprState info
+          (_, fXl, _, _) = fprFuturePendComb info
+          pCurrHntfs = [f | f@(HierNextTake _) <- S.toList pCurr]
+      in if not (null pCurrHntfs)
+           then fXl
+           else True
+
+    hntShiftFpr1 = hntPushFpr1
+
+    hntPushFpr2 info =
+      let (fPend, _, _, _) = fprFuturePendComb info
+          fPendHntfs = [f | f@(HierNextTake _) <- S.toList fPend]
+      in null fPendHntfs
+
+    hntShiftFpr2 = hntPushFpr2
+    --
+
+    -- HBT
+    hbtCond clos = not (null [f | f@(HierBackTake _) <- S.toList clos])
+
+    hbtPopFpr1 info =
+      let clos = fprClos info
+          pPend = pending (fprState info)
+          (_, fXl, fXe, _) = fprFuturePendComb info
+          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+
+          pPendHbtfs = [f | f@(HierBackTake _) <- S.toList pPend]
+
+          cby f = ChainBack (S.singleton Yield) f
+          pby f = PrecBack (S.singleton Yield) f
+          checkSet = S.fromList [f | f@(HierBackTake g) <- S.toList clos,
+                                                           cby g `S.member` ppCurr ||
+                                                           pby g `S.member` ppCurr]
+      in if not fXl && not fXe
+           then S.fromList pPendHbtfs == checkSet
+           else True
+
+    hbtPopFpr2 info =
+      let clos = fprClos info
+          (fPend, fXl, _, _) = fprFuturePendComb info
+          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+
+          fPendHbtfs = [f | f@(HierBackTake _) <- S.toList fPend]
+
+          cby f = ChainBack (S.singleton Yield) f
+          pby f = PrecBack (S.singleton Yield) f
+          checkSet = S.fromList [f | f@(HierBackTake _) <- S.toList clos,
+                                                           cby f `S.member` ppCurr ||
+                                                           pby f `S.member` ppCurr]
+      in if not fXl
+           then S.fromList fPendHbtfs == checkSet
+           else True
+
+    hbtPopFpr3 info =
+      let pPend = pending (fprState info)
+          (_, fXl, fXe, _) = fprFuturePendComb info
+          pPendHbtfs = [f | f@(HierBackTake _) <- S.toList pPend]
+      in if not (null pPendHbtfs)
+           then not fXl && not fXe
+           else True
+
+    hbtPushFpr info =
+      let pCurr = atomFormulaSet . current $ fprState info
+          (_, fXl, _, _) = fprFuturePendComb info
+          pCurrHbtfs = [f | f@(HierBackTake _) <- S.toList pCurr]
+      in if not (null pCurrHbtfs)
+           then fXl
+           else True
+
+    hbtShiftFpr = hbtPushFpr
+
+    hbtPushPr info =
+      let pPend = pending (prState info)
+          pPendHbtfs = [f | f@(HierBackTake _) <- S.toList pPend]
+      in null pPendHbtfs
+
+    hbtShiftPr = hbtPushPr
+    --
+
+data PrInfo a = PrInfo
+  { prClos     :: Set (Formula a)
+  , prPrecFunc :: Set (Prop a) -> Set (Prop a) -> Prec
+  , prState    :: State a
+  , prProps    :: Maybe (Set (Prop a))
+  , prPopped   :: Maybe (State a)
+  }
+data FcrInfo a = FcrInfo
+  { fcrClos       :: Set (Formula a)
+  , fcrPrecFunc   :: Set (Prop a) -> Set (Prop a) -> Prec
+  , fcrState      :: State a
+  , fcrProps      :: Maybe (Set (Prop a))
+  , fcrPopped     :: Maybe (State a)
+  , fcrFutureCurr :: Atom a
+  }
+data FprInfo a = FprInfo
+  { fprClos           :: Set (Formula a)
+  , fprPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Prec
+  , fprState          :: State a
+  , fprProps          :: Maybe (Set (Prop a))
+  , fprPopped         :: Maybe (State a)
+  , fprFuturePendComb :: (Set (Formula a), Bool, Bool, Bool)
+  }
+data FrInfo a = FrInfo
+  { frClos           :: Set (Formula a)
+  , frPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Prec
+  , frState          :: State a
+  , frProps          :: Maybe (Set (Prop a))
+  , frPopped         :: Maybe (State a)
+  , frFutureCurr     :: Atom a
+  , frFuturePendComb :: (Set (Formula a), Bool, Bool, Bool)
+  }
+
+type PresentRule       a = (PrInfo  a -> Bool)
+type FutureCurrentRule a = (FcrInfo a -> Bool)
+type FuturePendingRule a = (FprInfo a -> Bool)
+type FutureRule        a = (FrInfo  a -> Bool)
+
+data RuleGroup a = RuleGroup { ruleGroupPrs  :: [PresentRule       a]
+                             , ruleGroupFcrs :: [FutureCurrentRule a]
+                             , ruleGroupFprs :: [FuturePendingRule a]
+                             , ruleGroupFrs  :: [FutureRule        a]
+                             }
+
+delta rgroup prec clos atoms pcombs state mprops mpopped = fstates
+  where
+    prs  = ruleGroupPrs  rgroup
+    fcrs = ruleGroupFcrs rgroup
+    fprs = ruleGroupFprs rgroup
+    frs  = ruleGroupFrs  rgroup
+
+    pvalid = null [r | r <- prs, not (r info)]
+      where info = PrInfo { prClos     = clos,
+                            prPrecFunc = prec,
+                            prState    = state,
+                            prProps    = mprops,
+                            prPopped   = mpopped
+                          }
+
+    vas = filter valid atoms
+      where makeInfo curr = FcrInfo { fcrClos       = clos,
+                                      fcrPrecFunc   = prec,
+                                      fcrState      = state,
+                                      fcrProps      = mprops,
+                                      fcrPopped     = mpopped,
+                                      fcrFutureCurr = curr
+                                    }
+            valid atom = null [r | r <- fcrs, not (r $ makeInfo atom)]
+
+    vpcs = S.toList . S.filter valid $ pcombs
+      where makeInfo pendComb = FprInfo { fprClos           = clos,
+                                          fprPrecFunc       = prec,
+                                          fprState          = state,
+                                          fprProps          = mprops,
+                                          fprPopped         = mpopped,
+                                          fprFuturePendComb = pendComb
+                                        }
+            valid pcomb = null [r | r <- fprs, not (r $ makeInfo pcomb)]
+
+    fstates = if (pvalid)
+                then [State curr pend xl xe xr | curr <- vas,
+                                                 pc@(pend, xl, xe, xr) <- vpcs,
+                                                 valid curr pc]
+                else []
+      where makeInfo curr pendComb = FrInfo { frClos           = clos,
+                                              frPrecFunc       = prec,
+                                              frState          = state,
+                                              frProps          = mprops,
+                                              frPopped         = mpopped,
+                                              frFutureCurr     = curr,
+                                              frFuturePendComb = pendComb
+                                            }
+            valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
+
 deltaShift :: (Eq a, Ord a, Show a)
            => Set (Formula a)
            -> [Atom a]
            -> Set (Set (Formula a), Bool, Bool, Bool)
            -> (Set (Prop a) -> Set (Prop a) -> Prec)
+           -> RuleGroup a
            -> State a
            -> Set (Prop a)
            -> [State a]
-deltaShift clos atoms pends prec s props
-  -- Shift rule
-  | currAtomic /= S.map Atomic props = []
-
-  -- XL rule
-  | mustPush s = []
-  -- XE rule
-  | not (mustShift s) = []
-
-  -- ChainNext Equal rule 3
-  | cneCheckSet /= S.fromList pendingSubCnefs = []
-  -- ChainNext Take rule 3
-  | not (null pendingCntfs) = []
-
-  -- ChainBack Yield rule 2
-  | not (null currCbyfs) = []
-  -- ChainBack Equal rule 1
-  | not (afterPop s) && not (null currCbefs) = []
-  | afterPop s && (S.fromList currCbefs /= S.fromList pendingCbefs) = []
-  -- ChainBack Take rule 2
-  | not (afterPop s) && not (null currCbtfs) = []
-  | afterPop s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
-
-  -- HierNextYield rule 5
-  | not (null currHnyfs) || not (null pendingHnyfs) = []
-
-  -- HierBackTake rule 5
-  | not (null pendingHbtfs) = []
-
-  | otherwise = debug ns
+deltaShift clos atoms pcombs prec rgroup state props = debug fstates
   where
     debug = id
     --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-    currFset = atomFormulaSet (current s)
-
-    currAtomic = atomicSet currFset
-
-    --  ChainNext Equal subformulas in the pending set
-    pendingSubCnefs = [f | ChainNext pset f <- S.toList (pending s),
-                                               pset == (S.singleton Equal)]
-    -- ChainNext Take formulas in the pending set
-    pendingCntfs = [f | f@(ChainNext pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Take)]
-    -- Fomulas that have a corresponding ChainNext Equal in the closure
-    cneCheckSet = S.filter
-                   (\f -> ChainNext (S.singleton Equal) f `S.member` clos)
-                   currFset
-
-    -- ChainNext Yield formulas
-    currCnyfs = [f | f@(ChainNext pset _) <- S.toList currFset,
-                                             pset == (S.singleton Yield)]
-    -- ChainNext Equal formulas
-    currCnefs = [f | f@(ChainNext pset _) <- S.toList currFset,
-                                             pset == (S.singleton Equal)]
-    -- ChainNext Take formulas
-    currCntfs = [f | f@(ChainNext pset _) <- S.toList currFset,
-                                             pset == (S.singleton Take)]
-
-    -- ChainBack Yield formulas
-    currCbyfs = [f | f@(ChainBack pset _) <- S.toList currFset,
-                                             pset == (S.singleton Yield)]
-    -- ChainBack Equal formulas
-    currCbefs = [f | f@(ChainBack pset _) <- S.toList currFset,
-                                             pset == (S.singleton Equal)]
-    -- ChainBack Equal formulas in the pending set
-    pendingCbefs = [f | f@(ChainBack pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Equal)]
-    -- ChainBack Take formulas in the pending set
-    pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Take)]
-    -- ChainBack Take formulas
-    currCbtfs = [f | f@(ChainBack pset _) <- S.toList currFset,
-                                             pset == (S.singleton Take)]
-
-    -- Hierarchical Next Yield formulas
-    currHnyfs = [f | f@(HierNextYield _) <- S.toList currFset]
-    -- Pending Hierarchical Next Yield formulas
-    pendingHnyfs = [f | f@(HierNextYield _) <- S.toList (pending s)]
-
-    -- Hierarchical Back Take formulas
-    pendingHbtfs = [f | f@(HierBackTake _) <- S.toList (pending s)]
-
-    cnyComp pend xl =
-      let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
-                                                   pset == (S.singleton Yield)]
-      in (xl `implies` (S.fromList currCnyfs == S.fromList pendCnyfs)) &&
-         ((not xl) `implies` (null currCnyfs))
-
-    cneComp pend xl =
-      let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
-                                                   pset == (S.singleton Equal)]
-      in (xl `implies` (S.fromList currCnefs == S.fromList pendCnefs)) &&
-         ((not xl) `implies` (null currCnefs))
-
-    cntComp pend xl =
-      let pendCntfs = [f | f@(ChainNext pset _) <- S.toList pend,
-                                                   pset == (S.singleton Take)]
-      in (xl `implies` (S.fromList currCntfs == S.fromList pendCntfs)) &&
-         ((not xl) `implies` (null currCntfs))
-
-    cbyComp pend =
-      let pendSubCbyfs = [sf | ChainBack pset sf <- S.toList pend,
-                                                    pset == (S.singleton Yield)]
-          checkSet = S.filter
-                       (\f -> ChainBack (S.singleton Yield) f `S.member` clos)
-                       currFset
-      in S.fromList pendSubCbyfs == checkSet
-
-    cbeComp pend =
-      let pendSubCbefs = [sf | ChainBack pset sf <- S.toList pend,
-                                                    pset == (S.singleton Equal)]
-          checkSet = S.filter
-                       (\f -> ChainBack (S.singleton Equal) f `S.member` clos)
-                       currFset
-      in S.fromList pendSubCbefs == checkSet
-
-    cbtComp pend =
-      let pendCbtfs = [f | f@(ChainBack pset _) <- S.toList pend,
-                                                   pset == (S.singleton Take)]
-      in null pendCbtfs
-
-    hntComp pend xl =
-      let pendHntfs = [f | f@(HierNextTake _) <- S.toList pend]
-          currHntfs = [f | f@(HierNextTake _) <- S.toList currFset]
-      in null pendHntfs && (not (null currHntfs) `implies` xl)
-
-    hbtComp pend xl =
-      let currHbtfs = [f | f@(HierBackTake _) <- S.toList currFset]
-      in if not (null currHbtfs)
-           then xl
-           else True
-
-    pendComp (pend, xl, xe, xr) = not xr &&
-                                  cnyComp pend xl &&
-                                  cneComp pend xl &&
-                                  cntComp pend xl &&
-                                  cbyComp pend &&
-                                  cbeComp pend &&
-                                  cbtComp pend &&
-                                  hntComp pend xl &&
-                                  hbtComp pend xl
-
-    -- PrecNext formulas in the current set
-    currPnfs = [f | f@(PrecNext _ _) <- S.toList currFset]
-
-    precNextComp atom =
-      let atomProps = S.fromList [p | Atomic p <- S.toList atom]
-          atomPrec = prec props atomProps
-
-          -- If a PrecNext concerns incompatible precedences, then it does not
-          -- belong to the current set
-          precComp = null [f | f@(PrecNext pset _) <- currPnfs,
-                                                      atomPrec `S.notMember` pset]
-
-          -- Formulas of the next atom which have a compatible PrecNext in the
-          -- closure
-          checkSet = atom `S.intersection`
-                     S.fromList [sf | PrecNext pset sf <- S.toList clos,
-                                                          atomPrec `S.member` pset]
-          fsComp = S.fromList [sf | PrecNext _ sf <- currPnfs] == checkSet
-      in precComp && fsComp
-
-    precBackComp atom =
-      let atomProps = S.fromList [p | Atomic p <- S.toList atom]
-          atomPrec = prec props atomProps
-
-          atomPbfs = [f | f@(PrecBack _ _) <- S.toList atom]
-
-          -- If a PrecBack concerns incompatible precedences, then it does not
-          -- belong to the atom
-          precComp = null [f | f@(PrecBack pset _) <- atomPbfs,
-                                                      atomPrec `S.notMember` pset]
-
-          -- Formulas in the current set which have a compatible PrecBack in the
-          -- closure
-          checkSet = currFset `S.intersection`
-                     S.fromList [sf | PrecBack pset sf <- S.toList clos,
-                                                          atomPrec `S.member` pset]
-
-          fsComp = checkSet == S.fromList [sf | PrecBack _ sf <- atomPbfs]
-      in precComp && fsComp
-
-    cas = filter (\(Atom fset eset) -> precBackComp fset &&
-                                       precNextComp fset
-                 ) atoms
-
-    cps = S.toList . S.filter pendComp $ pends
-
-    ns = [State c p xl xe xr | c <- cas, (p, xl, xe, xr) <- cps]
+    fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing
 
 deltaPush :: (Eq a, Ord a, Show a)
           => Set (Formula a)
           -> [Atom a]
           -> Set (Set (Formula a), Bool, Bool, Bool)
           -> (Set (Prop a) -> Set (Prop a) -> Prec)
+          -> RuleGroup a
           -> State a
           -> Set (Prop a)
           -> [State a]
-deltaPush clos atoms pends prec s props
-  -- Push rule
-  | currAtomic /= S.map Atomic props = []
-
-  -- XL rule
-  | not (mustPush s) = []
-  -- XE rule
-  | mustShift s = []
-
-  -- ChainBack Yield rule 1
-  | not (afterPop s) && not (null currCbyfs) = []
-  | afterPop s && (S.fromList currCbyfs /= S.fromList pendingCbyfs) = []
-  -- ChainBack Equal rule 2
-  | not (null currCbefs) = []
-  -- ChainBack Take rule 2
-  | not (afterPop s) && not (null currCbtfs) = []
-  | afterPop s && (S.fromList currCbtfs /= S.fromList pendingCbtfs) = []
-
-  -- HierNextYield rule 1
-  | not (afterPop s) && not (null currHnyfs) = []
-  -- HierNextYield rule 2
-  | not (afterPop s) && not (null pendingSubHnyfs) = []
-  | afterPop s && hnyCheckSet /= S.fromList pendingSubHnyfs = []
-
-  -- HierBackYield rule 1
-  | not (null currHbyfs) && not (mustPush s && afterPop s) = []
-
-  -- HierBackTake rule 5
-  | not (null pendingHbtfs) = []
-
-  | otherwise = debug ns
+deltaPush clos atoms pcombs prec rgroup state props = debug fstates
   where
     debug = id
     --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-    currFset = atomFormulaSet (current s)
-
-    currAtomic = atomicSet currFset
-
-    -- ChainNext Yield formulas
-    currCnyfs = [f | f@(ChainNext pset _) <- S.toList currFset,
-                                             pset == (S.singleton Yield)]
-    -- ChainNext Equal formulas
-    currCnefs = [f | f@(ChainNext pset _) <- S.toList currFset,
-                                             pset == (S.singleton Equal)]
-    -- ChainNext Take formulas
-    currCntfs = [f | f@(ChainNext pset _) <- S.toList currFset,
-                                             pset == (S.singleton Take)]
-
-    -- ChainBack Yield formulas in the pending set
-    pendingCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Yield)]
-    -- ChainBack Yield formulas
-    currCbyfs = [f | f@(ChainBack pset _) <- S.toList currFset,
-                                             pset == (S.singleton Yield)]
-    -- ChainBack Equal formulas
-    currCbefs = [f | f@(ChainBack pset _) <- S.toList currFset,
-                                             pset == (S.singleton Equal)]
-    -- ChainBack Take formulas in the pending set
-    pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Take)]
-    -- ChainBack Take formulas
-    currCbtfs = [f | f@(ChainBack pset _) <- S.toList currFset,
-                                             pset == (S.singleton Take)]
-
-    -- Hierarchical Next Yield formulas
-    currHnyfs = [f | f@(HierNextYield _) <- S.toList currFset]
-    -- Pending Hierarchical Next Yield subformulas
-    pendingSubHnyfs = [g | HierNextYield g <- S.toList (pending s)]
-    -- Fomulas that have a corresponding Hierarchical Next Yield in the closure
-    hnyCheckSet = S.filter
-                   (\f -> HierNextYield f `S.member` clos)
-                   currFset
-
-    -- Hierarchical Back Yield formulas
-    currHbyfs = [f | f@(HierBackYield _) <- S.toList currFset]
-
-    -- Hierarchical Back Take formulas
-    pendingHbtfs = [f | f@(HierBackTake _) <- S.toList (pending s)]
-
-    cnyComp pend xl =
-      let pendCnyfs = [f | f@(ChainNext pset _) <- S.toList pend,
-                                                   pset == (S.singleton Yield)]
-      in (xl `implies` (S.fromList currCnyfs == S.fromList pendCnyfs)) &&
-         ((not xl) `implies` (null currCnyfs))
-
-    cneComp pend xl =
-      let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
-                                                   pset == (S.singleton Equal)]
-      in (xl `implies` (S.fromList currCnefs == S.fromList pendCnefs)) &&
-         ((not xl) `implies` (null currCnefs))
-
-    cntComp pend xl =
-      let pendCntfs = [f | f@(ChainNext pset _) <- S.toList pend,
-                                                   pset == (S.singleton Take)]
-      in (xl `implies` (S.fromList currCntfs == S.fromList pendCntfs)) &&
-         ((not xl) `implies` (null currCntfs))
-
-    cbyComp pend =
-      let pendSubCbyfs = [sf | ChainBack pset sf <- S.toList pend,
-                                                    pset == (S.singleton Yield)]
-          checkSet = S.filter
-                       (\f -> ChainBack (S.singleton Yield) f `S.member` clos)
-                       currFset
-      in S.fromList pendSubCbyfs == checkSet
-
-    cbeComp pend =
-      let pendSubCbefs = [sf | ChainBack pset sf <- S.toList pend,
-                                                    pset == (S.singleton Equal)]
-          checkSet = S.filter
-                       (\f -> ChainBack (S.singleton Equal) f `S.member` clos)
-                       currFset
-      in S.fromList pendSubCbefs == checkSet
-
-    cbtComp pend =
-      let pendCbtfs = [f | f@(ChainBack pset _) <- S.toList pend,
-                                                   pset == (S.singleton Take)]
-      in null pendCbtfs
-
-    hntComp pend xl =
-      let pendHntfs = [f | f@(HierNextTake _) <- S.toList pend]
-          currHntfs = [f | f@(HierNextTake _) <- S.toList currFset]
-      in null pendHntfs && (not (null currHntfs) `implies` xl)
-
-    hbtComp pend xl =
-      let currHbtfs = [f | f@(HierBackTake _) <- S.toList currFset]
-      in if not (null currHbtfs)
-           then xl
-           else True
-
-    pendComp (pend, xl, xe, xr) = not xr &&
-                                  cnyComp pend xl &&
-                                  cneComp pend xl &&
-                                  cntComp pend xl &&
-                                  cbyComp pend &&
-                                  cbeComp pend &&
-                                  cbtComp pend &&
-                                  hntComp pend xl &&
-                                  hbtComp pend xl
-
-    -- PrecNext formulas in the current set
-    currPnfs = [f | f@(PrecNext _ _) <- S.toList currFset]
-
-    precNextComp atom =
-      let atomProps = S.fromList [p | Atomic p <- S.toList atom]
-          atomPrec = prec props atomProps
-
-          -- If a PrecNext concerns incompatible precedences, then it does not
-          -- belong to the current set
-          precComp = null [f | f@(PrecNext pset _) <- currPnfs,
-                                                      atomPrec `S.notMember` pset]
-
-          -- Formulas of the next atom which have a compatible PrecNext in the
-          -- closure
-          checkSet = atom `S.intersection`
-                     S.fromList [sf | PrecNext pset sf <- S.toList clos,
-                                                          atomPrec `S.member` pset]
-          fsComp = S.fromList [sf | PrecNext _ sf <- currPnfs] == checkSet
-      in precComp && fsComp
-
-    precBackComp atom =
-      let atomProps = S.fromList [p | Atomic p <- S.toList atom]
-          atomPrec = prec props atomProps
-
-          atomPbfs = [f | f@(PrecBack _ _) <- S.toList atom]
-
-          -- If a PrecBack concerns incompatible precedences, then it does not
-          -- belong to the atom
-          precComp = null [f | f@(PrecBack pset _) <- atomPbfs,
-                                                      atomPrec `S.notMember` pset]
-
-          -- Formulas in the current set which have a compatible PrecBack in the
-          -- closure
-          checkSet = currFset `S.intersection`
-                     S.fromList [sf | PrecBack pset sf <- S.toList clos,
-                                                          atomPrec `S.member` pset]
-
-          fsComp = checkSet == S.fromList [sf | PrecBack _ sf <- atomPbfs]
-      in precComp && fsComp
-
-    cas = filter (\(Atom fset eset) -> precBackComp fset &&
-                                       precNextComp fset
-                 ) atoms
-
-    cps = S.toList . S.filter pendComp $ pends
-
-    ns = [State c p xl xe xr | c <- cas, (p, xl, xe, xr) <- cps]
+    fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing
 
 deltaPop :: (Eq a, Ord a, Show a)
          => Set (Formula a)
          -> [Atom a]
          -> Set (Set (Formula a), Bool, Bool, Bool)
          -> (Set (Prop a) -> Set (Prop a) -> Prec)
+         -> RuleGroup a
          -> State a
          -> State a
          -> [State a]
-deltaPop clos atoms pends prec s popped
-  -- XL rule
-  | mustPush s = []
-  -- XE rule
-  | mustShift s = []
-
-  -- ChainNext Equal rule 2
-  | not (null pendingCnefs) = []
-  -- ChainNext Take rule 2
-  | cntCheckSet /= S.fromList pendingSubCntfs = []
-
-  -- HierNextYield rule 4
-  | not (null pendingHnyfs) = []
-
-  | otherwise = debug ns
+deltaPop clos atoms pcombs prec rgroup state popped = debug fstates
   where
     debug = id
     --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-    currFset = atomFormulaSet (current s)
-    poppedCurrFset = atomFormulaSet (current popped)
-
-    currAtomic = atomicSet currFset
-
-    -- ChainNext Equal formulas in the pending set
-    pendingCnefs = [f | f@(ChainNext pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Equal)]
-    -- ChainNext Take subformulas in the pending set
-    pendingSubCntfs = [f | ChainNext pset f <- S.toList (pending s),
-                                               pset == (S.singleton Take)]
-    -- Fomulas that have a corresponding ChainNext Take in the closure
-    cntCheckSet = S.filter
-                   (\f -> ChainNext (S.singleton Take) f `S.member` clos)
-                   currFset
-
-    -- Pending ChainNext Yield formulas of popped state
-    poppedCnyfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
-                                               pset == (S.singleton Yield)]
-    -- Pending ChainNext Equal formulas of popped state
-    poppedCnefs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
-                                               pset == (S.singleton Equal)]
-    -- Pending ChainNext Take formulas of popped state
-    poppedCntfs = [f | f@(ChainNext pset _) <- S.toList (pending popped),
-                                               pset == (S.singleton Take)]
-
-    -- ChainBack Yield formulas
-    poppedCbyfs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
-                                               pset == (S.singleton Yield)]
-    -- ChainBack Equal formulas
-    poppedCbefs = [f | f@(ChainBack pset _) <- S.toList (pending popped),
-                                               pset == (S.singleton Equal)]
-    -- ChainBack Take formulas in the pending set
-    pendingCbtfs = [f | f@(ChainBack pset _) <- S.toList (pending s),
-                                                pset == (S.singleton Take)]
-
-    -- Pending Hierarchical Next Yield formulas
-    pendingHnyfs = [f | f@(HierNextYield _) <- S.toList (pending s)]
-
-    -- Is an atom compatible with pop rule?
-    popComp atom = atomEncodedSet (current s) == atomEncodedSet atom
-
-    cnyComp pend xl =
-      let currCheckSet = S.map (ChainNext (S.singleton Yield)) .
-                         S.filter (\f -> ChainNext (S.singleton Yield) f `S.member` clos) $
-                         currFset
-          pendCheckSet = S.fromList [f | f@(ChainNext pset _) <- S.toList pend,
-                                                                 pset == (S.singleton Yield)]
-          checkSet = (currCheckSet `S.difference` pendCheckSet) `S.union`
-                     (pendCheckSet `S.difference` currCheckSet)
-      in (xl `implies` (S.fromList poppedCnyfs == checkSet)) &&
-         ((not xl) `implies` (null poppedCnyfs))
-
-    cneComp pend =
-      let pendCnefs = [f | f@(ChainNext pset _) <- S.toList pend,
-                                                   pset == (S.singleton Equal)]
-      in S.fromList poppedCnefs == S.fromList pendCnefs
-
-    cntComp pend =
-      let pendCntfs = [f | f@(ChainNext pset _) <- S.toList pend,
-                                                   pset == (S.singleton Take)]
-      in S.fromList poppedCntfs == S.fromList pendCntfs
-
-    cbyComp pend =
-      let pendCbyfs = [f | f@(ChainBack pset _) <- S.toList pend,
-                                                   pset == (S.singleton Yield)]
-      in S.fromList poppedCbyfs == S.fromList pendCbyfs
-
-    cbeComp pend =
-      let pendCbefs = [f | f@(ChainBack pset _) <- S.toList pend,
-                                                   pset == (S.singleton Equal)]
-      in S.fromList poppedCbefs == S.fromList pendCbefs
-
-    cbtComp pend xl xe =
-      let pendCbtfs = [f | f@(ChainBack pset _) <- S.toList pend,
-                                                   pset == (S.singleton Take)]
-          -- These definitions could be moved out
-          cbt f = ChainBack (S.singleton Take) f
-          yieldCheckSet = S.fromList
-                           [cbt f | ChainBack pset f <- S.toList poppedCurrFset,
-                                                        pset == (S.singleton Yield)
-                                                        && cbt f `S.member` clos]
-                          `S.union`
-                          S.fromList
-                            [cbt f | PrecBack pset f <- S.toList poppedCurrFset,
-                                                        pset == (S.singleton Yield)
-                                                        && cbt f `S.member` clos]
-          takeCheckSet = S.fromList pendingCbtfs
-          checkSet = yieldCheckSet `S.union` takeCheckSet
-      in if (xl || xe)
-           then S.fromList pendingCbtfs == S.fromList pendCbtfs
-           else checkSet == S.fromList pendCbtfs
-
-    hnyComp pend xr =
-      let pendHnyfs = [f | f@(HierNextYield _) <- S.toList pend]
-          poppedCurrHnyfs = [f | f@(HierNextYield _) <- S.toList poppedCurrFset]
-      in if afterPop popped
-           then S.fromList poppedCurrHnyfs == S.fromList pendHnyfs
-           else True
-
-    hntComp pend xl xe =
-      let cby f = ChainBack (S.singleton Yield) f
-          pby f = PrecBack (S.singleton Yield) f
-          pendSubHntfs = [g | HierNextTake g <- S.toList pend]
-          pendingSubHntfs = [g | HierNextTake g <- S.toList (pending s)]
-          pendCheckList = [g | HierNextTake g <- S.toList clos,
-                                                 cby g `S.member` poppedCurrFset ||
-                                                 pby g `S.member` poppedCurrFset]
-          pendingCheckList = [g | f@(HierNextTake g) <- S.toList clos,
-                                                        cby f `S.member` poppedCurrFset ||
-                                                        pby f `S.member` poppedCurrFset]
-      in if not xl
-         then (S.fromList pendCheckList == S.fromList pendSubHntfs) &&
-              (S.fromList pendingSubHntfs == S.fromList pendingCheckList)
-         else True
-
-    hbtComp pend xl xe =
-      let cby f = ChainBack (S.singleton Yield) f
-          pby f = PrecBack (S.singleton Yield) f
-
-          pendSubHbtfs = [g | HierBackTake g <- S.toList pend]
-          pendingSubHbtfs = [g | HierBackTake g <- S.toList (pending s)]
-
-          pendCheckList = [g | f@(HierBackTake g) <- S.toList clos,
-                                                     cby f `S.member` poppedCurrFset ||
-                                                     pby f `S.member` poppedCurrFset]
-          pendingCheckList = [g | HierBackTake g <- S.toList clos,
-                                                    cby g `S.member` poppedCurrFset ||
-                                                    pby g `S.member` poppedCurrFset]
-      in (not (null pendingSubHbtfs) `implies` (not xl && not xe)) &&
-         (not xl `implies` ((S.fromList pendCheckList == S.fromList pendSubHbtfs) &&
-                            (S.fromList pendingSubHbtfs == S.fromList pendingCheckList)))
-
-    pendComp (pend, xl, xe, xr) = xr &&
-                                  cnyComp pend xl &&
-                                  cneComp pend &&
-                                  cntComp pend &&
-                                  cbyComp pend &&
-                                  cbeComp pend &&
-                                  cbtComp pend xl xe &&
-                                  hnyComp pend xr &&
-                                  hntComp pend xl xe &&
-                                  hbtComp pend xl xe
-
-    cas = filter popComp atoms
-
-    cps = S.toList . S.filter pendComp $ pends
-
-    hbyCombComp curr xl =
-      let nextSubHbyfs = [g | HierBackYield g <- S.toList curr]
-          poppedCurrSubHbyfSet = S.filter
-                                   (\f -> HierBackYield f `S.member` clos) $
-                                   poppedCurrFset
-      in if xl
-           then if afterPop popped
-                  then S.fromList nextSubHbyfs == poppedCurrSubHbyfSet
-                  else null nextSubHbyfs
-           else True
-
-    ns = [State c p xl xe xr | c <- cas, (p, xl, xe, xr) <- cps,
-                               hbyCombComp (atomFormulaSet c) xl]
+    fstates = delta rgroup prec clos atoms pcombs state Nothing (Just popped)
 
 isFinal :: (Show a) => State a -> Bool
 isFinal s@(State c p xl xe xr) = debug $ not xl &&
@@ -935,9 +1129,9 @@ check phi prec ts =
             prec
             is
             isFinal
-            (deltaShift cl as pcs prec)
-            (deltaPush  cl as pcs prec)
-            (deltaPop   cl as pcs prec)
+            (deltaShift cl as pcs prec shiftRules)
+            (deltaPush  cl as pcs prec  pushRules)
+            (deltaPop   cl as pcs prec   popRules)
             ts
   where nphi = normalize phi
         tsprops = S.toList $ foldl' (S.union) S.empty ts
@@ -945,6 +1139,7 @@ check phi prec ts =
         as = atoms cl
         pcs = pendCombs cl
         is = initials nphi cl as
+        (shiftRules, pushRules, popRules) = deltaRules cl
         debug = id
         --debug = DT.trace ("\nRun with:"         ++
         --                  "\nPhi:          "    ++ show phi          ++
