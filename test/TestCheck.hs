@@ -359,18 +359,6 @@ unitTuples =
     , stlPrecedence
     , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
     )
-  , ( "Stack trace lang, ChainNext YET working"
-    , True
-    , ChainNext (S.fromList [Yield, Equal, Take]) (Atomic $ Prop "ret")
-    , stlPrecedence
-    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-    )
-  , ( "Stack trace lang, ChainNext E working"
-    , True
-    , ChainNext (S.fromList [Equal]) (Atomic $ Prop "ret")
-    , stlPrecedence
-    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-    )
   , ( "Stack trace lang, accepting ChainBack Yield"
     , True
     , formulaAt 3 $ ChainBack (S.singleton Yield) (Atomic $ Prop "han")
