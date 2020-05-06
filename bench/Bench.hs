@@ -1,4 +1,4 @@
-import POMC.Check (check)
+import POMC.Check (check, fastcheck)
 import POMC.Example (stlPrecedence, stlAnnotate)
 import POMC.Opa (Prec(..))
 import POMC.Potl (Formula(..), Prop(..), formulaAt)
@@ -138,7 +138,7 @@ benchCases =
   ]
 
 benchCheck name expected phi prec ts =
-  if expected == check phi prec ts
+  if expected == fastcheck phi prec ts
     then putStrLn (name ++ ": success")
     else putStrLn (name ++ ": failure")
 

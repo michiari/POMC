@@ -9,7 +9,7 @@ import qualified Data.Set as S
 
 import Control.Monad
 
-import POMC.Check (check)
+import POMC.Check (check, fastcheck)
 import POMC.Example (stlPrecedence, stlAnnotate)
 import POMC.Opa (Prec(..))
 import POMC.Potl (Formula(..), Prop(..), formulaAt)
@@ -762,8 +762,8 @@ unitTests = testGroup "Unit" (map makeTestCase unitTuples)
         rejectFail = "Formula should not hold for given word!"
         makeTestCase (name, expected, phi, prec, ts) =
           if expected == True
-            then testCase name $ check phi prec ts @? acceptFail
-            else testCase name $ not (check phi prec ts) @? rejectFail
+            then testCase name $ fastcheck phi prec ts @? acceptFail
+            else testCase name $ not (fastcheck phi prec ts) @? rejectFail
 
 termTrace :: Int -> Gen [String]
 termTrace m = return ["call"] `gconcat` (arb m) `gconcat` return ["ret"]

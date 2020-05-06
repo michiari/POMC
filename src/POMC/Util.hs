@@ -3,6 +3,8 @@ module POMC.Util ( unsafeLookup
                  , xor
                  , implies
                  , iff
+                 , safeHead
+                 , safeTail
                  ) where
 
 unsafeLookup :: Eq a => a -> [(a, b)] -> b
@@ -23,3 +25,11 @@ implies a b = (not a) || b
 
 iff :: Bool -> Bool -> Bool
 iff = (==)
+
+safeHead :: [a] -> Maybe a
+safeHead [] = Nothing
+safeHead (x:_) = Just x
+
+safeTail :: [a] -> Maybe [a]
+safeTail [] = Nothing
+safeTail (_:xs) = Just xs

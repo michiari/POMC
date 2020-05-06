@@ -2,7 +2,10 @@ module POMC.Opa ( Prec(..)
                 , Opa(..)
                 , runOpa
                 , run
+                , augRun
                 ) where
+
+import POMC.Util (safeHead, safeTail)
 
 data Prec = Yield | Equal | Take deriving (Eq, Ord)
 
@@ -53,20 +56,54 @@ run prec initials isFinal deltaShift deltaPush deltaPop tokens =
       | null tokens = any recurse (pop dpop conf)
 
       -- Stack empty or stack top yields to next token: push
-      | null stack || prec (fst top) t == Yield =
-        any recurse (push dpush conf)
+      | null stack || prec (fst top) t == Yield = any recurse (push dpush conf)
 
       -- Stack top has same precedence as next token: shift
-      | prec (fst top) t == Equal =
-        any recurse (shift dshift conf)
+      | prec (fst top) t == Equal = any recurse (shift dshift conf)
 
       -- Stack top takes precedence on next token: pop
-      | prec (fst top) t == Take =
-        any recurse (pop dpop conf)
+      | prec (fst top) t == Take = any recurse (pop dpop conf)
 
       where top = head stack  --
             t   = head tokens -- safe due to laziness
             recurse = run' prec dshift dpush dpop isFinal
+
+augRun :: (t -> t -> Prec)
+       -> [s]
+       -> (s -> Bool)
+       -> (Maybe t -> s -> t -> [s])
+       -> (Maybe t -> s -> t -> [s])
+       -> (Maybe t -> s -> s -> [s])
+       -> [t]
+       -> Bool
+augRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
+  any
+    (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal)
+    (map (\i -> Config i [] tokens) initials)
+  where
+    run' prec adshift adpush adpop isFinal conf@(Config s stack tokens)
+      -- No more input and empty stack: accept / reject
+      | null tokens && null stack = isFinal s
+
+      -- No more input but stack non empty: pop
+      | null tokens = any recurse (pop dpop conf)
+
+      -- Stack empty or stack top yields to next token: push
+      | null stack || prec (fst top) t == Yield = any recurse (push dpush conf)
+
+      -- Stack top has same precedence as next token: shift
+      | prec (fst top) t == Equal = any recurse (shift dshift conf)
+
+      -- Stack top takes precedence on next token: pop
+      | prec (fst top) t == Take = any recurse (pop dpop conf)
+
+      where lookahead = safeTail tokens >>= safeHead
+            dshift = adshift lookahead
+            dpush  = adpush  lookahead
+            dpop   = adpop   lookahead
+            top = head stack  --
+            t   = head tokens -- safe due to laziness
+            recurse = run' prec adshift adpush adpop isFinal
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]

@@ -4,9 +4,10 @@ module POMC.Check ( State(..)
                   , showAtoms
                   , showStates
                   , check
+                  , fastcheck
                   ) where
 
-import POMC.Opa (Prec(..), run)
+import POMC.Opa (Prec(..), run, augRun)
 import POMC.Potl
 import POMC.Util (xor, implies)
 import POMC.Data
@@ -959,11 +960,12 @@ deltaRules condInfo =
     --
 
 data PrInfo a = PrInfo
-  { prClos     :: Set (Formula a)
-  , prPrecFunc :: Set (Prop a) -> Set (Prop a) -> Prec
-  , prState    :: State a
-  , prProps    :: Maybe (Set (Prop a))
-  , prPopped   :: Maybe (State a)
+  { prClos      :: Set (Formula a)
+  , prPrecFunc  :: Set (Prop a) -> Set (Prop a) -> Prec
+  , prState     :: State a
+  , prProps     :: Maybe (Set (Prop a))
+  , prPopped    :: Maybe (State a)
+  , prNextProps :: Maybe (Set (Prop a))
   }
 data FcrInfo a = FcrInfo
   { fcrClos       :: Set (Formula a)
@@ -972,6 +974,7 @@ data FcrInfo a = FcrInfo
   , fcrProps      :: Maybe (Set (Prop a))
   , fcrPopped     :: Maybe (State a)
   , fcrFutureCurr :: Atom a
+  , fcrNextProps  :: Maybe (Set (Prop a))
   }
 data FprInfo a = FprInfo
   { fprClos           :: Set (Formula a)
@@ -980,6 +983,7 @@ data FprInfo a = FprInfo
   , fprProps          :: Maybe (Set (Prop a))
   , fprPopped         :: Maybe (State a)
   , fprFuturePendComb :: (Set (Formula a), Bool, Bool, Bool)
+  , fprNextProps      :: Maybe (Set (Prop a))
   }
 data FrInfo a = FrInfo
   { frClos           :: Set (Formula a)
@@ -989,6 +993,7 @@ data FrInfo a = FrInfo
   , frPopped         :: Maybe (State a)
   , frFutureCurr     :: Atom a
   , frFuturePendComb :: (Set (Formula a), Bool, Bool, Bool)
+  , frNextProps      :: Maybe (Set (Prop a))
   }
 
 type PresentRule       a = (PrInfo  a -> Bool)
@@ -1002,7 +1007,7 @@ data RuleGroup a = RuleGroup { ruleGroupPrs  :: [PresentRule       a]
                              , ruleGroupFrs  :: [FutureRule        a]
                              }
 
-delta rgroup prec clos atoms pcombs state mprops mpopped = fstates
+delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
   where
     prs  = ruleGroupPrs  rgroup
     fcrs = ruleGroupFcrs rgroup
@@ -1010,11 +1015,12 @@ delta rgroup prec clos atoms pcombs state mprops mpopped = fstates
     frs  = ruleGroupFrs  rgroup
 
     pvalid = null [r | r <- prs, not (r info)]
-      where info = PrInfo { prClos     = clos,
-                            prPrecFunc = prec,
-                            prState    = state,
-                            prProps    = mprops,
-                            prPopped   = mpopped
+      where info = PrInfo { prClos      = clos,
+                            prPrecFunc  = prec,
+                            prState     = state,
+                            prProps     = mprops,
+                            prPopped    = mpopped,
+                            prNextProps = mnextprops
                           }
 
     vas = filter valid atoms
@@ -1023,7 +1029,8 @@ delta rgroup prec clos atoms pcombs state mprops mpopped = fstates
                                       fcrState      = state,
                                       fcrProps      = mprops,
                                       fcrPopped     = mpopped,
-                                      fcrFutureCurr = curr
+                                      fcrFutureCurr = curr,
+                                      fcrNextProps  = mnextprops
                                     }
             valid atom = null [r | r <- fcrs, not (r $ makeInfo atom)]
 
@@ -1033,7 +1040,8 @@ delta rgroup prec clos atoms pcombs state mprops mpopped = fstates
                                           fprState          = state,
                                           fprProps          = mprops,
                                           fprPopped         = mpopped,
-                                          fprFuturePendComb = pendComb
+                                          fprFuturePendComb = pendComb,
+                                          fprNextProps      = mnextprops
                                         }
             valid pcomb = null [r | r <- fprs, not (r $ makeInfo pcomb)]
 
@@ -1048,7 +1056,8 @@ delta rgroup prec clos atoms pcombs state mprops mpopped = fstates
                                               frProps          = mprops,
                                               frPopped         = mpopped,
                                               frFutureCurr     = curr,
-                                              frFuturePendComb = pendComb
+                                              frFuturePendComb = pendComb,
+                                              frNextProps      = mnextprops
                                             }
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
@@ -1067,7 +1076,7 @@ deltaShift clos atoms pcombs prec rgroup state props = debug fstates
     --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-    fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing
+    fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
 
 deltaPush :: (Eq a, Ord a, Show a)
           => Set (Formula a)
@@ -1084,7 +1093,7 @@ deltaPush clos atoms pcombs prec rgroup state props = debug fstates
     --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-    fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing
+    fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
 
 deltaPop :: (Eq a, Ord a, Show a)
          => Set (Formula a)
@@ -1101,7 +1110,7 @@ deltaPop clos atoms pcombs prec rgroup state popped = debug fstates
     --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
     --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-    fstates = delta rgroup prec clos atoms pcombs state Nothing (Just popped)
+    fstates = delta rgroup prec clos atoms pcombs state Nothing (Just popped) Nothing
 
 isFinal :: (Show a) => State a -> Bool
 isFinal s@(State c p xl xe xr) = debug $ not xl &&
@@ -1140,6 +1149,102 @@ check phi prec ts =
         pcs = pendCombs cl
         is = initials nphi cl as
         (shiftRules, pushRules, popRules) = deltaRules cl
+        debug = id
+        --debug = DT.trace ("\nRun with:"         ++
+        --                  "\nPhi:          "    ++ show phi          ++
+        --                  "\nNorm. phi:    "    ++ show nphi         ++
+        --                  "\nTokens:       "    ++ show ts           ++
+        --                  "\nToken props:\n"    ++ show tsprops      ++
+        --                  "\nClosure:\n"        ++ showFormulaSet cl ++
+        --                  "\nAtoms:\n"          ++ showAtoms as      ++
+        --                  "\nPending atoms:\n"  ++ showPendCombs pcs ++
+        --                  "\nInitial states:\n" ++ showStates is)
+
+lookaheadProps lookahead = case lookahead of
+                             Just npset -> npset
+                             Nothing    -> (S.empty)
+
+augDeltaShift clos atoms pcombs prec rgroup lookahead state props = debug fstates
+  where
+    debug = id
+    --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
+    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+
+    fstates = delta rgroup
+                    prec
+                    clos
+                    atoms
+                    pcombs
+                    state
+                    (Just props)
+                    Nothing
+                    (Just . lookaheadProps $ lookahead)
+
+augDeltaPush clos atoms pcombs prec rgroup lookahead state props = debug fstates
+  where
+    debug = id
+    --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
+    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+
+    fstates = delta rgroup
+                    prec
+                    clos
+                    atoms
+                    pcombs
+                    state
+                    (Just props)
+                    Nothing
+                    (Just . lookaheadProps $ lookahead)
+
+augDeltaPop clos atoms pcombs prec rgroup lookahead state popped = debug fstates
+  where
+    debug = id
+    --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
+    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+
+    fstates = delta rgroup
+                    prec
+                    clos
+                    atoms
+                    pcombs
+                    state
+                    Nothing
+                    (Just popped)
+                    (Just . lookaheadProps $ lookahead)
+
+augDeltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
+augDeltaRules cl =
+  let (shiftrg, pushrg, poprg) = deltaRules cl
+      augShiftRg = shiftrg {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs shiftrg}
+      augPushRg  = pushrg  {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs pushrg}
+      augPopRg   = poprg
+  in (augShiftRg, augPushRg, augPopRg)
+  where
+    lookaheadFcr info = let fCurr = atomFormulaSet (fcrFutureCurr info)
+                            nextProps = fromJust (fcrNextProps info)
+                        in atomicSet fCurr == S.map Atomic nextProps
+
+fastcheck :: (Ord a, Show a)
+          => Formula a
+          -> (Set (Prop a) -> Set (Prop a) -> Prec)
+          -> [Set (Prop a)]
+          -> Bool
+fastcheck phi prec ts =
+  debug $ augRun
+            prec
+            is
+            isFinal
+            (augDeltaShift cl as pcs prec shiftRules)
+            (augDeltaPush  cl as pcs prec  pushRules)
+            (augDeltaPop   cl as pcs prec   popRules)
+            ts
+  where nphi = normalize phi
+        tsprops = S.toList $ foldl' (S.union) S.empty ts
+        cl = closure nphi tsprops
+        as = atoms cl
+        pcs = pendCombs cl
+        is = initials nphi cl as
+        (shiftRules, pushRules, popRules) = augDeltaRules cl
         debug = id
         --debug = DT.trace ("\nRun with:"         ++
         --                  "\nPhi:          "    ++ show phi          ++
