@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 51bebddaf47f27fe6f3a6d0177dfd1ba1465f74e6d1654b0c16b0abd8b6bd94b
+-- hash: 8c2ea60b8bed7ac18f2c0dde713ce8d8bc03c12dab151267408f1e9ee4c2e51d
 
 name:           POMC
 version:        0.1
@@ -32,11 +32,13 @@ library
       Paths_POMC
   hs-source-dirs:
       src
-  ghc-options: -Wall -O2
+  ghc-options: -Wall -O2 -feager-blackholing
   build-depends:
       base >=4.7 && <5
     , bitvec
     , containers
+    , deepseq
+    , parallel
     , vector
   default-language: Haskell2010
 
@@ -46,7 +48,7 @@ executable pomc
       Paths_POMC
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2 -feager-blackholing
   build-depends:
       POMC
     , base >=4.7 && <5
@@ -61,7 +63,7 @@ test-suite test-pomc
       Paths_POMC
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2 -feager-blackholing
   build-depends:
       POMC
     , base >=4.7 && <5
@@ -78,7 +80,7 @@ benchmark bench-pomc
       Paths_POMC
   hs-source-dirs:
       bench
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2 -feager-blackholing
   build-depends:
       POMC
     , base >=4.7 && <5

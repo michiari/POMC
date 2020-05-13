@@ -1,13 +1,22 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+
 module POMC.Opa ( Prec(..)
                 , Opa(..)
                 , runOpa
                 , run
-                , augRun
+                , parAugRun
                 ) where
 
-import POMC.Util (safeHead, safeTail)
+import POMC.Util (any', safeHead, safeTail)
 
-data Prec = Yield | Equal | Take deriving (Eq, Ord)
+import Control.Parallel.Strategies
+
+import Control.DeepSeq
+import GHC.Generics (Generic)
+
+import qualified Data.Vector as V
+
+data Prec = Yield | Equal | Take deriving (Eq, Ord, Generic, NFData)
 
 instance Show Prec where
   show Yield = "<"
@@ -29,7 +38,7 @@ data Config s t = Config
     { confState :: s
     , confStack :: [(t, s)]
     , confInput :: [t]
-    } deriving (Show)
+    } deriving (Show, Generic, NFData)
 
 runOpa :: (Eq s) => Opa s t -> [t] -> Bool
 runOpa (Opa _ prec _ initials finals dshift dpush dpop) tokens =
@@ -44,7 +53,7 @@ run :: (t -> t -> Prec)
     -> [t]
     -> Bool
 run prec initials isFinal deltaShift deltaPush deltaPop tokens =
-  any
+  any'
     (run' prec deltaShift deltaPush deltaPop isFinal)
     (map (\i -> Config i [] tokens) initials)
   where
@@ -53,22 +62,36 @@ run prec initials isFinal deltaShift deltaPush deltaPop tokens =
       | null tokens && null stack = isFinal s
 
       -- No more input but stack non empty: pop
-      | null tokens = any recurse (pop dpop conf)
+      | null tokens = any' recurse (pop dpop conf)
 
       -- Stack empty or stack top yields to next token: push
-      | null stack || prec (fst top) t == Yield = any recurse (push dpush conf)
+      | null stack || prec (fst top) t == Yield = any' recurse (push dpush conf)
 
       -- Stack top has same precedence as next token: shift
-      | prec (fst top) t == Equal = any recurse (shift dshift conf)
+      | prec (fst top) t == Equal = any' recurse (shift dshift conf)
 
       -- Stack top takes precedence on next token: pop
-      | prec (fst top) t == Take = any recurse (pop dpop conf)
+      | prec (fst top) t == Take = any' recurse (pop dpop conf)
 
       where top = head stack  --
             t   = head tokens -- safe due to laziness
             recurse = run' prec dshift dpush dpop isFinal
 
-augRun :: (t -> t -> Prec)
+parAny p xs = runEval $ parAny' p xs
+  where parAny' p [] = return False
+        parAny' p (x:xs) = do px <- rpar (p x)
+                              pxs <- parAny' p xs
+                              return (px || pxs)
+
+interChunks nchunks xs = interChunks' (V.generate nchunks (const [])) 0 xs
+  where interChunks' vec _ [] = vec
+        interChunks' vec i (x:xs) = interChunks'
+                                      (vec V.// [(i,x:(vec V.! i))])
+                                      ((i + 1) `mod` nchunks)
+                                      xs
+
+parAugRun :: (NFData s, NFData t)
+       => (t -> t -> Prec)
        -> [s]
        -> (s -> Bool)
        -> (Maybe t -> s -> t -> [s])
@@ -76,26 +99,29 @@ augRun :: (t -> t -> Prec)
        -> (Maybe t -> s -> s -> [s])
        -> [t]
        -> Bool
-augRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
-  any
-    (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal)
-    (map (\i -> Config i [] tokens) initials)
+parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
+  let ics = (map (\i -> Config i [] tokens) initials)
+      nchunks = min 128 (length ics)
+      chunks = V.toList $ interChunks nchunks ics
+      process = runEval . rdeepseq .
+                  any' (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal)
+  in parAny process chunks
   where
     run' prec adshift adpush adpop isFinal conf@(Config s stack tokens)
       -- No more input and empty stack: accept / reject
       | null tokens && null stack = isFinal s
 
       -- No more input but stack non empty: pop
-      | null tokens = any recurse (pop dpop conf)
+      | null tokens = recurse (pop dpop conf)
 
       -- Stack empty or stack top yields to next token: push
-      | null stack || prec (fst top) t == Yield = any recurse (push dpush conf)
+      | null stack || prec (fst top) t == Yield = recurse (push dpush conf)
 
       -- Stack top has same precedence as next token: shift
-      | prec (fst top) t == Equal = any recurse (shift dshift conf)
+      | prec (fst top) t == Equal = recurse (shift dshift conf)
 
       -- Stack top takes precedence on next token: pop
-      | prec (fst top) t == Take = any recurse (pop dpop conf)
+      | prec (fst top) t == Take = recurse (pop dpop conf)
 
       where lookahead = safeTail tokens >>= safeHead
             dshift = adshift lookahead
@@ -103,25 +129,22 @@ augRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             dpop   = adpop   lookahead
             top = head stack  --
             t   = head tokens -- safe due to laziness
-            recurse = run' prec adshift adpush adpop isFinal
+            recurse = any' (run' prec adshift adpush adpop isFinal)
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]
 push dpush (Config s stack (t:ts)) =
-  map
-    (\s' -> (Config s' ((t, s):stack) ts))
-    (dpush s t)
+  map (\s' -> (Config s' ((t, s):stack) ts))
+      (dpush s t)
 
 -- Partial: assumes token list and stack not empty
 shift :: (s -> t -> [s]) -> Config s t -> [Config s t]
 shift dshift (Config s stack (t:ts)) =
-  map
-    (\s' -> (Config s' ((t, (snd (head stack))):(tail stack)) ts))
-    (dshift s t)
+  map (\s' -> (Config s' ((t, (snd (head stack))):(tail stack)) ts))
+      (dshift s t)
 
 -- Partial: assumes stack not empty
 pop :: (s -> s -> [s]) -> Config s t -> [Config s t]
 pop dpop (Config s stack tokens) =
-  map
-    (\s' -> (Config s' (tail stack) tokens))
-    (dpop s (snd (head stack)))
+  map (\s' -> (Config s' (tail stack) tokens))
+      (dpop s (snd (head stack)))

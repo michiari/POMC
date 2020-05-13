@@ -1,11 +1,14 @@
 module POMC.Util ( unsafeLookup
                  , lookupOrDefault
-                 , xor
-                 , implies
+                 , any'
                  , iff
+                 , implies
+                 , xor
                  , safeHead
                  , safeTail
                  ) where
+
+import Data.Foldable (foldl')
 
 unsafeLookup :: Eq a => a -> [(a, b)] -> b
 unsafeLookup k al = case lookup k al of
@@ -16,6 +19,9 @@ lookupOrDefault :: Eq a => a -> [(a,b)] -> b -> b
 lookupOrDefault k al d = case lookup k al of
   Just v  ->  v
   Nothing ->  d
+
+any' :: Foldable t => (a -> Bool) -> t a -> Bool
+any' p = foldl' (\z x -> z || p x) False
 
 xor :: Bool -> Bool -> Bool
 xor = (/=)

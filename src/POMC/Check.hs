@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+
 module POMC.Check ( State(..)
                   , closure
                   , atoms
@@ -7,7 +9,7 @@ module POMC.Check ( State(..)
                   , fastcheck
                   ) where
 
-import POMC.Opa (Prec(..), run, augRun)
+import POMC.Opa (Prec(..), run, parAugRun)
 import POMC.Potl
 import POMC.Util (xor, implies)
 import POMC.Data
@@ -22,13 +24,16 @@ import qualified Data.Vector as V
 
 import Data.List (foldl')
 
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
+
 -- TODO: remove
 import qualified Debug.Trace as DT
 
 data Atom a = Atom
     { atomFormulaSet :: FormulaSet a
     , atomEncodedSet :: EncodedSet
-    }
+    } deriving (Generic, NFData)
 
 data State a = State
     { current   :: Atom a
@@ -36,7 +41,7 @@ data State a = State
     , mustPush  :: Bool
     , mustShift :: Bool
     , afterPop  :: Bool
-    }
+    } deriving (Generic, NFData)
 
 showFormulaSet :: (Show a) => FormulaSet a -> String
 showFormulaSet fset = let fs = S.toList fset
@@ -1249,13 +1254,13 @@ augDeltaRules cl =
                             nextProps = fromJust (fcrNextProps info)
                         in atomicSet fCurr == S.map Atomic nextProps
 
-fastcheck :: (Ord a, Show a)
+fastcheck :: (Ord a, Show a, NFData a)
           => Formula a
           -> (Set (Prop a) -> Set (Prop a) -> Prec)
           -> [Set (Prop a)]
           -> Bool
 fastcheck phi prec ts =
-  debug $ augRun
+  debug $ parAugRun
             prec
             is
             isFinal
