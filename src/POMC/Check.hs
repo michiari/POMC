@@ -304,7 +304,8 @@ pendCombs clos =
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],
-                                       xr <- [False, True]]
+                                       xr <- [False, True],
+                                       not (xl && xe)]
 
 initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
 initials phi clos atoms =
