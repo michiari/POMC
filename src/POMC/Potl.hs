@@ -35,6 +35,7 @@ data Formula a = T
                | HierSinceYield (Formula a) (Formula a)
                | HierUntilTake  (Formula a) (Formula a)
                | HierSinceTake  (Formula a) (Formula a)
+               | HierTakeHelper (Formula a)
                deriving (Eq, Ord)
 
 data ExtFormula a = Normal     (Formula a)
@@ -69,6 +70,7 @@ instance (Show a) => Show (Formula a) where
   show (HierSinceYield g h) = "(" ++ show g ++ ")HS[" ++ show Yield ++ "](" ++ show h ++ ")"
   show (HierUntilTake  g h) = "(" ++ show g ++ ")HU[" ++ show Take  ++ "](" ++ show h ++ ")"
   show (HierSinceTake  g h) = "(" ++ show g ++ ")HS[" ++ show Take  ++ "](" ++ show h ++ ")"
+  show (HierTakeHelper g)   = "Xp<'" ++ "(" ++ show g ++ ")"
 
 negative :: Formula a -> Bool
 negative (Not f) = True
@@ -90,6 +92,7 @@ future (HierNextYield {})  = True
 future (HierNextTake  {})  = True
 future (HierUntilYield {}) = True
 future (HierUntilTake  {}) = True
+future (HierTakeHelper {}) = True
 future _ = False
 
 formulaAt :: Integral n => n -> Formula a -> Formula a
@@ -120,3 +123,4 @@ normalize f = case f of
                 HierSinceYield g h -> HierSinceYield (normalize g) (normalize h)
                 HierUntilTake  g h -> HierUntilTake  (normalize g) (normalize h)
                 HierSinceTake  g h -> HierSinceTake  (normalize g) (normalize h)
+                HierTakeHelper g   -> HierTakeHelper (normalize g)

@@ -97,25 +97,16 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                         , Not $ ChainBack pset (Since pset g h)
                         ] ++ chainBackExp pset (Since pset g h)
 
-    hntExp g = [ ChainBack (S.singleton Yield) g
-               , PrecBack  (S.singleton Yield) g
-               , ChainBack (S.singleton Yield) (HierNextTake g)
-               , PrecBack  (S.singleton Yield) (HierNextTake g)
-               , Not $ ChainBack (S.singleton Yield) g
-               , Not $ PrecBack  (S.singleton Yield) g
-               , Not $ ChainBack (S.singleton Yield) (HierNextTake g)
-               , Not $ PrecBack  (S.singleton Yield) (HierNextTake g)
+    hntExp g = [ HierTakeHelper g
+               , HierTakeHelper (HierNextTake g)
+               , Not $ HierTakeHelper g
+               , Not $ HierTakeHelper (HierNextTake g)
                ]
-    hbtExp g = [ ChainBack (S.singleton Yield) g
-               , PrecBack  (S.singleton Yield) g
-               , ChainBack (S.singleton Yield) (HierBackTake g)
-               , PrecBack  (S.singleton Yield) (HierBackTake g)
-               , Not $ ChainBack (S.singleton Yield) g
-               , Not $ PrecBack  (S.singleton Yield) g
-               , Not $ ChainBack (S.singleton Yield) (HierBackTake g)
-               , Not $ PrecBack  (S.singleton Yield) (HierBackTake g)
+    hbtExp g = [ HierTakeHelper g
+               , HierTakeHelper (HierBackTake g)
+               , Not $ HierTakeHelper g
+               , Not $ HierTakeHelper (HierBackTake g)
                ]
-
     huyExp g h = [ T
                  , ChainBack (S.singleton Yield) T
                  , HierNextYield (HierUntilYield g h)
@@ -303,12 +294,13 @@ pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bo
 pendCombs clos =
   let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
       cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
-      hnyfs = [f | f@(HierNextYield _) <- S.toList clos]
-      hntfs = [f | f@(HierNextTake _)  <- S.toList clos]
-      hbtfs = [f | f@(HierBackTake _)  <- S.toList clos]
+      hnyfs = [f | f@(HierNextYield _)  <- S.toList clos]
+      hntfs = [f | f@(HierNextTake _)   <- S.toList clos]
+      hbtfs = [f | f@(HierBackTake _)   <- S.toList clos]
+      hthfs = [f | f@(HierTakeHelper _) <- S.toList clos]
   in S.foldl' S.union S.empty .
      S.map (S.fromList . combs) $
-     S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs ++ hntfs ++ hbtfs)
+     S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs ++ hntfs ++ hbtfs ++ hthfs)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],
@@ -341,6 +333,7 @@ deltaRules condInfo =
                                            , (cbtCond,    cbtShiftPr)
                                            , (hnyCond,    hnyShiftPr)
                                            , (hbtCond,    hbtShiftPr)
+                                           , (hthCond,    hthShiftPr)
                                            ]
         , ruleGroupFcrs = resolve condInfo [ (pnCond, pnShiftFcr)
                                            , (pbCond, pbShiftFcr)
@@ -355,6 +348,7 @@ deltaRules condInfo =
                                            , (hntCond,    hntShiftFpr1)
                                            , (hntCond,    hntShiftFpr2)
                                            , (hbtCond,    hbtShiftFpr)
+                                           , (hthCond,    hthShiftFpr)
                                            ]
         , ruleGroupFrs  = resolve condInfo []
         }
@@ -369,6 +363,7 @@ deltaRules condInfo =
                                            , (hnyCond,    hnyPushPr2)
                                            , (hbyCond,    hbyPushPr)
                                            , (hbtCond,    hbtPushPr)
+                                           , (hthCond,    hthPushPr)
                                            ]
         , ruleGroupFcrs = resolve condInfo [ (pnCond, pnPushFcr)
                                            , (pbCond, pbPushFcr)
@@ -383,6 +378,7 @@ deltaRules condInfo =
                                            , (hntCond,    hntPushFpr1)
                                            , (hntCond,    hntPushFpr2)
                                            , (hbtCond,    hbtPushFpr)
+                                           , (hthCond,    hthPushFpr)
                                            ]
         , ruleGroupFrs  = resolve condInfo []
         }
@@ -407,6 +403,7 @@ deltaRules condInfo =
                                            , (hbtCond,    hbtPopFpr1)
                                            , (hbtCond,    hbtPopFpr2)
                                            , (hbtCond,    hbtPopFpr3)
+                                           , (hthCond,    hthPopFpr)
                                            ]
         , ruleGroupFrs  = resolve condInfo [(hbyCond, hbyPopFr)]
         }
@@ -853,11 +850,9 @@ deltaRules condInfo =
 
           fPendHntfs = [f | f@(HierNextTake _) <- S.toList fPend]
 
-          cby f = ChainBack (S.singleton Yield) f
-          pby f = PrecBack (S.singleton Yield) f
+          hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierNextTake g) <- S.toList clos,
-                                                           cby g `S.member` ppCurr ||
-                                                           pby g `S.member` ppCurr]
+                                                           hth g `S.member` ppCurr]
       in if not fXl && not fXe
            then S.fromList fPendHntfs == checkSet
            else True
@@ -870,11 +865,9 @@ deltaRules condInfo =
 
           pPendHntfs = [f | f@(HierNextTake _) <- S.toList pPend]
 
-          cby f = ChainBack (S.singleton Yield) f
-          pby f = PrecBack (S.singleton Yield) f
+          hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierNextTake _) <- S.toList clos,
-                                                           cby f `S.member` ppCurr ||
-                                                           pby f `S.member` ppCurr]
+                                                           hth f `S.member` ppCurr]
       in if not fXl
            then S.fromList pPendHntfs == checkSet
            else True
@@ -908,11 +901,9 @@ deltaRules condInfo =
 
           pPendHbtfs = [f | f@(HierBackTake _) <- S.toList pPend]
 
-          cby f = ChainBack (S.singleton Yield) f
-          pby f = PrecBack (S.singleton Yield) f
+          hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierBackTake g) <- S.toList clos,
-                                                           cby g `S.member` ppCurr ||
-                                                           pby g `S.member` ppCurr]
+                                                           hth g `S.member` ppCurr]
       in if not fXl && not fXe
            then S.fromList pPendHbtfs == checkSet
            else True
@@ -924,11 +915,9 @@ deltaRules condInfo =
 
           fPendHbtfs = [f | f@(HierBackTake _) <- S.toList fPend]
 
-          cby f = ChainBack (S.singleton Yield) f
-          pby f = PrecBack (S.singleton Yield) f
+          hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierBackTake _) <- S.toList clos,
-                                                           cby f `S.member` ppCurr ||
-                                                           pby f `S.member` ppCurr]
+                                                           hth f `S.member` ppCurr]
       in if not fXl
            then S.fromList fPendHbtfs == checkSet
            else True
@@ -957,6 +946,41 @@ deltaRules condInfo =
       in null pPendHbtfs
 
     hbtShiftPr = hbtPushPr
+    --
+
+    -- HTH
+    hthCond clos = not (null [f | f@(HierTakeHelper _) <- S.toList clos])
+
+    hthPushPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pPend = pending (prState info)
+          pXr = afterPop (prState info)
+          pCurrHthfs = [f | f@(HierTakeHelper _) <- S.toList pCurr]
+          pPendHthfs = [f | f@(HierTakeHelper _) <- S.toList pPend]
+      in S.fromList pCurrHthfs == S.fromList pPendHthfs
+
+    hthShiftPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pCurrHthfs = [f | f@(HierTakeHelper _) <- S.toList pCurr]
+      in null pCurrHthfs
+
+    hthPopFpr info =
+      let ppPend = pending $ fromJust (fprPopped info)
+          (fPend, _, _, _) = fprFuturePendComb info
+          ppPendHthfs = [f | f@(HierTakeHelper _) <- S.toList ppPend]
+          fPendHthfs = [f | f@(HierTakeHelper _) <- S.toList fPend]
+      in S.fromList ppPendHthfs == S.fromList fPendHthfs
+
+    hthPushFpr info =
+      let clos = fprClos info
+          pCurr = atomFormulaSet . current $ fprState info
+          (fPend, _, _, _) = fprFuturePendComb info
+          fPendHthfs = [f | f@(HierTakeHelper _) <- S.toList fPend]
+          pCheckSet = S.fromList [f | f@(HierTakeHelper g) <- S.toList clos,
+                                                              g `S.member` pCurr]
+      in S.fromList fPendHthfs == pCheckSet
+
+    hthShiftFpr = hthPushFpr
     --
 
 data PrInfo a = PrInfo
