@@ -11,10 +11,10 @@ module POMC.Check ( State(..)
 
 import POMC.Opa (Prec(..), run, parAugRun)
 import POMC.Potl
-import POMC.Util (xor, implies)
+import POMC.Util (xor, implies, safeHead)
 import POMC.Data
 
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -71,6 +71,9 @@ showStates = unlines . map show
 
 atomicSet :: Set (Formula a) -> Set (Formula a)
 atomicSet = S.filter atomic
+
+compProps :: (Eq a, Ord a) => Set (Formula a) -> Set (Prop a) -> Bool
+compProps fset pset = atomicSet fset == S.map Atomic pset
 
 closure :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
 closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
@@ -437,7 +440,7 @@ deltaRules condInfo =
     propPushPr info =
       let pCurr = atomFormulaSet . current $ prState info
           props = fromJust (prProps info)
-      in atomicSet pCurr == S.map Atomic props
+      in compProps pCurr props
 
     propShiftPr = propPushPr
     --
@@ -1252,7 +1255,7 @@ augDeltaRules cl =
   where
     lookaheadFcr info = let fCurr = atomFormulaSet (fcrFutureCurr info)
                             nextProps = fromJust (fcrNextProps info)
-                        in atomicSet fCurr == S.map Atomic nextProps
+                        in compProps fCurr nextProps
 
 fastcheck :: (Ord a, Show a, NFData a)
           => Formula a
@@ -1273,8 +1276,12 @@ fastcheck phi prec ts =
         cl = closure nphi tsprops
         as = atoms cl
         pcs = pendCombs cl
-        is = initials nphi cl as
+        is = filter compInitial (initials nphi cl as)
         (shiftRules, pushRules, popRules) = augDeltaRules cl
+
+        compInitial s = fromMaybe True $
+                          compProps <$> (Just . atomFormulaSet . current) s <*> safeHead ts
+
         debug = id
         --debug = DT.trace ("\nRun with:"         ++
         --                  "\nPhi:          "    ++ show phi          ++
