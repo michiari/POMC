@@ -143,6 +143,9 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                  , Not $ ChainNext (S.singleton Take) T
                  , Not $ HierBackTake (HierSinceTake g h)
                  ] ++ hbtExp (HierSinceTake g h)
+    evExp g = [ PrecNext (S.fromList [Yield, Equal, Take]) (Eventually g)
+              , Not $ PrecNext (S.fromList [Yield, Equal, Take]) (Eventually g)
+              ]
     closList f = case f of
       T                  -> [f, Not f]
       Atomic _           -> [f, Not f]
@@ -163,12 +166,14 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h ++ hsyExp g h
       HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hutExp g h
       HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hstExp g h
+      Eventually g       -> [f, Not f] ++ closList g ++ evExp g
 
 atoms :: Ord a => Set (Formula a) -> [Atom a]
 atoms clos =
   let pclos = V.fromList (S.toAscList . S.filter (not . negative) $ clos)
       fetch i = pclos V.! i
-      consistent fset = hierSinceTakeCons  clos fset &&
+      consistent fset = evCons             clos fset &&
+                        hierSinceTakeCons  clos fset &&
                         hierUntilTakeCons  clos fset &&
                         hierSinceYieldCons clos fset &&
                         hierUntilYieldCons clos fset &&
@@ -297,6 +302,17 @@ hierSinceTakeCons clos set = null [f | f@(HierSinceTake g h) <- S.toList set,
   where present hst g h =
           ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
           ((S.fromList [g, HierBackTake hst])               `S.isSubsetOf` set)
+
+evCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+evCons clos set = null [f | f@(Eventually g) <- S.toList set,
+                                                not (present f g)]
+                  &&
+                  null [f | f@(Eventually g) <- S.toList clos,
+                                                present f g &&
+                                                not (f `S.member` set)]
+  where present ev g =
+          (g `S.member` set) ||
+          (PrecNext (S.fromList [Yield, Equal, Take]) ev `S.member` set)
 
 pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bool))
 pendCombs clos =

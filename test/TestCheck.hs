@@ -755,6 +755,24 @@ unitTuples =
     , stlPrecedence
     , map (S.singleton . Prop) ["cbeg", "cexc", "c", "call", "thr"]
     )
+  , ( "Stack trace lang, accepting Eventually"
+    , True
+    , Eventually (Atomic . Prop $ "thr")
+    , stlPrecedence
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Not Eventually"
+    , False
+    , Not $ Eventually (Atomic . Prop $ "thr")
+    , stlPrecedence
+    , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+    )
+  , ( "Stack trace lang, rejecting Eventually"
+    , False
+    , Eventually (Atomic . Prop $ "thr")
+    , stlPrecedence
+    , map (S.singleton . Prop) ["call", "han", "ret"]
+    )
   ]
 
 unitTests = testGroup "Unit" (map makeTestCase unitTuples)

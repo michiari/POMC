@@ -24,16 +24,16 @@ data Prop a = Prop a deriving (Eq, Ord, Show, Generic)
 instance NFData a => NFData (Prop a)
 
 data Formula a = T
-               | Atomic    (Prop a)
-               | Not       (Formula a)
-               | Or        (Formula a) (Formula a)
-               | And       (Formula a) (Formula a)
+               | Atomic (Prop a)
+               | Not (Formula a)
+               | Or  (Formula a) (Formula a)
+               | And (Formula a) (Formula a)
                | PrecNext  (Set Prec) (Formula a)
                | PrecBack  (Set Prec) (Formula a)
                | ChainNext (Set Prec) (Formula a)
                | ChainBack (Set Prec) (Formula a)
-               | Until     (Set Prec) (Formula a) (Formula a)
-               | Since     (Set Prec) (Formula a) (Formula a)
+               | Until (Set Prec) (Formula a) (Formula a)
+               | Since (Set Prec) (Formula a) (Formula a)
                | HierNextYield (Formula a)
                | HierBackYield (Formula a)
                | HierNextTake  (Formula a)
@@ -43,14 +43,14 @@ data Formula a = T
                | HierUntilTake  (Formula a) (Formula a)
                | HierSinceTake  (Formula a) (Formula a)
                | HierTakeHelper (Formula a)
+               | Eventually (Formula a)
                deriving (Eq, Ord, Generic, NFData)
 
-data ExtFormula a = Normal     (Formula a)
-                  | Xor        (Formula a) (Formula a)
-                  | Implies    (Formula a) (Formula a)
-                  | Iff        (Formula a) (Formula a)
-                  | Globally   (Formula a)
-                  | Eventually (Formula a)
+data ExtFormula a = Normal   (Formula a)
+                  | Xor      (Formula a) (Formula a)
+                  | Implies  (Formula a) (Formula a)
+                  | Iff      (Formula a) (Formula a)
+                  | Globally (Formula a)
                   deriving (Eq, Ord, Generic, NFData)
 
 -- data Pi = YET | YE | YT | Y | ET | E | T
@@ -78,6 +78,7 @@ instance (Show a) => Show (Formula a) where
   show (HierUntilTake  g h) = "(" ++ show g ++ ")HU[" ++ show Take  ++ "](" ++ show h ++ ")"
   show (HierSinceTake  g h) = "(" ++ show g ++ ")HS[" ++ show Take  ++ "](" ++ show h ++ ")"
   show (HierTakeHelper g)   = "Xp<'" ++ "(" ++ show g ++ ")"
+  show (Eventually g)       = "F" ++ "(" ++ show g ++ ")"
 
 negative :: Formula a -> Bool
 negative (Not f) = True
@@ -92,14 +93,15 @@ atomic (Atomic _) = True
 atomic _ = False
 
 future :: Formula a -> Bool
-future (PrecNext  {})      = True
-future (ChainNext {})      = True
-future (Until     {})      = True
-future (HierNextYield {})  = True
-future (HierNextTake  {})  = True
+future (PrecNext       {}) = True
+future (ChainNext      {}) = True
+future (Until          {}) = True
+future (HierNextYield  {}) = True
+future (HierNextTake   {}) = True
 future (HierUntilYield {}) = True
 future (HierUntilTake  {}) = True
 future (HierTakeHelper {}) = True
+future (Eventually     {}) = True
 future _ = False
 
 formulaAt :: Integral n => n -> Formula a -> Formula a
@@ -131,3 +133,4 @@ normalize f = case f of
                 HierUntilTake  g h -> HierUntilTake  (normalize g) (normalize h)
                 HierSinceTake  g h -> HierSinceTake  (normalize g) (normalize h)
                 HierTakeHelper g   -> HierTakeHelper (normalize g)
+                Eventually g       -> Eventually (normalize g)
