@@ -4,8 +4,8 @@ module POMC.PotlV2 ( Formula(..)
 
 import POMC.Check (Checkable(..))
 import POMC.Opa (Prec(..))
-import POMC.Potl (Prop(..))
-import qualified POMC.Potl as P (Formula(..))
+import POMC.RPotl (Prop(..))
+import qualified POMC.RPotl as RP (Formula(..))
 
 import qualified Data.Set as S
 
@@ -13,7 +13,7 @@ data Dir = Up | Down deriving (Eq, Ord, Show)
 
 data Formula a = T
                | Atomic (Prop a)
-               | Not (Formula a)
+               | Not    (Formula a)
                | Or      (Formula a) (Formula a)
                | And     (Formula a) (Formula a)
                | Xor     (Formula a) (Formula a)
@@ -34,36 +34,36 @@ data Formula a = T
                deriving (Eq, Ord, Show)
 
 instance Checkable (Formula) where
-  toFormula f =
+  toReducedPotl f =
     case f of
-      T               -> P.T
-      Atomic p        -> P.Atomic p
-      Not g           -> P.Not (tf g)
-      Or g h          -> P.Or (tf g) (tf h)
-      And g h         -> P.And (tf g) (tf h)
-      Xor g h         -> tf $ (g `And` Not h) `Or` (h `And` Not g)
-      Implies g h     -> tf $ (Not g) `Or` h
-      Iff g h         -> tf $ (g `Implies` h) `And` (h `Implies` g)
-      PNext Down g    -> P.PrecNext  (S.fromList [Yield, Equal]) (tf g)
-      PNext Up   g    -> P.PrecNext  (S.fromList [Equal, Take])  (tf g)
-      PBack Down g    -> P.PrecBack  (S.fromList [Yield, Equal]) (tf g)
-      PBack Up   g    -> P.PrecBack  (S.fromList [Equal, Take])  (tf g)
-      XNext Down g    -> P.ChainNext (S.fromList [Yield, Equal]) (tf g)
-      XNext Up   g    -> P.ChainNext (S.fromList [Equal, Take])  (tf g)
-      XBack Down g    -> P.ChainBack (S.fromList [Yield, Equal]) (tf g)
-      XBack Up   g    -> P.ChainBack (S.fromList [Equal, Take])  (tf g)
-      HNext Down g    -> P.HierNextYield (tf g)
-      HNext Up   g    -> P.HierNextTake  (tf g)
-      HBack Down g    -> P.HierBackYield (tf g)
-      HBack Up   g    -> P.HierBackTake  (tf g)
-      Until Down g h  -> P.Until (S.fromList [Yield, Equal]) (tf g) (tf h)
-      Until Up   g h  -> P.Until (S.fromList [Equal, Take])  (tf g) (tf h)
-      Since Down g h  -> P.Since (S.fromList [Yield, Equal]) (tf g) (tf h)
-      Since Up   g h  -> P.Since (S.fromList [Equal, Take])  (tf g) (tf h)
-      HUntil Down g h -> P.HierUntilYield (tf g) (tf h)
-      HUntil Up   g h -> P.HierUntilTake  (tf g) (tf h)
-      HSince Down g h -> P.HierSinceYield (tf g) (tf h)
-      HSince Up   g h -> P.HierSinceTake  (tf g) (tf h)
-      Eventually g    -> P.Eventually (tf g)
-      Always g        -> tf . Not . Eventually . Not $ g
-    where tf = toFormula
+      T               -> RP.T
+      Atomic p        -> RP.Atomic p
+      Not g           -> RP.Not (trp g)
+      Or g h          -> RP.Or (trp g) (trp h)
+      And g h         -> RP.And (trp g) (trp h)
+      Xor g h         -> trp $ (g `And` Not h) `Or` (h `And` Not g)
+      Implies g h     -> trp $ (Not g) `Or` h
+      Iff g h         -> trp $ (g `Implies` h) `And` (h `Implies` g)
+      PNext Down g    -> RP.PrecNext  (S.fromList [Yield, Equal]) (trp g)
+      PNext Up   g    -> RP.PrecNext  (S.fromList [Equal, Take])  (trp g)
+      PBack Down g    -> RP.PrecBack  (S.fromList [Yield, Equal]) (trp g)
+      PBack Up   g    -> RP.PrecBack  (S.fromList [Equal, Take])  (trp g)
+      XNext Down g    -> RP.ChainNext (S.fromList [Yield, Equal]) (trp g)
+      XNext Up   g    -> RP.ChainNext (S.fromList [Equal, Take])  (trp g)
+      XBack Down g    -> RP.ChainBack (S.fromList [Yield, Equal]) (trp g)
+      XBack Up   g    -> RP.ChainBack (S.fromList [Equal, Take])  (trp g)
+      HNext Down g    -> RP.HierNextYield (trp g)
+      HNext Up   g    -> RP.HierNextTake  (trp g)
+      HBack Down g    -> RP.HierBackYield (trp g)
+      HBack Up   g    -> RP.HierBackTake  (trp g)
+      Until Down g h  -> RP.Until (S.fromList [Yield, Equal]) (trp g) (trp h)
+      Until Up   g h  -> RP.Until (S.fromList [Equal, Take])  (trp g) (trp h)
+      Since Down g h  -> RP.Since (S.fromList [Yield, Equal]) (trp g) (trp h)
+      Since Up   g h  -> RP.Since (S.fromList [Equal, Take])  (trp g) (trp h)
+      HUntil Down g h -> RP.HierUntilYield (trp g) (trp h)
+      HUntil Up   g h -> RP.HierUntilTake  (trp g) (trp h)
+      HSince Down g h -> RP.HierSinceYield (trp g) (trp h)
+      HSince Up   g h -> RP.HierSinceTake  (trp g) (trp h)
+      Eventually g    -> RP.Eventually (trp g)
+      Always g        -> trp . Not . Eventually . Not $ g
+    where trp = toReducedPotl

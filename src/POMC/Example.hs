@@ -1,12 +1,14 @@
-module POMC.Example (stlPrecedence, stlAnnotate) where
+module POMC.Example ( stlPrecedence
+                    , stlAnnotate
+                    ) where
+
+import POMC.Opa (Prec(..))
+import POMC.RPotl (Prop(..))
 
 import Data.List (isPrefixOf)
 
 import Data.Set (Set)
 import qualified Data.Set as S
-
-import POMC.Opa (Prec(..))
-import POMC.Potl (Prop(..))
 
 -- Precedence function for the Stack Trace Language
 stlPrecedence :: Set (Prop String) -> Set (Prop String) -> Prec

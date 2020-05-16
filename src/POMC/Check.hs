@@ -11,7 +11,7 @@ module POMC.Check ( State(..)
                   ) where
 
 import POMC.Opa (Prec(..), run, parAugRun)
-import POMC.Potl (Formula(..), Prop(..), negative, atomic, normalize, future)
+import POMC.RPotl (Formula(..), Prop(..), negative, atomic, normalize, future)
 import POMC.Util (xor, implies, safeHead)
 import POMC.Data
 
@@ -32,10 +32,10 @@ import GHC.Generics (Generic)
 import qualified Debug.Trace as DT
 
 class Checkable c where
-  toFormula :: c a -> Formula a
+  toReducedPotl :: c a -> Formula a
 
 instance Checkable (Formula) where
-  toFormula = id
+  toReducedPotl = id
 
 data Atom a = Atom
     { atomFormulaSet :: FormulaSet a
@@ -1198,7 +1198,7 @@ check phi prec ts =
             (deltaPush  cl as pcs prec  pushRules)
             (deltaPop   cl as pcs prec   popRules)
             ts
-  where nphi = normalize . toFormula $ phi
+  where nphi = normalize . toReducedPotl $ phi
         tsprops = S.toList $ foldl' (S.union) S.empty ts
         cl = closure nphi tsprops
         as = atoms cl
@@ -1294,7 +1294,7 @@ fastcheck phi prec ts =
             (augDeltaPush  cl as pcs prec  pushRules)
             (augDeltaPop   cl as pcs prec   popRules)
             ts
-  where nphi = normalize . toFormula $ phi
+  where nphi = normalize . toReducedPotl $ phi
         tsprops = S.toList $ foldl' (S.union) S.empty ts
         cl = closure nphi tsprops
         as = atoms cl

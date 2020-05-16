@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b8627e29c617ab94214441b1f841c97de838a4773225f771c29801dacd239981
+-- hash: 159f4119ebdb67ff9617ae10b5f2452e14e4f786517150e0fd076dd298b713e4
 
 name:           POMC
 version:        0.1
@@ -26,8 +26,8 @@ library
       POMC.Data
       POMC.Example
       POMC.Opa
-      POMC.Potl
       POMC.PotlV2
+      POMC.RPotl
       POMC.Util
   other-modules:
       Paths_POMC

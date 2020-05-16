@@ -1,7 +1,7 @@
 import POMC.Check (check, fastcheck)
 import POMC.Example (stlPrecedence, stlAnnotate)
 import POMC.Opa (Prec(..))
-import POMC.Potl (Formula(..), Prop(..), formulaAt)
+import POMC.RPotl (Formula(..), Prop(..), formulaAt)
 
 import Control.Monad (forM_)
 

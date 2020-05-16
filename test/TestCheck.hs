@@ -12,7 +12,7 @@ import Control.Monad
 import POMC.Check (check, fastcheck)
 import POMC.Example (stlPrecedence, stlAnnotate)
 import POMC.Opa (Prec(..))
-import POMC.Potl (Formula(..), Prop(..), formulaAt)
+import POMC.RPotl (Formula(..), Prop(..), formulaAt)
 
 -- Each unit test is a tuple of the type:
 -- (name, expected check result, phi, prec, input)

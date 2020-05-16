@@ -1,14 +1,17 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
-module POMC.Potl ( Formula(..)
-                 , Prop(..)
-                 , negative
-                 , negation
-                 , atomic
-                 , future
-                 , formulaAt
-                 , normalize
-                 ) where
+module POMC.RPotl ( -- Main data types
+                    Formula(..)
+                  , Prop(..)
+                    -- Predicates on formulas
+                  , atomic
+                  , future
+                  , negative
+                    -- Operations on formulas
+                  , formulaAt
+                  , negation
+                  , normalize
+                  ) where
 
 import POMC.Opa (Prec(..))
 
@@ -67,14 +70,6 @@ instance (Show a) => Show (Formula a) where
   show (HierTakeHelper g)   = "Xp<'" ++ "(" ++ show g ++ ")"
   show (Eventually g)       = "F" ++ "(" ++ show g ++ ")"
 
-negative :: Formula a -> Bool
-negative (Not f) = True
-negative f = False
-
-negation :: Formula a -> Formula a
-negation (Not f) = f
-negation f = Not f
-
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
 atomic _ = False
@@ -91,12 +86,20 @@ future (HierTakeHelper {}) = True
 future (Eventually     {}) = True
 future _ = False
 
+negative :: Formula a -> Bool
+negative (Not f) = True
+negative f = False
+
 formulaAt :: Integral n => n -> Formula a -> Formula a
 formulaAt n f
   | n <= 1    = f
   | otherwise = formulaAt (n-1) (PrecNext (S.fromList [Yield, Equal, Take]) f)
 
 showps pset = "[" ++ concat (map show (S.toList pset)) ++ "]"
+
+negation :: Formula a -> Formula a
+negation (Not f) = f
+negation f = Not f
 
 normalize f = case f of
                 T                  -> f

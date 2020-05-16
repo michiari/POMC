@@ -4,7 +4,7 @@ module POMC.Data ( decode
                  , FormulaSet
                  ) where
 
-import POMC.Potl
+import POMC.RPotl
 
 import Data.Set (Set)
 import qualified Data.Set as S
