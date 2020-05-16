@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
 module POMC.Potl ( Formula(..)
-                 , ExtFormula(..)
                  , Prop(..)
                  , negative
                  , negation
@@ -19,9 +18,7 @@ import qualified Data.Set as S
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 
-data Prop a = Prop a deriving (Eq, Ord, Show, Generic)
-
-instance NFData a => NFData (Prop a)
+data Prop a = Prop a deriving (Eq, Ord, Show, Generic, NFData)
 
 data Formula a = T
                | Atomic (Prop a)
@@ -45,16 +42,6 @@ data Formula a = T
                | HierTakeHelper (Formula a)
                | Eventually (Formula a)
                deriving (Eq, Ord, Generic, NFData)
-
-data ExtFormula a = Normal   (Formula a)
-                  | Xor      (Formula a) (Formula a)
-                  | Implies  (Formula a) (Formula a)
-                  | Iff      (Formula a) (Formula a)
-                  | Globally (Formula a)
-                  deriving (Eq, Ord, Generic, NFData)
-
--- data Pi = YET | YE | YT | Y | ET | E | T
--- data Mi = YT | Y | T
 
 instance (Show a) => Show (Formula a) where
   show T                    = "T"
