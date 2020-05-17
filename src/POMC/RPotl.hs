@@ -83,7 +83,7 @@ future (HierNextTake   {}) = True
 future (HierUntilYield {}) = True
 future (HierUntilTake  {}) = True
 future (HierTakeHelper {}) = True
-future (Eventually     {}) = True
+--future (Eventually     {}) = True
 future _ = False
 
 negative :: Formula a -> Bool

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 159f4119ebdb67ff9617ae10b5f2452e14e4f786517150e0fd076dd298b713e4
+-- hash: f3c171ba302f66ae9ce26d586158163e8bc6f4615c3bb34fe577826473ff4624
 
 name:           POMC
 version:        0.1
@@ -69,6 +69,7 @@ test-suite test-pomc
       POMC
     , base >=4.7 && <5
     , containers
+    , deepseq
     , tasty
     , tasty-hunit
     , tasty-quickcheck
