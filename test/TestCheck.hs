@@ -1,10 +1,10 @@
 module TestCheck (tests) where
 
-import POMC.Check (fastcheck, Checkable(..))
+import POMC.Check (check, fastcheck, Checkable(..))
 import POMC.Example (stlPrecedenceV1, stlPrecedenceV2)
 import POMC.Opa (Prec(..))
 import POMC.RPotl (Formula(..), Prop(..), formulaAt)
-import qualified POMC.PotlV2 as P2 (Formula(..))
+import qualified POMC.PotlV2 as P2 (Dir(..), Prop(..), Formula(..))
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -15,7 +15,7 @@ import qualified Data.Set as S
 
 import Control.Monad
 
-unitTests = testGroup "Unit tests" [rpotlTests]
+unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
   where
     -- Takes a list of tuples like:
     --   (name, expected check result, checkable phi, prec func, input)
@@ -765,25 +765,89 @@ unitTests = testGroup "Unit tests" [rpotlTests]
         , stlPrecedenceV1
         , map (S.singleton . Prop) ["cbeg", "cexc", "c", "call", "thr"]
         )
-      , ( "Accepting Eventually"
+      , ( "Accepting Eventually'"
         , True
-        , Eventually (Atomic . Prop $ "thr")
+        , Eventually' (Atomic . Prop $ "thr")
         , stlPrecedenceV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting Not Eventually"
+      , ( "Rejecting Not Eventually'"
         , False
-        , Not $ Eventually (Atomic . Prop $ "thr")
+        , Not $ Eventually' (Atomic . Prop $ "thr")
         , stlPrecedenceV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting Eventually"
+      , ( "Rejecting Eventually'"
         , False
-        , Eventually (Atomic . Prop $ "thr")
+        , Eventually' (Atomic . Prop $ "thr")
         , stlPrecedenceV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
       ]
+
+    potlv2Tests = testGroup "PotlV2, Stack Trace Lang V2" $ map makeTestCase
+      [ ( "Accepting Xor"
+        , True
+        , (P2.Atomic . P2.Prop $ "call") `P2.Xor` (P2.PNext P2.Down . P2.Atomic . P2.Prop $ "exc")
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Rejecting Xor"
+        , False
+        , (P2.Atomic . P2.Prop $ "call") `P2.Xor` (P2.PNext P2.Down . P2.Atomic . P2.Prop $ "han")
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Accepting Implies" -- Ex falso quodlibet ;)
+        , True
+        , (P2.Atomic . P2.Prop $ "ret") `P2.Implies` (P2.HNext P2.Up . P2.Atomic . P2.Prop $ "han")
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Rejecting Implies"
+        , False
+        , (P2.Atomic . P2.Prop $ "call") `P2.Implies` (P2.PNext P2.Down . P2.Atomic . P2.Prop $ "ret")
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Accepting Iff"
+        , True
+        , (P2.Atomic . P2.Prop $ "call") `P2.Iff` (P2.XNext P2.Up . P2.Atomic . P2.Prop $ "ret")
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Rejecting Iff"
+        , False
+        , (P2.Atomic . P2.Prop $ "call") `P2.Iff` (P2.XNext P2.Up . P2.Atomic . P2.Prop $ "ret")
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "exc"]
+        )
+      , ( "Accepting Eventually"
+        , True
+        , P2.Eventually . P2.Atomic . P2.Prop $ "ret"
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Rejecting Eventually"
+        , False
+        , P2.Eventually . P2.Atomic . P2.Prop $ "ret"
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "exc"]
+        )
+      , ( "Accepting Always"
+        , True
+        , P2.Always . P2.Atomic . P2.Prop $ "call"
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Rejecting Always"
+        , False
+        , P2.Always . P2.Atomic . P2.Prop $ "call"
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["call", "han", "call"]
+        )
+      ]
+
 
 termTrace :: Int -> Gen [String]
 termTrace m = return ["call"] `gconcat` (arb m) `gconcat` return ["ret"]
