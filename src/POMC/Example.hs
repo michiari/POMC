@@ -12,6 +12,8 @@ import Data.List (isPrefixOf)
 import Data.Set (Set)
 import qualified Data.Set as S
 
+import Data.Maybe (fromJust, fromMaybe)
+
 -- Precedence function for the Stack Trace Language Version 1
 stlPrecedenceV1 :: Set (Prop String) -> Set (Prop String) -> Prec
 stlPrecedenceV1 s1 s2
@@ -20,42 +22,44 @@ stlPrecedenceV1 s1 s2
   | isHanSet  s1 = hanPrec  s2
   | isThrSet  s1 = thrPrec  s2
   | otherwise = error "First set has invalid tokens"
-  where unprop (Prop p) = p
-        calls s = filter ("c" `isPrefixOf`) (map unprop . S.toList $ s)
-        rets  s = filter ("r" `isPrefixOf`) (map unprop . S.toList $ s)
-        hans  s = filter ("h" `isPrefixOf`) (map unprop . S.toList $ s)
-        thrs  s = filter ("t" `isPrefixOf`) (map unprop . S.toList $ s)
-        isCallSet = not . null . calls
-        isRetSet  = not . null .  rets
-        isHanSet  = not . null .  hans
-        isThrSet  = not . null .  thrs
+  where unprop (Prop p) = Just p
+        unprop End      = Nothing
+        isCallSet = any (fromMaybe False . fmap ("c" `isPrefixOf`) . unprop)
+        isRetSet  = any (fromMaybe False . fmap ("r" `isPrefixOf`) . unprop)
+        isHanSet  = any (fromMaybe False . fmap ("h" `isPrefixOf`) . unprop)
+        isThrSet  = any (fromMaybe False . fmap ("t" `isPrefixOf`) . unprop)
+        isEndSet = S.member End
         callPrec s
-          | S.null    s = Take
           | isCallSet s = Yield
           | isRetSet  s = Equal
           | isHanSet  s = Yield
           | isThrSet  s = Take
+          | isEndSet  s = Take
+          | S.null    s = Take
           | otherwise = error "Second set has invalid tokens"
         retPrec s
-          | S.null    s = Take
           | isCallSet s = Take
           | isRetSet  s = Take
           | isHanSet  s = Yield
           | isThrSet  s = Take
+          | isEndSet  s = Take
+          | S.null    s = Take
           | otherwise = error "Second set has invalid tokens"
         hanPrec s
-          | S.null    s = Take
           | isCallSet s = Yield
           | isRetSet  s = Take
           | isHanSet  s = Yield
           | isThrSet  s = Yield
+          | isEndSet  s = Take
+          | S.null    s = Take
           | otherwise = error "Second set has invalid tokens"
         thrPrec s
-          | S.null    s = Take
           | isCallSet s = Take
           | isRetSet  s = Take
           | isHanSet  s = Take
           | isThrSet  s = Take
+          | isEndSet  s = Take
+          | S.null    s = Take
           | otherwise = error "Second set has invalid tokens"
 
 -- Utility function to annotate Stack Trace Language Version 1 strings
@@ -79,42 +83,44 @@ stlPrecedenceV2 s1 s2
   | isHanSet  s1 = hanPrec  s2
   | isExcSet  s1 = excPrec  s2
   | otherwise = error "First set has invalid tokens"
-  where unprop (Prop p) = p
-        calls s = filter ("c" `isPrefixOf`) (map unprop . S.toList $ s)
-        rets  s = filter ("r" `isPrefixOf`) (map unprop . S.toList $ s)
-        hans  s = filter ("h" `isPrefixOf`) (map unprop . S.toList $ s)
-        excs  s = filter ("e" `isPrefixOf`) (map unprop . S.toList $ s)
-        isCallSet = not . null . calls
-        isRetSet  = not . null .  rets
-        isHanSet  = not . null .  hans
-        isExcSet  = not . null .  excs
+  where unprop (Prop p) = Just p
+        unprop End      = Nothing
+        isCallSet = any (fromMaybe False . fmap ("c" `isPrefixOf`) . unprop)
+        isRetSet  = any (fromMaybe False . fmap ("r" `isPrefixOf`) . unprop)
+        isHanSet  = any (fromMaybe False . fmap ("h" `isPrefixOf`) . unprop)
+        isExcSet  = any (fromMaybe False . fmap ("e" `isPrefixOf`) . unprop)
+        isEndSet = S.member End
         callPrec s
-          | S.null    s = Take
           | isCallSet s = Yield
           | isRetSet  s = Equal
           | isHanSet  s = Yield
           | isExcSet  s = Take
+          | isEndSet  s = Take
+          | S.null    s = Take
           | otherwise = error "Second set has invalid tokens"
         retPrec s
-          | S.null    s = Take
           | isCallSet s = Take
           | isRetSet  s = Take
           | isHanSet  s = Take
           | isExcSet  s = Take
+          | isEndSet  s = Take
+          | S.null    s = Take
           | otherwise = error "Second set has invalid tokens"
         hanPrec s
-          | S.null    s = Take
           | isCallSet s = Yield
           | isRetSet  s = Take
           | isHanSet  s = Yield
           | isExcSet  s = Equal
+          | isEndSet  s = Take
+          | S.null    s = Take
           | otherwise = error "Second set has invalid tokens"
         excPrec s
-          | S.null    s = Take
           | isCallSet s = Take
           | isRetSet  s = Take
           | isHanSet  s = Take
           | isExcSet  s = Take
+          | isEndSet  s = Take
+          | S.null    s = Take
           | otherwise = error "Second set has invalid tokens"
 
 -- Utility function to annotate Stack Trace Language Version 2 strings

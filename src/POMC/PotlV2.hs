@@ -1,15 +1,17 @@
-module POMC.PotlV2 ( Formula(..)
-                   , Dir
+module POMC.PotlV2 ( Dir(..)
+                   , Prop(..)
+                   , Formula(..)
                    ) where
 
 import POMC.Check (Checkable(..))
 import POMC.Opa (Prec(..))
-import POMC.RPotl (Prop(..))
-import qualified POMC.RPotl as RP (Formula(..))
+import qualified POMC.RPotl as RP (Formula(..), Prop(..))
 
 import qualified Data.Set as S
 
 data Dir = Up | Down deriving (Eq, Ord, Show)
+
+data Prop a = Prop a deriving (Eq, Ord, Show)
 
 data Formula a = T
                | Atomic (Prop a)
@@ -37,7 +39,7 @@ instance Checkable (Formula) where
   toReducedPotl f =
     case f of
       T               -> RP.T
-      Atomic p        -> RP.Atomic p
+      Atomic (Prop p) -> RP.Atomic (RP.Prop p)
       Not g           -> RP.Not (trp g)
       Or g h          -> RP.Or (trp g) (trp h)
       And g h         -> RP.And (trp g) (trp h)
@@ -64,6 +66,6 @@ instance Checkable (Formula) where
       HUntil Up   g h -> RP.HierUntilTake  (trp g) (trp h)
       HSince Down g h -> RP.HierSinceYield (trp g) (trp h)
       HSince Up   g h -> RP.HierSinceTake  (trp g) (trp h)
-      Eventually g    -> RP.Eventually (trp g)
+      Eventually g    -> RP.Eventually' (RP.And (RP.Not . RP.Atomic $ RP.End) (trp g))
       Always g        -> trp . Not . Eventually . Not $ g
     where trp = toReducedPotl

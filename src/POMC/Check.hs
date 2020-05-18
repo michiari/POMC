@@ -83,7 +83,7 @@ compProps :: (Eq a, Ord a) => Set (Formula a) -> Set (Prop a) -> Bool
 compProps fset pset = atomicSet fset == S.map Atomic pset
 
 closure :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
-closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
+closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
   where
@@ -150,8 +150,8 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
                  , Not $ ChainNext (S.singleton Take) T
                  , Not $ HierBackTake (HierSinceTake g h)
                  ] ++ hbtExp (HierSinceTake g h)
-    evExp g = [ PrecNext (S.fromList [Yield, Equal, Take]) (Eventually g)
-              , Not $ PrecNext (S.fromList [Yield, Equal, Take]) (Eventually g)
+    evExp g = [ PrecNext (S.fromList [Yield, Equal, Take]) (Eventually' g)
+              , Not $ PrecNext (S.fromList [Yield, Equal, Take]) (Eventually' g)
               ]
     closList f = case f of
       T                  -> [f, Not f]
@@ -173,7 +173,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) otherProps
       HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h ++ hsyExp g h
       HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hutExp g h
       HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hstExp g h
-      Eventually g       -> [f, Not f] ++ closList g ++ evExp g
+      Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
 atoms :: Ord a => Set (Formula a) -> [Atom a]
 atoms clos =
@@ -311,12 +311,12 @@ hierSinceTakeCons clos set = null [f | f@(HierSinceTake g h) <- S.toList set,
           ((S.fromList [g, HierBackTake hst])               `S.isSubsetOf` set)
 
 evCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
-evCons clos set = null [f | f@(Eventually g) <- S.toList set,
-                                                not (present f g)]
+evCons clos set = null [f | f@(Eventually' g) <- S.toList set,
+                                                 not (present f g)]
                   &&
-                  null [f | f@(Eventually g) <- S.toList clos,
-                                                present f g &&
-                                                not (f `S.member` set)]
+                  null [f | f@(Eventually' g) <- S.toList clos,
+                                                 present f g &&
+                                                 not (f `S.member` set)]
   where present ev g =
           (g `S.member` set) ||
           (PrecNext (S.fromList [Yield, Equal, Take]) ev `S.member` set)
@@ -1168,10 +1168,10 @@ deltaPop clos atoms pcombs prec rgroup state popped = debug fstates
 
     fstates = delta rgroup prec clos atoms pcombs state Nothing (Just popped) Nothing
 
-isFinal :: (Show a) => State a -> Bool
+isFinal :: (Eq a, Show a) => State a -> Bool
 isFinal s@(State c p xl xe xr) = debug $ not xl &&
                                          not xe &&
-                                         S.null currAtomic &&
+                                         currAtomic == S.singleton (Atomic End) &&
                                          S.null currFuture &&
                                          pendComb
   where currFset = atomFormulaSet (current s)
@@ -1218,7 +1218,7 @@ check phi prec ts =
 
 lookaheadProps lookahead = case lookahead of
                              Just npset -> npset
-                             Nothing    -> (S.empty)
+                             Nothing    -> S.singleton End
 
 augDeltaShift clos atoms pcombs prec rgroup lookahead state props = debug fstates
   where

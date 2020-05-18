@@ -21,7 +21,7 @@ import qualified Data.Set as S
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 
-data Prop a = Prop a deriving (Eq, Ord, Show, Generic, NFData)
+data Prop a = Prop a | End deriving (Eq, Ord, Show, Generic, NFData)
 
 data Formula a = T
                | Atomic (Prop a)
@@ -43,7 +43,7 @@ data Formula a = T
                | HierUntilTake  (Formula a) (Formula a)
                | HierSinceTake  (Formula a) (Formula a)
                | HierTakeHelper (Formula a)
-               | Eventually (Formula a)
+               | Eventually' (Formula a)
                deriving (Eq, Ord, Generic, NFData)
 
 instance (Show a) => Show (Formula a) where
@@ -68,7 +68,7 @@ instance (Show a) => Show (Formula a) where
   show (HierUntilTake  g h) = "(" ++ show g ++ ")HU[" ++ show Take  ++ "](" ++ show h ++ ")"
   show (HierSinceTake  g h) = "(" ++ show g ++ ")HS[" ++ show Take  ++ "](" ++ show h ++ ")"
   show (HierTakeHelper g)   = "Xp<'" ++ "(" ++ show g ++ ")"
-  show (Eventually g)       = "F" ++ "(" ++ show g ++ ")"
+  show (Eventually' g)      = "F" ++ "(" ++ show g ++ ")"
 
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
@@ -83,7 +83,7 @@ future (HierNextTake   {}) = True
 future (HierUntilYield {}) = True
 future (HierUntilTake  {}) = True
 future (HierTakeHelper {}) = True
---future (Eventually     {}) = True
+future (Eventually'    {}) = True
 future _ = False
 
 negative :: Formula a -> Bool
@@ -123,4 +123,4 @@ normalize f = case f of
                 HierUntilTake  g h -> HierUntilTake  (normalize g) (normalize h)
                 HierSinceTake  g h -> HierSinceTake  (normalize g) (normalize h)
                 HierTakeHelper g   -> HierTakeHelper (normalize g)
-                Eventually g       -> Eventually (normalize g)
+                Eventually' g      -> Eventually' (normalize g)
