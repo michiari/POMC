@@ -15,6 +15,10 @@ import qualified Data.Set as S
 
 import Control.Monad
 
+tests :: TestTree
+tests = testGroup "Check.hs tests" [unitTests, propTests]
+
+unitTests :: TestTree
 unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
   where
     -- Takes a list of tuples like:
@@ -848,9 +852,31 @@ unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
         )
       ]
 
+propTests :: TestTree
+propTests = testGroup "QuickCheck tests" (map makePropTest propTuples)
+  where makePropTest (name, expected, phi, prec, gen) =
+          testProperty name $
+            forAll (sized gen) $ \input -> fastcheck phi stlPrecedenceV1 input == expected
 
-termTrace :: Int -> Gen [String]
-termTrace m = return ["call"] `gconcat` (arb m) `gconcat` return ["ret"]
+        -- Each property test is a tuple of the type:
+        -- (name, expected check result, phi, prec, generator)
+        propTuples =
+          [ ( "Well formed stack traces, all calls return"
+            , True
+            , P2.Always $ (P2.Atomic . P2.Prop $ "call") `P2.Implies` ((P2.PNext P2.Down . P2.Atomic . P2.Prop $ "ret") `P2.Or` (P2.XNext P2.Down . P2.Atomic . P2.Prop $ "ret"))
+            , stlPrecedenceV1
+            , \m -> map (S.singleton . Prop) <$> wellFormedTrace m
+            )
+          , ( "Well formed stack traces, all exceptions are handled"
+            , True
+            , P2.Always $ (P2.Atomic . P2.Prop $ "thr") `P2.Implies` ((P2.PBack P2.Down . P2.Atomic . P2.Prop $ "han") `P2.Or` (P2.XBack P2.Down . P2.Atomic . P2.Prop $ "han"))
+            , stlPrecedenceV1
+            , \m -> map (S.singleton . Prop) <$> wellFormedTrace m
+            )
+          ]
+
+wellFormedTrace :: Int -> Gen [String]
+wellFormedTrace m = return ["call"] `gconcat` (arb m) `gconcat` return ["ret"]
   where gconcat = liftM2 (++)
         arb 0 = return []
         arb m = do n <- choose (0, m `div` 2)
@@ -859,29 +885,3 @@ termTrace m = return ["call"] `gconcat` (arb m) `gconcat` return ["ret"]
                          ]
         arbStr str m = do n <- choose (0, m)
                           return (replicate n str)
-
--- Each property test is a tuple of the type:
--- (name, expected check result, phi, prec, generator)
-propTuples =
-  [ ( "Well formed stack traces"
-    , True
-    , ((Atomic . Prop $ "call") `And` (PrecNext (S.singleton Equal) (Atomic . Prop $ "ret"))) `Or` (ChainNext (S.singleton Equal) (Atomic . Prop $ "ret"))
-    , stlPrecedenceV1
-    , \m -> map (S.singleton . Prop) <$> termTrace m
-    )
-  , ( "Well formed stack traces, no throw before handle"
-    , True
-    , Until (S.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "han")
-    , stlPrecedenceV1
-    , \m -> map (S.singleton . Prop) <$> termTrace m
-    )
-  ]
-
-properties :: TestTree
-properties = testGroup "QuickCheck tests" (map makePropTest propTuples)
-  where makePropTest (name, expected, phi, prec, gen) =
-          testProperty name $
-            forAll (sized gen) $ \input -> fastcheck phi stlPrecedenceV1 input == expected
-
-tests :: TestTree
-tests = testGroup "Check.hs tests" [unitTests, properties]
