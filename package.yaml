@@ -44,6 +44,8 @@ executables:
     - -feager-blackholing
     dependencies:
     - POMC
+    - megaparsec
+    - text
 
 tests:
   test-pomc:
