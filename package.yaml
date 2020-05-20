@@ -25,7 +25,10 @@ library:
   - bitvec
   - containers
   - deepseq
+  - megaparsec
   - parallel
+  - parser-combinators
+  - text
   - vector
 
 executables:

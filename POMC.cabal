@@ -26,6 +26,7 @@ library
       POMC.Data
       POMC.Example
       POMC.Opa
+      POMC.Parse
       POMC.PotlV2
       POMC.RPotl
       POMC.Util
@@ -39,7 +40,10 @@ library
     , bitvec
     , containers
     , deepseq
+    , megaparsec
     , parallel
+    , parser-combinators
+    , text
     , vector
   default-language: Haskell2010
 

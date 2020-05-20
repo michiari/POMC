@@ -41,8 +41,8 @@ instance Checkable (Formula) where
       T               -> RP.T
       Atomic (Prop p) -> RP.Atomic (RP.Prop p)
       Not g           -> RP.Not (trp g)
-      Or g h          -> RP.Or (trp g) (trp h)
       And g h         -> RP.And (trp g) (trp h)
+      Or g h          -> RP.Or (trp g) (trp h)
       Xor g h         -> trp $ (g `And` Not h) `Or` (h `And` Not g)
       Implies g h     -> trp $ (Not g) `Or` h
       Iff g h         -> trp $ (g `Implies` h) `And` (h `Implies` g)
