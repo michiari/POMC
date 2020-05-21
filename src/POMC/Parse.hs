@@ -8,6 +8,7 @@ module POMC.Parse ( potlv2P
 
 import qualified POMC.PotlV2 as P2
 import qualified POMC.RPotl  as RP
+import POMC.Opa (Prec(..))
 
 import Data.Void (Void)
 import Data.Text (Text)
@@ -22,12 +23,14 @@ import Control.Monad.Combinators.Expr
 
 type Parser = Parsec Void Text
 
-data CheckRequest = CheckRequest { creqFormulas :: [P2.Formula String]
-                                 , creqStrings  :: [[Set (RP.Prop String)]]
-                                 } deriving Show
+type P2Formula  = P2.Formula String
+type PropString = [Set (RP.Prop String)]
+type PrecRule   = Set (RP.Prop String) -> Set (RP.Prop String) -> Maybe Prec
 
-type P2Formula    = P2.Formula String
-type RPPropString = [Set (RP.Prop String)]
+data CheckRequest = CheckRequest { creqPrecRules :: [PrecRule]
+                                 , creqFormulas  :: [P2Formula]
+                                 , creqStrings   :: [PropString]
+                                 }
 
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
@@ -41,13 +44,40 @@ symbolP = L.symbol spaceP
 parensP :: Parser a -> Parser a
 parensP = between (symbolP "(") (symbolP ")")
 
-apP :: Parser [Char]
-apP = lexemeP (some alphaNumChar <?> "atomic proposition")
+propP :: Parser [Char]
+propP = lexemeP (some alphaNumChar <?> "atomic proposition")
+
+propSetP :: Parser (Set (RP.Prop String))
+propSetP = choice [ S.singleton . RP.Prop     <$> propP
+                  ,  S.fromList . map RP.Prop <$> parensP (some propP)
+                  ]
+
+propStringP :: Parser PropString
+propStringP = some propSetP
+
+precP :: Parser Prec
+precP = choice [ Yield <$ symbolP "<"
+               , Equal <$ symbolP "="
+               , Take  <$ symbolP ">"
+               ]
+
+precRuleP :: Parser PrecRule
+precRuleP = do sb1  <- matchP
+               prec <- precP
+               sb2  <- matchP
+               return (matchRule sb1 sb2 prec)
+  where matchP = choice [ S.empty <$ symbolP "*" -- S.empty is subset of any set
+                        , propSetP
+                        ]
+        matchRule sb1 sb2 prec s1 s2 =
+          if (sb1 `S.isSubsetOf` s1) && (sb2 `S.isSubsetOf` s2)
+            then Just prec
+            else Nothing
 
 potlv2P :: Parser P2Formula
 potlv2P = makeExprParser termParser operatorTable
   where atomicP :: Parser P2Formula
-        atomicP = (P2.Atomic . P2.Prop) <$> apP
+        atomicP = (P2.Atomic . P2.Prop) <$> propP
 
         termParser :: Parser P2Formula
         termParser = choice
@@ -115,18 +145,24 @@ formulaSectionP = do symbolP "formulas"
                      return formulas
   where formulasP = potlv2P `sepBy1` symbolP ","
 
-stringSectionP :: Parser [RPPropString]
+stringSectionP :: Parser [PropString]
 stringSectionP = do symbolP "strings"
                     symbolP "="
                     propStrings <- propStringsP
                     symbolP ";"
                     return propStrings
-  where propStringP = some (choice [ S.singleton . RP.Prop     <$> apP
-                                   ,  S.fromList . map RP.Prop <$> parensP (some apP)
-                                   ])
-        propStringsP = propStringP `sepBy1` symbolP ","
+  where propStringsP = propStringP `sepBy1` symbolP ","
+
+precSectionP :: Parser [PrecRule]
+precSectionP = do symbolP "prec"
+                  symbolP "="
+                  precRules <- precRulesP
+                  symbolP ";"
+                  return precRules
+  where precRulesP = precRuleP `sepBy1` symbolP ","
 
 checkRequestP :: Parser CheckRequest
-checkRequestP = do fs <- formulaSectionP
-                   ps <- stringSectionP
-                   return (CheckRequest fs ps)
+checkRequestP = do prs <- precSectionP
+                   fs  <- formulaSectionP
+                   pss <- stringSectionP
+                   return (CheckRequest prs fs pss)
