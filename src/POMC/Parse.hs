@@ -79,10 +79,14 @@ potlv2P = makeExprParser termParser operatorTable
   where atomicP :: Parser P2Formula
         atomicP = (P2.Atomic . P2.Prop) <$> propP
 
+        trueP :: Parser P2Formula
+        trueP = P2.T <$ symbolP "T"
+
         termParser :: Parser P2Formula
         termParser = choice
-          [ parensP potlv2P
+          [ trueP
           , atomicP
+          , parensP potlv2P
           ]
 
         binary name f = InfixL (f <$ symbolP name)
