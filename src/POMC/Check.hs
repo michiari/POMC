@@ -190,15 +190,21 @@ atoms clos =
                         chainNextCons      clos fset &&
                         orCons             clos fset &&
                         andCons            clos fset &&
-                        tCons                   fset
+                        trueCons                fset &&
+                        atomicCons              fset
       prependCons atoms eset = let fset = decode fetch eset
                                in if consistent fset
                                     then (Atom fset eset) : atoms
                                     else atoms
   in foldl' prependCons [] (generate $ V.length pclos)
 
-tCons :: Ord a => Set (Formula a) -> Bool
-tCons set = not (Not T `S.member` set)
+atomicCons :: Ord a => Set (Formula a) -> Bool
+atomicCons set = let aset = atomicSet set
+                     size = S.size aset
+                 in size > 0 && (Atomic End `S.member` aset) `implies` (size == 1)
+
+trueCons :: Ord a => Set (Formula a) -> Bool
+trueCons set = not (Not T `S.member` set)
 
 andCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 andCons clos set = null [f | f@(And g h) <- S.toList set,
