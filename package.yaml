@@ -44,6 +44,7 @@ executables:
     - -feager-blackholing
     dependencies:
     - POMC
+    - containers
     - megaparsec
     - text
 

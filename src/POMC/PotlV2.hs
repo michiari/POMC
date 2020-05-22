@@ -33,7 +33,7 @@ data Formula a = T
                | HSince Dir (Formula a) (Formula a)
                | Eventually (Formula a)
                | Always     (Formula a)
-               deriving (Eq, Ord, Show)
+               deriving (Eq, Ord)
 
 instance Checkable (Formula) where
   toReducedPotl f =
@@ -69,3 +69,39 @@ instance Checkable (Formula) where
       Eventually g    -> RP.Eventually' (RP.And (RP.Not . RP.Atomic $ RP.End) (trp g))
       Always g        -> trp . Not . Eventually . Not $ g
     where trp = toReducedPotl
+
+instance (Show a) => Show (Formula a) where
+  show f = case f of
+             T               -> showp f
+             Atomic _        -> showp f
+             Not g           -> concat ["~ ", showp g]
+             And g h         -> concat [showp g, " And ",  showp h]
+             Or g h          -> concat [showp g, " Or ",   showp h]
+             Xor g h         -> concat [showp g, " Xor ",  showp h]
+             Implies g h     -> concat [showp g, " --> ",  showp h]
+             Iff g h         -> concat [showp g, " <--> ", showp h]
+             PNext Down g    -> concat ["PNd ", showp g]
+             PNext Up   g    -> concat ["PNu ", showp g]
+             PBack Down g    -> concat ["PBd ", showp g]
+             PBack Up   g    -> concat ["PBu ", showp g]
+             XNext Down g    -> concat ["XNd ", showp g]
+             XNext Up   g    -> concat ["XNu ", showp g]
+             XBack Down g    -> concat ["XBd ", showp g]
+             XBack Up   g    -> concat ["XBu ", showp g]
+             HNext Down g    -> concat ["HNd ", showp g]
+             HNext Up   g    -> concat ["HNu ", showp g]
+             HBack Down g    -> concat ["HBd ", showp g]
+             HBack Up   g    -> concat ["HBu ", showp g]
+             Until Down g h  -> concat [showp g, " Ud ",  showp h]
+             Until Up   g h  -> concat [showp g, " Uu ",  showp h]
+             Since Down g h  -> concat [showp g, " Sd ",  showp h]
+             Since Up   g h  -> concat [showp g, " Su ",  showp h]
+             HUntil Down g h -> concat [showp g, " HUd ", showp h]
+             HUntil Up   g h -> concat [showp g, " HUu ", showp h]
+             HSince Down g h -> concat [showp g, " HSd ", showp h]
+             HSince Up   g h -> concat [showp g, " HSu ", showp h]
+             Eventually g    -> concat ["F ", showp g]
+             Always g        -> concat ["G ", showp g]
+    where showp T = "T"
+          showp (Atomic (Prop p)) = show p
+          showp f = concat ["(", show f, ")"]

@@ -1,3 +1,4 @@
+import POMC.RPotl (Prop(..))
 import POMC.Check (fastcheck)
 import POMC.Example (stlPrecedenceV2)
 import POMC.Parse (checkRequestP, spaceP, CheckRequest(..)) 
@@ -11,6 +12,10 @@ import System.Exit
 
 import Text.Megaparsec
 import Data.Text.IO (readFile)
+
+import qualified Data.Set as S
+
+import Data.List (intersperse)
 
 import Control.Monad
 
@@ -32,6 +37,12 @@ main = do args <- getArgs
           forM [(f, s, fastcheck f pf s) | f <- creqFormulas checkReq, s <- creqStrings checkReq]
                (putStrLn . showResult)
           return ()
-  where showResult (f, s, r) = "\nFormula: " ++ show f ++
-                               "\nString:  " ++ show s ++
-                               "\nResult:  " ++ show r 
+  where showResult (f, s, r) = concat [ "\nFormula: ", show f
+                                      , "\nString:  ", showstring s
+                                      , "\nResult:  ", show r 
+                                      ]
+        showp prop = case prop of Prop p -> show p
+                                  End    -> "#"
+        showpset pset = let showpset' = concat . intersperse " " . map showp . S.toList 
+                        in concat ["(", showpset' pset, ")"]
+        showstring = concat . intersperse " " . map showpset

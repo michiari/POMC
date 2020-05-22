@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.33.1.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4071e35edcc62437987fab075344cfe368e0d1eed5e661265478106a6f34b539
+-- hash: eef86e771ec539c162b0031c63ad59a1c4af17d4bd82c8d327954806080cd33a
 
 name:           POMC
 version:        0.1
@@ -58,6 +58,7 @@ executable pomc
   build-depends:
       POMC
     , base >=4.7 && <5
+    , containers
     , megaparsec
     , text
   default-language: Haskell2010
