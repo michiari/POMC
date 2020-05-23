@@ -1,0 +1,15 @@
+/* The first formula means all calls have a matched return.
+ * The second formula means no call is terminated by an exception.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > exc,  exc > exc,
+       * > *;
+
+formulas = G (call --> XNd ret),
+           G (call --> Not (PNu exc));
+
+strings = call (han e1) (exc e1) ret,
+          call exc;

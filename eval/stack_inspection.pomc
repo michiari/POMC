@@ -1,0 +1,19 @@
+/* First formula: if procedure `pa' is present into the stack when
+ *  procedure `pb' is called, `pb' throws an exception.
+ * Second formula: if procedure `pa' is present into the stack when
+ *  procedure `pb' is called, `pb' or one of the functions it calls
+ *   throw an exception.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > exc,  exc > exc,
+       * > *;
+
+formulas = G ((call And pb And (call Sd (call And pa))) --> (PNu exc Or XNu exc)),
+           G ((call And pb And (call Sd (call And pa))) --> ((pa Or ~pa) Ud (PNu exc Or XNu exc)));
+
+strings = (call pa) (call pb) exc,
+          (call pa) (call pb) ret ret,
+          (call pa) han (call pb) call exc ret;

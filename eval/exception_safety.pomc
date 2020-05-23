@@ -1,0 +1,19 @@
+/* Exception Safety
+ * If a call to procedure `pa' is terminated by an exception,
+ *  `eb' holds in that exception.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > exc,  exc > exc,
+       * > *;
+
+formulas = G ((call And pa And (PNu exc Or XNu exc)) --> (PNu eb Or XNu eb));
+
+strings = (call pa) exc,
+          (call pa) (exc eb),
+          (call pa) call (exc eb),
+          call (call pa) (exc eb) (call pa) han (call pa) call (exc eb) ret,
+          call (call pa) (exc eb) (call pa) han (call pa) call (exc eb) ret;
+
