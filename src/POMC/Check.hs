@@ -494,17 +494,18 @@ deltaRules condInfo =
           pCurrPnfs = [f | f@(PrecNext _ _) <- S.toList pCurr]
 
           fCurrProps = S.fromList [p | Atomic p <- S.toList fCurr]
-          prec = precFunc props fCurrProps
 
-          precComp = null [f | f@(PrecNext pset _) <- pCurrPnfs,
-                                                      prec `S.notMember` pset]
+          precComp prec = null [f | f@(PrecNext pset _) <- pCurrPnfs,
+                                                           prec `S.notMember` pset]
 
-          fsComp = S.fromList pCurrPnfs == checkSet
+          fsComp prec = S.fromList pCurrPnfs == checkSet
             where checkSet = S.fromList
                                [f | f@(PrecNext pset g) <- S.toList clos,
                                                            prec `S.member` pset &&
                                                            g `S.member` fCurr]
-      in precComp && fsComp
+      in case precFunc props fCurrProps of
+           Nothing   -> False
+           Just prec -> precComp prec && fsComp prec
 
     pnShiftFcr = pnPushFcr
     --
@@ -522,17 +523,18 @@ deltaRules condInfo =
           fCurrPbfs = [f | f@(PrecBack _ _) <- S.toList fCurr]
 
           fCurrProps = S.fromList [p | Atomic p <- S.toList fCurr]
-          prec = precFunc props fCurrProps
 
-          precComp = null [f | f@(PrecBack pset _) <- fCurrPbfs,
-                                                      prec `S.notMember` pset]
+          precComp prec = null [f | f@(PrecBack pset _) <- fCurrPbfs,
+                                                           prec `S.notMember` pset]
 
-          fsComp = S.fromList fCurrPbfs == checkSet
+          fsComp prec = S.fromList fCurrPbfs == checkSet
             where checkSet = S.fromList
                                [f | f@(PrecBack pset g) <- S.toList clos,
                                                            prec `S.member` pset &&
                                                            g `S.member` pCurr]
-      in precComp && fsComp
+      in case precFunc props fCurrProps of
+           Nothing   -> False
+           Just prec -> precComp prec && fsComp prec
 
     pbShiftFcr = pbPushFcr
     --
@@ -1023,7 +1025,7 @@ deltaRules condInfo =
 
 data PrInfo a = PrInfo
   { prClos      :: Set (Formula a)
-  , prPrecFunc  :: Set (Prop a) -> Set (Prop a) -> Prec
+  , prPrecFunc  :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
   , prState     :: State a
   , prProps     :: Maybe (Set (Prop a))
   , prPopped    :: Maybe (State a)
@@ -1031,7 +1033,7 @@ data PrInfo a = PrInfo
   }
 data FcrInfo a = FcrInfo
   { fcrClos       :: Set (Formula a)
-  , fcrPrecFunc   :: Set (Prop a) -> Set (Prop a) -> Prec
+  , fcrPrecFunc   :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
   , fcrState      :: State a
   , fcrProps      :: Maybe (Set (Prop a))
   , fcrPopped     :: Maybe (State a)
@@ -1040,7 +1042,7 @@ data FcrInfo a = FcrInfo
   }
 data FprInfo a = FprInfo
   { fprClos           :: Set (Formula a)
-  , fprPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Prec
+  , fprPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
   , fprState          :: State a
   , fprProps          :: Maybe (Set (Prop a))
   , fprPopped         :: Maybe (State a)
@@ -1049,7 +1051,7 @@ data FprInfo a = FprInfo
   }
 data FrInfo a = FrInfo
   { frClos           :: Set (Formula a)
-  , frPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Prec
+  , frPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
   , frState          :: State a
   , frProps          :: Maybe (Set (Prop a))
   , frPopped         :: Maybe (State a)
@@ -1127,7 +1129,7 @@ deltaShift :: (Eq a, Ord a, Show a)
            => Set (Formula a)
            -> [Atom a]
            -> Set (Set (Formula a), Bool, Bool, Bool)
-           -> (Set (Prop a) -> Set (Prop a) -> Prec)
+           -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
            -> RuleGroup a
            -> State a
            -> Set (Prop a)
@@ -1144,7 +1146,7 @@ deltaPush :: (Eq a, Ord a, Show a)
           => Set (Formula a)
           -> [Atom a]
           -> Set (Set (Formula a), Bool, Bool, Bool)
-          -> (Set (Prop a) -> Set (Prop a) -> Prec)
+          -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
           -> RuleGroup a
           -> State a
           -> Set (Prop a)
@@ -1161,7 +1163,7 @@ deltaPop :: (Eq a, Ord a, Show a)
          => Set (Formula a)
          -> [Atom a]
          -> Set (Set (Formula a), Bool, Bool, Bool)
-         -> (Set (Prop a) -> Set (Prop a) -> Prec)
+         -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
          -> RuleGroup a
          -> State a
          -> State a
@@ -1192,7 +1194,7 @@ isFinal s@(State c p xl xe xr) = debug $ not xl &&
 
 check :: (Checkable f, Ord a, Show a)
       => f a
-      -> (Set (Prop a) -> Set (Prop a) -> Prec)
+      -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
       -> [Set (Prop a)]
       -> Bool
 check phi prec ts =
@@ -1288,7 +1290,7 @@ augDeltaRules cl =
 
 fastcheck :: (Checkable f, Ord a, Show a, NFData a)
           => f a
-          -> (Set (Prop a) -> Set (Prop a) -> Prec)
+          -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
           -> [Set (Prop a)]
           -> Bool
 fastcheck phi prec ts =

@@ -15,13 +15,13 @@ import qualified Data.Set as S
 import Data.Maybe (fromJust, fromMaybe)
 
 -- Precedence function for the Stack Trace Language Version 1
-stlPrecedenceV1 :: Set (Prop String) -> Set (Prop String) -> Prec
+stlPrecedenceV1 :: Set (Prop String) -> Set (Prop String) -> Maybe Prec
 stlPrecedenceV1 s1 s2
   | isCallSet s1 = callPrec s2
   | isRetSet  s1 = retPrec  s2
   | isHanSet  s1 = hanPrec  s2
   | isThrSet  s1 = thrPrec  s2
-  | otherwise = error "First set has invalid tokens"
+  | otherwise = Nothing
   where unprop (Prop p) = Just p
         unprop End      = Nothing
         isCallSet = any (fromMaybe False . fmap ("c" `isPrefixOf`) . unprop)
@@ -30,37 +30,37 @@ stlPrecedenceV1 s1 s2
         isThrSet  = any (fromMaybe False . fmap ("t" `isPrefixOf`) . unprop)
         isEndSet = S.member End
         callPrec s
-          | isCallSet s = Yield
-          | isRetSet  s = Equal
-          | isHanSet  s = Yield
-          | isThrSet  s = Take
-          | isEndSet  s = Take
-          | S.null    s = Take
-          | otherwise = error "Second set has invalid tokens"
+          | isCallSet s = Just Yield
+          | isRetSet  s = Just Equal
+          | isHanSet  s = Just Yield
+          | isThrSet  s = Just Take
+          | isEndSet  s = Just Take
+          | S.null    s = Just Take
+          | otherwise = Nothing
         retPrec s
-          | isCallSet s = Take
-          | isRetSet  s = Take
-          | isHanSet  s = Yield
-          | isThrSet  s = Take
-          | isEndSet  s = Take
-          | S.null    s = Take
-          | otherwise = error "Second set has invalid tokens"
+          | isCallSet s = Just Take
+          | isRetSet  s = Just Take
+          | isHanSet  s = Just Yield
+          | isThrSet  s = Just Take
+          | isEndSet  s = Just Take
+          | S.null    s = Just Take
+          | otherwise = Nothing
         hanPrec s
-          | isCallSet s = Yield
-          | isRetSet  s = Take
-          | isHanSet  s = Yield
-          | isThrSet  s = Yield
-          | isEndSet  s = Take
-          | S.null    s = Take
-          | otherwise = error "Second set has invalid tokens"
+          | isCallSet s = Just Yield
+          | isRetSet  s = Just Take
+          | isHanSet  s = Just Yield
+          | isThrSet  s = Just Yield
+          | isEndSet  s = Just Take
+          | S.null    s = Just Take
+          | otherwise = Nothing
         thrPrec s
-          | isCallSet s = Take
-          | isRetSet  s = Take
-          | isHanSet  s = Take
-          | isThrSet  s = Take
-          | isEndSet  s = Take
-          | S.null    s = Take
-          | otherwise = error "Second set has invalid tokens"
+          | isCallSet s = Just Take
+          | isRetSet  s = Just Take
+          | isHanSet  s = Just Take
+          | isThrSet  s = Just Take
+          | isEndSet  s = Just Take
+          | S.null    s = Just Take
+          | otherwise = Nothing
 
 -- Utility function to annotate Stack Trace Language Version 1 strings
 -- Given a list of string tokens, if a token starts with 'c' it is annotated
@@ -76,13 +76,13 @@ stlAnnotateV1 = map annotate
           | otherwise = error ("Invalid token: " ++ t)
 
 -- Precedence function for the Stack Trace Language Version 2
-stlPrecedenceV2 :: Set (Prop String) -> Set (Prop String) -> Prec
+stlPrecedenceV2 :: Set (Prop String) -> Set (Prop String) -> Maybe Prec
 stlPrecedenceV2 s1 s2
   | isCallSet s1 = callPrec s2
   | isRetSet  s1 = retPrec  s2
   | isHanSet  s1 = hanPrec  s2
   | isExcSet  s1 = excPrec  s2
-  | otherwise = error "First set has invalid tokens"
+  | otherwise = Nothing
   where unprop (Prop p) = Just p
         unprop End      = Nothing
         isCallSet = any (fromMaybe False . fmap ("c" `isPrefixOf`) . unprop)
@@ -91,37 +91,37 @@ stlPrecedenceV2 s1 s2
         isExcSet  = any (fromMaybe False . fmap ("e" `isPrefixOf`) . unprop)
         isEndSet = S.member End
         callPrec s
-          | isCallSet s = Yield
-          | isRetSet  s = Equal
-          | isHanSet  s = Yield
-          | isExcSet  s = Take
-          | isEndSet  s = Take
-          | S.null    s = Take
-          | otherwise = error "Second set has invalid tokens"
+          | isCallSet s = Just Yield
+          | isRetSet  s = Just Equal
+          | isHanSet  s = Just Yield
+          | isExcSet  s = Just Take
+          | isEndSet  s = Just Take
+          | S.null    s = Just Take
+          | otherwise = Nothing
         retPrec s
-          | isCallSet s = Take
-          | isRetSet  s = Take
-          | isHanSet  s = Take
-          | isExcSet  s = Take
-          | isEndSet  s = Take
-          | S.null    s = Take
-          | otherwise = error "Second set has invalid tokens"
+          | isCallSet s = Just Take
+          | isRetSet  s = Just Take
+          | isHanSet  s = Just Take
+          | isExcSet  s = Just Take
+          | isEndSet  s = Just Take
+          | S.null    s = Just Take
+          | otherwise = Nothing
         hanPrec s
-          | isCallSet s = Yield
-          | isRetSet  s = Take
-          | isHanSet  s = Yield
-          | isExcSet  s = Equal
-          | isEndSet  s = Take
-          | S.null    s = Take
-          | otherwise = error "Second set has invalid tokens"
+          | isCallSet s = Just Yield
+          | isRetSet  s = Just Take
+          | isHanSet  s = Just Yield
+          | isExcSet  s = Just Equal
+          | isEndSet  s = Just Take
+          | S.null    s = Just Take
+          | otherwise = Nothing
         excPrec s
-          | isCallSet s = Take
-          | isRetSet  s = Take
-          | isHanSet  s = Take
-          | isExcSet  s = Take
-          | isEndSet  s = Take
-          | S.null    s = Take
-          | otherwise = error "Second set has invalid tokens"
+          | isCallSet s = Just Take
+          | isRetSet  s = Just Take
+          | isHanSet  s = Just Take
+          | isExcSet  s = Just Take
+          | isEndSet  s = Just Take
+          | S.null    s = Just Take
+          | otherwise = Nothing
 
 -- Utility function to annotate Stack Trace Language Version 2 strings
 -- Given a list of string tokens, if a token starts with 'c' it is annotated

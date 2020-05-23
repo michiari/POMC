@@ -25,7 +25,7 @@ instance Show Prec where
 
 data Opa s t = Opa
     { alphabet   :: [t]
-    , prec       :: t -> t -> Prec
+    , prec       :: t -> t -> Maybe Prec
     , states     :: [s]
     , initials   :: [s]
     , finals     :: [s]
@@ -44,7 +44,7 @@ runOpa :: (Eq s) => Opa s t -> [t] -> Bool
 runOpa (Opa _ prec _ initials finals dshift dpush dpop) tokens =
   run prec initials (`elem` finals) dshift dpush dpop tokens
 
-run :: (t -> t -> Prec)
+run :: (t -> t -> Maybe Prec)
     -> [s]
     -> (s -> Bool)
     -> (s -> t -> [s])
@@ -61,21 +61,25 @@ run prec initials isFinal deltaShift deltaPush deltaPop tokens =
       -- No more input and empty stack: accept / reject
       | null tokens && null stack = isFinal s
 
-      -- No more input but stack non empty: pop
-      | null tokens = any' recurse (pop dpop conf)
+      -- No more input but stack non-empty: pop
+      | null tokens = recurse (pop dpop conf)
 
-      -- Stack empty or stack top yields to next token: push
-      | null stack || prec (fst top) t == Yield = any' recurse (push dpush conf)
+      -- Stack empty: push
+      | null stack = recurse (push dpush conf)
 
-      -- Stack top has same precedence as next token: shift
-      | prec (fst top) t == Equal = any' recurse (shift dshift conf)
-
-      -- Stack top takes precedence on next token: pop
-      | prec (fst top) t == Take = any' recurse (pop dpop conf)
-
+      -- Evaluate stack top precedence w.r.t. next token
+      | otherwise = case prec (fst top) t of
+                      -- Undefined precedence relation: reject
+                      Nothing    -> False
+                      -- Stack top yields to next token: push
+                      Just Yield -> recurse (push dpush conf)
+                      -- Stack top has same precedence as next token: shift
+                      Just Equal -> recurse (shift dshift conf)
+                      -- Stack top takes precedence on next token: pop
+                      Just Take  -> recurse (pop dpop conf)
       where top = head stack  --
             t   = head tokens -- safe due to laziness
-            recurse = run' prec dshift dpush dpop isFinal
+            recurse = any' (run' prec dshift dpush dpop isFinal)
 
 parAny p xs = runEval $ parAny' p xs
   where parAny' p [] = return False
@@ -91,7 +95,7 @@ interChunks nchunks xs = interChunks' (V.generate nchunks (const [])) 0 xs
                                       xs
 
 parAugRun :: (NFData s, NFData t)
-       => (t -> t -> Prec)
+       => (t -> t -> Maybe Prec)
        -> [s]
        -> (s -> Bool)
        -> (Maybe t -> s -> t -> [s])
@@ -111,18 +115,22 @@ parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
       -- No more input and empty stack: accept / reject
       | null tokens && null stack = isFinal s
 
-      -- No more input but stack non empty: pop
+      -- No more input but stack non-empty: pop
       | null tokens = recurse (pop dpop conf)
 
-      -- Stack empty or stack top yields to next token: push
-      | null stack || prec (fst top) t == Yield = recurse (push dpush conf)
+      -- Stack empty: push
+      | null stack = recurse (push dpush conf)
 
-      -- Stack top has same precedence as next token: shift
-      | prec (fst top) t == Equal = recurse (shift dshift conf)
-
-      -- Stack top takes precedence on next token: pop
-      | prec (fst top) t == Take = recurse (pop dpop conf)
-
+      -- Evaluate stack top precedence w.r.t. next token
+      | otherwise = case prec (fst top) t of
+                      -- Undefined precedence relation: reject
+                      Nothing    -> False
+                      -- Stack top yields to next token: push
+                      Just Yield -> recurse (push dpush conf)
+                      -- Stack top has same precedence as next token: shift
+                      Just Equal -> recurse (shift dshift conf)
+                      -- Stack top takes precedence on next token: pop
+                      Just Take  -> recurse (pop dpop conf)
       where lookahead = safeTail tokens >>= safeHead
             dshift = adshift lookahead
             dpush  = adpush  lookahead

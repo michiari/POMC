@@ -4,19 +4,19 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import POMC.Opa
-import POMC.Util
+import POMC.Util (lookupOrDefault)
 
 arithOpa :: Opa Int Char
 arithOpa =
-  Opa
-    "+xn()"
-    (\t1 t2 -> unsafeLookup (t1, t2) arithOpaPrecMatrix)
-    [0, 1, 2, 3]
-    [0]
-    [1, 3]
-    (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaShift [])
-    (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaPush  [])
-    (\s1 s2 -> lookupOrDefault (s1, s2) arithOpaDeltaPop   [])
+  Opa { alphabet   = "+xn()"
+      , prec       = (\t1 t2 -> lookup (t1, t2) arithOpaPrecMatrix)
+      , states     = [0, 1, 2, 3]
+      , initials   = [0]
+      , finals     = [1, 3]
+      , deltaShift = (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaShift [])
+      , deltaPush  = (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaPush  [])
+      , deltaPop   = (\s1 s2 -> lookupOrDefault (s1, s2) arithOpaDeltaPop   [])
+      }
   where
     arithOpaPrecMatrix =
       [ (('+', '+'), Take)
@@ -71,15 +71,15 @@ arithOpa =
 
 vcOpa :: Opa [Char] [Char]
 vcOpa =
-  Opa
-    ["sv", "rb", "wr", "ud"]
-    (\t1 t2 -> unsafeLookup (t1, t2) vcOpaPrecMatrix)
-    ["q0", "q1", "q4", "0", "1", "2"]
-    ["q0"]
-    ["q0"]
-    (\s  t  -> lookupOrDefault (s,  t)  vcOpaDeltaShift [])
-    (\s  t  -> lookupOrDefault (s,  t)  vcOpaDeltaPush  [])
-    (\s1 s2 -> lookupOrDefault (s1, s2) vcOpaDeltaPop   [])
+  Opa { alphabet   = ["sv", "rb", "wr", "ud"]
+      , prec       = (\t1 t2 -> lookup (t1, t2) vcOpaPrecMatrix)
+      , states     = ["q0", "q1", "q4", "0", "1", "2"]
+      , initials   = ["q0"]
+      , finals     = ["q0"]
+      , deltaShift = (\s  t  -> lookupOrDefault (s,  t)  vcOpaDeltaShift [])
+      , deltaPush  = (\s  t  -> lookupOrDefault (s,  t)  vcOpaDeltaPush  [])
+      , deltaPop   = (\s1 s2 -> lookupOrDefault (s1, s2) vcOpaDeltaPop   [])
+      }
   where
     vcOpaPrecMatrix =
       [ (("sv", "sv"), Yield)
