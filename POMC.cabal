@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: eef86e771ec539c162b0031c63ad59a1c4af17d4bd82c8d327954806080cd33a
+-- hash: feabf9fdfe0d629ef2aa7e63090ea4905c46955c476f4ed93e1977f16f0d19b7
 
 name:           POMC
 version:        0.1
@@ -40,6 +40,7 @@ library
       base >=4.7 && <5
     , bitvec
     , containers
+    , criterion-measurement
     , deepseq
     , megaparsec
     , parallel

@@ -1,9 +1,9 @@
 import POMC.RPotl (Prop(..))
 import POMC.Check (fastcheck)
 import POMC.Example (stlPrecedenceV2)
-import POMC.Parse (checkRequestP, spaceP, CheckRequest(..)) 
+import POMC.Parse (checkRequestP, spaceP, CheckRequest(..))
 import POMC.Prec (makePrecFunc)
-import POMC.Util (safeHead)
+import POMC.Util (safeHead, timeAction)
 
 import Prelude hiding (readFile)
 
@@ -34,15 +34,15 @@ main = do args <- getArgs
                         Left  errBundle -> die (errorBundlePretty errBundle)
                         Right checkReq  -> return checkReq
           let pf = makePrecFunc (creqPrecRules checkReq)
-          forM [(f, s, fastcheck f pf s) | f <- creqFormulas checkReq, s <- creqStrings checkReq]
-               (putStrLn . showResult)
-          return ()
-  where showResult (f, s, r) = concat [ "\nFormula: ", show f
-                                      , "\nString:  ", showstring s
-                                      , "\nResult:  ", show r 
-                                      ]
+          forM_ [(f, s) | f <- creqFormulas checkReq, s <- creqStrings checkReq] (runreq pf)
+  where runreq pf (f, s) = do putStr (concat [ "\nFormula: ", show f
+                                             , "\nString:  ", showstring s
+                                             , "\nResult:  "
+                                             ])
+                              (_, secs, csecs) <- timeAction . putStr . show $ fastcheck f pf s
+                              putStrLn (concat ["\nElapsed: real ", secs, ", cpu ", csecs])
         showp prop = case prop of Prop p -> show p
                                   End    -> "#"
-        showpset pset = let showpset' = concat . intersperse " " . map showp . S.toList 
+        showpset pset = let showpset' = concat . intersperse " " . map showp . S.toList
                         in concat ["(", showpset' pset, ")"]
         showstring = concat . intersperse " " . map showpset

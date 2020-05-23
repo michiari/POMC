@@ -24,6 +24,7 @@ library:
   dependencies:
   - bitvec
   - containers
+  - criterion-measurement
   - deepseq
   - megaparsec
   - parallel
