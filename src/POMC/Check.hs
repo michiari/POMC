@@ -175,33 +175,36 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hstExp g h
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
-atoms :: Ord a => Set (Formula a) -> [Atom a]
-atoms clos =
+atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
+atoms clos validPropSets =
   let pclos = V.fromList (S.toAscList . S.filter (not . negative) $ clos)
       fetch i = pclos V.! i
-      consistent fset = evCons             clos fset &&
-                        hierSinceTakeCons  clos fset &&
-                        hierUntilTakeCons  clos fset &&
-                        hierSinceYieldCons clos fset &&
-                        hierUntilYieldCons clos fset &&
-                        sinceCons          clos fset &&
-                        untilCons          clos fset &&
-                        chainBackCons      clos fset &&
-                        chainNextCons      clos fset &&
-                        orCons             clos fset &&
-                        andCons            clos fset &&
-                        trueCons                fset &&
-                        atomicCons              fset
+      consistent fset = evCons              clos fset &&
+                        hierSinceTakeCons   clos fset &&
+                        hierUntilTakeCons   clos fset &&
+                        hierSinceYieldCons  clos fset &&
+                        hierUntilYieldCons  clos fset &&
+                        sinceCons           clos fset &&
+                        untilCons           clos fset &&
+                        chainBackCons       clos fset &&
+                        chainNextCons       clos fset &&
+                        orCons              clos fset &&
+                        andCons             clos fset &&
+                        trueCons                 fset &&
+                        atomicCons validPropSets fset
       prependCons atoms eset = let fset = decode fetch eset
                                in if consistent fset
                                     then (Atom fset eset) : atoms
                                     else atoms
   in foldl' prependCons [] (generate $ V.length pclos)
 
-atomicCons :: Ord a => Set (Formula a) -> Bool
-atomicCons set = let aset = atomicSet set
-                     size = S.size aset
-                 in size > 0 && (Atomic End `S.member` aset) `implies` (size == 1)
+atomicCons :: Ord a => Set (Set (Prop a)) -> Set (Formula a) -> Bool
+atomicCons validPropSets set =
+  let propSet = S.fromList [p | Atomic p <- S.toList set]
+      size = S.size propSet
+      vps = S.insert (S.singleton End) validPropSets
+  in (End `S.member` propSet) `implies` (size == 1) &&
+     (propSet `S.member` vps)
 
 trueCons :: Ord a => Set (Formula a) -> Bool
 trueCons set = not (Not T `S.member` set)
@@ -1208,8 +1211,9 @@ check phi prec ts =
             ts
   where nphi = normalize . toReducedPotl $ phi
         tsprops = S.toList $ foldl' (S.union) S.empty ts
+        validPropSets = foldl' (flip S.insert) S.empty ts
         cl = closure nphi tsprops
-        as = atoms cl
+        as = atoms cl validPropSets
         pcs = pendCombs cl
         is = initials nphi cl as
         (shiftRules, pushRules, popRules) = deltaRules cl
@@ -1303,9 +1307,12 @@ fastcheck phi prec ts =
             (augDeltaPop   cl as pcs prec   popRules)
             ts
   where nphi = normalize . toReducedPotl $ phi
+
         tsprops = S.toList $ foldl' (S.union) S.empty ts
+        validPropSets = foldl' (flip S.insert) S.empty ts
+
         cl = closure nphi tsprops
-        as = atoms cl
+        as = atoms cl validPropSets
         pcs = pendCombs cl
         is = filter compInitial (initials nphi cl as)
         (shiftRules, pushRules, popRules) = augDeltaRules cl
