@@ -1,8 +1,7 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
-module POMC.RPotl ( -- Main data types
+module POMC.RPotl ( -- Main data type
                     Formula(..)
-                  , Prop(..)
                     -- Predicates on formulas
                   , atomic
                   , future
@@ -13,15 +12,14 @@ module POMC.RPotl ( -- Main data types
                   , normalize
                   ) where
 
-import POMC.Opa (Prec(..))
+import POMC.Prec (Prec(..))
+import POMC.Prop (Prop(..))
 
 import Data.Set (Set)
 import qualified Data.Set as S
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
-
-data Prop a = Prop a | End deriving (Eq, Ord, Show, Generic, NFData)
 
 data Formula a = T
                | Atomic (Prop a)

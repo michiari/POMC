@@ -10,8 +10,10 @@ module POMC.Check ( State(..)
                   , Checkable(..)
                   ) where
 
-import POMC.Opa (Prec(..), run, parAugRun)
-import POMC.RPotl (Formula(..), Prop(..), negative, atomic, normalize, future)
+import POMC.Prop (Prop(..))
+import POMC.Prec (Prec(..))
+import POMC.Opa (run, parAugRun)
+import POMC.RPotl (Formula(..), negative, atomic, normalize, future)
 import POMC.Util (xor, implies, safeHead)
 import POMC.Data
 

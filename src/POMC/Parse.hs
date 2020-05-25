@@ -6,9 +6,10 @@ module POMC.Parse ( potlv2P
                   , CheckRequest(..)
                   ) where
 
+import POMC.Prop (Prop(..))
+import POMC.Prec (Prec(..))
 import qualified POMC.PotlV2 as P2
 import qualified POMC.RPotl  as RP
-import POMC.Opa (Prec(..))
 
 import Data.Void (Void)
 import Data.Text (Text)
@@ -24,8 +25,8 @@ import Control.Monad.Combinators.Expr
 type Parser = Parsec Void Text
 
 type P2Formula  = P2.Formula String
-type PropString = [Set (RP.Prop String)]
-type PrecRule   = Set (RP.Prop String) -> Set (RP.Prop String) -> Maybe Prec
+type PropString = [Set (Prop String)]
+type PrecRule   = Set (Prop String) -> Set (Prop String) -> Maybe Prec
 
 data CheckRequest = CheckRequest { creqPrecRules :: [PrecRule]
                                  , creqFormulas  :: [P2Formula]
@@ -44,12 +45,14 @@ symbolP = L.symbol spaceP
 parensP :: Parser a -> Parser a
 parensP = between (symbolP "(") (symbolP ")")
 
-propP :: Parser [Char]
-propP = lexemeP (some alphaNumChar <?> "atomic proposition")
+propP :: Parser (Prop String)
+propP = choice [ End  <$  symbolP "#"
+               , Prop <$> lexemeP (some alphaNumChar <?> "atomic proposition")
+               ]
 
-propSetP :: Parser (Set (RP.Prop String))
-propSetP = choice [ S.singleton . RP.Prop     <$> propP
-                  ,  S.fromList . map RP.Prop <$> parensP (some propP)
+propSetP :: Parser (Set (Prop String))
+propSetP = choice [ S.singleton <$> propP
+                  ,  S.fromList <$> parensP (some propP)
                   ]
 
 propStringP :: Parser PropString
@@ -77,7 +80,7 @@ precRuleP = do sb1  <- matchP
 potlv2P :: Parser P2Formula
 potlv2P = makeExprParser termParser operatorTable
   where atomicP :: Parser P2Formula
-        atomicP = (P2.Atomic . P2.Prop) <$> propP
+        atomicP = P2.Atomic <$> propP
 
         trueP :: Parser P2Formula
         trueP = P2.T <$ symbolP "T"

@@ -2,8 +2,9 @@ module TestCheck (tests) where
 
 import POMC.Check (check, fastcheck, Checkable(..))
 import POMC.Example (stlPrecedenceV1, stlPrecedenceV2)
-import POMC.Opa (Prec(..))
-import POMC.RPotl (Formula(..), Prop(..), formulaAt)
+import POMC.Prec (Prec(..))
+import POMC.Prop (Prop(..))
+import POMC.RPotl (Formula(..), formulaAt)
 import qualified POMC.PotlV2 as P2 (Dir(..), Prop(..), Formula(..))
 
 import Test.Tasty

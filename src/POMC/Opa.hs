@@ -1,12 +1,12 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
-module POMC.Opa ( Prec(..)
+module POMC.Opa ( run
+                , parAugRun
                 , Opa(..)
                 , runOpa
-                , run
-                , parAugRun
                 ) where
 
+import POMC.Prec (Prec(..))
 import POMC.Util (any', safeHead, safeTail)
 
 import Control.Parallel.Strategies
@@ -15,13 +15,6 @@ import Control.DeepSeq
 import GHC.Generics (Generic)
 
 import qualified Data.Vector as V
-
-data Prec = Yield | Equal | Take deriving (Eq, Ord, Generic, NFData)
-
-instance Show Prec where
-  show Yield = "<"
-  show Equal = "="
-  show Take  = ">"
 
 data Opa s t = Opa
     { alphabet   :: [t]

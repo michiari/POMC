@@ -4,8 +4,8 @@ module POMC.Example ( stlPrecedenceV1
                     , stlAnnotateV2
                     ) where
 
-import POMC.Opa (Prec(..))
-import POMC.RPotl (Prop(..))
+import POMC.Prec (Prec(..))
+import POMC.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
 

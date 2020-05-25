@@ -3,7 +3,8 @@ module TestOpa (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import POMC.Opa
+import POMC.Prec (Prec(..))
+import POMC.Opa (Opa(..), runOpa)
 import POMC.Util (lookupOrDefault)
 
 arithOpa :: Opa Int Char
