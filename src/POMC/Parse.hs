@@ -92,7 +92,8 @@ potlv2P = makeExprParser termParser operatorTable
           , parensP potlv2P
           ]
 
-        binary name f = InfixL (f <$ symbolP name)
+        binaryL name f = InfixL (f <$ symbolP name)
+        binaryR name f = InfixR (f <$ symbolP name)
         prefix name f = Prefix (f <$ symbolP name)
 
         operatorTable :: [[Operator Parser P2Formula]]
@@ -120,27 +121,27 @@ potlv2P = makeExprParser termParser operatorTable
             , prefix "Always" P2.Always
             , prefix "G"      P2.Always
             ]
-          , [ binary "Ud" (P2.Until P2.Down)
-            , binary "Uu" (P2.Until P2.Up)
-            , binary "Sd" (P2.Since P2.Down)
-            , binary "Su" (P2.Since P2.Up)
+          , [ binaryR "Ud" (P2.Until P2.Down)
+            , binaryR "Uu" (P2.Until P2.Up)
+            , binaryR "Sd" (P2.Since P2.Down)
+            , binaryR "Su" (P2.Since P2.Up)
 
-            , binary "HUd" (P2.HUntil P2.Down)
-            , binary "HUu" (P2.HUntil P2.Up)
-            , binary "HSd" (P2.HSince P2.Down)
-            , binary "HSu" (P2.HSince P2.Up)
+            , binaryR "HUd" (P2.HUntil P2.Down)
+            , binaryR "HUu" (P2.HUntil P2.Up)
+            , binaryR "HSd" (P2.HSince P2.Down)
+            , binaryR "HSu" (P2.HSince P2.Up)
             ]
-          , [ binary "And" P2.And
-            , binary "&&"  P2.And
+          , [ binaryL "And" P2.And
+            , binaryL "&&"  P2.And
             ]
-          , [ binary "Or" P2.Or
-            , binary "||" P2.Or
-            , binary "Xor" P2.Xor
+          , [ binaryL "Or" P2.Or
+            , binaryL "||" P2.Or
+            , binaryL "Xor" P2.Xor
             ]
-          , [ binary "Implies" P2.Implies
-            , binary "-->"     P2.Implies
-            , binary "Iff"  P2.Iff
-            , binary "<-->" P2.Iff
+          , [ binaryR "Implies" P2.Implies
+            , binaryR "-->"     P2.Implies
+            , binaryR "Iff"  P2.Iff
+            , binaryR "<-->" P2.Iff
             ]
           ]
 
