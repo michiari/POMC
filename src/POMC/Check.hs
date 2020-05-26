@@ -181,19 +181,24 @@ atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
 atoms clos validPropSets =
   let pclos = V.fromList (S.toAscList . S.filter (not . negative) $ clos)
       fetch i = pclos V.! i
-      consistent fset = evCons              clos fset &&
-                        hierSinceTakeCons   clos fset &&
-                        hierUntilTakeCons   clos fset &&
-                        hierSinceYieldCons  clos fset &&
-                        hierUntilYieldCons  clos fset &&
-                        sinceCons           clos fset &&
-                        untilCons           clos fset &&
-                        chainBackCons       clos fset &&
-                        chainNextCons       clos fset &&
-                        orCons              clos fset &&
-                        andCons             clos fset &&
-                        trueCons                 fset &&
-                        atomicCons validPropSets fset
+      checks =
+        [ atomicCons validPropSets
+        , trueCons
+        , onlyif (not . null $ [f | f@(And _ _)            <- cl]) (andCons clos)
+        , onlyif (not . null $ [f | f@(Or _ _)             <- cl]) (orCons clos)
+        , onlyif (not . null $ [f | f@(ChainNext _ _)      <- cl]) (chainNextCons clos)
+        , onlyif (not . null $ [f | f@(ChainBack _ _)      <- cl]) (chainBackCons clos)
+        , onlyif (not . null $ [f | f@(Until _ _ _)        <- cl]) (untilCons clos)
+        , onlyif (not . null $ [f | f@(Since _ _ _)        <- cl]) (sinceCons clos)
+        , onlyif (not . null $ [f | f@(HierUntilYield _ _) <- cl]) (hierUntilYieldCons clos)
+        , onlyif (not . null $ [f | f@(HierSinceYield _ _) <- cl]) (hierSinceYieldCons clos)
+        , onlyif (not . null $ [f | f@(HierUntilTake _ _)  <- cl]) (hierUntilTakeCons clos)
+        , onlyif (not . null $ [f | f@(HierSinceTake _ _)  <- cl]) (hierSinceTakeCons clos)
+        , onlyif (not . null $ [f | f@(Eventually' _)      <- cl]) (evCons clos)
+        ]
+        where onlyif cond f = if cond then f else const True
+              cl = S.toList clos
+      consistent fset = all (\c -> c fset) checks
       prependCons atoms eset = let fset = decode fetch eset
                                in if consistent fset
                                     then (Atom fset eset) : atoms
