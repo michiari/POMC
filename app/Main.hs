@@ -39,7 +39,7 @@ main = do args <- getArgs
                                              , "\nResult:  "
                                              ])
                               (_, secs, _) <- timeAction . putStr . show $ fastcheck f pf s
-                              putStrLn (concat ["\nElapsed:", secs])
+                              putStrLn (concat ["\nElapsed: ", secs])
         showp prop = case prop of Prop p -> show p
                                   End    -> "#"
         showpset pset = let showpset' = concat . intersperse " " . map showp . S.toList
