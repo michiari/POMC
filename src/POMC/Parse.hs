@@ -6,13 +6,14 @@ module POMC.Parse ( potlv2P
                   , CheckRequest(..)
                   ) where
 
-import POMC.Prop (Prop(..))
 import POMC.Prec (Prec(..))
+import POMC.Prop (Prop(..))
 import qualified POMC.PotlV2 as P2
-import qualified POMC.RPotl  as RP
 
 import Data.Void (Void)
+
 import Data.Text (Text)
+import Data.Text as T
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -24,9 +25,9 @@ import Control.Monad.Combinators.Expr
 
 type Parser = Parsec Void Text
 
-type P2Formula  = P2.Formula String
-type PropString = [Set (Prop String)]
-type PrecRelation = (Set (Prop String), Set (Prop String), Prec)
+type P2Formula = P2.Formula Text
+type PropString = [Set (Prop Text)]
+type PrecRelation = (Set (Prop Text), Set (Prop Text), Prec)
 
 data CheckRequest = CheckRequest { creqPrecRels :: [PrecRelation]
                                  , creqFormulas :: [P2Formula]
@@ -45,12 +46,12 @@ symbolP = L.symbol spaceP
 parensP :: Parser a -> Parser a
 parensP = between (symbolP "(") (symbolP ")")
 
-propP :: Parser (Prop String)
-propP = choice [ End  <$  symbolP "#"
-               , Prop <$> lexemeP (some alphaNumChar <?> "atomic proposition")
+propP :: Parser (Prop Text)
+propP = choice [ End           <$  symbolP "#"
+               , Prop . T.pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
                ]
 
-propSetP :: Parser (Set (Prop String))
+propSetP :: Parser (Set (Prop Text))
 propSetP = choice [ S.singleton <$> propP
                   ,  S.fromList <$> parensP (some propP)
                   ]
