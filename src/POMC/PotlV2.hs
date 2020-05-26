@@ -104,3 +104,36 @@ instance (Show a) => Show (Formula a) where
     where showp T = "T"
           showp (Atomic (Prop p)) = show p
           showp f = concat ["(", show f, ")"]
+
+instance Functor Formula where
+  fmap func f = case f of
+                  T               -> T
+                  Atomic p        -> Atomic (fmap func p)
+                  Not g           -> Not (fmap func g)
+                  And     g h     -> And     (fmap func g) (fmap func h)
+                  Or      g h     -> Or      (fmap func g) (fmap func h)
+                  Xor     g h     -> Xor     (fmap func g) (fmap func h)
+                  Implies g h     -> Implies (fmap func g) (fmap func h)
+                  Iff     g h     -> Iff     (fmap func g) (fmap func h)
+                  PNext Down g    -> PNext Down (fmap func g)
+                  PNext Up   g    -> PNext Up   (fmap func g)
+                  PBack Down g    -> PBack Down (fmap func g)
+                  PBack Up   g    -> PBack Up   (fmap func g)
+                  XNext Down g    -> XNext Down (fmap func g)
+                  XNext Up   g    -> XNext Up   (fmap func g)
+                  XBack Down g    -> XBack Down (fmap func g)
+                  XBack Up   g    -> XBack Up   (fmap func g)
+                  HNext Down g    -> HNext Down (fmap func g)
+                  HNext Up   g    -> HNext Up   (fmap func g)
+                  HBack Down g    -> HBack Down (fmap func g)
+                  HBack Up   g    -> HBack Up   (fmap func g)
+                  Until Down g h  -> Until Down (fmap func g) (fmap func h)
+                  Until Up   g h  -> Until Up   (fmap func g) (fmap func h)
+                  Since Down g h  -> Since Down (fmap func g) (fmap func h)
+                  Since Up   g h  -> Since Up   (fmap func g) (fmap func h)
+                  HUntil Down g h -> HUntil Down (fmap func g) (fmap func h)
+                  HUntil Up   g h -> HUntil Up   (fmap func g) (fmap func h)
+                  HSince Down g h -> HSince Down (fmap func g) (fmap func h)
+                  HSince Up   g h -> HSince Up   (fmap func g) (fmap func h)
+                  Eventually g    -> Eventually (fmap func g)
+                  Always g        -> Always (fmap func g)
