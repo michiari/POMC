@@ -26,11 +26,11 @@ type Parser = Parsec Void Text
 
 type P2Formula  = P2.Formula String
 type PropString = [Set (Prop String)]
-type PrecRule   = Set (Prop String) -> Set (Prop String) -> Maybe Prec
+type PrecRelation = (Set (Prop String), Set (Prop String), Prec)
 
-data CheckRequest = CheckRequest { creqPrecRules :: [PrecRule]
-                                 , creqFormulas  :: [P2Formula]
-                                 , creqStrings   :: [PropString]
+data CheckRequest = CheckRequest { creqPrecRels :: [PrecRelation]
+                                 , creqFormulas :: [P2Formula]
+                                 , creqStrings  :: [PropString]
                                  }
 
 spaceP :: Parser ()
@@ -64,18 +64,14 @@ precP = choice [ Yield <$ symbolP "<"
                , Take  <$ symbolP ">"
                ]
 
-precRuleP :: Parser PrecRule
-precRuleP = do sb1  <- matchP
-               prec <- precP
-               sb2  <- matchP
-               return (matchRule sb1 sb2 prec)
+precRelP :: Parser PrecRelation
+precRelP = do sb1  <- matchP
+              prec <- precP
+              sb2  <- matchP
+              return (sb1, sb2, prec)
   where matchP = choice [ S.empty <$ symbolP "*" -- S.empty is subset of any set
                         , propSetP
                         ]
-        matchRule sb1 sb2 prec s1 s2 =
-          if (sb1 `S.isSubsetOf` s1) && (sb2 `S.isSubsetOf` s2)
-            then Just prec
-            else Nothing
 
 potlv2P :: Parser P2Formula
 potlv2P = makeExprParser termParser operatorTable
@@ -161,13 +157,13 @@ stringSectionP = do symbolP "strings"
                     return propStrings
   where propStringsP = propStringP `sepBy1` symbolP ","
 
-precSectionP :: Parser [PrecRule]
+precSectionP :: Parser [PrecRelation]
 precSectionP = do symbolP "prec"
                   symbolP "="
-                  precRules <- precRulesP
+                  precRels <- precRelsP
                   symbolP ";"
-                  return precRules
-  where precRulesP = precRuleP `sepBy1` symbolP ","
+                  return precRels
+  where precRelsP = precRelP `sepBy1` symbolP ","
 
 checkRequestP :: Parser CheckRequest
 checkRequestP = do prs <- precSectionP

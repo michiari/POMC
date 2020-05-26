@@ -1,8 +1,7 @@
-import POMC.Prop (Prop(..))
 import POMC.Check (fastcheck)
-import POMC.Example (stlPrecedenceV2)
 import POMC.Parse (checkRequestP, spaceP, CheckRequest(..))
-import POMC.Prec (composePrecFunc)
+import POMC.Prec (fromRelations)
+import POMC.Prop (Prop(..))
 import POMC.Util (safeHead, timeAction)
 
 import Prelude hiding (readFile)
@@ -33,7 +32,7 @@ main = do args <- getArgs
           checkReq <- case parse (spaceP *> checkRequestP <* eof) fname fcontent of
                         Left  errBundle -> die (errorBundlePretty errBundle)
                         Right checkReq  -> return checkReq
-          let pf = composePrecFunc (creqPrecRules checkReq)
+          let pf = fromRelations (creqPrecRels checkReq)
           forM_ [(f, s) | f <- creqFormulas checkReq, s <- creqStrings checkReq] (runreq pf)
   where runreq pf (f, s) = do putStr (concat [ "\nFormula: ", show f
                                              , "\nString:  ", showstring s
