@@ -1,7 +1,8 @@
-import POMC.Check (fastcheck)
+import POMC.Check (Checkable(..), closure, fastcheck)
 import POMC.Parse (checkRequestP, spaceP, CheckRequest(..))
 import POMC.Prec (fromRelations)
 import POMC.Prop (Prop(..))
+import POMC.RPotl (Formula(..))
 import POMC.Util (safeHead, timeAction)
 
 import Prelude hiding (readFile)
@@ -12,11 +13,19 @@ import System.Exit
 import Text.Megaparsec
 import Data.Text.IO (readFile)
 
-import qualified Data.Set as S
-
 import Data.List (intersperse)
 
+import Data.Set (Set)
+import qualified Data.Set as S
+
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+
+import Data.Maybe (fromJust)
+
 import Control.Monad
+
+import Data.Text (Text)
 
 exitHelp :: IO a
 exitHelp = do progName <- getProgName
@@ -29,19 +38,63 @@ main = do args <- getArgs
                      (Just fname)    -> return fname
                      Nothing         -> exitHelp
           fcontent <- readFile fname
-          checkReq <- case parse (spaceP *> checkRequestP <* eof) fname fcontent of
-                        Left  errBundle -> die (errorBundlePretty errBundle)
-                        Right checkReq  -> return checkReq
-          let pf = fromRelations (creqPrecRels checkReq)
-          forM_ [(f, s) | f <- creqFormulas checkReq, s <- creqStrings checkReq] (runreq pf)
-  where runreq pf (f, s) = do putStr (concat [ "\nFormula: ", show f
-                                             , "\nString:  ", showstring s
-                                             , "\nResult:  "
-                                             ])
-                              (_, secs, _) <- timeAction . putStr . show $ fastcheck f pf s
-                              putStrLn (concat ["\nElapsed: ", secs])
+
+          creq <- case parse (spaceP *> checkRequestP <* eof) fname fcontent of
+                    Left  errBundle -> die (errorBundlePretty errBundle)
+                    Right creq      -> return creq
+
+          let tfunc = makeTransFunc creq
+
+              pfunc = fromRelations (transPrecRels tfunc . creqPrecRels $ creq)
+
+              phis = creqFormulas creq
+              strings = creqStrings creq
+
+          forM_ [(phi, s) | phi <- phis, s <- strings] (uncurry $ run tfunc pfunc)
+
+  where run tfunc pfunc phi s =
+          do putStr (concat [ "\nFormula: ", show phi
+                            , "\nString:  ", showstring s
+                            , "\nResult:  "
+                            ])
+
+             let tphi = transFormula tfunc phi
+                 ts   = transString  tfunc s
+
+             (_, secs, _) <- timeAction . putStr . show $ fastcheck tphi pfunc ts
+
+             putStrLn (concat ["\nElapsed: ", secs])
+
         showp prop = case prop of Prop p -> show p
                                   End    -> "#"
         showpset pset = let showpset' = concat . intersperse " " . map showp . S.toList
                         in concat ["(", showpset' pset, ")"]
         showstring = concat . intersperse " " . map showpset
+
+        transPrecRels tfunc rels = map (\(s1, s2, pr) -> ( S.map (fmap tfunc) s1
+                                                         , S.map (fmap tfunc) s2
+                                                         , pr
+                                                         )
+                                       ) rels
+        transFormula tfunc phi = tfunc <$> phi
+        transString tfunc string = S.map (fmap tfunc) <$> string
+
+makeTransFunc :: CheckRequest -> (Text -> Int)
+makeTransFunc (CheckRequest rels phis strings) =
+  let relProps = (concatMap (\(s1, s2, _) -> S.toList $ S.union s1 s2) rels)
+
+      phiProps = concatMap (\phi -> let rphi = toReducedPotl phi
+                                 in [p | Atomic p <- S.toList (closure rphi [])]
+                           ) phis
+
+      stringProps = concatMap (\s -> concatMap S.toList s) strings
+
+      propSet :: Set (Prop Text)
+      propSet = S.fromList (relProps ++ phiProps ++ stringProps)
+
+      tmap :: Map Text Int
+      tmap = M.fromList $ zip ([p | Prop p <- S.toList propSet]) [1..]
+
+      trans :: Text -> Int
+      trans t = fromJust $ M.lookup t tmap
+  in trans

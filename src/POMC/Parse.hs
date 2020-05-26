@@ -25,9 +25,9 @@ import Control.Monad.Combinators.Expr
 
 type Parser = Parsec Void Text
 
+type PrecRelation = (Set (Prop Text), Set (Prop Text), Prec)
 type P2Formula = P2.Formula Text
 type PropString = [Set (Prop Text)]
-type PrecRelation = (Set (Prop Text), Set (Prop Text), Prec)
 
 data CheckRequest = CheckRequest { creqPrecRels :: [PrecRelation]
                                  , creqFormulas :: [P2Formula]
