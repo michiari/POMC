@@ -9,5 +9,5 @@ fi
 for F in "${TESTS[@]}"; do
     echo "_______________________________________________________________________________"
     echo "Evaluating file "$F" ..."
-    time stack exec pomc -- "$F"
+    stack exec pomc -- "$F"
 done

@@ -1,0 +1,21 @@
+/* The formulas mean, respectively, that:
+ * the second position terminates an empty function frame;
+ * the fourth position terminates an empty function frame;
+ * the first position contains an inner call with empty body.
+ * Note that in all cases PNd (PBu call) could be replaced with PNd (ret Or exc),
+ * but these formulas are just to show a use of the PBu operator.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc;
+
+formulas = PNd (PBu call),
+           PNd (PNd (PNd (PBu call))),
+           XNd (PNd (PBu call));
+
+strings = call han call exc call ret call ret ret,
+          call ret,
+          call call call exc,
+          (call pa) han (call pb) exc (call perr) (ret perr) (call perr) (ret perr) (ret pa);

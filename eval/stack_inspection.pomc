@@ -8,11 +8,11 @@
 prec = call < call, call = ret, call < han, call > exc,
        ret > call,  ret > ret,  ret > han,  ret > exc,
        han < call,  han > ret,  han < han,  han = exc,
-       exc > call,  exc > ret,  exc > exc,  exc > exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc,
        * > *;
 
 formulas = G ((call And pb And (call Sd (call And pa))) --> (PNu exc Or XNu exc)),
-           G ((call And pb And (call Sd (call And pa))) --> ((pa Or ~pa) Ud (PNu exc Or XNu exc)));
+           G ((call And pb And (call Sd (call And pa))) --> (T Ud (PNu exc Or XNu exc)));
 
 strings = (call pa) (call pb) exc,
           (call pa) (call pb) ret ret,
