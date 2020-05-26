@@ -578,8 +578,7 @@ deltaRules condInfo =
                                                               g `S.member` pCurr]
           fCheckSet = S.fromList [f | f@(ChainNext pset _) <- S.toList fPend,
                                                               pset == S.singleton Yield]
-          checkSet = (pCheckSet `S.difference` fCheckSet) `S.union`
-                     (fCheckSet `S.difference` pCheckSet)
+          checkSet = pCheckSet `S.union` fCheckSet
       in if fXl
            then S.fromList ppPendCnyfs == checkSet
            else null ppPendCnyfs
