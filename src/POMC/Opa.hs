@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
 module POMC.Opa ( run
+                , augRun
                 , parAugRun
                 , Opa(..)
                 , runOpa
@@ -74,6 +75,46 @@ run prec initials isFinal deltaShift deltaPush deltaPop tokens =
             t   = head tokens -- safe due to laziness
             recurse = any' (run' prec dshift dpush dpop isFinal)
 
+augRun :: (t -> t -> Maybe Prec)
+       -> [s]
+       -> (s -> Bool)
+       -> (Maybe t -> s -> t -> [s])
+       -> (Maybe t -> s -> t -> [s])
+       -> (Maybe t -> s -> s -> [s])
+       -> [t]
+       -> Bool
+augRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
+  let ics = (map (\i -> Config i [] tokens) initials)
+  in any' (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal) ics
+  where
+    run' prec adshift adpush adpop isFinal conf@(Config s stack tokens)
+      -- No more input and empty stack: accept / reject
+      | null tokens && null stack = isFinal s
+
+      -- No more input but stack non-empty: pop
+      | null tokens = recurse (pop dpop conf)
+
+      -- Stack empty: push
+      | null stack = recurse (push dpush conf)
+
+      -- Evaluate stack top precedence w.r.t. next token
+      | otherwise = case prec (fst top) t of
+                      -- Undefined precedence relation: reject
+                      Nothing    -> False
+                      -- Stack top yields to next token: push
+                      Just Yield -> recurse (push dpush conf)
+                      -- Stack top has same precedence as next token: shift
+                      Just Equal -> recurse (shift dshift conf)
+                      -- Stack top takes precedence on next token: pop
+                      Just Take  -> recurse (pop dpop conf)
+      where lookahead = safeTail tokens >>= safeHead
+            dshift = adshift lookahead
+            dpush  = adpush  lookahead
+            dpop   = adpop   lookahead
+            top = head stack  --
+            t   = head tokens -- safe due to laziness
+            recurse = any' (run' prec adshift adpush adpop isFinal)
+
 parAny p xs = runEval $ parAny' p xs
   where parAny' p [] = return False
         parAny' p (x:xs) = do px <- rpar (p x)
@@ -88,14 +129,14 @@ interChunks nchunks xs = interChunks' (V.generate nchunks (const [])) 0 xs
                                       xs
 
 parAugRun :: (NFData s, NFData t)
-       => (t -> t -> Maybe Prec)
-       -> [s]
-       -> (s -> Bool)
-       -> (Maybe t -> s -> t -> [s])
-       -> (Maybe t -> s -> t -> [s])
-       -> (Maybe t -> s -> s -> [s])
-       -> [t]
-       -> Bool
+          => (t -> t -> Maybe Prec)
+          -> [s]
+          -> (s -> Bool)
+          -> (Maybe t -> s -> t -> [s])
+          -> (Maybe t -> s -> t -> [s])
+          -> (Maybe t -> s -> s -> [s])
+          -> [t]
+          -> Bool
 parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
   let ics = (map (\i -> Config i [] tokens) initials)
       nchunks = min 128 (length ics)

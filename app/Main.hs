@@ -38,8 +38,8 @@ main = do args <- getArgs
                                              , "\nString:  ", showstring s
                                              , "\nResult:  "
                                              ])
-                              (_, secs, csecs) <- timeAction . putStr . show $ fastcheck f pf s
-                              putStrLn (concat ["\nElapsed: real ", secs, ", cpu ", csecs])
+                              (_, secs, _) <- timeAction . putStr . show $ fastcheck f pf s
+                              putStrLn (concat ["\nElapsed:", secs])
         showp prop = case prop of Prop p -> show p
                                   End    -> "#"
         showpset pset = let showpset' = concat . intersperse " " . map showp . S.toList

@@ -12,7 +12,7 @@ module POMC.Check ( State(..)
 
 import POMC.Prop (Prop(..))
 import POMC.Prec (Prec(..))
-import POMC.Opa (run, parAugRun)
+import POMC.Opa (run, augRun)
 import POMC.RPotl (Formula(..), negative, atomic, normalize, future)
 import POMC.Util (xor, implies, safeHead)
 import POMC.Data
@@ -1294,13 +1294,13 @@ augDeltaRules cl =
                             nextProps = fromJust (fcrNextProps info)
                         in compProps fCurr nextProps
 
-fastcheck :: (Checkable f, Ord a, Show a, NFData a)
+fastcheck :: (Checkable f, Ord a, Show a)
           => f a
           -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
           -> [Set (Prop a)]
           -> Bool
 fastcheck phi prec ts =
-  debug $ parAugRun
+  debug $ augRun
             prec
             is
             isFinal

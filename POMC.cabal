@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 734e8e82b2d1a97c818b6cb255b7284ed2c80ed5b22ce336fe28c40811f4ea2c
+-- hash: b9f9aa2b7d8d9c681b8f6fc5aed7aedbdad3e9becac78d805f67dc4271fd46b8
 
 name:           POMC
 version:        0.1
@@ -36,7 +36,7 @@ library
       Paths_POMC
   hs-source-dirs:
       src
-  ghc-options: -Wall -O2 -feager-blackholing
+  ghc-options: -Wall -O2
   build-depends:
       base >=4.7 && <5
     , bitvec
@@ -56,7 +56,7 @@ executable pomc
       Paths_POMC
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2 -feager-blackholing
+  ghc-options: -rtsopts -Wall -O2
   build-depends:
       POMC
     , base >=4.7 && <5
@@ -74,7 +74,7 @@ test-suite test-pomc
       Paths_POMC
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2 -feager-blackholing
+  ghc-options: -rtsopts -Wall -O2
   build-depends:
       POMC
     , base >=4.7 && <5
@@ -92,7 +92,7 @@ benchmark bench-pomc
       Paths_POMC
   hs-source-dirs:
       bench
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -O2 -feager-blackholing
+  ghc-options: -rtsopts -Wall -O2
   build-depends:
       POMC
     , base >=4.7 && <5
