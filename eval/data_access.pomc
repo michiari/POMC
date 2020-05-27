@@ -1,0 +1,17 @@
+/* Let WRx be an atomic proposition appearing in calls to functions that
+ * write to variable x.
+ * This formula means that, if a procedure pa or its subprocedures write to a variable x,
+ * then they are terminated by an exception.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc,
+       * > *;
+
+formulas = G ((call And pa And ((~ ret) Ud WRx)) --> XNu exc);
+
+strings = call han (call pa) (call pb) (call pc) (call WRx) exc ret,
+          call han (call pa) (call pb) (call WRx) call exc ret,
+          call han (call pa) (call pb) (call WRx) ret (ret pb) (ret pa) ret;
