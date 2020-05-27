@@ -46,6 +46,7 @@ data Formula a = T
 
 instance (Show a) => Show (Formula a) where
   show T                    = "T"
+  show (Atomic End)         = "#"
   show (Atomic (Prop p))    = show p
   show (Not a@(Atomic _))   = "~" ++ show a
   show (Not g)              = "~(" ++ show g ++ ")"
