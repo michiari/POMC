@@ -929,11 +929,16 @@ deltaRules condInfo =
            else True
 
     hntPopFpr3 info =
-      let pPend = pending (fprState info)
-          (_, fXl, fXe, _) = fprFuturePendComb info
-          pPendHntfs = [f | f@(HierNextTake _) <- S.toList pPend]
-      in if not (null pPendHntfs)
-           then not fXl && not fXe
+      let clos = fprClos info
+          pPend = pending (fprState info)
+          (_, _, fXe, _) = fprFuturePendComb info
+          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+
+          hth = HierTakeHelper
+          checkSet = S.fromList [f | f@(HierNextTake _) <- S.toList clos,
+                                                           hth f `S.member` ppCurr]
+      in if not (null checkSet)
+           then not fXe
            else True
 
     hntPushFpr1 info =
@@ -1257,7 +1262,7 @@ augDeltaShift clos atoms pcombs prec rgroup lookahead state props = debug fstate
   where
     debug = id
     --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
 
     fstates = delta rgroup
                     prec
@@ -1273,7 +1278,7 @@ augDeltaPush clos atoms pcombs prec rgroup lookahead state props = debug fstates
   where
     debug = id
     --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
 
     fstates = delta rgroup
                     prec
@@ -1289,7 +1294,7 @@ augDeltaPop clos atoms pcombs prec rgroup lookahead state popped = debug fstates
   where
     debug = id
     --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+    --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
 
     fstates = delta rgroup
                     prec
@@ -1343,7 +1348,6 @@ fastcheck phi prec ts =
 
         debug = id
         --debug = DT.trace ("\nRun with:"         ++
-        --                  "\nPhi:          "    ++ show phi          ++
         --                  "\nNorm. phi:    "    ++ show nphi         ++
         --                  "\nTokens:       "    ++ show ts           ++
         --                  "\nToken props:\n"    ++ show tsprops      ++
