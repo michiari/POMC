@@ -1,0 +1,15 @@
+/* The formula means that if an instance of function pc is terminated by an uncaught exception,
+ * then function pb must be present in the backtrace, and it is also terminated.
+ * Also, the same exception cannot terminate pa before pb.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc,
+       * > *;
+
+formulas = G ((pc And (XNu exc)) --> ((~ pa) HSd pb));
+
+strings = call han (call pb) (call pb) (call pc) call exc ret,
+          call han (call pb) (call pa) (call pc) call exc ret;

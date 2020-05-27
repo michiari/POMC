@@ -1,0 +1,15 @@
+/* Both formulas means that procedure pa can never be terminated by an exception.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc,
+       * > *;
+
+formulas = G ((call And pa) --> ~ (PNu exc Or XNu exc)),
+           G (exc --> ~ (PBu (call And pa) Or XBu (call And pa)));
+
+strings = (call pa) han (call pb) (call pb) (call pc) call exc (ret pa),
+          (call pa) han (call pb) (call pa) (call pc) call exc (ret pa),
+          (call pa) han (call pb) (call pc) (call pc) (call pa) exc (ret pa);
