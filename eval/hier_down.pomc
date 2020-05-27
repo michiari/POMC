@@ -1,0 +1,25 @@
+/* The formulas contain a LTL Eventually, whose argument means:
+ * 1- a call is terminated by an exception, and the next function
+ *    terminated by the same exception is pb;
+ * 2- a call is terminated by an exception, and the previous function
+ *    terminated by the same exception is pb;
+ * 3- a call to procedure pa is terminated by an exception,
+ *    and the same exception later terminates pc;
+ * 4- a call to procedure pc is terminated by an exception,
+ *    and the same exception earlier terminated pa.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc,
+       * > *;
+
+formulas = F (HNd pb),
+           F (HBd pb),
+           F (pa And (call HUd pc)),
+           F (pc And (call HSd pa));
+
+strings = call han (call pa) (call pb) (call pc) call exc ret,
+          call han (call pa) (call pb) (call pc) exc ret,
+          call han (call pb) (call pc) call exc ret;

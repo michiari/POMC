@@ -1,0 +1,21 @@
+/* The formulas mean, respectively, that:
+ * - the first position has an inner call to perr;
+ * - the third position is call terminated by an axception;
+ * - the second position is a handler catching an exception that terminates more than one call;
+ * - all exceptions terminate more than one call.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc,
+       * > *;
+
+formulas = XNd perr,
+           PNd (PNd (call And (XNu exc))),
+           PNd (han And (XNd (exc And (XBu call)))),
+           G (exc --> XBu call);
+
+strings = call han call call call exc call ret call ret ret,
+          (call pa) han (call pb) (call pc) (call pc) exc (call perr) (ret perr) (call perr) (ret perr) (ret pa),
+          call han call exc call ret call ret ret;

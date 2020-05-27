@@ -1,0 +1,22 @@
+/* The formulas have the following meaning:
+ * 1- The call in the first position makes at least a direct subcall to function perr,
+ *    which returns normally.
+ * 2- The call in the first position makes a function call,
+ *    and before that, there is an instance of function pb (even in a previous inner call).
+ * 3- From the thirt position, it is possible to reach a return,
+ *    possibly of another function.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc,
+       * > *;
+
+formulas = call Ud (ret And perr),
+           XNd (call And ((call Or exc) Su pb)),
+           PNd (PNd ((call Or exc) Uu ret));
+
+strings = call han call call call exc call ret call ret ret,
+          (call pa) han (call pb) (call pc) (call pc) exc (call perr) (ret perr) (call perr) (ret perr) (ret pa),
+          call han call (call perr) (ret perr) ret call exc ret;

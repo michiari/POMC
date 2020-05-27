@@ -1,0 +1,21 @@
+/* The formulas contain a LTL Eventually, whose argument means:
+ * 1- there is a call to a function such that the next function called by its parent is perr;
+ * 2- there is a call to a function such that the previous function called by its parent is perr;
+ * 3- there is a call to function pa such that its parent later calls pb;
+ * 4- there is a call to function pb such that its parent previously called pb.
+ */
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc,
+       * > *;
+
+formulas = F (HNu perr),
+           F (HBu perr),
+           F (pa And (call HUu pb)),
+           F (pb And (call HSu pa));
+
+strings = call call ret (call pa) (ret pa) (call perr) (ret perr) (call pb) (ret pb) ret,
+          call call ret (call perr) (ret perr) (call pb) (ret pb) ret,
+          call call ret (call pa) (ret pa) (call perr) (ret perr) ret;
