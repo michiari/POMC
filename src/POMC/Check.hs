@@ -449,6 +449,7 @@ deltaRules condInfo =
                                            , (hnyCond,    hnyPopFpr)
                                            , (hntCond,    hntPopFpr1)
                                            , (hntCond,    hntPopFpr2)
+                                           , (hntCond,    hntPopFpr3)
                                            , (hbtCond,    hbtPopFpr1)
                                            , (hbtCond,    hbtPopFpr2)
                                            , (hbtCond,    hbtPopFpr3)
@@ -925,6 +926,14 @@ deltaRules condInfo =
                                                            hth f `S.member` ppCurr]
       in if not fXl
            then S.fromList pPendHntfs == checkSet
+           else True
+
+    hntPopFpr3 info =
+      let pPend = pending (fprState info)
+          (_, fXl, fXe, _) = fprFuturePendComb info
+          pPendHntfs = [f | f@(HierNextTake _) <- S.toList pPend]
+      in if not (null pPendHntfs)
+           then not fXl && not fXe
            else True
 
     hntPushFpr1 info =
