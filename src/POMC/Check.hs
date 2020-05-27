@@ -380,6 +380,7 @@ deltaRules condInfo =
                                            , (cbeCond,    cbeShiftPr)
                                            , (cbtCond,    cbtShiftPr)
                                            , (hnyCond,    hnyShiftPr)
+                                           , (hbyCond,    hbyShiftPr)
                                            , (hbtCond,    hbtShiftPr)
                                            , (hthCond,    hthShiftPr)
                                            ]
@@ -872,6 +873,11 @@ deltaRules condInfo =
       in if not (null pCurrHbyfs)
            then pXl && pXr
            else True
+
+    hbyShiftPr info =
+      let pCurr = atomFormulaSet . current $ prState info
+          pCurrHbyfs = [f | f@(HierBackYield _) <- S.toList pCurr]
+      in null pCurrHbyfs
 
     hbyPopFr info =
       let clos = frClos info
