@@ -788,6 +788,18 @@ unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
         , stlPrecedenceV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
+      , ( "Testing boundaries with ChainNext"
+        , True
+        , ChainNext (S.singleton Take) T
+        , stlPrecedenceV1
+        , map (S.singleton . Prop) ["call", "call"]
+        )
+      , ( "Testing boundaries with HierUntilTake"
+        , True
+        , HierUntilTake T (Atomic . Prop $ "call")
+        , stlPrecedenceV1
+        , map (S.singleton . Prop) ["call", "call"]
+        )
       ]
 
     potlv2Tests = testGroup "PotlV2, Stack Trace Lang V2" $ map makeTestCase
@@ -850,6 +862,12 @@ unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
         , P2.Always . P2.Atomic . P2.Prop $ "call"
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "call"]
+        )
+      , ( "Accepting HUntil Down"
+        , True
+        , P2.PNext P2.Down (P2.HUntil P2.Down P2.T (P2.Atomic . P2.Prop $ "call"))
+        , stlPrecedenceV2
+        , map (S.singleton . Prop) ["han", "call", "call", "call", "exc", "ret"]
         )
       ]
 

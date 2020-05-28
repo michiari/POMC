@@ -103,6 +103,7 @@ instance (Show a) => Show (Formula a) where
              Always g        -> concat ["G ", showp g]
     where showp T = "T"
           showp (Atomic (Prop p)) = show p
+          showp (Atomic End) = "#"
           showp f = concat ["(", show f, ")"]
 
 instance Functor Formula where

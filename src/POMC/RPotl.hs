@@ -45,29 +45,32 @@ data Formula a = T
                deriving (Eq, Ord, Generic, NFData)
 
 instance (Show a) => Show (Formula a) where
-  show T                    = "T"
-  show (Atomic End)         = "#"
-  show (Atomic (Prop p))    = show p
-  show (Not a@(Atomic _))   = "~" ++ show a
-  show (Not g)              = "~(" ++ show g ++ ")"
-  show (Or g h)             = "(" ++ show g ++ ")Or(" ++ show h ++ ")"
-  show (And g h)            = "(" ++ show g ++ ")And(" ++ show h ++ ")"
-  show (PrecNext ps g)      = "N" ++ showps ps ++ "(" ++ show g ++ ")"
-  show (PrecBack ps g)      = "B" ++ showps ps ++ "(" ++ show g ++ ")"
-  show (ChainNext ps g)     = "Xf" ++ showps ps ++ "(" ++ show g ++ ")"
-  show (ChainBack ps g)     = "Xp" ++ showps ps ++ "(" ++ show g ++ ")"
-  show (Until ps g h)       = "(" ++ show g ++ ")U" ++ showps ps ++ "(" ++ show h ++ ")"
-  show (Since ps g h)       = "(" ++ show g ++ ")S" ++ showps ps ++ "(" ++ show h ++ ")"
-  show (HierNextYield g)    = "HN[" ++ show Yield ++ "](" ++ show g ++ ")"
-  show (HierBackYield g)    = "HB[" ++ show Yield ++ "](" ++ show g ++ ")"
-  show (HierNextTake  g)    = "HN[" ++ show Take  ++ "](" ++ show g ++ ")"
-  show (HierBackTake  g)    = "HB[" ++ show Take  ++ "](" ++ show g ++ ")"
-  show (HierUntilYield g h) = "(" ++ show g ++ ")HU[" ++ show Yield ++ "](" ++ show h ++ ")"
-  show (HierSinceYield g h) = "(" ++ show g ++ ")HS[" ++ show Yield ++ "](" ++ show h ++ ")"
-  show (HierUntilTake  g h) = "(" ++ show g ++ ")HU[" ++ show Take  ++ "](" ++ show h ++ ")"
-  show (HierSinceTake  g h) = "(" ++ show g ++ ")HS[" ++ show Take  ++ "](" ++ show h ++ ")"
-  show (HierTakeHelper g)   = "Xp<'" ++ "(" ++ show g ++ ")"
-  show (Eventually' g)      = "F" ++ "(" ++ show g ++ ")"
+  show f = case f of
+             T                  -> showp f
+             Atomic _           -> showp f
+             Not g              -> concat ["~", showp g]
+             And g h            -> concat [showp g, " And ", showp h]
+             Or g h             -> concat [showp g,  " Or ", showp h]
+             PrecNext ps g      -> concat ["PN", showps ps, " ", showp g]
+             PrecBack ps g      -> concat ["PB", showps ps, " ", showp g]
+             ChainNext ps g     -> concat ["XN", showps ps, " ", showp g]
+             ChainBack ps g     -> concat ["XB", showps ps, " ", showp g]
+             Until ps g h       -> concat [showp g, " U", showps ps,  " ", showp h]
+             Since ps g h       -> concat [showp g, " S", showps ps,  " ", showp h]
+             HierNextYield g    -> concat ["HN[", show Yield, "] ", showp g]
+             HierBackYield g    -> concat ["HB[", show Yield, "] ", showp g]
+             HierNextTake  g    -> concat ["HN[",  show Take, "] ", showp g]
+             HierBackTake  g    -> concat ["HB[",  show Take, "] ", showp g]
+             HierUntilYield g h -> concat [showp g, " HU[" , show Yield, "] ", showp h]
+             HierSinceYield g h -> concat [showp g, " HS[" , show Yield, "] ", showp h]
+             HierUntilTake  g h -> concat [showp g, " HU[" ,  show Take, "] ", showp h]
+             HierSinceTake  g h -> concat [showp g, " HS[" ,  show Take, "] ", showp h]
+             HierTakeHelper g   -> concat ["Xp<' ", showp g]
+             Eventually' g      -> concat ["F ", showp g]
+    where showp T = "T"
+          showp (Atomic (Prop p)) = show p
+          showp (Atomic End)      = "#"
+          showp f = concat ["(", show f, ")"]
 
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True

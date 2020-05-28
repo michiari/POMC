@@ -175,6 +175,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h ++ hsyExp g h
       HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hutExp g h
       HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hstExp g h
+      HierTakeHelper g   -> [f, Not f] ++ closList g
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
 atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
@@ -916,7 +917,7 @@ deltaRules condInfo =
     hntPopFpr2 info =
       let clos = fprClos info
           pPend = pending (fprState info)
-          (_, fXl, _, _) = fprFuturePendComb info
+          (_, fXl, fXe, _) = fprFuturePendComb info
           ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
 
           pPendHntfs = [f | f@(HierNextTake _) <- S.toList pPend]
@@ -924,7 +925,7 @@ deltaRules condInfo =
           hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierNextTake _) <- S.toList clos,
                                                            hth f `S.member` ppCurr]
-      in if not fXl
+      in if not fXl && not fXe
            then S.fromList pPendHntfs == checkSet
            else True
 
@@ -1206,8 +1207,7 @@ deltaPop clos atoms pcombs prec rgroup state popped = debug fstates
     fstates = delta rgroup prec clos atoms pcombs state Nothing (Just popped) Nothing
 
 isFinal :: (Eq a, Show a) => State a -> Bool
-isFinal s@(State c p xl xe xr) = debug $ not xl &&
-                                         not xe &&
+isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted, as if # = #
                                          currAtomic == S.singleton (Atomic End) &&
                                          S.null currFuture &&
                                          pendComb
