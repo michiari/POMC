@@ -189,7 +189,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HierTakeHelper g   -> [f, Not f] ++ closList g
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
---atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
+atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
 atoms clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
 
@@ -236,8 +236,6 @@ atoms clos inputSet =
                        guard (consistent fset')
                        return (Atom fset' eset')
         in as SQ.>< (SQ.fromList combs)
-           -- (foldl' (\acc new -> new : acc) atoms combs) -- no thunking but slow :(
-  --in foldl' prependCons [] (generate $ V.length pFormulaVec)
   in toList $ foldl' prependCons SQ.empty (generate $ V.length pFormulaVec)
 
 atomicCons :: Ord a => (Set (Prop a) -> Bool) -> Set (Formula a) -> Bool
@@ -387,7 +385,7 @@ pendCombs clos =
                                        xr <- [False, True],
                                        not (xl && xe)]
 
---initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
+initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
 initials phi clos atoms =
   let compatible atom = let fset = atomFormulaSet atom
                         in phi `S.member` fset &&
@@ -1187,57 +1185,6 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                                             }
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
---deltaShift :: (Eq a, Ord a, Show a)
---           => Set (Formula a)
---           -> [Atom a]
---           -> Set (Set (Formula a), Bool, Bool, Bool)
---           -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
---           -> RuleGroup a
---           -> State a
---           -> Set (Prop a)
---           -> [State a]
-deltaShift clos atoms pcombs prec rgroup state props = debug fstates
-  where
-    debug = id
-    --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-
-    fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
-
---deltaPush :: (Eq a, Ord a, Show a)
---          => Set (Formula a)
---          -> [Atom a]
---          -> Set (Set (Formula a), Bool, Bool, Bool)
---          -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
---          -> RuleGroup a
---          -> State a
---          -> Set (Prop a)
---          -> [State a]
-deltaPush clos atoms pcombs prec rgroup state props = debug fstates
-  where
-    debug = id
-    --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-
-    fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
-
---deltaPop :: (Eq a, Ord a, Show a)
---         => Set (Formula a)
---         -> [Atom a]
---         -> Set (Set (Formula a), Bool, Bool, Bool)
---         -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
---         -> RuleGroup a
---         -> State a
---         -> State a
---         -> [State a]
-deltaPop clos atoms pcombs prec rgroup state popped = debug fstates
-  where
-    debug = id
-    --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-    --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-
-    fstates = delta rgroup prec clos atoms pcombs state Nothing (Just popped) Nothing
-
 isFinal :: (Eq a, Show a) => State a -> Bool
 isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted, as if # = #
                                          currAtomic == S.singleton (Atomic End) &&
@@ -1286,57 +1233,29 @@ check phi prec ts =
         --                  "\nPending atoms:\n"  ++ showPendCombs pcs ++
         --                  "\nInitial states:\n" ++ showStates is)
 
-lookaheadProps lookahead = case lookahead of
-                             Just npset -> npset
-                             Nothing    -> S.singleton End
+        deltaShift clos atoms pcombs prec rgroup state props = debug fstates
+          where
+            debug = id
+            --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
+            --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-augDeltaShift clos atoms pcombs prec rgroup lookahead state props = debug fstates
-  where
-    debug = id
-    --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
-    --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+            fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
 
-    fstates = delta rgroup
-                    prec
-                    clos
-                    atoms
-                    pcombs
-                    state
-                    (Just props)
-                    Nothing
-                    (Just . lookaheadProps $ lookahead)
+        deltaPush clos atoms pcombs prec rgroup state props = debug fstates
+          where
+            debug = id
+            --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
+            --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-augDeltaPush clos atoms pcombs prec rgroup lookahead state props = debug fstates
-  where
-    debug = id
-    --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
-    --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+            fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
 
-    fstates = delta rgroup
-                    prec
-                    clos
-                    atoms
-                    pcombs
-                    state
-                    (Just props)
-                    Nothing
-                    (Just . lookaheadProps $ lookahead)
+        deltaPop clos atoms pcombs prec rgroup state popped = debug fstates
+          where
+            debug = id
+            --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
+            --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
 
-augDeltaPop clos atoms pcombs prec rgroup lookahead state popped = debug fstates
-  where
-    debug = id
-    --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-    --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-
-    fstates = delta rgroup
-                    prec
-                    clos
-                    atoms
-                    pcombs
-                    state
-                    Nothing
-                    (Just popped)
-                    (Just . lookaheadProps $ lookahead)
+            fstates = delta rgroup prec clos atoms pcombs state Nothing (Just popped) Nothing
 
 augDeltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
 augDeltaRules cl =
@@ -1387,3 +1306,31 @@ fastcheck phi prec ts =
         --                  "\nAtoms:\n"          ++ showAtoms as      ++
         --                  "\nPending atoms:\n"  ++ showPendCombs pcs ++
         --                  "\nInitial states:\n" ++ showStates is)
+
+        laProps lookahead = case lookahead of
+                                     Just npset -> npset
+                                     Nothing    -> S.singleton End
+
+        augDeltaShift clos atoms pcombs prec rgroup lookahead state props = debug fstates
+          where
+            debug = id
+            --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
+            --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+            fstates = delta rgroup prec clos atoms pcombs state
+                            (Just props) Nothing (Just . laProps $ lookahead)
+
+        augDeltaPush clos atoms pcombs prec rgroup lookahead state props = debug fstates
+          where
+            debug = id
+            --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
+            --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+            fstates = delta rgroup prec clos atoms pcombs state
+                            (Just props) Nothing (Just . laProps $ lookahead)
+
+        augDeltaPop clos atoms pcombs prec rgroup lookahead state popped = debug fstates
+          where
+            debug = id
+            --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
+            --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+            fstates = delta rgroup prec clos atoms pcombs state
+                            Nothing (Just popped) (Just . laProps $ lookahead)
