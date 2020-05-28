@@ -1,5 +1,12 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
+{- |
+   Module      : Pomc.Prec
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
 module Pomc.Prec ( -- * Main precedence type
                    Prec(..)
                    -- * Precedence function utilities
