@@ -1,4 +1,5 @@
-module POMC.Data ( decode
+module POMC.Data ( decodeAtom
+                 , encode
                  , generate
                  , EncodedSet
                  , FormulaSet
@@ -18,10 +19,15 @@ import qualified Data.Bit.ThreadSafe as B
 type EncodedSet = Vector Bit
 type FormulaSet a = Set (Formula a)
 
-decode :: Ord a => (Int -> Formula a) -> EncodedSet -> FormulaSet a
-decode fetch bv = let pos = map fetch (B.listBits bv)
-                      neg = map (Not . fetch) (B.listBits . B.invertBits $ bv)
-                  in S.fromList pos `S.union` S.fromList neg
+decodeAtom :: Ord a => (Int -> Formula a) -> EncodedSet -> FormulaSet a
+decodeAtom fetch bv = let pos = map fetch (B.listBits bv)
+                          neg = map (Not . fetch) (B.listBits . B.invertBits $ bv)
+                      in S.fromList pos `S.union` S.fromList neg
+
+encode :: (Formula a -> Int) -> Int -> FormulaSet a -> EncodedSet
+encode lookup len set = let zeroes = VU.replicate len (B.Bit False)
+                            pairs = S.toList $ S.map (\phi -> (lookup phi, B.Bit True)) set
+                        in zeroes VU.// pairs
 
 generate :: Int -> [Vector Bit]
 generate len = VU.replicateM len [B.Bit False, B.Bit True]

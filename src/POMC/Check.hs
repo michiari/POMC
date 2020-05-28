@@ -15,7 +15,7 @@ import POMC.Prec (Prec(..))
 import POMC.Opa (run, augRun)
 import POMC.RPotl (Formula(..), negative, atomic, normalize, future)
 import POMC.Util (xor, implies, safeHead)
-import POMC.Data
+import POMC.Data (encode, decodeAtom, generate, FormulaSet, EncodedSet)
 
 import Data.Maybe (fromJust, fromMaybe)
 
@@ -25,7 +25,14 @@ import qualified Data.Set as S
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 
+import qualified Data.Vector.Unboxed as VU
+
 import Data.List (foldl')
+
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+
+import Control.Monad (guard)
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
@@ -179,12 +186,28 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
 atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
-atoms clos validPropSets =
-  let pclos = V.fromList (S.toAscList . S.filter (not . negative) $ clos)
-      fetch i = pclos V.! i
+atoms clos inputSet =
+  let validPropSets = S.insert (S.singleton End) inputSet
+
+      atomics = map makeCouples . map (S.map Atomic) $ S.toList validPropSets
+        where makeCouples aset = let easet = encode atomicLookup (S.size pAtomicClos) aset
+                                     aset' = decodeAtom (fetch pAtomicVec) easet
+                                 in (aset', easet)
+
+      pclos = S.filter (not . negative) clos
+
+      pProplessClos = S.filter (not . atomic) pclos
+      pFormulaVec = V.fromList . S.toAscList $ pProplessClos
+
+      pAtomicClos = S.filter (atomic) pclos
+      pAtomicVec = V.fromList . S.toAscList $ pAtomicClos
+      atomicLookup phi = fromJust (M.lookup phi atomicMap)
+        where atomicMap = M.fromAscList (zip (S.toAscList pAtomicClos) [0..])
+
+      fetch vec i = vec V.! i
+
       checks =
-        [ atomicCons validPropSets
-        , trueCons
+        [ onlyif (T `S.member` clos) trueCons
         , onlyif (not . null $ [f | f@(And _ _)            <- cl]) (andCons clos)
         , onlyif (not . null $ [f | f@(Or _ _)             <- cl]) (orCons clos)
         , onlyif (not . null $ [f | f@(ChainNext _ _)      <- cl]) (chainNextCons clos)
@@ -200,19 +223,22 @@ atoms clos validPropSets =
         where onlyif cond f = if cond then f else const True
               cl = S.toList clos
       consistent fset = all (\c -> c fset) checks
-      prependCons atoms eset = let fset = decode fetch eset
-                               in if consistent fset
-                                    then (Atom fset eset) : atoms
-                                    else atoms
-  in foldl' prependCons [] (generate $ V.length pclos)
 
-atomicCons :: Ord a => Set (Set (Prop a)) -> Set (Formula a) -> Bool
-atomicCons validPropSets set =
+      prependCons atoms eset =
+        let fset = decodeAtom (fetch pFormulaVec) eset
+            combs = do (aset, easet) <- atomics
+                       let fset' = fset `S.union` aset
+                           eset' = easet VU.++ eset
+                       guard (consistent fset')
+                       return (Atom fset' eset')
+        in atoms ++ combs
+  in foldl' prependCons [] (generate $ V.length pFormulaVec)
+
+atomicCons :: Ord a => (Set (Prop a) -> Bool) -> Set (Formula a) -> Bool
+atomicCons valid set =
   let propSet = S.fromList [p | Atomic p <- S.toList set]
       size = S.size propSet
-      vps = S.insert (S.singleton End) validPropSets
-  in (End `S.member` propSet) `implies` (size == 1) &&
-     (propSet `S.member` vps)
+  in (End `S.member` propSet) `implies` (size == 1) && valid propSet
 
 trueCons :: Ord a => Set (Formula a) -> Bool
 trueCons set = not (Not T `S.member` set)
@@ -1237,9 +1263,9 @@ check phi prec ts =
             ts
   where nphi = normalize . toReducedPotl $ phi
         tsprops = S.toList $ foldl' (S.union) S.empty ts
-        validPropSets = foldl' (flip S.insert) S.empty ts
+        inputSet = foldl' (flip S.insert) S.empty ts
         cl = closure nphi tsprops
-        as = atoms cl validPropSets
+        as = atoms cl inputSet
         pcs = pendCombs cl
         is = initials nphi cl as
         (shiftRules, pushRules, popRules) = deltaRules cl
@@ -1335,10 +1361,10 @@ fastcheck phi prec ts =
   where nphi = normalize . toReducedPotl $ phi
 
         tsprops = S.toList $ foldl' (S.union) S.empty ts
-        validPropSets = foldl' (flip S.insert) S.empty ts
+        inputSet = foldl' (flip S.insert) S.empty ts
 
         cl = closure nphi tsprops
-        as = atoms cl validPropSets
+        as = atoms cl inputSet
         pcs = pendCombs cl
         is = filter compInitial (initials nphi cl as)
         (shiftRules, pushRules, popRules) = augDeltaRules cl
