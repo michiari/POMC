@@ -231,7 +231,7 @@ atoms clos inputSet =
                            eset' = easet VU.++ eset
                        guard (consistent fset')
                        return (Atom fset' eset')
-        in atoms ++ combs
+        in seq combs (foldl' (\acc new -> new : acc) atoms combs)
   in foldl' prependCons [] (generate $ V.length pFormulaVec)
 
 atomicCons :: Ord a => (Set (Prop a) -> Bool) -> Set (Formula a) -> Bool
