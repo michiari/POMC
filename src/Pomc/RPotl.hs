@@ -1,19 +1,26 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
-module POMC.RPotl ( -- Main data type
+{- |
+   Module      : Pomc.RPotl
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.RPotl ( -- * RPOTL type
                     Formula(..)
-                    -- Predicates on formulas
+                    -- * Predicates on formulas
                   , atomic
                   , future
                   , negative
-                    -- Operations on formulas
+                    -- * Operations on formulas
                   , formulaAt
                   , negation
                   , normalize
                   ) where
 
-import POMC.Prec (Prec(..))
-import POMC.Prop (Prop(..))
+import Pomc.Prec (Prec(..))
+import Pomc.Prop (Prop(..))
 
 import Data.Set (Set)
 import qualified Data.Set as S

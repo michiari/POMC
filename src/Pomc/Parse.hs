@@ -1,14 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module POMC.Parse ( potlv2P
+{- |
+   Module      : Pomc.Parse
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.Parse ( potlv2P
                   , checkRequestP
                   , spaceP
                   , CheckRequest(..)
                   ) where
 
-import POMC.Prec (Prec(..))
-import POMC.Prop (Prop(..))
-import qualified POMC.PotlV2 as P2
+import Pomc.Prec (Prec(..))
+import Pomc.Prop (Prop(..))
+import qualified Pomc.PotlV2 as P2
 
 import Data.Void (Void)
 

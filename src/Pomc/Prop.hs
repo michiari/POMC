@@ -1,6 +1,15 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
-module POMC.Prop (Prop(..)) where
+{- |
+   Module      : Pomc.Prop
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.Prop ( -- * Atomic proposition type
+                   Prop(..)
+                 ) where
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)

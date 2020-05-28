@@ -1,4 +1,11 @@
-module POMC.Util ( unsafeLookup
+{- |
+   Module      : Pomc.Util
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.Util ( unsafeLookup
                  , lookupOrDefault
                  , any'
                  , iff

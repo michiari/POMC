@@ -1,14 +1,23 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
-module POMC.Opa ( run
+{- |
+   Module      : Pomc.Opa
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.Opa ( -- * Run functions
+                  run
                 , augRun
                 , parAugRun
+                  -- * OPA type and relative utilities
                 , Opa(..)
                 , runOpa
                 ) where
 
-import POMC.Prec (Prec(..))
-import POMC.Util (any', safeHead, safeTail)
+import Pomc.Prec (Prec(..))
+import Pomc.Util (any', safeHead, safeTail)
 
 import Control.Parallel.Strategies
 

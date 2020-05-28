@@ -1,8 +1,8 @@
-import POMC.Check (check, fastcheck)
-import POMC.Example (stlPrecedenceV1, stlAnnotateV1)
-import POMC.Prec (Prec(..))
-import POMC.Prop (Prop(..))
-import POMC.RPotl (Formula(..), formulaAt)
+import Pomc.Check (check, fastcheck)
+import Pomc.Example (stlPrecedenceV1, stlAnnotateV1)
+import Pomc.Prec (Prec(..))
+import Pomc.Prop (Prop(..))
+import Pomc.RPotl (Formula(..), formulaAt)
 
 import Control.Monad (forM_)
 

@@ -1,11 +1,20 @@
-module POMC.Example ( stlPrecedenceV1
+{- |
+   Module      : Pomc.Example
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.Example ( -- * Stack Trace Language V1 precedence function
+                      stlPrecedenceV1
                     , stlAnnotateV1
+                      -- * Stack Trace Language V2 precedence function
                     , stlPrecedenceV2
                     , stlAnnotateV2
                     ) where
 
-import POMC.Prec (Prec(..))
-import POMC.Prop (Prop(..))
+import Pomc.Prec (Prec(..))
+import Pomc.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
 

@@ -1,13 +1,17 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
-module POMC.Prec ( Prec(..)
+module Pomc.Prec ( -- * Main precedence type
+                   Prec(..)
+                   -- * Precedence function utilities
+                 , PrecFunc
+                 , PrecRel
                  , compose
                  , fromPredicate
                  , fromRelation
                  , fromRelations
                  ) where
 
-import POMC.Prop (Prop)
+import Pomc.Prop (Prop)
 
 import Control.DeepSeq
 import GHC.Generics (Generic)

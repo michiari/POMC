@@ -1,11 +1,11 @@
 module TestCheck (tests) where
 
-import POMC.Check (check, fastcheck, Checkable(..))
-import POMC.Example (stlPrecedenceV1, stlPrecedenceV2)
-import POMC.Prec (Prec(..))
-import POMC.Prop (Prop(..))
-import POMC.RPotl (Formula(..), formulaAt)
-import qualified POMC.PotlV2 as P2 (Dir(..), Prop(..), Formula(..))
+import Pomc.Check (check, fastcheck, Checkable(..))
+import Pomc.Example (stlPrecedenceV1, stlPrecedenceV2)
+import Pomc.Prec (Prec(..))
+import Pomc.Prop (Prop(..))
+import Pomc.RPotl (Formula(..), formulaAt)
+import qualified Pomc.PotlV2 as P2 (Dir(..), Formula(..))
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -805,67 +805,67 @@ unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
     potlv2Tests = testGroup "PotlV2, Stack Trace Lang V2" $ map makeTestCase
       [ ( "Accepting Xor"
         , True
-        , (P2.Atomic . P2.Prop $ "call") `P2.Xor` (P2.PNext P2.Down . P2.Atomic . P2.Prop $ "exc")
+        , (P2.Atomic . Prop $ "call") `P2.Xor` (P2.PNext P2.Down . P2.Atomic . Prop $ "exc")
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Rejecting Xor"
         , False
-        , (P2.Atomic . P2.Prop $ "call") `P2.Xor` (P2.PNext P2.Down . P2.Atomic . P2.Prop $ "han")
+        , (P2.Atomic . Prop $ "call") `P2.Xor` (P2.PNext P2.Down . P2.Atomic . Prop $ "han")
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Accepting Implies" -- Ex falso quodlibet ;)
         , True
-        , (P2.Atomic . P2.Prop $ "ret") `P2.Implies` (P2.HNext P2.Up . P2.Atomic . P2.Prop $ "han")
+        , (P2.Atomic . Prop $ "ret") `P2.Implies` (P2.HNext P2.Up . P2.Atomic . Prop $ "han")
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Rejecting Implies"
         , False
-        , (P2.Atomic . P2.Prop $ "call") `P2.Implies` (P2.PNext P2.Down . P2.Atomic . P2.Prop $ "ret")
+        , (P2.Atomic . Prop $ "call") `P2.Implies` (P2.PNext P2.Down . P2.Atomic . Prop $ "ret")
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Accepting Iff"
         , True
-        , (P2.Atomic . P2.Prop $ "call") `P2.Iff` (P2.XNext P2.Up . P2.Atomic . P2.Prop $ "ret")
+        , (P2.Atomic . Prop $ "call") `P2.Iff` (P2.XNext P2.Up . P2.Atomic . Prop $ "ret")
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Rejecting Iff"
         , False
-        , (P2.Atomic . P2.Prop $ "call") `P2.Iff` (P2.XNext P2.Up . P2.Atomic . P2.Prop $ "ret")
+        , (P2.Atomic . Prop $ "call") `P2.Iff` (P2.XNext P2.Up . P2.Atomic . Prop $ "ret")
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "exc"]
         )
       , ( "Accepting Eventually"
         , True
-        , P2.Eventually . P2.Atomic . P2.Prop $ "ret"
+        , P2.Eventually . P2.Atomic . Prop $ "ret"
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Rejecting Eventually"
         , False
-        , P2.Eventually . P2.Atomic . P2.Prop $ "ret"
+        , P2.Eventually . P2.Atomic . Prop $ "ret"
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "exc"]
         )
       , ( "Accepting Always"
         , True
-        , P2.Always . P2.Atomic . P2.Prop $ "call"
+        , P2.Always . P2.Atomic . Prop $ "call"
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "call", "call"]
         )
       , ( "Rejecting Always"
         , False
-        , P2.Always . P2.Atomic . P2.Prop $ "call"
+        , P2.Always . P2.Atomic . Prop $ "call"
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["call", "han", "call"]
         )
       , ( "Accepting HUntil Down"
         , True
-        , P2.PNext P2.Down (P2.HUntil P2.Down P2.T (P2.Atomic . P2.Prop $ "call"))
+        , P2.PNext P2.Down (P2.HUntil P2.Down P2.T (P2.Atomic . Prop $ "call"))
         , stlPrecedenceV2
         , map (S.singleton . Prop) ["han", "call", "call", "call", "exc", "ret"]
         )
@@ -882,13 +882,13 @@ propTests = testGroup "QuickCheck tests" (map makePropTest propTuples)
         propTuples =
           [ ( "Well formed stack traces, all calls return"
             , True
-            , P2.Always $ (P2.Atomic . P2.Prop $ "call") `P2.Implies` ((P2.PNext P2.Down . P2.Atomic . P2.Prop $ "ret") `P2.Or` (P2.XNext P2.Down . P2.Atomic . P2.Prop $ "ret"))
+            , P2.Always $ (P2.Atomic . Prop $ "call") `P2.Implies` ((P2.PNext P2.Down . P2.Atomic . Prop $ "ret") `P2.Or` (P2.XNext P2.Down . P2.Atomic . Prop $ "ret"))
             , stlPrecedenceV1
             , \m -> map (S.singleton . Prop) <$> wellFormedTrace m
             )
           , ( "Well formed stack traces, all exceptions are handled"
             , True
-            , P2.Always $ (P2.Atomic . P2.Prop $ "thr") `P2.Implies` ((P2.PBack P2.Down . P2.Atomic . P2.Prop $ "han") `P2.Or` (P2.XBack P2.Down . P2.Atomic . P2.Prop $ "han"))
+            , P2.Always $ (P2.Atomic . Prop $ "thr") `P2.Implies` ((P2.PBack P2.Down . P2.Atomic . Prop $ "han") `P2.Or` (P2.XBack P2.Down . P2.Atomic . Prop $ "han"))
             , stlPrecedenceV1
             , \m -> map (S.singleton . Prop) <$> wellFormedTrace m
             )

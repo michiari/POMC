@@ -1,21 +1,30 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
-module POMC.Check ( State(..)
+{- |
+   Module      : Pomc.Check
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.Check ( -- * Checking functions
+                    check
+                  , fastcheck
+                    -- * Checking typeclass
+                  , Checkable(..)
+                    -- * Checking helpers
                   , closure
-                  , atoms
+                    -- * Printing
                   , showAtoms
                   , showStates
-                  , check
-                  , fastcheck
-                  , Checkable(..)
                   ) where
 
-import POMC.Prop (Prop(..))
-import POMC.Prec (Prec(..))
-import POMC.Opa (run, augRun)
-import POMC.RPotl (Formula(..), negative, atomic, normalize, future)
-import POMC.Util (xor, implies, safeHead)
-import POMC.Data (encode, decodeAtom, generate, FormulaSet, EncodedSet)
+import Pomc.Prop (Prop(..))
+import Pomc.Prec (Prec(..))
+import Pomc.Opa (run, augRun)
+import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
+import Pomc.Util (xor, implies, safeHead)
+import Pomc.Data (encode, decodeAtom, generate, FormulaSet, EncodedSet)
 
 import Data.Maybe (fromJust, fromMaybe)
 
@@ -1131,6 +1140,18 @@ data RuleGroup a = RuleGroup { ruleGroupPrs  :: [PresentRule       a]
                              , ruleGroupFrs  :: [FutureRule        a]
                              }
 
+augDeltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
+augDeltaRules cl =
+  let (shiftrg, pushrg, poprg) = deltaRules cl
+      augShiftRg = shiftrg {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs shiftrg}
+      augPushRg  = pushrg  {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs pushrg}
+      augPopRg   = poprg
+  in (augShiftRg, augPushRg, augPopRg)
+  where
+    lookaheadFcr info = let fCurr = atomFormulaSet (fcrFutureCurr info)
+                            nextProps = fromJust (fcrNextProps info)
+                        in compProps fCurr nextProps
+
 delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
   where
     prs  = ruleGroupPrs  rgroup
@@ -1223,51 +1244,18 @@ check phi prec ts =
         is = initials nphi cl as
         (shiftRules, pushRules, popRules) = deltaRules cl
         debug = id
-        --debug = DT.trace ("\nRun with:"         ++
-        --                  "\nPhi:          "    ++ show phi          ++
-        --                  "\nNorm. phi:    "    ++ show nphi         ++
-        --                  "\nTokens:       "    ++ show ts           ++
-        --                  "\nToken props:\n"    ++ show tsprops      ++
-        --                  "\nClosure:\n"        ++ showFormulaSet cl ++
-        --                  "\nAtoms:\n"          ++ showAtoms as      ++
-        --                  "\nPending atoms:\n"  ++ showPendCombs pcs ++
-        --                  "\nInitial states:\n" ++ showStates is)
 
-        deltaShift clos atoms pcombs prec rgroup state props = debug fstates
-          where
-            debug = id
-            --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
-            --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
+        deltaShift clos atoms pcombs prec rgroup state props = fstates
+          where fstates = delta rgroup prec clos atoms pcombs state
+                                (Just props) Nothing Nothing
 
-            fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
+        deltaPush clos atoms pcombs prec rgroup state props = fstates
+          where fstates = delta rgroup prec clos atoms pcombs state
+                                (Just props) Nothing Nothing
 
-        deltaPush clos atoms pcombs prec rgroup state props = debug fstates
-          where
-            debug = id
-            --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
-            --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-
-            fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
-
-        deltaPop clos atoms pcombs prec rgroup state popped = debug fstates
-          where
-            debug = id
-            --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-            --                  "\nFrom:\n" ++ show s ++ "\nResult:") . DT.traceShowId
-
-            fstates = delta rgroup prec clos atoms pcombs state Nothing (Just popped) Nothing
-
-augDeltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
-augDeltaRules cl =
-  let (shiftrg, pushrg, poprg) = deltaRules cl
-      augShiftRg = shiftrg {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs shiftrg}
-      augPushRg  = pushrg  {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs pushrg}
-      augPopRg   = poprg
-  in (augShiftRg, augPushRg, augPopRg)
-  where
-    lookaheadFcr info = let fCurr = atomFormulaSet (fcrFutureCurr info)
-                            nextProps = fromJust (fcrNextProps info)
-                        in compProps fCurr nextProps
+        deltaPop clos atoms pcombs prec rgroup state popped = fstates
+          where fstates = delta rgroup prec clos atoms pcombs state
+                                Nothing (Just popped) Nothing
 
 fastcheck :: (Checkable f, Ord a, Show a)
           => f a

@@ -1,12 +1,20 @@
-module POMC.PotlV2 ( Dir(..)
+{- |
+   Module      : Pomc.PotlV2
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.PotlV2 ( -- * POTL V2 types
+                     Dir(..)
                    , Prop(..)
                    , Formula(..)
                    ) where
 
-import POMC.Check (Checkable(..))
-import POMC.Prec (Prec(..))
-import POMC.Prop (Prop(..))
-import qualified POMC.RPotl as RP (Formula(..))
+import Pomc.Check (Checkable(..))
+import Pomc.Prec (Prec(..))
+import Pomc.Prop (Prop(..))
+import qualified Pomc.RPotl as RP (Formula(..))
 
 import qualified Data.Set as S
 

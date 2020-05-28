@@ -1,11 +1,18 @@
-module POMC.Data ( decodeAtom
+{- |
+   Module      : Pomc.Data
+   Copyright   : 2020 Davide Bergamaschi
+   License     : MIT
+   Maintainer  : Davide Bergamaschi
+-}
+
+module Pomc.Data ( decodeAtom
                  , encode
                  , generate
                  , EncodedSet
                  , FormulaSet
                  ) where
 
-import POMC.RPotl
+import Pomc.RPotl
 
 import Data.Set (Set)
 import qualified Data.Set as S

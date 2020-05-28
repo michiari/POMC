@@ -3,9 +3,10 @@ module TestOpa (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import POMC.Prec (Prec(..))
-import POMC.Opa (Opa(..), runOpa)
-import POMC.Util (lookupOrDefault)
+import Pomc.Prec (Prec(..))
+import Pomc.Opa (Opa(..), runOpa)
+
+import Data.Maybe (fromMaybe)
 
 arithOpa :: Opa Int Char
 arithOpa =
@@ -14,9 +15,9 @@ arithOpa =
       , states     = [0, 1, 2, 3]
       , initials   = [0]
       , finals     = [1, 3]
-      , deltaShift = (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaShift [])
-      , deltaPush  = (\s  t  -> lookupOrDefault (s,  t)  arithOpaDeltaPush  [])
-      , deltaPop   = (\s1 s2 -> lookupOrDefault (s1, s2) arithOpaDeltaPop   [])
+      , deltaShift = (\s  t  -> fromMaybe [] . lookup (s,  t)  $ arithOpaDeltaShift)
+      , deltaPush  = (\s  t  -> fromMaybe [] . lookup (s,  t)  $ arithOpaDeltaPush )
+      , deltaPop   = (\s1 s2 -> fromMaybe [] . lookup (s1, s2) $ arithOpaDeltaPop  )
       }
   where
     arithOpaPrecMatrix =
@@ -77,9 +78,9 @@ vcOpa =
       , states     = ["q0", "q1", "q4", "0", "1", "2"]
       , initials   = ["q0"]
       , finals     = ["q0"]
-      , deltaShift = (\s  t  -> lookupOrDefault (s,  t)  vcOpaDeltaShift [])
-      , deltaPush  = (\s  t  -> lookupOrDefault (s,  t)  vcOpaDeltaPush  [])
-      , deltaPop   = (\s1 s2 -> lookupOrDefault (s1, s2) vcOpaDeltaPop   [])
+      , deltaShift = (\s  t  -> fromMaybe [] . lookup (s,  t)  $ vcOpaDeltaShift)
+      , deltaPush  = (\s  t  -> fromMaybe [] . lookup (s,  t)  $ vcOpaDeltaPush )
+      , deltaPop   = (\s1 s2 -> fromMaybe [] . lookup (s1, s2) $ vcOpaDeltaPop  )
       }
   where
     vcOpaPrecMatrix =
@@ -170,4 +171,4 @@ tests = testGroup "Opa.hs tests"
       runOpa vcOpa [] @? acceptFail
   ]
   where acceptFail = "Automaton should accept!"
-        rejectFail  = "Automaton should reject!"
+        rejectFail = "Automaton should reject!"
