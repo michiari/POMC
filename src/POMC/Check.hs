@@ -37,6 +37,10 @@ import Control.Monad (guard)
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 
+import qualified Data.Sequence as SQ
+
+import Data.Foldable (toList)
+
 -- TODO: remove
 import qualified Debug.Trace as DT
 
@@ -185,7 +189,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HierTakeHelper g   -> [f, Not f] ++ closList g
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
-atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
+--atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
 atoms clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
 
@@ -224,15 +228,17 @@ atoms clos inputSet =
               cl = S.toList clos
       consistent fset = all (\c -> c fset) checks
 
-      prependCons atoms eset =
+      prependCons as eset =
         let fset = decodeAtom (fetch pFormulaVec) eset
             combs = do (aset, easet) <- atomics
                        let fset' = fset `S.union` aset
                            eset' = easet VU.++ eset
                        guard (consistent fset')
                        return (Atom fset' eset')
-        in seq combs (foldl' (\acc new -> new : acc) atoms combs)
-  in foldl' prependCons [] (generate $ V.length pFormulaVec)
+        in as SQ.>< (SQ.fromList combs)
+           -- (foldl' (\acc new -> new : acc) atoms combs) -- no thunking but slow :(
+  --in foldl' prependCons [] (generate $ V.length pFormulaVec)
+  in toList $ foldl' prependCons SQ.empty (generate $ V.length pFormulaVec)
 
 atomicCons :: Ord a => (Set (Prop a) -> Bool) -> Set (Formula a) -> Bool
 atomicCons valid set =
@@ -381,7 +387,7 @@ pendCombs clos =
                                        xr <- [False, True],
                                        not (xl && xe)]
 
-initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
+--initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
 initials phi clos atoms =
   let compatible atom = let fset = atomFormulaSet atom
                         in phi `S.member` fset &&
@@ -1181,15 +1187,15 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                                             }
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
-deltaShift :: (Eq a, Ord a, Show a)
-           => Set (Formula a)
-           -> [Atom a]
-           -> Set (Set (Formula a), Bool, Bool, Bool)
-           -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
-           -> RuleGroup a
-           -> State a
-           -> Set (Prop a)
-           -> [State a]
+--deltaShift :: (Eq a, Ord a, Show a)
+--           => Set (Formula a)
+--           -> [Atom a]
+--           -> Set (Set (Formula a), Bool, Bool, Bool)
+--           -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
+--           -> RuleGroup a
+--           -> State a
+--           -> Set (Prop a)
+--           -> [State a]
 deltaShift clos atoms pcombs prec rgroup state props = debug fstates
   where
     debug = id
@@ -1198,15 +1204,15 @@ deltaShift clos atoms pcombs prec rgroup state props = debug fstates
 
     fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
 
-deltaPush :: (Eq a, Ord a, Show a)
-          => Set (Formula a)
-          -> [Atom a]
-          -> Set (Set (Formula a), Bool, Bool, Bool)
-          -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
-          -> RuleGroup a
-          -> State a
-          -> Set (Prop a)
-          -> [State a]
+--deltaPush :: (Eq a, Ord a, Show a)
+--          => Set (Formula a)
+--          -> [Atom a]
+--          -> Set (Set (Formula a), Bool, Bool, Bool)
+--          -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
+--          -> RuleGroup a
+--          -> State a
+--          -> Set (Prop a)
+--          -> [State a]
 deltaPush clos atoms pcombs prec rgroup state props = debug fstates
   where
     debug = id
@@ -1215,15 +1221,15 @@ deltaPush clos atoms pcombs prec rgroup state props = debug fstates
 
     fstates = delta rgroup prec clos atoms pcombs state (Just props) Nothing Nothing
 
-deltaPop :: (Eq a, Ord a, Show a)
-         => Set (Formula a)
-         -> [Atom a]
-         -> Set (Set (Formula a), Bool, Bool, Bool)
-         -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
-         -> RuleGroup a
-         -> State a
-         -> State a
-         -> [State a]
+--deltaPop :: (Eq a, Ord a, Show a)
+--         => Set (Formula a)
+--         -> [Atom a]
+--         -> Set (Set (Formula a), Bool, Bool, Bool)
+--         -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
+--         -> RuleGroup a
+--         -> State a
+--         -> State a
+--         -> [State a]
 deltaPop clos atoms pcombs prec rgroup state popped = debug fstates
   where
     debug = id
