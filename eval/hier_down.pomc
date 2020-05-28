@@ -18,8 +18,7 @@ prec = call < call, call = ret, call < han, call > exc,
 formulas = F (HNd pb),
            F (HBd pb),
            F (pa And (call HUd pc)),
-           F (pc And (call HSd pa)),
-           F (T HUd call);
+           F (pc And (call HSd pa));
 
 strings = call han (call pa) (call pb) (call pc) call exc ret,
           call han (call pa) (call pb) (call pc) exc ret,
