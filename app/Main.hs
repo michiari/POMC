@@ -3,7 +3,7 @@ import POMC.Parse (checkRequestP, spaceP, CheckRequest(..))
 import POMC.Prec (fromRelations)
 import POMC.Prop (Prop(..))
 import POMC.RPotl (Formula(..))
-import POMC.Util (safeHead, timeAction)
+import POMC.Util (safeHead, timeAction, timeToString)
 
 import Prelude hiding (readFile)
 
@@ -50,8 +50,9 @@ main = do args <- getArgs
               phis = creqFormulas creq
               strings = creqStrings creq
 
-          forM_ [(phi, s) | phi <- phis, s <- strings] (uncurry $ run tfunc pfunc)
+          times <- forM [(phi, s) | phi <- phis, s <- strings] (uncurry $ run tfunc pfunc)
 
+          putStrLn ("\n\nTotal elapsed time: " ++ timeToString (sum times))
   where run tfunc pfunc phi s =
           do putStr (concat [ "\nFormula: ", show phi
                             , "\nString:  ", showstring s
@@ -61,9 +62,11 @@ main = do args <- getArgs
              let tphi = transFormula tfunc phi
                  ts   = transString  tfunc s
 
-             (_, secs, _) <- timeAction . putStr . show $ fastcheck tphi pfunc ts
+             (_, time) <- timeAction . putStr . show $ fastcheck tphi pfunc ts
 
-             putStrLn (concat ["\nElapsed: ", secs])
+             putStrLn (concat ["\nElapsed time: ", timeToString time])
+
+             return time
 
         showp prop = case prop of Prop p -> show p
                                   End    -> "#"

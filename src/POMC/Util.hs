@@ -7,11 +7,12 @@ module POMC.Util ( unsafeLookup
                  , safeHead
                  , safeTail
                  , timeAction
+                 , timeToString
                  ) where
 
 import Data.Foldable (foldl')
 
-import Criterion.Measurement (initializeTime, getTime, getCPUTime, secs)
+import Criterion.Measurement (initializeTime, getTime, secs)
 
 unsafeLookup :: Eq a => a -> [(a, b)] -> b
 unsafeLookup k al = case lookup k al of
@@ -43,11 +44,12 @@ safeTail :: [a] -> Maybe [a]
 safeTail [] = Nothing
 safeTail (_:xs) = Just xs
 
-timeAction :: IO a -> IO (a, String, String)
+timeAction :: IO a -> IO (a, Double)
 timeAction action = do initializeTime
                        t1 <- getTime
-                       ct1 <- getCPUTime
                        a  <- action
                        t2 <- getTime
-                       ct2 <- getCPUTime
-                       return (a, secs(t2 - t1), secs(ct2 - ct1))
+                       return (a, (t2 - t1))
+
+timeToString :: Double -> String
+timeToString = secs
