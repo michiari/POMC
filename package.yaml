@@ -4,10 +4,10 @@ synopsis:           A model-checking tool for POTL
 description:        A model-checking tool for POTL
 category:           Formal methods
 
-author:             Davide Bergamaschi
+author:             Davide Bergamaschi, Michele Chiari
 maintainer:         davide.bergamaschi@protonmail.com
 
-copyright:          2020 Davide Bergamaschi
+copyright:          2020 Davide Bergamaschi and Michele Chiari
 license:            MIT
 license-file:       COPYING.md
 
@@ -29,6 +29,7 @@ library:
   - Pomc.Prec
   - Pomc.Prop
   - Pomc.RPotl
+  - Pomc.Satisfiability
   ghc-options:
   - -Wall
   - -O2
@@ -42,6 +43,7 @@ library:
   - parser-combinators
   - text
   - vector
+  - mtl
 
 executables:
   pomc:

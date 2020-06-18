@@ -17,6 +17,9 @@ module Pomc.Check ( -- * Checking functions
                     -- * Printing
                   , showAtoms
                   , showStates
+                  , Atom(..)
+                  , State(..)
+                  , makeOpa
                   ) where
 
 import Pomc.Prop (Prop(..))
@@ -41,7 +44,7 @@ import Data.List (foldl')
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 
-import Control.Monad (guard)
+import Control.Monad (guard, filterM)
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
@@ -62,7 +65,7 @@ instance Checkable (Formula) where
 data Atom a = Atom
     { atomFormulaSet :: FormulaSet a
     , atomEncodedSet :: EncodedSet
-    } deriving (Generic, NFData)
+    } deriving (Generic, NFData, Ord, Eq)
 
 data State a = State
     { current   :: Atom a
@@ -70,7 +73,7 @@ data State a = State
     , mustPush  :: Bool
     , mustShift :: Bool
     , afterPop  :: Bool
-    } deriving (Generic, NFData)
+    } deriving (Generic, NFData, Ord, Eq)
 
 showFormulaSet :: (Show a) => FormulaSet a -> String
 showFormulaSet fset = let fs = S.toList fset
@@ -1322,3 +1325,37 @@ fastcheck phi prec ts =
             --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
             fstates = delta rgroup prec clos atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
+
+makeOpa :: (Checkable f, Ord a, Show a)
+        => f a
+        -> ([Prop a], [Prop a])
+        -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
+        -> ([State a],
+            State a -> Bool,
+            State a -> Set (Prop a) -> [State a],
+            State a -> Set (Prop a) -> [State a],
+            State a -> State a -> [State a])
+makeOpa phi (sls, als) prec = (is, isFinal,
+                          deltaPush  cl as pcs prec pushRules,
+                          deltaShift cl as pcs prec shiftRules,
+                          deltaPop   cl as pcs prec popRules)
+  where nphi = normalize . toReducedPotl $ phi
+        tsprops = sls ++ als
+        inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
+        cl = closure nphi tsprops
+        as = atoms cl inputSet
+        pcs = pendCombs cl
+        is = initials nphi cl as
+        (shiftRules, pushRules, popRules) = deltaRules cl
+
+        deltaShift clos atoms pcombs prec rgroup state props = fstates
+          where fstates = delta rgroup prec clos atoms pcombs state
+                                (Just props) Nothing Nothing
+
+        deltaPush clos atoms pcombs prec rgroup state props = fstates
+          where fstates = delta rgroup prec clos atoms pcombs state
+                                (Just props) Nothing Nothing
+
+        deltaPop clos atoms pcombs prec rgroup state popped = fstates
+          where fstates = delta rgroup prec clos atoms pcombs state
+                                Nothing (Just popped) Nothing

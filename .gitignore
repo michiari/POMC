@@ -1,5 +1,6 @@
 .stack-work/
 *~
 session.vim
+pomc.cabal
 
 /references
