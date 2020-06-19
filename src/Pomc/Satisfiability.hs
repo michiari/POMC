@@ -21,7 +21,25 @@ import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Data.Map.Lazy (Map(..))
+import qualified Data.Map.Lazy as HM
+
 import Debug.Trace (trace)
+
+-- Map to lists
+type ListMap k v = Map k [v]
+
+insertLM :: (Eq k, Ord k) => k -> v -> ListMap k v -> ListMap k v
+insertLM key val lm = HM.alter consVal key lm
+  where consVal Nothing = Just [val]
+        consVal (Just vals) = Just (val:vals)
+
+lookupLM :: (Eq k, Ord k) => k -> ListMap k v -> [v]
+lookupLM key lm = HM.findWithDefault [] key lm
+
+emptyLM :: ListMap k v
+emptyLM = HM.empty
+
 
 -- Input symbol
 type Input a = Set (Prop a)
@@ -30,8 +48,8 @@ type Input a = Set (Prop a)
 type Stack a = Maybe (Input a, State a)
 
 data Globals a = Globals { visited :: Set (State a, Stack a),
-                           suppStarts :: [(State a, Stack a)],
-                           suppEnds :: [(State a, State a)] }
+                           suppStarts :: ListMap (State a) (Stack a),
+                           suppEnds :: ListMap (State a) (State a) }
 data Delta a = Delta { prec :: (Input a -> Input a -> Maybe Prec),
                        deltaPush :: State a -> Input a -> [State a],
                        deltaShift :: State a -> Input a -> [State a],
@@ -83,15 +101,15 @@ reachPush _ _ _ _ _ True _ = return True
 reachPush isDestState isDestStack delta q g False p = do
   globals <- St.get
   St.put $ Globals { visited = visited globals,
-                     suppStarts = (q, g):(suppStarts globals),
+                     suppStarts = insertLM q g (suppStarts globals),
                      suppEnds = suppEnds globals }
   if Set.notMember (p, Just (getProps q, p)) (visited globals)
     then reach isDestState isDestStack delta p (Just (getProps q, q))
-    else foldM (\acc (s, _) -> if acc
-                               then return True
-                               else reach isDestState isDestStack delta s g)
+    else foldM (\acc s -> if acc
+                          then return True
+                          else reach isDestState isDestStack delta s g)
                False
-               (filter (\(_, q') -> q' == q) (suppEnds globals))
+               (lookupLM q (suppEnds globals))
 
 reachPop :: (Eq a, Ord a, Show a)
          => (State a -> Bool)
@@ -107,15 +125,14 @@ reachPop isDestState isDestStack delta q g False p = do
   globals <- St.get
   St.put $ Globals { visited = visited globals,
                      suppStarts = suppStarts globals,
-                     suppEnds = (p, (snd . fromJust $ g)):(suppEnds globals) }
-  foldM (\acc (_, g') -> if acc
-                         then return True
-                         else reach isDestState isDestStack delta p g')
+                     suppEnds = insertLM (snd . fromJust $ g) p (suppEnds globals) }
+  foldM (\acc g' -> if acc
+                    then return True
+                    else reach isDestState isDestStack delta p g')
     False
-    (filter (\(r, g') -> r == (snd . fromJust $ g)
-                         && (isNothing g' ||
-                             ((prec delta) (fst . fromJust $ g') (getProps q)) == Just Yield))
-      (suppStarts globals))
+    (filter (\g' -> isNothing g' ||
+                    ((prec delta) (fst . fromJust $ g') (getProps q)) == Just Yield)
+      (lookupLM (snd . fromJust $ g) (suppStarts globals)))
 
 
 isEmpty :: (Ord a, Eq a, Show a)
@@ -131,8 +148,8 @@ isEmpty delta initials isFinal = not $
      False
      initials)
     (Globals { visited = Set.empty,
-               suppStarts = [],
-               suppEnds = [] })
+               suppStarts = emptyLM,
+               suppEnds = emptyLM })
 
 isSatisfiable :: (Checkable f, Ord a, Eq a, Show a)
               => f a
