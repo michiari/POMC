@@ -65,7 +65,7 @@ instance Checkable (Formula) where
 data Atom a = Atom
     { atomFormulaSet :: FormulaSet a
     , atomEncodedSet :: EncodedSet
-    } deriving (Generic, NFData, Ord, Eq)
+    } deriving (Generic, NFData)
 
 data State a = State
     { current   :: Atom a
@@ -74,6 +74,12 @@ data State a = State
     , mustShift :: Bool
     , afterPop  :: Bool
     } deriving (Generic, NFData, Ord, Eq)
+
+instance Eq (Atom a) where
+  p == q = (atomEncodedSet p) == (atomEncodedSet q)
+
+instance Ord (Atom a) where
+  compare p q = compare (atomEncodedSet p) (atomEncodedSet q)
 
 showFormulaSet :: (Show a) => FormulaSet a -> String
 showFormulaSet fset = let fs = S.toList fset
