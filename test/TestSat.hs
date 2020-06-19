@@ -103,5 +103,46 @@ cases =
     , (ap "call" `And` (XNext Up (ap "exc" `And` (XBack Up $ ap "call"))))
     , []
     , True
+    ),
+    ( "No han until ret"
+    , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
+    , []
+    , True
+    ),
+    ( "No han until down exc"
+    , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
+    , []
+    , False
+    ),
+    ( "Next exp, not pa since pb"
+    , (ap "call" `And` (XNext Up (ap "exc" `And` (PBack Up $ Since Up (Not . ap $ "pa") (ap "pb")))))
+    , ["pa", "pb"]
+    , True
+    ),
+    ( "Call exc and pa in between"
+    , (ap "call" `And` (XNext Up (ap "exc")) `And` (PNext Down $ HNext Down (ap "pa")))
+    , ["pa"]
+    , True
+    ),
+    ( "Call exc and not pa until pb in between"
+    , (ap "call"
+       `And` (XNext Up (ap "exc"))
+       `And` (PNext Down $ HUntil Down (Not . ap $ "pa") (ap "pb")))
+    , ["pa", "pb"]
+    , True
+    ),
+    ( "Nested calls HNext"
+    , (ap "call"
+       `And` (XNext Down (ap "ret"))
+       `And` (XNext Down (HNext Up $ ap "pa")))
+    , ["pa"]
+    , True
+    ),
+    ( "Nested calls HUntil"
+    , (ap "call"
+       `And` (XNext Down (ap "ret"))
+       `And` (XNext Down (HUntil Up (ap "pa") (ap "pb"))))
+    , ["pa", "pb"]
+    , True
     )
   ]
