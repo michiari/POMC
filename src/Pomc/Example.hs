@@ -18,13 +18,13 @@ import Pomc.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
 
-import Data.Set (Set)
-import qualified Data.Set as S
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as S
 
 import Data.Maybe (fromJust, fromMaybe)
 
 -- Precedence function for the Stack Trace Language Version 1
-stlPrecedenceV1 :: Set (Prop String) -> Set (Prop String) -> Maybe Prec
+stlPrecedenceV1 :: HashSet (Prop String) -> HashSet (Prop String) -> Maybe Prec
 stlPrecedenceV1 s1 s2
   | isCallSet s1 = callPrec s2
   | isRetSet  s1 = retPrec  s2
@@ -85,7 +85,7 @@ stlAnnotateV1 = map annotate
           | otherwise = error ("Invalid token: " ++ t)
 
 -- Precedence function for the Stack Trace Language Version 2
-stlPrecedenceV2 :: Set (Prop String) -> Set (Prop String) -> Maybe Prec
+stlPrecedenceV2 :: HashSet (Prop String) -> HashSet (Prop String) -> Maybe Prec
 stlPrecedenceV2 s1 s2
   | isCallSet s1 = callPrec s2
   | isRetSet  s1 = retPrec  s2

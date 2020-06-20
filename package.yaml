@@ -44,6 +44,8 @@ library:
   - text
   - vector
   - mtl
+  - hashable
+  - unordered-containers
 
 executables:
   pomc:
@@ -71,6 +73,8 @@ tests:
     - tasty
     - tasty-hunit
     - tasty-quickcheck
+    - hashable
+    - unordered-containers
 
 benchmarks:
   bench-pomc:

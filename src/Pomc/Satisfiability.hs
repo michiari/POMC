@@ -14,15 +14,18 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Check (Checkable(..), Atom(..), State(..), makeOpa)
 import Pomc.RPotl (Formula(Atomic), atomic)
-import qualified Control.Monad.State as St
+import Pomc.Util (notMember)
+import qualified Control.Monad.State.Strict as St
 import Control.Monad (foldM)
 import Data.Maybe
 
-import Data.Set (Set)
-import qualified Data.Set as Set
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as Set
 
-import Data.Map.Lazy (Map(..))
-import qualified Data.Map.Lazy as HM
+import Data.Hashable
+
+import Data.Map.Strict (Map(..))
+import qualified Data.Map.Strict as HM
 
 import Debug.Trace (trace)
 
@@ -42,12 +45,12 @@ emptyLM = HM.empty
 
 
 -- Input symbol
-type Input a = Set (Prop a)
+type Input a = HashSet (Prop a)
 
 -- Stack symbol
 type Stack a = Maybe (Input a, State a)
 
-data Globals a = Globals { visited :: Set (State a, Stack a),
+data Globals a = Globals { visited :: HashSet (State a, Stack a),
                            suppStarts :: ListMap (State a) (Stack a),
                            suppEnds :: ListMap (State a) (State a) }
 data Delta a = Delta { prec :: (Input a -> Input a -> Maybe Prec),
@@ -55,10 +58,10 @@ data Delta a = Delta { prec :: (Input a -> Input a -> Maybe Prec),
                        deltaShift :: State a -> Input a -> [State a],
                        deltaPop :: State a -> State a -> [State a] }
 
-getProps :: Ord a => State a -> Input a
+getProps :: (Ord a, Hashable a) => State a -> Input a
 getProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet . current $ s)
 
-reach :: (Ord a, Eq a, Show a)
+reach :: (Ord a, Eq a, Hashable a, Show a)
       => (State a -> Bool)
       -> (Stack a -> Bool)
       -> Delta a
@@ -67,7 +70,7 @@ reach :: (Ord a, Eq a, Show a)
       -> St.State (Globals a) Bool
 reach isDestState isDestStack delta q g = do
   globals <- St.get
-  if Set.member (q, g) $ visited globals
+  if ({-# SCC "reach:setMember" #-} Set.member (q, g)) $ visited globals
     then return False
     else do
     St.put $ Globals { visited = Set.insert (q, g) (visited globals),
@@ -88,7 +91,7 @@ reach isDestState isDestStack delta q g = do
           | otherwise = return False
     cases
 
-reachPush :: (Eq a, Ord a, Show a)
+reachPush :: (Eq a, Ord a, Hashable a, Show a)
           => (State a -> Bool)
           -> (Stack a -> Bool)
           -> Delta a
@@ -103,7 +106,7 @@ reachPush isDestState isDestStack delta q g False p = do
   St.put $ Globals { visited = visited globals,
                      suppStarts = insertLM q g (suppStarts globals),
                      suppEnds = suppEnds globals }
-  if Set.notMember (p, Just (getProps q, p)) (visited globals)
+  if notMember (p, Just (getProps q, p)) (visited globals)
     then reach isDestState isDestStack delta p (Just (getProps q, q))
     else foldM (\acc s -> if acc
                           then return True
@@ -111,7 +114,7 @@ reachPush isDestState isDestStack delta q g False p = do
                False
                (lookupLM q (suppEnds globals))
 
-reachPop :: (Eq a, Ord a, Show a)
+reachPop :: (Eq a, Ord a, Hashable a, Show a)
          => (State a -> Bool)
          -> (Stack a -> Bool)
          -> Delta a
@@ -125,17 +128,17 @@ reachPop isDestState isDestStack delta q g False p = do
   globals <- St.get
   St.put $ Globals { visited = visited globals,
                      suppStarts = suppStarts globals,
-                     suppEnds = insertLM (snd . fromJust $ g) p (suppEnds globals) }
+                     suppEnds = {-# SCC "reachPop:insertLM" #-} insertLM (snd . fromJust $ g) p (suppEnds globals) }
   foldM (\acc g' -> if acc
-                    then return True
-                    else reach isDestState isDestStack delta p g')
+                    then {-# SCC "reachPop:retTrue" #-} return True
+                    else {-# SCC "reachPop:recurse" #-} reach isDestState isDestStack delta p g')
     False
     (filter (\g' -> isNothing g' ||
                     ((prec delta) (fst . fromJust $ g') (getProps q)) == Just Yield)
-      (lookupLM (snd . fromJust $ g) (suppStarts globals)))
+      ({-# SCC "reachPop:lookupLM" #-} (lookupLM (snd . fromJust $ g) (suppStarts globals))))
 
 
-isEmpty :: (Ord a, Eq a, Show a)
+isEmpty :: (Ord a, Eq a, Hashable a, Show a)
         => Delta a
         -> [State a]
         -> (State a -> Bool)
@@ -151,7 +154,7 @@ isEmpty delta initials isFinal = not $
                suppStarts = emptyLM,
                suppEnds = emptyLM })
 
-isSatisfiable :: (Checkable f, Ord a, Eq a, Show a)
+isSatisfiable :: (Checkable f, Ord a, Hashable a, Eq a, Show a)
               => f a
               -> ([Prop a], [Prop a])
               -> (Input a -> Input a -> Maybe Prec)

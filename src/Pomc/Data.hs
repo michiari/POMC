@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 {- |
    Module      : Pomc.Data
    Copyright   : 2020 Davide Bergamaschi
@@ -14,19 +16,28 @@ module Pomc.Data ( decodeAtom
 
 import Pomc.RPotl
 
-import Data.Set (Set)
-import qualified Data.Set as S
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as S
 
-import Data.Vector.Unboxed (Vector)
+import Data.Vector.Unboxed (Vector(..))
 import qualified Data.Vector.Unboxed as VU
 
-import Data.Bit.ThreadSafe (Bit)
-import qualified Data.Bit.ThreadSafe as B
+import Data.Bit (Bit)
+import qualified Data.Bit as B
+
+import GHC.Generics (Generic)
+import Data.Hashable
+
+instance Hashable Bit
+
+instance Hashable (Vector Bit) where
+  hashWithSalt salt vb = VU.foldl' (\acc v -> hashWithSalt acc v) salt words
+    where words = B.cloneToWords vb
 
 type EncodedSet = Vector Bit
-type FormulaSet a = Set (Formula a)
+type FormulaSet a = HashSet (Formula a)
 
-decodeAtom :: Ord a => (Int -> Formula a) -> EncodedSet -> FormulaSet a
+decodeAtom :: (Ord a, Hashable a) => (Int -> Formula a) -> EncodedSet -> FormulaSet a
 decodeAtom fetch bv = let pos = map fetch (B.listBits bv)
                           neg = map (Not . fetch) (B.listBits . B.invertBits $ bv)
                       in S.fromList pos `S.union` S.fromList neg

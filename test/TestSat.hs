@@ -9,13 +9,15 @@ import Pomc.Prop (Prop(..))
 import Pomc.PotlV2 (Formula(..), Dir(..))
 import Pomc.Example (stlPrecedenceV2)
 
+import Data.Hashable
+
 tests :: TestTree
 tests = testGroup "TestSat.hs Tests" $ map makeV2TestCase cases
 
 stlPrecV2sls :: [Prop [Char]]
 stlPrecV2sls = map Prop ["call", "ret", "han", "exc"]
 
-makeTestCase :: (Checkable f, Ord a, Show a)
+makeTestCase :: (Checkable f, Ord a, Hashable a, Show a)
              => (TestName, f a, [Prop a], [Prop a], PrecFunc a, Bool)
              -> TestTree
 makeTestCase (name, phi, sls, als, prec, expected) =

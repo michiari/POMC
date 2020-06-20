@@ -15,9 +15,21 @@ module Pomc.Util ( unsafeLookup
                  , safeTail
                  , timeAction
                  , timeToString
+                 , toAscList
+                 , isSubsetOf
+                 , powerSet
+                 , notMember
                  ) where
 
 import Data.Foldable (foldl')
+
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as S
+
+import Data.List (sort)
+import Control.Monad (filterM)
+
+import Data.Hashable
 
 import Criterion.Measurement (initializeTime, getTime, secs)
 
@@ -60,3 +72,17 @@ timeAction action = do initializeTime
 
 timeToString :: Double -> String
 timeToString = secs
+
+
+-- HashSet utilities
+toAscList :: (Ord a) => HashSet a -> [a]
+toAscList s = sort $ S.toList s
+
+isSubsetOf :: (Eq a, Hashable a) => HashSet a -> HashSet a -> Bool
+isSubsetOf a b = S.null $ S.difference a b
+
+powerSet :: (Eq a, Hashable a) => HashSet a -> HashSet (HashSet a)
+powerSet s = S.fromList $ map S.fromList (filterM (const [True, False]) (S.toList s))
+
+notMember :: (Eq a, Hashable a) => a -> HashSet a -> Bool
+notMember x s = not $ S.member x s
