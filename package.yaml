@@ -31,6 +31,7 @@ library:
   - Pomc.RPotl
   - Pomc.Satisfiability
   ghc-options:
+  - -rtsopts
   - -Wall
   - -O2
   dependencies:
