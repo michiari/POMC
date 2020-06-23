@@ -27,21 +27,21 @@ import qualified Data.Set as Set
 
 import Data.Hashable
 
-import Data.Map.Strict (Map(..))
-import qualified Data.Map.Strict as HM
+import Data.HashMap.Strict (HashMap(..))
+import qualified Data.HashMap.Strict as HM
 
 import Debug.Trace (trace)
 
 -- Map to lists
-type ListMap k v = Map k [v]
+type ListMap k v = HashMap k [v]
 
-insertLM :: (Eq k, Ord k) => k -> v -> ListMap k v -> ListMap k v
+insertLM :: (Eq k, Ord k, Hashable k) => k -> v -> ListMap k v -> ListMap k v
 insertLM key val lm = HM.alter consVal key lm
   where consVal Nothing = Just [val]
         consVal (Just vals) = Just (val:vals)
 
-lookupLM :: (Eq k, Ord k) => k -> ListMap k v -> [v]
-lookupLM key lm = HM.findWithDefault [] key lm
+lookupLM :: (Eq k, Ord k, Hashable k) => k -> ListMap k v -> [v]
+lookupLM key lm = HM.lookupDefault [] key lm
 
 emptyLM :: ListMap k v
 emptyLM = HM.empty
