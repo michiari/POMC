@@ -24,8 +24,8 @@ import Data.Text.IO (readFile)
 
 import Data.List (intersperse)
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as S
+import Data.Set (Set)
+import qualified Data.Set as S
 
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
@@ -101,7 +101,7 @@ makeTransFunc (CheckRequest rels phis strings) =
 
       stringProps = concatMap (\s -> concatMap S.toList s) strings
 
-      propSet :: HashSet (Prop Text)
+      propSet :: Set (Prop Text)
       propSet = S.fromList (relProps ++ phiProps ++ stringProps)
 
       tmap :: Map Text Int

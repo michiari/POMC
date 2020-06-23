@@ -26,13 +26,13 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Opa (run, augRun)
 import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
-import Pomc.Util (xor, implies, safeHead, toAscList, isSubsetOf, powerSet, notMember)
-import Pomc.Data --(encode, decodeAtom, generate, FormulaSet, EncodedSet)
+import Pomc.Util (xor, implies, safeHead)
+import Pomc.Data (encode, decodeAtom, generate, FormulaSet, EncodedSet)
 
 import Data.Maybe (fromJust, fromMaybe)
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as S
+import Data.Set (Set)
+import qualified Data.Set as S
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -48,12 +48,11 @@ import Control.Monad (guard, filterM)
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
+import Data.Hashable
 
 import qualified Data.Sequence as SQ
 
 import Data.Foldable (toList)
-
-import Data.Hashable
 
 -- TODO: remove
 import qualified Debug.Trace as DT
@@ -71,14 +70,18 @@ data Atom a = Atom
 
 data State a = State
     { current   :: Atom a
-    , pending   :: HashSet (Formula a)
+    , pending   :: Set (Formula a)
     , mustPush  :: Bool
     , mustShift :: Bool
     , afterPop  :: Bool
     } deriving (Generic, NFData, Ord, Eq)
 
-instance Hashable a => Hashable (Atom a)
+-- Make things Hashable
+instance Hashable a => Hashable (Atom a) where
+  hashWithSalt salt atom = hashWithSalt salt (atomEncodedSet atom)
+
 instance Hashable a => Hashable (State a)
+
 
 instance Eq (Atom a) where
   p == q = (atomEncodedSet p) == (atomEncodedSet q)
@@ -106,19 +109,19 @@ instance (Show a) => Show (State a) where
 showAtoms :: Show a => [Atom a] -> String
 showAtoms = unlines . map show
 
-showPendCombs :: Show a => HashSet ((HashSet (Formula a), Bool, Bool, Bool)) -> String
+showPendCombs :: Show a => Set ((Set (Formula a), Bool, Bool, Bool)) -> String
 showPendCombs = unlines . map show . S.toList
 
 showStates :: Show a => [State a] -> String
 showStates = unlines . map show
 
-atomicSet :: HashSet (Formula a) -> HashSet (Formula a)
+atomicSet :: Set (Formula a) -> Set (Formula a)
 atomicSet = S.filter atomic
 
-compProps :: (Eq a, Hashable a) => HashSet (Formula a) -> HashSet (Prop a) -> Bool
+compProps :: (Eq a, Ord a) => Set (Formula a) -> Set (Prop a) -> Bool
 compProps fset pset = atomicSet fset == S.map Atomic pset
 
-closure :: (Eq a, Hashable a) => Formula a -> [Prop a] -> HashSet (Formula a)
+closure :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
@@ -212,7 +215,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HierTakeHelper g   -> [f, Not f] ++ closList g
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
-atoms :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (HashSet (Prop a)) -> [Atom a]
+atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
 atoms clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
 
@@ -224,12 +227,12 @@ atoms clos inputSet =
       pclos = S.filter (not . negative) clos
 
       pProplessClos = S.filter (not . atomic) pclos
-      pFormulaVec = V.fromList . toAscList $ pProplessClos
+      pFormulaVec = V.fromList . S.toAscList $ pProplessClos
 
       pAtomicClos = S.filter (atomic) pclos
-      pAtomicVec = V.fromList . toAscList $ pAtomicClos
+      pAtomicVec = V.fromList . S.toAscList $ pAtomicClos
       atomicLookup phi = fromJust (M.lookup phi atomicMap)
-        where atomicMap = M.fromAscList (zip (toAscList pAtomicClos) [0..])
+        where atomicMap = M.fromAscList (zip (S.toAscList pAtomicClos) [0..])
 
       fetch vec i = vec V.! i
 
@@ -261,16 +264,16 @@ atoms clos inputSet =
         in as SQ.>< (SQ.fromList combs)
   in toList $ foldl' prependCons SQ.empty (generate $ V.length pFormulaVec)
 
-atomicCons :: (Ord a, Hashable a) => (HashSet (Prop a) -> Bool) -> HashSet (Formula a) -> Bool
+atomicCons :: Ord a => (Set (Prop a) -> Bool) -> Set (Formula a) -> Bool
 atomicCons valid set =
   let propSet = S.fromList [p | Atomic p <- S.toList set]
       size = S.size propSet
   in (End `S.member` propSet) `implies` (size == 1) && valid propSet
 
-trueCons :: (Ord a, Hashable a) => HashSet (Formula a) -> Bool
+trueCons :: Ord a => Set (Formula a) -> Bool
 trueCons set = not (Not T `S.member` set)
 
-andCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+andCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 andCons clos set = null [f | f@(And g h) <- S.toList set,
                                             not (g `S.member` set) ||
                                             not (h `S.member` set)]
@@ -280,7 +283,7 @@ andCons clos set = null [f | f@(And g h) <- S.toList set,
                                             (h `S.member` set) &&
                                             not (f `S.member` set)]
 
-orCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+orCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 orCons clos set = null [f | f@(Or g h) <- S.toList set,
                                           not (g `S.member` set) &&
                                           not (h `S.member` set)]
@@ -290,7 +293,7 @@ orCons clos set = null [f | f@(Or g h) <- S.toList set,
                                            (h `S.member` set)
                                           ) && not (f `S.member` set)]
 
-chainNextCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+chainNextCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 chainNextCons clos set = null [f | f@(ChainNext pset g) <- S.toList set,
                                                            S.size pset > 1 &&
                                                            not (present pset g)]
@@ -302,7 +305,7 @@ chainNextCons clos set = null [f | f@(ChainNext pset g) <- S.toList set,
   where present pset g = any (\p -> ChainNext (S.singleton p) g `S.member` set)
                              (S.toList pset)
 
-chainBackCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+chainBackCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 chainBackCons clos set = null [f | f@(ChainBack pset g) <- S.toList set,
                                                            S.size pset > 1 &&
                                                            not (present pset g)]
@@ -314,7 +317,7 @@ chainBackCons clos set = null [f | f@(ChainBack pset g) <- S.toList set,
   where present pset g = any (\p -> ChainBack (S.singleton p) g `S.member` set)
                              (S.toList pset)
 
-untilCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+untilCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 untilCons clos set = null [f | f@(Until pset g h) <- S.toList set,
                                                      not (present f pset g h)]
                      &&
@@ -322,10 +325,10 @@ untilCons clos set = null [f | f@(Until pset g h) <- S.toList set,
                                                      present f pset g h &&
                                                      not (f `S.member` set)]
   where present u pset g h = (h `S.member` set) ||
-                             ((S.fromList [g, PrecNext  pset u]) `isSubsetOf` set) ||
-                             ((S.fromList [g, ChainNext pset u]) `isSubsetOf` set)
+                             ((S.fromList [g, PrecNext  pset u]) `S.isSubsetOf` set) ||
+                             ((S.fromList [g, ChainNext pset u]) `S.isSubsetOf` set)
 
-sinceCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+sinceCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
                                                      not (present f pset g h)]
                      &&
@@ -333,10 +336,10 @@ sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
                                                      present f pset g h &&
                                                      not (f `S.member` set)]
   where present s pset g h = (h `S.member` set) ||
-                             ((S.fromList [g, PrecBack  pset s]) `isSubsetOf` set) ||
-                             ((S.fromList [g, ChainBack pset s]) `isSubsetOf` set)
+                             ((S.fromList [g, PrecBack  pset s]) `S.isSubsetOf` set) ||
+                             ((S.fromList [g, ChainBack pset s]) `S.isSubsetOf` set)
 
-hierUntilYieldCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+hierUntilYieldCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 hierUntilYieldCons clos set = null [f | f@(HierUntilYield g h) <- S.toList set,
                                                                   not (present f g h)]
                               &&
@@ -344,10 +347,10 @@ hierUntilYieldCons clos set = null [f | f@(HierUntilYield g h) <- S.toList set,
                                                                   present f g h &&
                                                                   not (f `S.member` set)]
   where present huy g h =
-          ((S.fromList [h, ChainBack (S.singleton Yield) T]) `isSubsetOf` set) ||
-          ((S.fromList [g, HierNextYield huy])               `isSubsetOf` set)
+          ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
+          ((S.fromList [g, HierNextYield huy])               `S.isSubsetOf` set)
 
-hierSinceYieldCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+hierSinceYieldCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 hierSinceYieldCons clos set = null [f | f@(HierSinceYield g h) <- S.toList set,
                                                                   not (present f g h)]
                               &&
@@ -355,10 +358,10 @@ hierSinceYieldCons clos set = null [f | f@(HierSinceYield g h) <- S.toList set,
                                                                   present f g h &&
                                                                   not (f `S.member` set)]
   where present hsy g h =
-          ((S.fromList [h, ChainBack (S.singleton Yield) T]) `isSubsetOf` set) ||
-          ((S.fromList [g, HierBackYield hsy])               `isSubsetOf` set)
+          ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
+          ((S.fromList [g, HierBackYield hsy])               `S.isSubsetOf` set)
 
-hierUntilTakeCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+hierUntilTakeCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 hierUntilTakeCons clos set = null [f | f@(HierUntilTake g h) <- S.toList set,
                                                                 not (present f g h)]
                              &&
@@ -366,10 +369,10 @@ hierUntilTakeCons clos set = null [f | f@(HierUntilTake g h) <- S.toList set,
                                                                 present f g h &&
                                                                 not (f `S.member` set)]
   where present hut g h =
-          ((S.fromList [h, ChainNext (S.singleton Take) T]) `isSubsetOf` set) ||
-          ((S.fromList [g, HierNextTake hut])               `isSubsetOf` set)
+          ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
+          ((S.fromList [g, HierNextTake hut])               `S.isSubsetOf` set)
 
-hierSinceTakeCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+hierSinceTakeCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 hierSinceTakeCons clos set = null [f | f@(HierSinceTake g h) <- S.toList set,
                                                                 not (present f g h)]
                              &&
@@ -377,10 +380,10 @@ hierSinceTakeCons clos set = null [f | f@(HierSinceTake g h) <- S.toList set,
                                                                 present f g h &&
                                                                 not (f `S.member` set)]
   where present hst g h =
-          ((S.fromList [h, ChainNext (S.singleton Take) T]) `isSubsetOf` set) ||
-          ((S.fromList [g, HierBackTake hst])               `isSubsetOf` set)
+          ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
+          ((S.fromList [g, HierBackTake hst])               `S.isSubsetOf` set)
 
-evCons :: (Ord a, Hashable a) => HashSet (Formula a) -> HashSet (Formula a) -> Bool
+evCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
 evCons clos set = null [f | f@(Eventually' g) <- S.toList set,
                                                  not (present f g)]
                   &&
@@ -391,7 +394,7 @@ evCons clos set = null [f | f@(Eventually' g) <- S.toList set,
           (g `S.member` set) ||
           (PrecNext (S.fromList [Yield, Equal, Take]) ev `S.member` set)
 
-pendCombs :: ((Ord a, Hashable a)) => HashSet (Formula a) -> HashSet ((HashSet (Formula a), Bool, Bool, Bool))
+pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bool))
 pendCombs clos =
   let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
       cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
@@ -401,14 +404,14 @@ pendCombs clos =
       hthfs = [f | f@(HierTakeHelper _) <- S.toList clos]
   in S.foldl' S.union S.empty .
      S.map (S.fromList . combs) $
-     powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs ++ hntfs ++ hbtfs ++ hthfs)
+     S.powerSet (S.fromList $ cnfs ++ cbfs ++ hnyfs ++ hntfs ++ hbtfs ++ hthfs)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],
                                        xr <- [False, True],
                                        not (xl && xe)]
 
-initials :: ((Ord a, Hashable a)) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
+initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
 initials phi clos atoms =
   let compatible atom = let fset = atomFormulaSet atom
                         in phi `S.member` fset &&
@@ -417,12 +420,12 @@ initials phi clos atoms =
       cnyfSet = S.fromList [f | f@(ChainNext pset _) <- S.toList clos,
                                                         pset == (S.singleton Yield)]
   in [State ia ip True False False | ia <- compAtoms,
-                                     ip <- S.toList (powerSet cnyfSet)]
+                                     ip <- S.toList (S.powerSet cnyfSet)]
 
 resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
 
-deltaRules :: (Show a, Ord a, Hashable a) => HashSet (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
+deltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
 deltaRules condInfo =
   let shiftGroup = RuleGroup
         { ruleGroupPrs  = resolve condInfo [ (const True, xlShiftPr)
@@ -562,7 +565,7 @@ deltaRules condInfo =
           fCurrProps = S.fromList [p | Atomic p <- S.toList fCurr]
 
           precComp prec = null [f | f@(PrecNext pset _) <- pCurrPnfs,
-                                                           prec `notMember` pset]
+                                                           prec `S.notMember` pset]
 
           fsComp prec = S.fromList pCurrPnfs == checkSet
             where checkSet = S.fromList
@@ -591,7 +594,7 @@ deltaRules condInfo =
           fCurrProps = S.fromList [p | Atomic p <- S.toList fCurr]
 
           precComp prec = null [f | f@(PrecBack pset _) <- fCurrPbfs,
-                                                           prec `notMember` pset]
+                                                           prec `S.notMember` pset]
 
           fsComp prec = S.fromList fCurrPbfs == checkSet
             where checkSet = S.fromList
@@ -1107,40 +1110,40 @@ deltaRules condInfo =
     --
 
 data PrInfo a = PrInfo
-  { prClos      :: HashSet (Formula a)
-  , prPrecFunc  :: HashSet (Prop a) -> HashSet (Prop a) -> Maybe Prec
+  { prClos      :: Set (Formula a)
+  , prPrecFunc  :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
   , prState     :: State a
-  , prProps     :: Maybe (HashSet (Prop a))
+  , prProps     :: Maybe (Set (Prop a))
   , prPopped    :: Maybe (State a)
-  , prNextProps :: Maybe (HashSet (Prop a))
+  , prNextProps :: Maybe (Set (Prop a))
   }
 data FcrInfo a = FcrInfo
-  { fcrClos       :: HashSet (Formula a)
-  , fcrPrecFunc   :: HashSet (Prop a) -> HashSet (Prop a) -> Maybe Prec
+  { fcrClos       :: Set (Formula a)
+  , fcrPrecFunc   :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
   , fcrState      :: State a
-  , fcrProps      :: Maybe (HashSet (Prop a))
+  , fcrProps      :: Maybe (Set (Prop a))
   , fcrPopped     :: Maybe (State a)
   , fcrFutureCurr :: Atom a
-  , fcrNextProps  :: Maybe (HashSet (Prop a))
+  , fcrNextProps  :: Maybe (Set (Prop a))
   }
 data FprInfo a = FprInfo
-  { fprClos           :: HashSet (Formula a)
-  , fprPrecFunc       :: HashSet (Prop a) -> HashSet (Prop a) -> Maybe Prec
+  { fprClos           :: Set (Formula a)
+  , fprPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
   , fprState          :: State a
-  , fprProps          :: Maybe (HashSet (Prop a))
+  , fprProps          :: Maybe (Set (Prop a))
   , fprPopped         :: Maybe (State a)
-  , fprFuturePendComb :: (HashSet (Formula a), Bool, Bool, Bool)
-  , fprNextProps      :: Maybe (HashSet (Prop a))
+  , fprFuturePendComb :: (Set (Formula a), Bool, Bool, Bool)
+  , fprNextProps      :: Maybe (Set (Prop a))
   }
 data FrInfo a = FrInfo
-  { frClos           :: HashSet (Formula a)
-  , frPrecFunc       :: HashSet (Prop a) -> HashSet (Prop a) -> Maybe Prec
+  { frClos           :: Set (Formula a)
+  , frPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
   , frState          :: State a
-  , frProps          :: Maybe (HashSet (Prop a))
+  , frProps          :: Maybe (Set (Prop a))
   , frPopped         :: Maybe (State a)
   , frFutureCurr     :: Atom a
-  , frFuturePendComb :: (HashSet (Formula a), Bool, Bool, Bool)
-  , frNextProps      :: Maybe (HashSet (Prop a))
+  , frFuturePendComb :: (Set (Formula a), Bool, Bool, Bool)
+  , frNextProps      :: Maybe (Set (Prop a))
   }
 
 type PresentRule       a = (PrInfo  a -> Bool)
@@ -1154,7 +1157,7 @@ data RuleGroup a = RuleGroup { ruleGroupPrs  :: [PresentRule       a]
                              , ruleGroupFrs  :: [FutureRule        a]
                              }
 
-augDeltaRules :: (Show a, Ord a, Hashable a) => HashSet (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
+augDeltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
 augDeltaRules cl =
   let (shiftrg, pushrg, poprg) = deltaRules cl
       augShiftRg = shiftrg {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs shiftrg}
@@ -1220,7 +1223,7 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                                             }
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
-isFinal :: (Eq a, Show a, Hashable a) => State a -> Bool
+isFinal :: (Eq a, Show a) => State a -> Bool
 isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted, as if # = #
                                          currAtomic == S.singleton (Atomic End) &&
                                          S.null currFuture &&
@@ -1235,10 +1238,10 @@ isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted
         debug = id
         --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
-check :: (Checkable f, Ord a, Hashable a, Show a)
+check :: (Checkable f, Ord a, Show a)
       => f a
-      -> (HashSet (Prop a) -> HashSet (Prop a) -> Maybe Prec)
-      -> [HashSet (Prop a)]
+      -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
+      -> [Set (Prop a)]
       -> Bool
 check phi prec ts =
   debug $ run
@@ -1271,10 +1274,10 @@ check phi prec ts =
           where fstates = delta rgroup prec clos atoms pcombs state
                                 Nothing (Just popped) Nothing
 
-fastcheck :: (Checkable f, Ord a, Hashable a, Show a)
+fastcheck :: (Checkable f, Ord a, Show a)
           => f a
-          -> (HashSet (Prop a) -> HashSet (Prop a) -> Maybe Prec)
-          -> [HashSet (Prop a)]
+          -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
+          -> [Set (Prop a)]
           -> Bool
 fastcheck phi prec ts =
   debug $ augRun
@@ -1337,14 +1340,14 @@ fastcheck phi prec ts =
             fstates = delta rgroup prec clos atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
 
-makeOpa :: (Checkable f, Ord a, Hashable a, Show a)
+makeOpa :: (Checkable f, Ord a, Show a)
         => f a
         -> ([Prop a], [Prop a])
-        -> (HashSet (Prop a) -> HashSet (Prop a) -> Maybe Prec)
+        -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
         -> ([State a],
             State a -> Bool,
-            State a -> HashSet (Prop a) -> [State a],
-            State a -> HashSet (Prop a) -> [State a],
+            State a -> Set (Prop a) -> [State a],
+            State a -> Set (Prop a) -> [State a],
             State a -> State a -> [State a])
 makeOpa phi (sls, als) prec = (is, isFinal,
                           deltaPush  cl as pcs prec pushRules,

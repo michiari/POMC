@@ -11,8 +11,8 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as S
+import Data.Set (Set)
+import qualified Data.Set as S
 
 import Control.Monad
 

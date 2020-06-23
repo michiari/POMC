@@ -20,7 +20,10 @@ import Control.Monad (foldM)
 import Data.Maybe
 
 import Data.HashSet (HashSet)
-import qualified Data.HashSet as Set
+import qualified Data.HashSet as HSet
+
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 import Data.Hashable
 
@@ -45,7 +48,7 @@ emptyLM = HM.empty
 
 
 -- Input symbol
-type Input a = HashSet (Prop a)
+type Input a = Set (Prop a)
 
 -- Stack symbol
 type Stack a = Maybe (Input a, State a)
@@ -70,10 +73,10 @@ reach :: (Ord a, Eq a, Hashable a, Show a)
       -> St.State (Globals a) Bool
 reach isDestState isDestStack delta q g = do
   globals <- St.get
-  if ({-# SCC "reach:setMember" #-} Set.member (q, g)) $ visited globals
+  if ({-# SCC "reach:setMember" #-} HSet.member (q, g)) $ visited globals
     then return False
     else do
-    St.put $ Globals { visited = Set.insert (q, g) (visited globals),
+    St.put $ Globals { visited = HSet.insert (q, g) (visited globals),
                        suppStarts = suppStarts globals,
                        suppEnds = suppEnds globals }
     let cases
@@ -150,7 +153,7 @@ isEmpty delta initials isFinal = not $
                       else (reach isFinal isNothing delta q Nothing))
      False
      initials)
-    (Globals { visited = Set.empty,
+    (Globals { visited = HSet.empty,
                suppStarts = emptyLM,
                suppEnds = emptyLM })
 

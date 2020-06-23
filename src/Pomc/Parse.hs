@@ -22,8 +22,8 @@ import Data.Void (Void)
 import Data.Text (Text)
 import Data.Text as T
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as S
+import Data.Set (Set)
+import qualified Data.Set as S
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -32,9 +32,9 @@ import Control.Monad.Combinators.Expr
 
 type Parser = Parsec Void Text
 
-type PrecRelation = (HashSet (Prop Text), HashSet (Prop Text), Prec)
+type PrecRelation = (Set (Prop Text), Set (Prop Text), Prec)
 type P2Formula = P2.Formula Text
-type PropString = [HashSet (Prop Text)]
+type PropString = [Set (Prop Text)]
 
 data CheckRequest = CheckRequest { creqPrecRels :: [PrecRelation]
                                  , creqFormulas :: [P2Formula]
@@ -58,7 +58,7 @@ propP = choice [ End           <$  symbolP "#"
                , Prop . T.pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
                ]
 
-propSetP :: Parser (HashSet (Prop Text))
+propSetP :: Parser (Set (Prop Text))
 propSetP = choice [ S.singleton <$> propP
                   ,  S.fromList <$> parensP (some propP)
                   ]

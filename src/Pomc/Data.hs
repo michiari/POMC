@@ -16,8 +16,8 @@ module Pomc.Data ( decodeAtom
 
 import Pomc.RPotl
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as S
+import Data.Set (Set)
+import qualified Data.Set as S
 
 import Data.Vector.Unboxed (Vector(..))
 import qualified Data.Vector.Unboxed as VU
@@ -35,9 +35,9 @@ instance Hashable (Vector Bit) where
     where words = B.cloneToWords vb
 
 type EncodedSet = Vector Bit
-type FormulaSet a = HashSet (Formula a)
+type FormulaSet a = Set (Formula a)
 
-decodeAtom :: (Ord a, Hashable a) => (Int -> Formula a) -> EncodedSet -> FormulaSet a
+decodeAtom :: (Ord a) => (Int -> Formula a) -> EncodedSet -> FormulaSet a
 decodeAtom fetch bv = let pos = map fetch (B.listBits bv)
                           neg = map (Not . fetch) (B.listBits . B.invertBits $ bv)
                       in S.fromList pos `S.union` S.fromList neg

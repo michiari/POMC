@@ -16,7 +16,7 @@ import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 import qualified Pomc.RPotl as RP (Formula(..))
 
-import qualified Data.HashSet as S
+import qualified Data.Set as S
 
 data Dir = Up | Down deriving (Eq, Ord, Show)
 

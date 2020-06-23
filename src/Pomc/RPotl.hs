@@ -22,25 +22,28 @@ module Pomc.RPotl ( -- * RPOTL type
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as S
+import Data.Set (Set)
+import qualified Data.Set as S
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 
 import Data.Hashable
 
+instance Hashable a => Hashable (Set a) where
+  hashWithSalt salt s = hashWithSalt salt $ S.toAscList s
+
 data Formula a = T
                | Atomic (Prop a)
                | Not (Formula a)
                | Or  (Formula a) (Formula a)
                | And (Formula a) (Formula a)
-               | PrecNext  (HashSet Prec) (Formula a)
-               | PrecBack  (HashSet Prec) (Formula a)
-               | ChainNext (HashSet Prec) (Formula a)
-               | ChainBack (HashSet Prec) (Formula a)
-               | Until (HashSet Prec) (Formula a) (Formula a)
-               | Since (HashSet Prec) (Formula a) (Formula a)
+               | PrecNext  (Set Prec) (Formula a)
+               | PrecBack  (Set Prec) (Formula a)
+               | ChainNext (Set Prec) (Formula a)
+               | ChainBack (Set Prec) (Formula a)
+               | Until (Set Prec) (Formula a) (Formula a)
+               | Since (Set Prec) (Formula a) (Formula a)
                | HierNextYield (Formula a)
                | HierBackYield (Formula a)
                | HierNextTake  (Formula a)
