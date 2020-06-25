@@ -66,6 +66,7 @@ instance Checkable (Formula) where
 data Atom a = Atom
     { atomFormulaSet :: FormulaSet a
     , atomEncodedSet :: EncodedSet
+    , atomHash       :: Int
     } deriving (Generic, NFData)
 
 data State a = State
@@ -74,14 +75,22 @@ data State a = State
     , mustPush  :: Bool
     , mustShift :: Bool
     , afterPop  :: Bool
+    , stateHash :: Int
     } deriving (Generic, NFData, Ord, Eq)
 
 -- Make things Hashable
 instance Hashable a => Hashable (Atom a) where
-  hashWithSalt salt atom = hashWithSalt salt (atomEncodedSet atom)
+  hashWithSalt salt atom = hashWithSalt salt (atomHash atom)
 
-instance Hashable a => Hashable (State a)
+instance Hashable a => Hashable (State a) where
+  hashWithSalt salt state = hashWithSalt salt (stateHash state)
 
+hashState :: (Hashable a) => Atom a -> Set (Formula a) -> Bool -> Bool -> Bool -> Int
+hashState c p mp ms ap =
+  (hash c) `hashWithSalt`
+  p `hashWithSalt`
+  mp `hashWithSalt`
+  ms `hashWithSalt` ap
 
 instance Eq (Atom a) where
   p == q = (atomEncodedSet p) == (atomEncodedSet q)
@@ -96,15 +105,15 @@ showFormulaSet fset = let fs = S.toList fset
                       in show (posfs ++ negfs)
 
 instance (Show a) => Show (Atom a) where
-  show (Atom fset eset) = "FS: " ++ showFormulaSet fset ++ "\t\tES: " ++ show eset
+  show (Atom fset eset _) = "FS: " ++ showFormulaSet fset ++ "\t\tES: " ++ show eset
 
 instance (Show a) => Show (State a) where
-  show (State c p xl xe xr) = "\n{ C: "  ++ show c             ++
-                              "\n, P: "  ++ show (S.toList p)  ++
-                              "\n, XL: " ++ show xl            ++
-                              "\n, X=: " ++ show xe            ++
-                              "\n, XR: " ++ show xr            ++
-                              "\n}"
+  show (State c p xl xe xr _) = "\n{ C: "  ++ show c             ++
+                                "\n, P: "  ++ show (S.toList p)  ++
+                                "\n, XL: " ++ show xl            ++
+                                "\n, X=: " ++ show xe            ++
+                                "\n, XR: " ++ show xr            ++
+                                "\n}"
 
 showAtoms :: Show a => [Atom a] -> String
 showAtoms = unlines . map show
@@ -260,7 +269,7 @@ atoms clos inputSet =
                        let fset' = fset `S.union` aset
                            eset' = easet VU.++ eset
                        guard (consistent fset')
-                       return (Atom fset' eset')
+                       return (Atom fset' eset' $ hash eset')
         in as SQ.>< (SQ.fromList combs)
   in toList $ foldl' prependCons SQ.empty (generate $ V.length pFormulaVec)
 
@@ -411,7 +420,7 @@ pendCombs clos =
                                        xr <- [False, True],
                                        not (xl && xe)]
 
-initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
+initials :: (Ord a, Hashable a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
 initials phi clos atoms =
   let compatible atom = let fset = atomFormulaSet atom
                         in phi `S.member` fset &&
@@ -419,8 +428,9 @@ initials phi clos atoms =
       compAtoms = filter compatible atoms
       cnyfSet = S.fromList [f | f@(ChainNext pset _) <- S.toList clos,
                                                         pset == (S.singleton Yield)]
-  in [State ia ip True False False | ia <- compAtoms,
-                                     ip <- S.toList (S.powerSet cnyfSet)]
+  in [State ia ip True False False (hashState ia ip True False False) |
+      ia <- compAtoms,
+      ip <- S.toList (S.powerSet cnyfSet)]
 
 resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
@@ -1208,9 +1218,10 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
             valid pcomb = null [r | r <- fprs, not (r $ makeInfo pcomb)]
 
     fstates = if (pvalid)
-                then [State curr pend xl xe xr | curr <- vas,
-                                                 pc@(pend, xl, xe, xr) <- vpcs,
-                                                 valid curr pc]
+                then [State curr pend xl xe xr (hashState curr pend xl xe xr) |
+                       curr <- vas,
+                       pc@(pend, xl, xe, xr) <- vpcs,
+                       valid curr pc]
                 else []
       where makeInfo curr pendComb = FrInfo { frClos           = clos,
                                               frPrecFunc       = prec,
@@ -1224,10 +1235,10 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
 isFinal :: (Eq a, Show a) => State a -> Bool
-isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted, as if # = #
-                                         currAtomic == S.singleton (Atomic End) &&
-                                         S.null currFuture &&
-                                         pendComb
+isFinal s@(State c p xl xe xr _) = debug $ not xl && -- xe can be instead accepted, as if # = #
+                                           currAtomic == S.singleton (Atomic End) &&
+                                           S.null currFuture &&
+                                           pendComb
   where currFset = atomFormulaSet (current s)
         currAtomic = S.filter atomic currFset
         currFuture = S.filter future currFset
@@ -1238,7 +1249,7 @@ isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted
         debug = id
         --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
-check :: (Checkable f, Ord a, Show a)
+check :: (Checkable f, Ord a, Hashable a, Show a)
       => f a
       -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
       -> [Set (Prop a)]
@@ -1274,7 +1285,7 @@ check phi prec ts =
           where fstates = delta rgroup prec clos atoms pcombs state
                                 Nothing (Just popped) Nothing
 
-fastcheck :: (Checkable f, Ord a, Show a)
+fastcheck :: (Checkable f, Ord a, Hashable a, Show a)
           => f a
           -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
           -> [Set (Prop a)]
@@ -1340,7 +1351,7 @@ fastcheck phi prec ts =
             fstates = delta rgroup prec clos atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
 
-makeOpa :: (Checkable f, Ord a, Show a)
+makeOpa :: (Checkable f, Ord a, Hashable a, Show a)
         => f a
         -> ([Prop a], [Prop a])
         -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
