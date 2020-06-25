@@ -2,5 +2,6 @@
 *~
 session.vim
 pomc.cabal
+stack.yaml.lock
 
 /references
