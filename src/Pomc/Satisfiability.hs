@@ -7,44 +7,51 @@
 
 module Pomc.Satisfiability (
                              isSatisfiable
-                           , Input(..)
+                           , Input
                            ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Check (Checkable(..), Atom(..), State(..), makeOpa)
 import Pomc.RPotl (Formula(Atomic), atomic)
-import Pomc.Util (notMember)
-import qualified Control.Monad.State.Strict as St
 import Control.Monad (foldM)
 import Data.Maybe
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as HSet
+import Control.Monad.ST (ST)
+import qualified Control.Monad.ST as ST
 
 import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Data.Hashable
 
-import Data.HashMap.Strict (HashMap(..))
-import qualified Data.HashMap.Strict as HM
+import qualified Data.HashTable.ST.Basic as BH
+import qualified Data.HashTable.Class as H
 
-import Debug.Trace (trace)
+type HashTable s k v = BH.HashTable s k v
+
+memberHT :: (Eq k, Hashable k) => HashTable s k v -> k -> ST.ST s Bool
+memberHT ht key = do
+  val <- H.lookup ht key
+  return $ isJust val
 
 -- Map to lists
-type ListMap k v = HashMap k [v]
+type ListMap s k v = HashTable s k [v]
 
-insertLM :: (Eq k, Ord k, Hashable k) => k -> v -> ListMap k v -> ListMap k v
-insertLM key val lm = HM.alter consVal key lm
-  where consVal Nothing = Just [val]
-        consVal (Just vals) = Just (val:vals)
+insertLM :: (Eq k, Hashable k) => ListMap s k v -> k -> v -> ST.ST s ()
+insertLM lm key val = H.mutate lm key consVal
+  where consVal Nothing = (Just [val], ())
+        consVal (Just vals) = (Just (val:vals), ())
 
-lookupLM :: (Eq k, Ord k, Hashable k) => k -> ListMap k v -> [v]
-lookupLM key lm = HM.lookupDefault [] key lm
+lookupLM :: (Eq k, Hashable k) => ListMap s k v -> k -> ST.ST s [v]
+lookupLM lm key = do
+  val <- H.lookup lm key
+  return $ maybeList val
+    where maybeList Nothing = []
+          maybeList (Just l) = l
 
-emptyLM :: ListMap k v
-emptyLM = HM.empty
+emptyLM :: ST.ST s (ListMap s k v)
+emptyLM = H.new
 
 
 -- Input symbol
@@ -53,9 +60,9 @@ type Input a = Set (Prop a)
 -- Stack symbol
 type Stack a = Maybe (Input a, State a)
 
-data Globals a = Globals { visited :: HashSet (State a, Stack a),
-                           suppStarts :: ListMap (State a) (Stack a),
-                           suppEnds :: ListMap (State a) (State a) }
+data Globals s a = Globals { visited :: HashTable s (State a, Stack a) (),
+                             suppStarts :: ListMap s (State a) (Stack a),
+                             suppEnds :: ListMap s (State a) (State a) }
 data Delta a = Delta { prec :: (Input a -> Input a -> Maybe Prec),
                        deltaPush :: State a -> Input a -> [State a],
                        deltaShift :: State a -> Input a -> [State a],
@@ -67,78 +74,77 @@ getProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet . cu
 reach :: (Ord a, Eq a, Hashable a, Show a)
       => (State a -> Bool)
       -> (Stack a -> Bool)
+      -> Globals s a
       -> Delta a
       -> State a
       -> Stack a
-      -> St.State (Globals a) Bool
-reach isDestState isDestStack delta q g = do
-  globals <- St.get
-  if ({-# SCC "reach:setMember" #-} HSet.member (q, g)) $ visited globals
+      -> ST s Bool
+reach isDestState isDestStack globals delta q g = do
+  alreadyVisited <- memberHT (visited globals) (q, g)
+  if alreadyVisited
     then return False
     else do
-    St.put $ Globals { visited = HSet.insert (q, g) (visited globals),
-                       suppStarts = suppStarts globals,
-                       suppEnds = suppEnds globals }
+    H.insert (visited globals) (q, g) ()
     let cases
           | (isDestState q) && (isDestStack g) = return True
           | (isNothing g) || ((prec delta) (fst . fromJust $ g) (getProps q) == Just Yield)
-              = foldM (reachPush isDestState isDestStack delta q g) False ((deltaPush delta) q (getProps q))
+              = foldM (reachPush isDestState isDestStack globals delta q g) False ((deltaPush delta) q (getProps q))
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Equal)
               = foldM (\acc p -> if acc
                                  then return True
-                                 else reach isDestState isDestStack delta p (Just (getProps q, (snd . fromJust $ g))))
+                                 else reach isDestState isDestStack globals delta p (Just (getProps q, (snd . fromJust $ g))))
                 False
                 ((deltaShift delta) q (getProps q))
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Take)
-              = foldM (reachPop isDestState isDestStack delta q g) False ((deltaPop delta) q (snd . fromJust $ g))
+              = foldM (reachPop isDestState isDestStack globals delta q g) False ((deltaPop delta) q (snd . fromJust $ g))
           | otherwise = return False
     cases
 
 reachPush :: (Eq a, Ord a, Hashable a, Show a)
           => (State a -> Bool)
           -> (Stack a -> Bool)
+          -> Globals s a
           -> Delta a
           -> State a
           -> Stack a
           -> Bool
           -> State a
-          -> St.State (Globals a) Bool
-reachPush _ _ _ _ _ True _ = return True
-reachPush isDestState isDestStack delta q g False p = do
-  globals <- St.get
-  St.put $ Globals { visited = visited globals,
-                     suppStarts = insertLM q g (suppStarts globals),
-                     suppEnds = suppEnds globals }
-  if notMember (p, Just (getProps q, p)) (visited globals)
-    then reach isDestState isDestStack delta p (Just (getProps q, q))
-    else foldM (\acc s -> if acc
-                          then return True
-                          else reach isDestState isDestStack delta s g)
-               False
-               (lookupLM q (suppEnds globals))
+          -> ST s Bool
+reachPush _ _ _ _ _ _ True _ = return True
+reachPush isDestState isDestStack globals delta q g False p = do
+  insertLM (suppStarts globals) q g
+  alreadyVisited <- memberHT (visited globals) (p, Just (getProps q, p))
+  if not alreadyVisited
+    then reach isDestState isDestStack globals delta p (Just (getProps q, q))
+    else do
+    currentSuppEnds <- lookupLM (suppEnds globals) q
+    foldM (\acc s -> if acc
+                     then return True
+                     else reach isDestState isDestStack globals delta s g)
+      False
+      currentSuppEnds
 
 reachPop :: (Eq a, Ord a, Hashable a, Show a)
          => (State a -> Bool)
          -> (Stack a -> Bool)
+         -> Globals s a
          -> Delta a
          -> State a
          -> Stack a
          -> Bool
          -> State a
-         -> St.State (Globals a) Bool
-reachPop _ _ _ _ _ True _ = return True
-reachPop isDestState isDestStack delta q g False p = do
-  globals <- St.get
-  St.put $ Globals { visited = visited globals,
-                     suppStarts = suppStarts globals,
-                     suppEnds = {-# SCC "reachPop:insertLM" #-} insertLM (snd . fromJust $ g) p (suppEnds globals) }
+         -> ST s Bool
+reachPop _ _ _ _ _ _ True _ = return True
+reachPop isDestState isDestStack globals delta q g False p = do
+  insertLM (suppEnds globals) (snd . fromJust $ g) p
+  currentSuppStarts <- lookupLM (suppStarts globals) (snd . fromJust $ g)
   foldM (\acc g' -> if acc
-                    then {-# SCC "reachPop:retTrue" #-} return True
-                    else {-# SCC "reachPop:recurse" #-} reach isDestState isDestStack delta p g')
+                    then return True
+                    else reach isDestState isDestStack globals delta p g')
     False
     (filter (\g' -> isNothing g' ||
                     ((prec delta) (fst . fromJust $ g') (getProps q)) == Just Yield)
-      ({-# SCC "reachPop:lookupLM" #-} (lookupLM (snd . fromJust $ g) (suppStarts globals))))
+      currentSuppStarts)
 
 
 isEmpty :: (Ord a, Eq a, Hashable a, Show a)
@@ -147,15 +153,18 @@ isEmpty :: (Ord a, Eq a, Hashable a, Show a)
         -> (State a -> Bool)
         -> Bool
 isEmpty delta initials isFinal = not $
-  St.evalState
-    (foldM (\acc q -> if acc
-                      then return True
-                      else (reach isFinal isNothing delta q Nothing))
-     False
-     initials)
-    (Globals { visited = HSet.empty,
-               suppStarts = emptyLM,
-               suppEnds = emptyLM })
+  ST.runST (do
+               emptyVisited <- H.new
+               emptySuppStarts <- emptyLM
+               emptySuppEnds <- emptyLM
+               let globals = Globals { visited = emptyVisited,
+                                       suppStarts = emptySuppStarts,
+                                       suppEnds = emptySuppEnds }
+                 in foldM (\acc q -> if acc
+                            then return True
+                            else (reach isFinal isNothing globals delta q Nothing))
+                    False
+                    initials)
 
 isSatisfiable :: (Checkable f, Ord a, Hashable a, Eq a, Show a)
               => f a

@@ -45,7 +45,7 @@ library:
   - vector
   - mtl
   - hashable
-  - unordered-containers
+  - hashtables
 
 executables:
   pomc:
