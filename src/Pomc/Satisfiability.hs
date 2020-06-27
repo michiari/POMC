@@ -96,7 +96,7 @@ reach isDestState isDestStack globals delta q g = do
                 False
                 ((deltaShift delta) q (getProps q))
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Take)
-              = foldM (reachPop isDestState isDestStack globals delta q g) False ((deltaPop delta) q (snd . fromJust $ g))
+              = foldM (reachPop isDestState isDestStack globals delta g) False ((deltaPop delta) q (snd . fromJust $ g))
           | otherwise = return False
     cases
 
@@ -129,13 +129,12 @@ reachPop :: (Eq a, Ord a, Hashable a, Show a)
          -> (Stack a -> Bool)
          -> Globals s a
          -> Delta a
-         -> State a
          -> Stack a
          -> Bool
          -> State a
          -> ST s Bool
-reachPop _ _ _ _ _ _ True _ = return True
-reachPop isDestState isDestStack globals delta q g False p = do
+reachPop _ _ _ _ _ True _ = return True
+reachPop isDestState isDestStack globals delta g False p = do
   insertLM (suppEnds globals) (snd . fromJust $ g) p
   currentSuppStarts <- lookupLM (suppStarts globals) (snd . fromJust $ g)
   foldM (\acc g' -> if acc
@@ -143,7 +142,7 @@ reachPop isDestState isDestStack globals delta q g False p = do
                     else reach isDestState isDestStack globals delta p g')
     False
     (filter (\g' -> isNothing g' ||
-                    ((prec delta) (fst . fromJust $ g') (getProps q)) == Just Yield)
+                    ((prec delta) (fst . fromJust $ g') (getProps (snd . fromJust $ g))) == Just Yield)
       currentSuppStarts)
 
 
