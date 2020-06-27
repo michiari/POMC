@@ -7,26 +7,34 @@
 
 module Pomc.Satisfiability (
                              isSatisfiable
+                           , isSatisfiablePotlV2
                            , Input
                            ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.Prec (Prec(..))
-import Pomc.Check (Checkable(..), Atom(..), State(..), makeOpa)
+import Pomc.Prec (Prec(..), PrecRel, PrecFunc, fromRelations)
+import Pomc.Check (Checkable(..), Atom(..), State(..), makeOpa, closure)
 import Pomc.RPotl (Formula(Atomic), atomic)
-import Control.Monad (foldM)
-import Data.Maybe
+import qualified Pomc.PotlV2 as P2
 
+import Control.Monad (foldM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
+
+import Data.Maybe
+import Data.List (nub)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Data.Hashable
+import qualified Data.Map as Map
 
+import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
+
+
+import Debug.Trace (trace)
 
 type HashTable s k v = BH.HashTable s k v
 
@@ -36,6 +44,7 @@ memberHT ht key = do
   return $ isJust val
 
 -- Map to lists
+-- TODO map to sets
 type ListMap s k v = HashTable s k [v]
 
 insertLM :: (Eq k, Hashable k) => ListMap s k v -> k -> v -> ST.ST s ()
@@ -168,7 +177,7 @@ isEmpty delta initials isFinal = not $
 isSatisfiable :: (Checkable f, Ord a, Hashable a, Eq a, Show a)
               => f a
               -> ([Prop a], [Prop a])
-              -> (Input a -> Input a -> Maybe Prec)
+              -> PrecFunc a
               -> Bool
 isSatisfiable phi ap precf =
   let (initials, isFinal, dPush, dShift, dPop) = makeOpa phi ap precf
@@ -178,3 +187,31 @@ isSatisfiable phi ap precf =
                       deltaPop = dPop }
   in not $ isEmpty delta initials isFinal
 
+isSatisfiablePotlV2 :: (Ord a)
+                    => P2.Formula a
+                    -> ([Prop a], [Prop a])
+                    -> [PrecRel a]
+                    -> Bool
+isSatisfiablePotlV2 phi ap precf =
+  let (tphi, tap, tprecr) = toIntAP phi ap precf
+  in isSatisfiable tphi tap (fromRelations tprecr)
+
+toIntAP :: (Ord a)
+        => P2.Formula a
+        -> ([Prop a], [Prop a])
+        -> [PrecRel a]
+        -> (P2.Formula Int, ([Prop Int], [Prop Int]), [PrecRel Int])
+toIntAP phi (sls, als) precr =
+  let phiAP = [p | Atomic p <- Set.toList (closure (toReducedPotl phi) [])] -- TODO make Formula Foldable
+      relAP = concatMap (\(s1, s2, _) -> Set.toList $ Set.union s1 s2) precr
+      allProps = map (\(Prop p) -> p) (filter (\p -> p /= End) $ nub $ phiAP ++ relAP ++ sls ++ als)
+      apMap = Map.fromList $ zip allProps [1..]
+      trans p = fromJust $ Map.lookup p apMap
+  in (fmap trans phi
+     , (map (fmap trans) sls, map (fmap trans) als)
+     , map (\(s1, s2, pr) -> ( Set.map (fmap trans) s1
+                             , Set.map (fmap trans) s2
+                             , pr
+                             )
+           ) precr
+     )

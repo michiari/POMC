@@ -2,36 +2,31 @@ module TestSat (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Pomc.Satisfiability
-import Pomc.Check (Checkable)
-import Pomc.Prec (PrecFunc)
+import Pomc.Satisfiability (isSatisfiablePotlV2)
+import Pomc.Prec (PrecRel)
 import Pomc.Prop (Prop(..))
 import Pomc.PotlV2 (Formula(..), Dir(..))
-import Pomc.Example (stlPrecedenceV2)
-
-import Data.Hashable
+import Pomc.Example (stlPrecRelV2)
 
 tests :: TestTree
 tests = testGroup "TestSat.hs Tests" $ map makeV2TestCase cases
 
-stlPrecV2sls :: [Prop [Char]]
+stlPrecV2sls :: [Prop String]
 stlPrecV2sls = map Prop ["call", "ret", "han", "exc"]
 
-makeTestCase :: (Checkable f, Ord a, Hashable a, Show a)
-             => (TestName, f a, [Prop a], [Prop a], PrecFunc a, Bool)
+makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [PrecRel String], Bool)
              -> TestTree
 makeTestCase (name, phi, sls, als, prec, expected) =
-  testCase name $ isSatisfiable phi (sls, als) prec @?= expected
+  testCase name $ isSatisfiablePotlV2 phi (sls, als) prec @?= expected
 
-makeV2TestCase :: Checkable f =>
-                  (TestName, f [Char], [[Char]], Bool) -> TestTree
+makeV2TestCase :: (TestName, Formula String, [String], Bool) -> TestTree
 makeV2TestCase (name, phi, als, expected) =
-  makeTestCase (name, phi, stlPrecV2sls, map Prop als, stlPrecedenceV2, expected)
+  makeTestCase (name, phi, stlPrecV2sls, map Prop als, stlPrecRelV2, expected)
 
 ap :: a -> Formula a
 ap = Atomic . Prop
 
-cases :: [([Char], Formula [Char], [[Char]], Bool)]
+cases :: [(String, Formula String, [String], Bool)]
 cases =
   [ ( "First Call"
     , Atomic . Prop $ "call"

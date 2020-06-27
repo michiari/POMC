@@ -11,9 +11,10 @@ module Pomc.Example ( -- * Stack Trace Language V1 precedence function
                       -- * Stack Trace Language V2 precedence function
                     , stlPrecedenceV2
                     , stlAnnotateV2
+                    , stlPrecRelV2
                     ) where
 
-import Pomc.Prec (Prec(..))
+import Pomc.Prec (Prec(..), PrecRel)
 import Pomc.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
@@ -21,7 +22,7 @@ import Data.List (isPrefixOf)
 import Data.Set (Set)
 import qualified Data.Set as S
 
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromMaybe)
 
 -- Precedence function for the Stack Trace Language Version 1
 stlPrecedenceV1 :: Set (Prop String) -> Set (Prop String) -> Maybe Prec
@@ -144,3 +145,25 @@ stlAnnotateV2 = map annotate
           | "h" `isPrefixOf` t = [t,  "han"]
           | "e" `isPrefixOf` t = [t,  "exc"]
           | otherwise = error ("Invalid token: " ++ t)
+
+stlPrecRelV2 :: [PrecRel String]
+stlPrecRelV2 = map (\(sl1, sl2, pr) ->
+                      (S.singleton . Prop $ sl1, S.singleton . Prop $ sl2, pr))
+               precs ++ [(S.empty, S.empty, Take)]
+  where precs = [ ("call", "call", Yield)
+                , ("call", "ret",  Equal)
+                , ("call", "han",  Yield)
+                , ("call", "exc",  Take)
+                , ("ret",  "call", Take)
+                , ("ret",  "ret",  Take)
+                , ("ret",  "han",  Take)
+                , ("ret",  "exc",  Take)
+                , ("han",  "call", Yield)
+                , ("han",  "ret",  Take)
+                , ("han",  "han",  Yield)
+                , ("han",  "exc",  Equal)
+                , ("exc",  "call", Take)
+                , ("exc",  "ret",  Take)
+                , ("exc",  "han",  Take)
+                , ("exc",  "exc",  Take)
+                ]
