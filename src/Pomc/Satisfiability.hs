@@ -33,8 +33,11 @@ import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
+--import Debug.Trace (trace)
 
-import Debug.Trace (trace)
+debug :: String -> a -> a
+--debug = trace
+debug _ x = x
 
 type HashTable s k v = BH.HashTable s k v
 
@@ -95,17 +98,17 @@ reach isDestState isDestStack globals delta q g = do
     else do
     H.insert (visited globals) (q, g) ()
     let cases
-          | (isDestState q) && (isDestStack g) = return True
+          | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
           | (isNothing g) || ((prec delta) (fst . fromJust $ g) (getProps q) == Just Yield)
               = foldM (reachPush isDestState isDestStack globals delta q g) False ((deltaPush delta) q (getProps q))
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Equal)
               = foldM (\acc p -> if acc
-                                 then return True
+                                 then debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
                                  else reach isDestState isDestStack globals delta p (Just (getProps q, (snd . fromJust $ g))))
                 False
                 ((deltaShift delta) q (getProps q))
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Take)
-              = foldM (reachPop isDestState isDestStack globals delta g) False ((deltaPop delta) q (snd . fromJust $ g))
+              = foldM (reachPop isDestState isDestStack globals delta q g) False ((deltaPop delta) q (snd . fromJust $ g))
           | otherwise = return False
     cases
 
@@ -124,11 +127,15 @@ reachPush isDestState isDestStack globals delta q g False p = do
   insertLM (suppStarts globals) q g
   alreadyVisited <- memberHT (visited globals) (p, Just (getProps q, p))
   if not alreadyVisited
-    then reach isDestState isDestStack globals delta p (Just (getProps q, q))
+    then do
+    res <- reach isDestState isDestStack globals delta p (Just (getProps q, q))
+    if res
+      then debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
+      else return False
     else do
     currentSuppEnds <- lookupLM (suppEnds globals) q
     foldM (\acc s -> if acc
-                     then return True
+                     then debug ("Push (summary): q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
                      else reach isDestState isDestStack globals delta s g)
       False
       currentSuppEnds
@@ -138,16 +145,17 @@ reachPop :: (Eq a, Ord a, Hashable a, Show a)
          -> (Stack a -> Bool)
          -> Globals s a
          -> Delta a
+         -> State a
          -> Stack a
          -> Bool
          -> State a
          -> ST s Bool
-reachPop _ _ _ _ _ True _ = return True
-reachPop isDestState isDestStack globals delta g False p = do
+reachPop _ _ _ _ _ _ True _ = return True
+reachPop isDestState isDestStack globals delta q g False p = do
   insertLM (suppEnds globals) (snd . fromJust $ g) p
   currentSuppStarts <- lookupLM (suppStarts globals) (snd . fromJust $ g)
   foldM (\acc g' -> if acc
-                    then return True
+                    then debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $  return True
                     else reach isDestState isDestStack globals delta p g')
     False
     (filter (\g' -> isNothing g' ||
