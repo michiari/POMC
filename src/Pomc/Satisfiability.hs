@@ -22,7 +22,7 @@ import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 
 import Data.Maybe
-import Data.List (nub)
+import Data.List (nub, partition)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -83,6 +83,9 @@ data Delta a = Delta { prec :: (Input a -> Input a -> Maybe Prec),
 getProps :: (Ord a, Hashable a) => State a -> Input a
 getProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet . current $ s)
 
+popFirst prec stackProps states = let (popStates, others) = partition (\s -> prec stackProps (getProps s) == Just Take) states
+                                  in popStates ++ others
+
 reach :: (Ord a, Eq a, Hashable a, Show a)
       => (State a -> Bool)
       -> (Stack a -> Bool)
@@ -100,13 +103,13 @@ reach isDestState isDestStack globals delta q g = do
     let cases
           | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
           | (isNothing g) || ((prec delta) (fst . fromJust $ g) (getProps q) == Just Yield)
-              = foldM (reachPush isDestState isDestStack globals delta q g) False ((deltaPush delta) q (getProps q))
+              = foldM (reachPush isDestState isDestStack globals delta q g) False (popFirst (prec delta) (getProps q) $ (deltaPush delta) q (getProps q))
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Equal)
               = foldM (\acc p -> if acc
                                  then debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
                                  else reach isDestState isDestStack globals delta p (Just (getProps q, (snd . fromJust $ g))))
                 False
-                ((deltaShift delta) q (getProps q))
+                (popFirst (prec delta) (fst . fromJust $ g) $ (deltaShift delta) q (getProps q))
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Take)
               = foldM (reachPop isDestState isDestStack globals delta q g) False ((deltaPop delta) q (snd . fromJust $ g))
           | otherwise = return False
@@ -212,7 +215,7 @@ toIntAP :: (Ord a)
 toIntAP phi (sls, als) precr =
   let phiAP = [p | Atomic p <- Set.toList (closure (toReducedPotl phi) [])] -- TODO make Formula Foldable
       relAP = concatMap (\(s1, s2, _) -> Set.toList $ Set.union s1 s2) precr
-      allProps = map (\(Prop p) -> p) (filter (\p -> p /= End) $ nub $ phiAP ++ relAP ++ sls ++ als)
+      allProps = map (\(Prop p) -> p) (filter (\p -> p /= End) $ nub $ sls ++ als ++ phiAP ++ relAP)
       apMap = Map.fromList $ zip allProps [1..]
       trans p = fromJust $ Map.lookup p apMap
   in (fmap trans phi

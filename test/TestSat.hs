@@ -12,7 +12,7 @@ tests :: TestTree
 tests = testGroup "TestSat.hs Tests" $ map makeV2TestCase cases
 
 stlPrecV2sls :: [Prop String]
-stlPrecV2sls = map Prop ["call", "ret", "han", "exc"]
+stlPrecV2sls = map Prop ["ret", "call", "han", "exc"]
 
 makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [PrecRel String], Bool)
              -> TestTree
