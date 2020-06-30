@@ -3,7 +3,7 @@ module TestSat (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import Pomc.Satisfiability (isSatisfiablePotlV2)
-import Pomc.Prec (PrecRel)
+import Pomc.Prec (StructPrecRel)
 import Pomc.Prop (Prop(..))
 import Pomc.PotlV2 (Formula(..), Dir(..))
 import Pomc.Example (stlPrecRelV2)
@@ -14,7 +14,7 @@ tests = testGroup "TestSat.hs Tests" $ map makeV2TestCase cases
 stlPrecV2sls :: [Prop String]
 stlPrecV2sls = map Prop ["ret", "call", "han", "exc"]
 
-makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [PrecRel String], Bool)
+makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [StructPrecRel String], Bool)
              -> TestTree
 makeTestCase (name, phi, sls, als, prec, expected) =
   testCase name $ isSatisfiablePotlV2 phi (sls, als) prec @?= expected

@@ -14,7 +14,7 @@ module Pomc.Example ( -- * Stack Trace Language V1 precedence function
                     , stlPrecRelV2
                     ) where
 
-import Pomc.Prec (Prec(..), PrecRel)
+import Pomc.Prec (Prec(..), PrecRel, StructPrecRel)
 import Pomc.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
@@ -146,10 +146,9 @@ stlAnnotateV2 = map annotate
           | "e" `isPrefixOf` t = [t,  "exc"]
           | otherwise = error ("Invalid token: " ++ t)
 
-stlPrecRelV2 :: [PrecRel String]
-stlPrecRelV2 = map (\(sl1, sl2, pr) ->
-                      (S.singleton . Prop $ sl1, S.singleton . Prop $ sl2, pr))
-               precs ++ [(S.empty, S.empty, Take)]
+stlPrecRelV2 :: [StructPrecRel String]
+stlPrecRelV2 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
+               ++ map (\p -> (Prop p, End, Take)) sl
   where precs = [ ("call", "call", Yield)
                 , ("call", "ret",  Equal)
                 , ("call", "han",  Yield)
@@ -167,3 +166,4 @@ stlPrecRelV2 = map (\(sl1, sl2, pr) ->
                 , ("exc",  "han",  Take)
                 , ("exc",  "exc",  Take)
                 ]
+        sl = ["call", "ret", "han", "exc"]

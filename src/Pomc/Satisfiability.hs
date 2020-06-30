@@ -12,7 +12,7 @@ module Pomc.Satisfiability (
                            ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.Prec (Prec(..), PrecRel, PrecFunc, fromRelations)
+import Pomc.Prec (Prec(..), StructPrecRel, PrecFunc, fromStructPR)
 import Pomc.Check (Checkable(..), Atom(..), State(..), makeOpa, closure)
 import Pomc.RPotl (Formula(Atomic), atomic)
 import qualified Pomc.PotlV2 as P2
@@ -202,28 +202,28 @@ isSatisfiable phi ap precf =
 isSatisfiablePotlV2 :: (Ord a)
                     => P2.Formula a
                     -> ([Prop a], [Prop a])
-                    -> [PrecRel a]
+                    -> [StructPrecRel a]
                     -> Bool
 isSatisfiablePotlV2 phi ap precf =
   let (tphi, tap, tprecr) = toIntAP phi ap precf
-  in isSatisfiable tphi tap (fromRelations tprecr)
+  in isSatisfiable tphi tap (fromStructPR tprecr)
 
 toIntAP :: (Ord a)
         => P2.Formula a
         -> ([Prop a], [Prop a])
-        -> [PrecRel a]
-        -> (P2.Formula Int, ([Prop Int], [Prop Int]), [PrecRel Int])
+        -> [StructPrecRel a]
+        -> (P2.Formula Int, ([Prop Int], [Prop Int]), [StructPrecRel Int])
 toIntAP phi (sls, als) precr =
   let phiAP = [p | Atomic p <- Set.toList (closure (toReducedPotl phi) [])] -- TODO make Formula Foldable
-      relAP = concatMap (\(s1, s2, _) -> Set.toList $ Set.union s1 s2) precr
+      relAP = concatMap (\(sl1, sl2, _) -> [sl1, sl2]) precr
       allProps = map (\(Prop p) -> p) (filter (\p -> p /= End) $ nub $ sls ++ als ++ phiAP ++ relAP)
       apMap = Map.fromList $ zip allProps [1..]
       trans p = fromJust $ Map.lookup p apMap
   in (fmap trans phi
      , (map (fmap trans) sls, map (fmap trans) als)
-     , map (\(s1, s2, pr) -> ( Set.map (fmap trans) s1
-                             , Set.map (fmap trans) s2
-                             , pr
-                             )
+     , map (\(sl1, sl2, pr) -> ( fmap trans $ sl1
+                               , fmap trans $ sl2
+                               , pr
+                               )
            ) precr
      )
