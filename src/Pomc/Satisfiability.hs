@@ -75,7 +75,7 @@ type Stack a = Maybe (Input a, State a)
 data Globals s a = Globals { visited :: HashTable s (State a, Stack a) (),
                              suppStarts :: ListMap s (State a) (Stack a),
                              suppEnds :: ListMap s (State a) (State a) }
-data Delta a = Delta { prec :: (Input a -> Input a -> Maybe Prec),
+data Delta a = Delta { prec :: PrecFunc a,
                        deltaPush :: State a -> Input a -> [State a],
                        deltaShift :: State a -> Input a -> [State a],
                        deltaPop :: State a -> State a -> [State a] }
@@ -83,7 +83,8 @@ data Delta a = Delta { prec :: (Input a -> Input a -> Maybe Prec),
 getProps :: (Ord a, Hashable a) => State a -> Input a
 getProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet . current $ s)
 
-popFirst prec stackProps states = let (popStates, others) = partition (\s -> prec stackProps (getProps s) == Just Take) states
+popFirst :: (Ord a, Hashable a) => PrecFunc a -> Input a -> [State a] -> [State a]
+popFirst opm stackProps states = let (popStates, others) = partition (\s -> opm stackProps (getProps s) == Just Take) states
                                   in popStates ++ others
 
 reach :: (Ord a, Eq a, Hashable a, Show a)
