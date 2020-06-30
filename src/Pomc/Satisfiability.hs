@@ -47,23 +47,22 @@ memberHT ht key = do
   return $ isJust val
 
 -- Map to lists
--- TODO map to sets
-type ListMap s k v = HashTable s k [v]
+type SetMap s k v = HashTable s k (Set v)
 
-insertLM :: (Eq k, Hashable k) => ListMap s k v -> k -> v -> ST.ST s ()
-insertLM lm key val = H.mutate lm key consVal
-  where consVal Nothing = (Just [val], ())
-        consVal (Just vals) = (Just (val:vals), ())
+insertSM :: (Eq k, Hashable k, Ord v) => SetMap s k v -> k -> v -> ST.ST s ()
+insertSM lm key val = H.mutate lm key consVal
+  where consVal Nothing = (Just $ Set.singleton val, ())
+        consVal (Just vals) = (Just $ Set.insert val vals, ())
 
-lookupLM :: (Eq k, Hashable k) => ListMap s k v -> k -> ST.ST s [v]
-lookupLM lm key = do
+lookupSM :: (Eq k, Hashable k) => SetMap s k v -> k -> ST.ST s (Set v)
+lookupSM lm key = do
   val <- H.lookup lm key
   return $ maybeList val
-    where maybeList Nothing = []
+    where maybeList Nothing = Set.empty
           maybeList (Just l) = l
 
-emptyLM :: ST.ST s (ListMap s k v)
-emptyLM = H.new
+emptySM :: ST.ST s (SetMap s k v)
+emptySM = H.new
 
 
 -- Input symbol
@@ -73,8 +72,8 @@ type Input a = Set (Prop a)
 type Stack a = Maybe (Input a, State a)
 
 data Globals s a = Globals { visited :: HashTable s (State a, Stack a) (),
-                             suppStarts :: ListMap s (State a) (Stack a),
-                             suppEnds :: ListMap s (State a) (State a) }
+                             suppStarts :: SetMap s (State a) (Stack a),
+                             suppEnds :: SetMap s (State a) (State a) }
 data Delta a = Delta { prec :: PrecFunc a,
                        deltaPush :: State a -> Input a -> [State a],
                        deltaShift :: State a -> Input a -> [State a],
@@ -128,7 +127,7 @@ reachPush :: (Eq a, Ord a, Hashable a, Show a)
           -> ST s Bool
 reachPush _ _ _ _ _ _ True _ = return True
 reachPush isDestState isDestStack globals delta q g False p = do
-  insertLM (suppStarts globals) q g
+  insertSM (suppStarts globals) q g
   alreadyVisited <- memberHT (visited globals) (p, Just (getProps q, p))
   if not alreadyVisited
     then do
@@ -137,7 +136,7 @@ reachPush isDestState isDestStack globals delta q g False p = do
       then debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
       else return False
     else do
-    currentSuppEnds <- lookupLM (suppEnds globals) q
+    currentSuppEnds <- lookupSM (suppEnds globals) q
     foldM (\acc s -> if acc
                      then debug ("Push (summary): q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
                      else reach isDestState isDestStack globals delta s g)
@@ -156,14 +155,14 @@ reachPop :: (Eq a, Ord a, Hashable a, Show a)
          -> ST s Bool
 reachPop _ _ _ _ _ _ True _ = return True
 reachPop isDestState isDestStack globals delta q g False p = do
-  insertLM (suppEnds globals) (snd . fromJust $ g) p
-  currentSuppStarts <- lookupLM (suppStarts globals) (snd . fromJust $ g)
+  insertSM (suppEnds globals) (snd . fromJust $ g) p
+  currentSuppStarts <- lookupSM (suppStarts globals) (snd . fromJust $ g)
   foldM (\acc g' -> if acc
                     then debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $  return True
                     else reach isDestState isDestStack globals delta p g')
     False
-    (filter (\g' -> isNothing g' ||
-                    ((prec delta) (fst . fromJust $ g') (getProps (snd . fromJust $ g))) == Just Yield)
+    (Set.filter (\g' -> isNothing g' ||
+                        ((prec delta) (fst . fromJust $ g') (getProps (snd . fromJust $ g))) == Just Yield)
       currentSuppStarts)
 
 
@@ -175,8 +174,8 @@ isEmpty :: (Ord a, Eq a, Hashable a, Show a)
 isEmpty delta initials isFinal = not $
   ST.runST (do
                emptyVisited <- H.new
-               emptySuppStarts <- emptyLM
-               emptySuppEnds <- emptyLM
+               emptySuppStarts <- emptySM
+               emptySuppEnds <- emptySM
                let globals = Globals { visited = emptyVisited,
                                        suppStarts = emptySuppStarts,
                                        suppEnds = emptySuppEnds }
