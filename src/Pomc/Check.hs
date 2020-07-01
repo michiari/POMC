@@ -29,7 +29,7 @@ import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
 import Pomc.Util (xor, implies, safeHead)
 import Pomc.Data (encode, decodeAtom, generate, FormulaSet, EncodedSet)
 
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, isNothing)
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -505,7 +505,7 @@ deltaRules condInfo =
                                            , (cntCond,    cntPopPr)
                                            , (hnyCond,    hnyPopPr)
                                            ]
-        , ruleGroupFcrs = resolve condInfo [(const True, currPopFcr)]
+        , ruleGroupFcrs = resolve condInfo []
         , ruleGroupFprs = resolve condInfo [ (const True, xrPopFpr)
                                            , (cnyCond,    cnyPopFpr)
                                            , (cneCond,    cnePopFpr)
@@ -551,13 +551,6 @@ deltaRules condInfo =
       in compProps pCurr props
 
     propShiftPr = propPushPr
-    --
-
-    -- Pop rule
-    currPopFcr info =
-      let pEncCurr = atomEncodedSet . current $ fcrState info
-          fEncCurr = atomEncodedSet (fcrFutureCurr info)
-      in pEncCurr == fEncCurr
     --
 
     -- PN rules
@@ -1195,7 +1188,7 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                             prNextProps = mnextprops
                           }
 
-    vas = filter valid atoms
+    vas = filter valid nextAtoms
       where makeInfo curr = FcrInfo { fcrClos       = clos,
                                       fcrPrecFunc   = prec,
                                       fcrState      = state,
@@ -1205,6 +1198,9 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                                       fcrNextProps  = mnextprops
                                     }
             valid atom = null [r | r <- fcrs, not (r $ makeInfo atom)]
+            nextAtoms = if isNothing mpopped
+                        then atoms
+                        else [current state]
 
     vpcs = S.toList . S.filter valid $ pcombs
       where makeInfo pendComb = FprInfo { fprClos           = clos,
