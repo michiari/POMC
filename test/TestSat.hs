@@ -7,9 +7,17 @@ import Pomc.Prec (StructPrecRel)
 import Pomc.Prop (Prop(..))
 import Pomc.PotlV2 (Formula(..), Dir(..))
 import Pomc.Example (stlPrecRelV2)
+import EvalFormulas (ap)
+import qualified EvalFormulas (formulas)
 
 tests :: TestTree
-tests = testGroup "TestSat.hs Tests" $ map makeV2TestCase cases
+tests = testGroup "TestSat.hs Tests" [baseTests, evalTests]
+
+baseTests :: TestTree
+baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
+
+evalTests :: TestTree
+evalTests = testGroup "Sat Eval Tests" $ map makeV2TestCase EvalFormulas.formulas
 
 stlPrecV2sls :: [Prop String]
 stlPrecV2sls = map Prop ["ret", "call", "han", "exc"]
@@ -22,9 +30,6 @@ makeTestCase (name, phi, sls, als, prec, expected) =
 makeV2TestCase :: (TestName, Formula String, [String], Bool) -> TestTree
 makeV2TestCase (name, phi, als, expected) =
   makeTestCase (name, phi, stlPrecV2sls, map Prop als, stlPrecRelV2, expected)
-
-ap :: a -> Formula a
-ap = Atomic . Prop
 
 cases :: [(String, Formula String, [String], Bool)]
 cases =
@@ -114,6 +119,11 @@ cases =
     ( "Next exp, not pa since pb"
     , (ap "call" `And` (XNext Up (ap "exc" `And` (PBack Up $ Since Up (Not . ap $ "pa") (ap "pb")))))
     , ["pa", "pb"]
+    , True
+    ),
+    ( "XNext Down HNext Up"
+    , (ap "call" `And` (XNext Down (HNext Up $ ap "pa")))
+    , ["pa"]
     , True
     ),
     ( "Call exc and pa in between"

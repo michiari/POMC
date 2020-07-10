@@ -66,6 +66,7 @@ tests:
     - -rtsopts
     - -Wall
     - -O2
+    - -threaded
     dependencies:
     - pomc
     - containers
