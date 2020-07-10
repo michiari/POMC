@@ -20,6 +20,7 @@ import qualified Pomc.PotlV2 as P2
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
+import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef)
 
 import Data.Maybe
 import Data.List (nub, partition)
@@ -68,30 +69,74 @@ emptySM = H.new
 -- Input symbol
 type Input a = Set (Prop a)
 
--- Stack symbol
-type Stack a = Maybe (Input a, State a)
 
-data Globals s a = Globals { visited :: HashTable s (State a, Stack a) (),
-                             suppStarts :: SetMap s (State a) (Stack a),
-                             suppEnds :: SetMap s (State a) (State a) }
+-- States with unique IDs
+data StateId a = StateId { getId :: Int,
+                           getState :: State a } deriving (Show)
+
+instance Eq (StateId a) where
+  p == q = getId p == getId q
+
+instance Ord (StateId a) where
+  compare p q = compare (getId p) (getId q)
+
+instance Hashable (StateId a) where
+  hashWithSalt salt s = hashWithSalt salt $ getId s
+
+data SIdGen s a = SIdGen { idSequence :: STRef s Int,
+                           stateToId :: HashTable s (State a) Int }
+
+initSIdGen :: ST.ST s (SIdGen s a)
+initSIdGen = do
+  newIdSequence <- newSTRef (0 :: Int)
+  newStateToId <- H.new
+  return $ SIdGen { idSequence = newIdSequence,
+                    stateToId = newStateToId }
+
+wrapState :: (Eq a, Hashable a) => SIdGen s a -> State a -> ST.ST s (StateId a)
+wrapState sig q = do
+  qid <- H.lookup (stateToId sig) q
+  if isJust qid
+    then return $ StateId (fromJust qid) q
+    else do
+    let idSeq = idSequence sig
+    newId <- readSTRef idSeq
+    modifySTRef idSeq (+1)
+    H.insert (stateToId sig) q newId
+    return $ StateId newId q
+
+wrapStates :: (Eq a, Hashable a) => SIdGen s a -> [State a] -> ST.ST s [StateId a]
+wrapStates sig states = mapM (wrapState sig) states
+
+
+-- Stack symbol
+type Stack a = Maybe (Input a, StateId a)
+
+data Globals s a = Globals { sIdGen :: SIdGen s a,
+                             visited :: HashTable s (StateId a, Stack a) (),
+                             suppStarts :: SetMap s (StateId a) (Stack a),
+                             suppEnds :: SetMap s (StateId a) (StateId a) }
 data Delta a = Delta { prec :: PrecFunc a,
                        deltaPush :: State a -> Input a -> [State a],
                        deltaShift :: State a -> Input a -> [State a],
                        deltaPop :: State a -> State a -> [State a] }
 
-getProps :: (Ord a, Hashable a) => State a -> Input a
-getProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet . current $ s)
+getStateProps :: (Ord a, Hashable a) => State a -> Input a
+getStateProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet . current $ s)
+
+getProps :: (Ord a, Hashable a) => StateId a -> Input a
+getProps s = getStateProps . getState $ s
 
 popFirst :: (Ord a, Hashable a) => PrecFunc a -> Input a -> [State a] -> [State a]
-popFirst opm stackProps states = let (popStates, others) = partition (\s -> opm stackProps (getProps s) == Just Take) states
+popFirst opm stackProps states = let (popStates, others) = partition (\s -> opm stackProps (getStateProps s) == Just Take) states
                                   in popStates ++ others
 
 reach :: (Ord a, Eq a, Hashable a, Show a)
-      => (State a -> Bool)
+      => (StateId a -> Bool)
       -> (Stack a -> Bool)
       -> Globals s a
       -> Delta a
-      -> State a
+      -> StateId a
       -> Stack a
       -> ST s Bool
 reach isDestState isDestStack globals delta q g = do
@@ -102,28 +147,31 @@ reach isDestState isDestStack globals delta q g = do
     H.insert (visited globals) (q, g) ()
     let cases
           | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
-          | (isNothing g) || ((prec delta) (fst . fromJust $ g) (getProps q) == Just Yield)
-              = foldM (reachPush isDestState isDestStack globals delta q g) False (popFirst (prec delta) (getProps q) $ (deltaPush delta) q (getProps q))
-          | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Equal)
-              = foldM (\acc p -> if acc
-                                 then debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
-                                 else reach isDestState isDestStack globals delta p (Just (getProps q, (snd . fromJust $ g))))
-                False
-                (popFirst (prec delta) (fst . fromJust $ g) $ (deltaShift delta) q (getProps q))
-          | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Take)
-              = foldM (reachPop isDestState isDestStack globals delta q g) False ((deltaPop delta) q (snd . fromJust $ g))
+          | (isNothing g) || ((prec delta) (fst . fromJust $ g) (getProps q) == Just Yield) = do
+              newStates <- wrapStates (sIdGen globals) $ popFirst (prec delta) (getProps q) ((deltaPush delta) (getState q) (getProps q))
+              foldM (reachPush isDestState isDestStack globals delta q g) False newStates
+          | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Equal) = do
+              newStates <- wrapStates (sIdGen globals) $ popFirst (prec delta) (fst . fromJust $ g) ((deltaShift delta) (getState q) (getProps q))
+              let reachShift acc p
+                    = if acc
+                      then debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
+                      else reach isDestState isDestStack globals delta p (Just (getProps q, (snd . fromJust $ g)))
+              foldM reachShift False newStates
+          | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Take) = do
+              newStates <- wrapStates (sIdGen globals) $ (deltaPop delta) (getState q) (getState . snd . fromJust $ g)
+              foldM (reachPop isDestState isDestStack globals delta q g) False newStates
           | otherwise = return False
     cases
 
 reachPush :: (Eq a, Ord a, Hashable a, Show a)
-          => (State a -> Bool)
+          => (StateId a -> Bool)
           -> (Stack a -> Bool)
           -> Globals s a
           -> Delta a
-          -> State a
+          -> StateId a
           -> Stack a
           -> Bool
-          -> State a
+          -> StateId a
           -> ST s Bool
 reachPush _ _ _ _ _ _ True _ = return True
 reachPush isDestState isDestStack globals delta q g False p = do
@@ -144,14 +192,14 @@ reachPush isDestState isDestStack globals delta q g False p = do
       currentSuppEnds
 
 reachPop :: (Eq a, Ord a, Hashable a, Show a)
-         => (State a -> Bool)
+         => (StateId a -> Bool)
          -> (Stack a -> Bool)
          -> Globals s a
          -> Delta a
-         -> State a
+         -> StateId a
          -> Stack a
          -> Bool
-         -> State a
+         -> StateId a
          -> ST s Bool
 reachPop _ _ _ _ _ _ True _ = return True
 reachPop isDestState isDestStack globals delta q g False p = do
@@ -173,17 +221,21 @@ isEmpty :: (Ord a, Eq a, Hashable a, Show a)
         -> Bool
 isEmpty delta initials isFinal = not $
   ST.runST (do
+               newSig <- initSIdGen
                emptyVisited <- H.new
                emptySuppStarts <- emptySM
                emptySuppEnds <- emptySM
-               let globals = Globals { visited = emptyVisited,
+               let globals = Globals { sIdGen = newSig,
+                                       visited = emptyVisited,
                                        suppStarts = emptySuppStarts,
                                        suppEnds = emptySuppEnds }
-                 in foldM (\acc q -> if acc
-                            then return True
-                            else (reach isFinal isNothing globals delta q Nothing))
-                    False
-                    initials)
+                 in do
+                 initialsId <- wrapStates newSig initials
+                 foldM (\acc q -> if acc
+                                  then return True
+                                  else (reach (isFinal . getState) isNothing globals delta q Nothing))
+                   False
+                   initialsId)
 
 isSatisfiable :: (Checkable f, Ord a, Hashable a, Eq a, Show a)
               => f a
