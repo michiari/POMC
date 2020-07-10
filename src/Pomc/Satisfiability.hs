@@ -71,7 +71,7 @@ type Input a = Set (Prop a)
 
 
 -- States with unique IDs
-data StateId a = StateId { getId :: Int,
+data StateId a = StateId { getId :: !Int,
                            getState :: State a } deriving (Show)
 
 instance Eq (StateId a) where

@@ -71,9 +71,9 @@ data Atom a = Atom
 data State a = State
     { current   :: Atom a
     , pending   :: Set (Formula a)
-    , mustPush  :: Bool
-    , mustShift :: Bool
-    , afterPop  :: Bool
+    , mustPush  :: !Bool
+    , mustShift :: !Bool
+    , afterPop  :: !Bool
     } deriving (Generic, NFData, Ord, Eq)
 
 -- Make things Hashable
