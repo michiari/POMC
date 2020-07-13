@@ -20,7 +20,7 @@ import qualified Pomc.PotlV2 as P2
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef)
+import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 
 import Data.Maybe
 import Data.List (nub, partition)
@@ -101,7 +101,7 @@ wrapState sig q = do
     else do
     let idSeq = idSequence sig
     newId <- readSTRef idSeq
-    modifySTRef idSeq (+1)
+    modifySTRef' idSeq (+1)
     H.insert (stateToId sig) q newId
     return $ StateId newId q
 
@@ -128,8 +128,10 @@ getProps :: (Ord a, Hashable a) => StateId a -> Input a
 getProps s = getStateProps . getState $ s
 
 popFirst :: (Ord a, Hashable a) => PrecFunc a -> Input a -> [State a] -> [State a]
-popFirst opm stackProps states = let (popStates, others) = partition (\s -> opm stackProps (getStateProps s) == Just Take) states
-                                  in popStates ++ others
+popFirst opm stackProps states =
+  let (popStates, others) = partition (\s -> opm stackProps (getStateProps s) == Just Take) states
+      (endStates, otherPop) = partition (\s -> Set.member (Atomic End) (atomFormulaSet . current $ s)) popStates
+  in endStates ++ otherPop ++ others
 
 reach :: (Ord a, Eq a, Hashable a, Show a)
       => (StateId a -> Bool)
