@@ -54,6 +54,7 @@ executables:
     source-dirs:    app
     ghc-options:
     - -rtsopts
+    - -with-rtsopts=-H
     - -Wall
     - -O2
     - -fllvm
@@ -66,6 +67,7 @@ tests:
     source-dirs:    test
     ghc-options:
     - -rtsopts
+    - -with-rtsopts=-H
     - -Wall
     - -O2
     - -fllvm
@@ -86,6 +88,7 @@ benchmarks:
     source-dirs:    bench
     ghc-options:
     - -rtsopts
+    - -with-rtsopts=-H
     - -Wall
     - -O2
     - -fllvm
