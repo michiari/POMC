@@ -130,9 +130,9 @@ getStateProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet
 getProps :: (Ord a, Hashable a) => StateId a -> Input a
 getProps s = getStateProps . getState $ s
 
-popFirst :: (Ord a, Hashable a) => PrecFunc a -> Input a -> [State a] -> [State a]
-popFirst opm stackProps states =
-  let (popStates, others) = partition (\s -> opm stackProps (getStateProps s) == Just Take) states
+popFirst :: (Ord a, Hashable a) => [State a] -> [State a]
+popFirst states =
+  let (popStates, others) = partition (\s -> not (mustPush s || mustShift s)) states
       (endStates, otherPop) = partition (\s -> Set.member (Atomic End) (atomFormulaSet . current $ s)) popStates
   in endStates ++ otherPop ++ others
 
@@ -153,10 +153,10 @@ reach isDestState isDestStack globals delta q g = do
     let cases
           | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
           | (isNothing g) || ((prec delta) (fst . fromJust $ g) (getProps q) == Just Yield) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst (prec delta) (getProps q) ((deltaPush delta) (getState q) (getProps q))
+              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaPush delta) (getState q) (getProps q))
               foldM (reachPush isDestState isDestStack globals delta q g) False newStates
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Equal) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst (prec delta) (fst . fromJust $ g) ((deltaShift delta) (getState q) (getProps q))
+              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaShift delta) (getState q) (getProps q))
               let reachShift acc p
                     = if acc
                       then return True
@@ -164,7 +164,7 @@ reach isDestState isDestStack globals delta q g = do
                            reach isDestState isDestStack globals delta p (Just (getProps q, (snd . fromJust $ g)))
               foldM reachShift False newStates
           | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Take) = do
-              newStates <- wrapStates (sIdGen globals) $ (deltaPop delta) (getState q) (getState . snd . fromJust $ g)
+              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaPop delta) (getState q) (getState . snd . fromJust $ g))
               foldM (reachPop isDestState isDestStack globals delta q g) False newStates
           | otherwise = return False
     cases
