@@ -150,21 +150,23 @@ reach isDestState isDestStack globals delta q g = do
     then return False
     else do
     H.insert (visited globals) (q, g) ()
-    let cases
+    let qProps = getProps q
+        qState = getState q
+        cases
           | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
-          | (isNothing g) || ((prec delta) (fst . fromJust $ g) (getProps q) == Just Yield) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaPush delta) (getState q) (getProps q))
+          | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) = do
+              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaPush delta) qState qProps)
               foldM (reachPush isDestState isDestStack globals delta q g) False newStates
-          | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Equal) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaShift delta) (getState q) (getProps q))
+          | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) = do
+              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaShift delta) qState qProps)
               let reachShift acc p
                     = if acc
                       then return True
                       else debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-                           reach isDestState isDestStack globals delta p (Just (getProps q, (snd . fromJust $ g)))
+                           reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
               foldM reachShift False newStates
-          | ((prec delta) (fst . fromJust $ g) (getProps q) == Just Take) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaPop delta) (getState q) (getState . snd . fromJust $ g))
+          | ((prec delta) (fst . fromJust $ g) qProps == Just Take) = do
+              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaPop delta) qState (getState . snd . fromJust $ g))
               foldM (reachPop isDestState isDestStack globals delta q g) False newStates
           | otherwise = return False
     cases
@@ -207,15 +209,16 @@ reachPop :: (Eq a, Ord a, Hashable a, Show a)
          -> ST s Bool
 reachPop _ _ _ _ _ _ True _ = return True
 reachPop isDestState isDestStack globals delta q g False p = do
-  insertSM (suppEnds globals) (snd . fromJust $ g) p
-  currentSuppStarts <- lookupSM (suppStarts globals) (snd . fromJust $ g)
+  let r = snd . fromJust $ g
+  insertSM (suppEnds globals) r p
+  currentSuppStarts <- lookupSM (suppStarts globals) r
   foldM (\acc g' -> if acc
                     then return True
                     else debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
                          reach isDestState isDestStack globals delta p g')
     False
     (Set.filter (\g' -> isNothing g' ||
-                        ((prec delta) (fst . fromJust $ g') (getProps (snd . fromJust $ g))) == Just Yield)
+                        ((prec delta) (fst . fromJust $ g') (getProps r)) == Just Yield)
       currentSuppStarts)
 
 
