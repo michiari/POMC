@@ -15,7 +15,7 @@ import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 import Data.Hashable
 
-data Prop a = Prop a | End deriving (Eq, Ord, Show, Generic, NFData)
+data Prop a = Prop !a | End deriving (Eq, Ord, Show, Generic, NFData)
 
 instance Hashable a => Hashable (Prop a)
 

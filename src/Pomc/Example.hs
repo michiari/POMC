@@ -1,20 +1,21 @@
 {- |
    Module      : Pomc.Example
-   Copyright   : 2020 Davide Bergamaschi
+   Copyright   : 2020 Davide Bergamaschi, Michele Chiari
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
 
 module Pomc.Example ( -- * Stack Trace Language V1 precedence function
                       stlPrecedenceV1
                     , stlAnnotateV1
+                    , stlPrecRelV1
                       -- * Stack Trace Language V2 precedence function
                     , stlPrecedenceV2
                     , stlAnnotateV2
                     , stlPrecRelV2
                     ) where
 
-import Pomc.Prec (Prec(..), PrecRel, StructPrecRel)
+import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
@@ -145,6 +146,28 @@ stlAnnotateV2 = map annotate
           | "h" `isPrefixOf` t = [t,  "han"]
           | "e" `isPrefixOf` t = [t,  "exc"]
           | otherwise = error ("Invalid token: " ++ t)
+
+stlPrecRelV1 :: [StructPrecRel String]
+stlPrecRelV1 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
+               ++ map (\p -> (Prop p, End, Take)) sl
+  where precs = [ ("call", "call", Yield)
+                , ("call", "ret",  Equal)
+                , ("call", "han",  Yield)
+                , ("call", "thr",  Take)
+                , ("ret",  "call", Take)
+                , ("ret",  "ret",  Take)
+                , ("ret",  "han",  Yield)
+                , ("ret",  "thr",  Take)
+                , ("han",  "call", Yield)
+                , ("han",  "ret",  Take)
+                , ("han",  "han",  Yield)
+                , ("han",  "thr",  Yield)
+                , ("thr",  "call", Take)
+                , ("thr",  "ret",  Take)
+                , ("thr",  "han",  Take)
+                , ("thr",  "thr",  Take)
+                ]
+        sl = ["call", "ret", "han", "thr"]
 
 stlPrecRelV2 :: [StructPrecRel String]
 stlPrecRelV2 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs

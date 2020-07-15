@@ -1,18 +1,19 @@
 {- |
    Module      : Pomc.App
-   Copyright   : 2020 Davide Bergamaschi
+   Copyright   : 2020 Davide Bergamaschi, Michele Chiari
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
 
 module Pomc.App (go) where
 
-import Pomc.Check (Checkable(..), closure, fastcheck)
+import Pomc.Check (Checkable(..), fastcheck)
 import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..))
 import Pomc.Prec (fromRelations)
 import Pomc.Prop (Prop(..))
-import Pomc.RPotl (Formula(..))
+import Pomc.RPotl (getProps)
 import Pomc.Util (safeHead, timeAction, timeToString)
+import Pomc.PropConv (APType)
 
 import Prelude hiding (readFile)
 
@@ -64,7 +65,7 @@ go = do args <- getArgs
                             , "\nResult:  "
                             ])
 
-             let tphi = transFormula tfunc phi
+             let tphi = transFormula tfunc (toReducedPotl phi)
                  ts   = transString  tfunc s
 
              (_, time) <- timeAction . putStr . show $ fastcheck tphi pfunc ts
@@ -91,22 +92,20 @@ exitHelp :: IO a
 exitHelp = do progName <- getProgName
               die ("USAGE:    " ++ progName ++ " FILE")
 
-makeTransFunc :: CheckRequest -> (Text -> Int)
+makeTransFunc :: CheckRequest -> (Text -> APType)
 makeTransFunc (CheckRequest rels phis strings) =
   let relProps = (concatMap (\(s1, s2, _) -> S.toList $ S.union s1 s2) rels)
 
-      phiProps = concatMap (\phi -> let rphi = toReducedPotl phi
-                                 in [p | Atomic p <- S.toList (closure rphi [])]
-                           ) phis
+      phiProps = concatMap (getProps . toReducedPotl) phis
 
       stringProps = concatMap (\s -> concatMap S.toList s) strings
 
       propSet :: Set (Prop Text)
       propSet = S.fromList (relProps ++ phiProps ++ stringProps)
 
-      tmap :: Map Text Int
+      tmap :: Map Text APType
       tmap = M.fromList $ zip ([p | Prop p <- S.toList propSet]) [1..]
 
-      trans :: Text -> Int
+      trans :: Text -> APType
       trans t = fromJust $ M.lookup t tmap
   in trans

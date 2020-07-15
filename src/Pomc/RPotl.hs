@@ -2,13 +2,14 @@
 
 {- |
    Module      : Pomc.RPotl
-   Copyright   : 2020 Davide Bergamaschi
+   Copyright   : 2020 Davide Bergamaschi, Michele Chiari
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
 
 module Pomc.RPotl ( -- * RPOTL type
                     Formula(..)
+                  , getProps
                     -- * Predicates on formulas
                   , atomic
                   , future
@@ -22,6 +23,8 @@ module Pomc.RPotl ( -- * RPOTL type
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 
+import Data.List (nub)
+
 import Data.Set (Set)
 import qualified Data.Set as S
 
@@ -34,7 +37,7 @@ instance Hashable a => Hashable (Set a) where
   hashWithSalt salt s = hashWithSalt salt $ S.toAscList s
 
 data Formula a = T
-               | Atomic (Prop a)
+               | Atomic !(Prop a)
                | Not (Formula a)
                | Or  (Formula a) (Formula a)
                | And (Formula a) (Formula a)
@@ -85,6 +88,55 @@ instance (Show a) => Show (Formula a) where
           showp f = concat ["(", show f, ")"]
 
 instance Hashable a => Hashable (Formula a)
+
+instance Functor Formula where
+  fmap f formula = case formula of
+    T                  -> T
+    Atomic p           -> Atomic $ fmap f p
+    Not g              -> Not $ fmap f g
+    And g h            -> And (fmap f g) (fmap f h)
+    Or g h             -> Or (fmap f g) (fmap f h)
+    PrecNext ps g      -> PrecNext ps (fmap f g)
+    PrecBack ps g      -> PrecBack ps (fmap f g)
+    ChainNext ps g     -> ChainNext ps (fmap f g)
+    ChainBack ps g     -> ChainBack ps (fmap f g)
+    Until ps g h       -> Until ps (fmap f g) (fmap f h)
+    Since ps g h       -> Since ps (fmap f g) (fmap f h)
+    HierNextYield g    -> HierNextYield (fmap f g)
+    HierBackYield g    -> HierBackYield (fmap f g)
+    HierNextTake  g    -> HierNextTake  (fmap f g)
+    HierBackTake  g    -> HierBackTake  (fmap f g)
+    HierUntilYield g h -> HierUntilYield (fmap f g) (fmap f h)
+    HierSinceYield g h -> HierSinceYield (fmap f g) (fmap f h)
+    HierUntilTake  g h -> HierUntilTake  (fmap f g) (fmap f h)
+    HierSinceTake  g h -> HierSinceTake  (fmap f g) (fmap f h)
+    HierTakeHelper g   -> HierTakeHelper (fmap f g)
+    Eventually' g      -> Eventually' (fmap f g)
+
+getProps :: (Eq a) => Formula a -> [Prop a]
+getProps formula = nub $ collectProps formula
+  where collectProps f = case f of
+          T                  -> []
+          Atomic p           -> [p]
+          Not g              -> getProps g
+          And g h            -> getProps g ++ getProps h
+          Or g h             -> getProps g ++ getProps h
+          PrecNext _ g       -> getProps g
+          PrecBack _ g       -> getProps g
+          ChainNext _ g      -> getProps g
+          ChainBack _ g      -> getProps g
+          Until _ g h        -> getProps g ++ getProps h
+          Since _ g h        -> getProps g ++ getProps h
+          HierNextYield g    -> getProps g
+          HierBackYield g    -> getProps g
+          HierNextTake  g    -> getProps g
+          HierBackTake  g    -> getProps g
+          HierUntilYield g h -> getProps g ++ getProps h
+          HierSinceYield g h -> getProps g ++ getProps h
+          HierUntilTake  g h -> getProps g ++ getProps h
+          HierSinceTake  g h -> getProps g ++ getProps h
+          HierTakeHelper g   -> getProps g
+          Eventually' g      -> getProps g
 
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True

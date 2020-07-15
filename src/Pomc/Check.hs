@@ -9,7 +9,9 @@
 
 module Pomc.Check ( -- * Checking functions
                     check
+                  , checkGen
                   , fastcheck
+                  , fastcheckGen
                     -- * Checking typeclass
                   , Checkable(..)
                     -- * Checking helpers
@@ -17,17 +19,19 @@ module Pomc.Check ( -- * Checking functions
                     -- * Printing
                   , showAtoms
                   , showStates
+                  , Input(..)
                   , Atom(..)
                   , State(..)
                   , makeOpa
                   ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.Prec (Prec(..))
+import Pomc.Prec (Prec(..), PrecFunc, StructPrecRel, fromStructPR)
 import Pomc.Opa (run, augRun)
 import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
 import Pomc.Util (xor, implies, safeHead)
 import Pomc.Data (encode, decodeAtom, generate, FormulaSet, EncodedSet)
+import Pomc.PropConv (APType, convPropTokens)
 
 import Data.Maybe (fromJust, fromMaybe, isNothing)
 
@@ -63,42 +67,45 @@ class Checkable c where
 instance Checkable (Formula) where
   toReducedPotl = id
 
-data Atom a = Atom
-    { atomFormulaSet :: FormulaSet a
+-- Input symbol
+type Input = Set (Prop APType)
+
+data Atom = Atom
+    { atomFormulaSet :: FormulaSet
     , atomEncodedSet :: EncodedSet
     } deriving (Generic, NFData)
 
-data State a = State
-    { current   :: Atom a
-    , pending   :: Set (Formula a)
+data State = State
+    { current   :: Atom
+    , pending   :: Set (Formula APType)
     , mustPush  :: !Bool
     , mustShift :: !Bool
     , afterPop  :: !Bool
     } deriving (Generic, NFData, Ord, Eq)
 
 -- Make things Hashable
-instance Hashable a => Hashable (Atom a) where
+instance Hashable Atom where
   hashWithSalt salt atom = hashWithSalt salt (atomEncodedSet atom)
 
-instance Hashable a => Hashable (State a)
+instance Hashable State
 
 
-instance Eq (Atom a) where
+instance Eq Atom where
   p == q = (atomEncodedSet p) == (atomEncodedSet q)
 
-instance Ord (Atom a) where
+instance Ord Atom where
   compare p q = compare (atomEncodedSet p) (atomEncodedSet q)
 
-showFormulaSet :: (Show a) => FormulaSet a -> String
+showFormulaSet :: FormulaSet -> String
 showFormulaSet fset = let fs = S.toList fset
                           posfs = filter (not . negative) fs
                           negfs = filter (negative) fs
                       in show (posfs ++ negfs)
 
-instance (Show a) => Show (Atom a) where
+instance Show Atom where
   show (Atom fset eset) = "FS: " ++ showFormulaSet fset ++ "\t\tES: " ++ show eset
 
-instance (Show a) => Show (State a) where
+instance Show State where
   show (State c p xl xe xr) = "\n{ C: "  ++ show c             ++
                               "\n, P: "  ++ show (S.toList p)  ++
                               "\n, XL: " ++ show xl            ++
@@ -106,22 +113,22 @@ instance (Show a) => Show (State a) where
                               "\n, XR: " ++ show xr            ++
                               "\n}"
 
-showAtoms :: Show a => [Atom a] -> String
+showAtoms :: [Atom] -> String
 showAtoms = unlines . map show
 
-showPendCombs :: Show a => Set ((Set (Formula a), Bool, Bool, Bool)) -> String
+showPendCombs :: Set (FormulaSet, Bool, Bool, Bool) -> String
 showPendCombs = unlines . map show . S.toList
 
-showStates :: Show a => [State a] -> String
+showStates :: [State] -> String
 showStates = unlines . map show
 
-atomicSet :: Set (Formula a) -> Set (Formula a)
+atomicSet :: FormulaSet -> FormulaSet
 atomicSet = S.filter atomic
 
-compProps :: (Eq a, Ord a) => Set (Formula a) -> Set (Prop a) -> Bool
+compProps :: FormulaSet -> Input -> Bool
 compProps fset pset = atomicSet fset == S.map Atomic pset
 
-closure :: Ord a => Formula a -> [Prop a] -> Set (Formula a)
+closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
@@ -215,7 +222,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HierTakeHelper g   -> [f, Not f] ++ closList g
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
-atoms :: Ord a => Set (Formula a) -> Set (Set (Prop a)) -> [Atom a]
+atoms :: FormulaSet -> Set (Input) -> [Atom]
 atoms clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
 
@@ -264,16 +271,16 @@ atoms clos inputSet =
         in as SQ.>< (SQ.fromList combs)
   in toList $ foldl' prependCons SQ.empty (generate $ V.length pFormulaVec)
 
-atomicCons :: Ord a => (Set (Prop a) -> Bool) -> Set (Formula a) -> Bool
+atomicCons :: (Input -> Bool) -> FormulaSet -> Bool
 atomicCons valid set =
   let propSet = S.fromList [p | Atomic p <- S.toList set]
       size = S.size propSet
   in (End `S.member` propSet) `implies` (size == 1) && valid propSet
 
-trueCons :: Ord a => Set (Formula a) -> Bool
+trueCons :: FormulaSet -> Bool
 trueCons set = not (Not T `S.member` set)
 
-andCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+andCons :: FormulaSet -> FormulaSet -> Bool
 andCons clos set = null [f | f@(And g h) <- S.toList set,
                                             not (g `S.member` set) ||
                                             not (h `S.member` set)]
@@ -283,7 +290,7 @@ andCons clos set = null [f | f@(And g h) <- S.toList set,
                                             (h `S.member` set) &&
                                             not (f `S.member` set)]
 
-orCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+orCons :: FormulaSet -> FormulaSet -> Bool
 orCons clos set = null [f | f@(Or g h) <- S.toList set,
                                           not (g `S.member` set) &&
                                           not (h `S.member` set)]
@@ -293,7 +300,7 @@ orCons clos set = null [f | f@(Or g h) <- S.toList set,
                                            (h `S.member` set)
                                           ) && not (f `S.member` set)]
 
-chainNextCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+chainNextCons :: FormulaSet -> FormulaSet -> Bool
 chainNextCons clos set = null [f | f@(ChainNext pset g) <- S.toList set,
                                                            S.size pset > 1 &&
                                                            not (present pset g)]
@@ -305,7 +312,7 @@ chainNextCons clos set = null [f | f@(ChainNext pset g) <- S.toList set,
   where present pset g = any (\p -> ChainNext (S.singleton p) g `S.member` set)
                              (S.toList pset)
 
-chainBackCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+chainBackCons :: FormulaSet -> FormulaSet -> Bool
 chainBackCons clos set = null [f | f@(ChainBack pset g) <- S.toList set,
                                                            S.size pset > 1 &&
                                                            not (present pset g)]
@@ -317,7 +324,7 @@ chainBackCons clos set = null [f | f@(ChainBack pset g) <- S.toList set,
   where present pset g = any (\p -> ChainBack (S.singleton p) g `S.member` set)
                              (S.toList pset)
 
-untilCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+untilCons :: FormulaSet -> FormulaSet -> Bool
 untilCons clos set = null [f | f@(Until pset g h) <- S.toList set,
                                                      not (present f pset g h)]
                      &&
@@ -328,7 +335,7 @@ untilCons clos set = null [f | f@(Until pset g h) <- S.toList set,
                              ((S.fromList [g, PrecNext  pset u]) `S.isSubsetOf` set) ||
                              ((S.fromList [g, ChainNext pset u]) `S.isSubsetOf` set)
 
-sinceCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+sinceCons :: FormulaSet -> FormulaSet -> Bool
 sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
                                                      not (present f pset g h)]
                      &&
@@ -339,7 +346,7 @@ sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
                              ((S.fromList [g, PrecBack  pset s]) `S.isSubsetOf` set) ||
                              ((S.fromList [g, ChainBack pset s]) `S.isSubsetOf` set)
 
-hierUntilYieldCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+hierUntilYieldCons :: FormulaSet -> FormulaSet -> Bool
 hierUntilYieldCons clos set = null [f | f@(HierUntilYield g h) <- S.toList set,
                                                                   not (present f g h)]
                               &&
@@ -350,7 +357,7 @@ hierUntilYieldCons clos set = null [f | f@(HierUntilYield g h) <- S.toList set,
           ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
           ((S.fromList [g, HierNextYield huy])               `S.isSubsetOf` set)
 
-hierSinceYieldCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+hierSinceYieldCons :: FormulaSet -> FormulaSet -> Bool
 hierSinceYieldCons clos set = null [f | f@(HierSinceYield g h) <- S.toList set,
                                                                   not (present f g h)]
                               &&
@@ -361,7 +368,7 @@ hierSinceYieldCons clos set = null [f | f@(HierSinceYield g h) <- S.toList set,
           ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
           ((S.fromList [g, HierBackYield hsy])               `S.isSubsetOf` set)
 
-hierUntilTakeCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+hierUntilTakeCons :: FormulaSet -> FormulaSet -> Bool
 hierUntilTakeCons clos set = null [f | f@(HierUntilTake g h) <- S.toList set,
                                                                 not (present f g h)]
                              &&
@@ -372,7 +379,7 @@ hierUntilTakeCons clos set = null [f | f@(HierUntilTake g h) <- S.toList set,
           ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
           ((S.fromList [g, HierNextTake hut])               `S.isSubsetOf` set)
 
-hierSinceTakeCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+hierSinceTakeCons :: FormulaSet -> FormulaSet -> Bool
 hierSinceTakeCons clos set = null [f | f@(HierSinceTake g h) <- S.toList set,
                                                                 not (present f g h)]
                              &&
@@ -383,7 +390,7 @@ hierSinceTakeCons clos set = null [f | f@(HierSinceTake g h) <- S.toList set,
           ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
           ((S.fromList [g, HierBackTake hst])               `S.isSubsetOf` set)
 
-evCons :: Ord a => Set (Formula a) -> Set (Formula a) -> Bool
+evCons :: FormulaSet -> FormulaSet -> Bool
 evCons clos set = null [f | f@(Eventually' g) <- S.toList set,
                                                  not (present f g)]
                   &&
@@ -394,7 +401,7 @@ evCons clos set = null [f | f@(Eventually' g) <- S.toList set,
           (g `S.member` set) ||
           (PrecNext (S.fromList [Yield, Equal, Take]) ev `S.member` set)
 
-pendCombs :: (Ord a) => Set (Formula a) -> Set ((Set (Formula a), Bool, Bool, Bool))
+pendCombs :: FormulaSet -> Set (FormulaSet, Bool, Bool, Bool)
 pendCombs clos =
   let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
       cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
@@ -411,7 +418,7 @@ pendCombs clos =
                                        xr <- [False, True],
                                        not (xl && xe)]
 
-initials :: (Ord a) => Formula a -> FormulaSet a -> [Atom a] -> [State a]
+initials :: Formula APType -> FormulaSet -> [Atom] -> [State]
 initials phi clos atoms =
   let compatible atom = let fset = atomFormulaSet atom
                         in phi `S.member` fset &&
@@ -425,7 +432,7 @@ initials phi clos atoms =
 resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
 
-deltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
+deltaRules :: FormulaSet -> (RuleGroup, RuleGroup, RuleGroup)
 deltaRules condInfo =
   let shiftGroup = RuleGroup
         { ruleGroupPrs  = resolve condInfo [ (const True, xlShiftPr)
@@ -1102,55 +1109,55 @@ deltaRules condInfo =
     hthShiftFpr = hthPushFpr
     --
 
-data PrInfo a = PrInfo
-  { prClos      :: Set (Formula a)
-  , prPrecFunc  :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
-  , prState     :: State a
-  , prProps     :: Maybe (Set (Prop a))
-  , prPopped    :: Maybe (State a)
-  , prNextProps :: Maybe (Set (Prop a))
+data PrInfo = PrInfo
+  { prClos      :: FormulaSet
+  , prPrecFunc  :: PrecFunc APType
+  , prState     :: State
+  , prProps     :: Maybe (Input)
+  , prPopped    :: Maybe (State)
+  , prNextProps :: Maybe (Input)
   }
-data FcrInfo a = FcrInfo
-  { fcrClos       :: Set (Formula a)
-  , fcrPrecFunc   :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
-  , fcrState      :: State a
-  , fcrProps      :: Maybe (Set (Prop a))
-  , fcrPopped     :: Maybe (State a)
-  , fcrFutureCurr :: Atom a
-  , fcrNextProps  :: Maybe (Set (Prop a))
+data FcrInfo = FcrInfo
+  { fcrClos       :: FormulaSet
+  , fcrPrecFunc   :: PrecFunc APType
+  , fcrState      :: State
+  , fcrProps      :: Maybe (Input)
+  , fcrPopped     :: Maybe (State)
+  , fcrFutureCurr :: Atom
+  , fcrNextProps  :: Maybe (Input)
   }
-data FprInfo a = FprInfo
-  { fprClos           :: Set (Formula a)
-  , fprPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
-  , fprState          :: State a
-  , fprProps          :: Maybe (Set (Prop a))
-  , fprPopped         :: Maybe (State a)
-  , fprFuturePendComb :: (Set (Formula a), Bool, Bool, Bool)
-  , fprNextProps      :: Maybe (Set (Prop a))
+data FprInfo = FprInfo
+  { fprClos           :: FormulaSet
+  , fprPrecFunc       :: PrecFunc APType
+  , fprState          :: State
+  , fprProps          :: Maybe (Input)
+  , fprPopped         :: Maybe (State)
+  , fprFuturePendComb :: (FormulaSet, Bool, Bool, Bool)
+  , fprNextProps      :: Maybe (Input)
   }
-data FrInfo a = FrInfo
-  { frClos           :: Set (Formula a)
-  , frPrecFunc       :: Set (Prop a) -> Set (Prop a) -> Maybe Prec
-  , frState          :: State a
-  , frProps          :: Maybe (Set (Prop a))
-  , frPopped         :: Maybe (State a)
-  , frFutureCurr     :: Atom a
-  , frFuturePendComb :: (Set (Formula a), Bool, Bool, Bool)
-  , frNextProps      :: Maybe (Set (Prop a))
+data FrInfo = FrInfo
+  { frClos           :: FormulaSet
+  , frPrecFunc       :: PrecFunc APType
+  , frState          :: State
+  , frProps          :: Maybe (Input)
+  , frPopped         :: Maybe (State)
+  , frFutureCurr     :: Atom
+  , frFuturePendComb :: (FormulaSet, Bool, Bool, Bool)
+  , frNextProps      :: Maybe (Input)
   }
 
-type PresentRule       a = (PrInfo  a -> Bool)
-type FutureCurrentRule a = (FcrInfo a -> Bool)
-type FuturePendingRule a = (FprInfo a -> Bool)
-type FutureRule        a = (FrInfo  a -> Bool)
+type PresentRule       = (PrInfo  -> Bool)
+type FutureCurrentRule = (FcrInfo -> Bool)
+type FuturePendingRule = (FprInfo -> Bool)
+type FutureRule        = (FrInfo  -> Bool)
 
-data RuleGroup a = RuleGroup { ruleGroupPrs  :: [PresentRule       a]
-                             , ruleGroupFcrs :: [FutureCurrentRule a]
-                             , ruleGroupFprs :: [FuturePendingRule a]
-                             , ruleGroupFrs  :: [FutureRule        a]
-                             }
+data RuleGroup = RuleGroup { ruleGroupPrs  :: [PresentRule      ]
+                           , ruleGroupFcrs :: [FutureCurrentRule]
+                           , ruleGroupFprs :: [FuturePendingRule]
+                           , ruleGroupFrs  :: [FutureRule       ]
+                           }
 
-augDeltaRules :: (Show a, Ord a) => Set (Formula a) -> (RuleGroup a, RuleGroup a, RuleGroup a)
+augDeltaRules :: FormulaSet -> (RuleGroup, RuleGroup, RuleGroup)
 augDeltaRules cl =
   let (shiftrg, pushrg, poprg) = deltaRules cl
       augShiftRg = shiftrg {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs shiftrg}
@@ -1219,7 +1226,7 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                                             }
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
-isFinal :: (Eq a, Show a) => State a -> Bool
+isFinal :: State -> Bool
 isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted, as if # = #
                                          currAtomic == S.singleton (Atomic End) &&
                                          S.null currFuture &&
@@ -1234,10 +1241,9 @@ isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted
         debug = id
         --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
-check :: (Checkable f, Ord a, Show a)
-      => f a
-      -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
-      -> [Set (Prop a)]
+check :: Formula APType
+      -> PrecFunc APType
+      -> [Set (Prop APType)]
       -> Bool
 check phi prec ts =
   debug $ run
@@ -1270,10 +1276,19 @@ check phi prec ts =
           where fstates = delta rgroup prec clos atoms pcombs state
                                 Nothing (Just popped) Nothing
 
-fastcheck :: (Checkable f, Ord a, Show a)
-          => f a
-          -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
-          -> [Set (Prop a)]
+checkGen :: (Checkable f, Ord a, Show a)
+         => f a
+         -> [StructPrecRel a]
+         -> [Set (Prop a)]
+         -> Bool
+checkGen phi precr ts =
+  let (tphi, tprecr, tts) = convPropTokens (toReducedPotl phi) precr ts
+  in check tphi (fromStructPR tprecr) tts
+
+
+fastcheck :: Formula APType
+          -> PrecFunc APType
+          -> [Set (Prop APType)]
           -> Bool
 fastcheck phi prec ts =
   debug $ augRun
@@ -1336,15 +1351,25 @@ fastcheck phi prec ts =
             fstates = delta rgroup prec clos atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
 
-makeOpa :: (Checkable f, Ord a, Show a)
-        => f a
-        -> ([Prop a], [Prop a])
-        -> (Set (Prop a) -> Set (Prop a) -> Maybe Prec)
-        -> ([State a],
-            State a -> Bool,
-            State a -> Set (Prop a) -> [State a],
-            State a -> Set (Prop a) -> [State a],
-            State a -> State a -> [State a])
+fastcheckGen :: (Checkable f, Ord a, Show a)
+             => f a
+             -> [StructPrecRel a]
+             -> [Set (Prop a)]
+             -> Bool
+fastcheckGen phi precr ts =
+  let (tphi, tprecr, tts) = convPropTokens (toReducedPotl phi) precr ts
+  in fastcheck tphi (fromStructPR tprecr) tts
+
+
+makeOpa :: (Checkable f)
+        => f APType
+        -> ([Prop APType], [Prop APType])
+        -> PrecFunc APType
+        -> ([State],
+            State -> Bool,
+            State -> Input -> [State],
+            State -> Input -> [State],
+            State -> State -> [State])
 makeOpa phi (sls, als) prec = (is, isFinal,
                           deltaPush  cl as pcs prec pushRules,
                           deltaShift cl as pcs prec shiftRules,

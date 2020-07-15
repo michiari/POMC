@@ -7,15 +7,15 @@
 
 module Pomc.Satisfiability (
                              isSatisfiable
-                           , isSatisfiablePotlV2
+                           , isSatisfiableGen
                            , Input
                            ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel, PrecFunc, fromStructPR)
-import Pomc.Check (Checkable(..), Atom(..), State(..), makeOpa, closure)
+import Pomc.Check (Checkable(..), Input, Atom(..), State(..), makeOpa)
 import Pomc.RPotl (Formula(Atomic), atomic)
-import qualified Pomc.PotlV2 as P2
+import Pomc.PropConv (APType, convPropLabels)
 
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
@@ -23,12 +23,10 @@ import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 
 import Data.Maybe
-import Data.List (nub, partition)
+import Data.List (partition)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
-
-import qualified Data.Map as Map
 
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
@@ -69,34 +67,30 @@ emptySM :: ST.ST s (SetMap s k v)
 emptySM = H.new
 
 
--- Input symbol
-type Input a = Set (Prop a)
-
-
 -- States with unique IDs
-data StateId a = StateId { getId :: !Int,
-                           getState :: State a } deriving (Show)
+data StateId = StateId { getId :: !Int,
+                         getState :: State } deriving (Show)
 
-instance Eq (StateId a) where
+instance Eq StateId where
   p == q = getId p == getId q
 
-instance Ord (StateId a) where
+instance Ord StateId where
   compare p q = compare (getId p) (getId q)
 
-instance Hashable (StateId a) where
+instance Hashable StateId where
   hashWithSalt salt s = hashWithSalt salt $ getId s
 
-data SIdGen s a = SIdGen { idSequence :: STRef s Int,
-                           stateToId :: HashTable s (State a) Int }
+data SIdGen s = SIdGen { idSequence :: STRef s Int,
+                         stateToId :: HashTable s State Int }
 
-initSIdGen :: ST.ST s (SIdGen s a)
+initSIdGen :: ST.ST s (SIdGen s)
 initSIdGen = do
   newIdSequence <- newSTRef (0 :: Int)
   newStateToId <- H.new
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }
 
-wrapState :: (Eq a, Hashable a) => SIdGen s a -> State a -> ST.ST s (StateId a)
+wrapState :: SIdGen s -> State -> ST.ST s StateId
 wrapState sig q = do
   qid <- H.lookup (stateToId sig) q
   if isJust qid
@@ -108,41 +102,40 @@ wrapState sig q = do
     H.insert (stateToId sig) q newId
     return $ StateId newId q
 
-wrapStates :: (Eq a, Hashable a) => SIdGen s a -> [State a] -> ST.ST s [StateId a]
+wrapStates :: SIdGen s -> [State] -> ST.ST s [StateId]
 wrapStates sig states = mapM (wrapState sig) states
 
 
 -- Stack symbol
-type Stack a = Maybe (Input a, StateId a)
+type Stack = Maybe (Input, StateId)
 
-data Globals s a = Globals { sIdGen :: SIdGen s a,
-                             visited :: HashTable s (StateId a, Stack a) (),
-                             suppStarts :: SetMap s (StateId a) (Stack a),
-                             suppEnds :: SetMap s (StateId a) (StateId a) }
-data Delta a = Delta { prec :: PrecFunc a,
-                       deltaPush :: State a -> Input a -> [State a],
-                       deltaShift :: State a -> Input a -> [State a],
-                       deltaPop :: State a -> State a -> [State a] }
+data Globals s = Globals { sIdGen :: SIdGen s,
+                           visited :: HashTable s (StateId, Stack) (),
+                           suppStarts :: SetMap s (StateId) (Stack),
+                           suppEnds :: SetMap s (StateId) (StateId) }
+data Delta = Delta { prec :: PrecFunc APType,
+                     deltaPush :: State -> Input -> [State],
+                     deltaShift :: State -> Input -> [State],
+                     deltaPop :: State -> State -> [State] }
 
-getStateProps :: (Ord a, Hashable a) => State a -> Input a
+getStateProps :: State -> Input
 getStateProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet . current $ s)
 
-getProps :: (Ord a, Hashable a) => StateId a -> Input a
+getProps :: StateId -> Input
 getProps s = getStateProps . getState $ s
 
-popFirst :: (Ord a, Hashable a) => [State a] -> [State a]
+popFirst :: [State] -> [State]
 popFirst states =
   let (popStates, others) = partition (\s -> not (mustPush s || mustShift s)) states
       (endStates, otherPop) = partition (\s -> Set.member (Atomic End) (atomFormulaSet . current $ s)) popStates
   in endStates ++ otherPop ++ others
 
-reach :: (Ord a, Eq a, Hashable a, Show a)
-      => (StateId a -> Bool)
-      -> (Stack a -> Bool)
-      -> Globals s a
-      -> Delta a
-      -> StateId a
-      -> Stack a
+reach :: (StateId -> Bool)
+      -> (Stack -> Bool)
+      -> Globals s
+      -> Delta
+      -> StateId
+      -> Stack
       -> ST s Bool
 reach isDestState isDestStack globals delta q g = do
   alreadyVisited <- memberHT (visited globals) (q, g)
@@ -171,15 +164,14 @@ reach isDestState isDestStack globals delta q g = do
           | otherwise = return False
     cases
 
-reachPush :: (Eq a, Ord a, Hashable a, Show a)
-          => (StateId a -> Bool)
-          -> (Stack a -> Bool)
-          -> Globals s a
-          -> Delta a
-          -> StateId a
-          -> Stack a
+reachPush :: (StateId -> Bool)
+          -> (Stack -> Bool)
+          -> Globals s
+          -> Delta
+          -> StateId
+          -> Stack
           -> Bool
-          -> StateId a
+          -> StateId
           -> ST s Bool
 reachPush _ _ _ _ _ _ True _ = return True
 reachPush isDestState isDestStack globals delta q g False p = do
@@ -197,15 +189,14 @@ reachPush isDestState isDestStack globals delta q g False p = do
       False
       currentSuppEnds
 
-reachPop :: (Eq a, Ord a, Hashable a, Show a)
-         => (StateId a -> Bool)
-         -> (Stack a -> Bool)
-         -> Globals s a
-         -> Delta a
-         -> StateId a
-         -> Stack a
+reachPop :: (StateId -> Bool)
+         -> (Stack -> Bool)
+         -> Globals s
+         -> Delta
+         -> StateId
+         -> Stack
          -> Bool
-         -> StateId a
+         -> StateId
          -> ST s Bool
 reachPop _ _ _ _ _ _ True _ = return True
 reachPop isDestState isDestStack globals delta q g False p = do
@@ -222,10 +213,9 @@ reachPop isDestState isDestStack globals delta q g False p = do
       currentSuppStarts)
 
 
-isEmpty :: (Ord a, Eq a, Hashable a, Show a)
-        => Delta a
-        -> [State a]
-        -> (State a -> Bool)
+isEmpty :: Delta
+        -> [State]
+        -> (State -> Bool)
         -> Bool
 isEmpty delta initials isFinal = not $
   ST.runST (do
@@ -245,10 +235,10 @@ isEmpty delta initials isFinal = not $
                    False
                    initialsId)
 
-isSatisfiable :: (Checkable f, Ord a, Hashable a, Eq a, Show a)
-              => f a
-              -> ([Prop a], [Prop a])
-              -> PrecFunc a
+isSatisfiable :: (Checkable f)
+              => f APType
+              -> ([Prop APType], [Prop APType])
+              -> PrecFunc APType
               -> Bool
 isSatisfiable phi ap precf =
   let (initials, isFinal, dPush, dShift, dPop) = makeOpa phi ap precf
@@ -258,31 +248,12 @@ isSatisfiable phi ap precf =
                       deltaPop = dPop }
   in not $ isEmpty delta initials isFinal
 
-isSatisfiablePotlV2 :: (Ord a)
-                    => P2.Formula a
-                    -> ([Prop a], [Prop a])
-                    -> [StructPrecRel a]
-                    -> Bool
-isSatisfiablePotlV2 phi ap precf =
-  let (tphi, tap, tprecr) = toIntAP phi ap precf
+isSatisfiableGen :: (Checkable f, Ord a)
+                 => f a
+                 -> ([Prop a], [Prop a])
+                 -> [StructPrecRel a]
+                 -> Bool
+isSatisfiableGen phi ap precf =
+  let (tphi, tap, tprecr) = convPropLabels (toReducedPotl phi) ap precf
   in isSatisfiable tphi tap (fromStructPR tprecr)
 
-toIntAP :: (Ord a)
-        => P2.Formula a
-        -> ([Prop a], [Prop a])
-        -> [StructPrecRel a]
-        -> (P2.Formula Int, ([Prop Int], [Prop Int]), [StructPrecRel Int])
-toIntAP phi (sls, als) precr =
-  let phiAP = [p | Atomic p <- Set.toList (closure (toReducedPotl phi) [])] -- TODO make Formula Foldable
-      relAP = concatMap (\(sl1, sl2, _) -> [sl1, sl2]) precr
-      allProps = map (\(Prop p) -> p) (filter (\p -> p /= End) $ nub $ sls ++ als ++ phiAP ++ relAP)
-      apMap = Map.fromList $ zip allProps [1..]
-      trans p = fromJust $ Map.lookup p apMap
-  in (fmap trans phi
-     , (map (fmap trans) sls, map (fmap trans) als)
-     , map (\(sl1, sl2, pr) -> ( fmap trans $ sl1
-                               , fmap trans $ sl2
-                               , pr
-                               )
-           ) precr
-     )

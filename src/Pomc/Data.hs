@@ -15,6 +15,7 @@ module Pomc.Data ( decodeAtom
                  ) where
 
 import Pomc.RPotl
+import Pomc.PropConv (APType)
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -35,14 +36,14 @@ instance Hashable (Vector Bit) where
     where words = B.cloneToWords vb
 
 type EncodedSet = Vector Bit
-type FormulaSet a = Set (Formula a)
+type FormulaSet = Set (Formula APType)
 
-decodeAtom :: (Ord a) => (Int -> Formula a) -> EncodedSet -> FormulaSet a
+decodeAtom :: (Int -> Formula APType) -> EncodedSet -> FormulaSet
 decodeAtom fetch bv = let pos = map fetch (B.listBits bv)
                           neg = map (Not . fetch) (B.listBits . B.invertBits $ bv)
                       in S.fromList pos `S.union` S.fromList neg
 
-encode :: (Formula a -> Int) -> Int -> FormulaSet a -> EncodedSet
+encode :: (Formula APType -> Int) -> Int -> FormulaSet -> EncodedSet
 encode lookup len set = let zeroes = VU.replicate len (B.Bit False)
                             pairs = S.toList $ S.map (\phi -> (lookup phi, B.Bit True)) set
                         in zeroes VU.// pairs
