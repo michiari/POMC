@@ -36,6 +36,7 @@ library:
   - -fllvm
   dependencies:
   - bitvec
+  - bv
   - containers
   - criterion-measurement
   - deepseq

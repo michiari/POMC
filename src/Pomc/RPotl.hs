@@ -34,7 +34,7 @@ import GHC.Generics (Generic)
 import Data.Hashable
 
 instance Hashable a => Hashable (Set a) where
-  hashWithSalt salt s = hashWithSalt salt $ S.toAscList s
+  hashWithSalt salt s = {-# SCC "hashSet" #-} hashWithSalt salt $ S.toAscList s
 
 data Formula a = T
                | Atomic !(Prop a)

@@ -30,7 +30,8 @@ import Pomc.Prec (Prec(..), PrecFunc, StructPrecRel, fromStructPR)
 import Pomc.Opa (run, augRun)
 import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
 import Pomc.Util (xor, implies, safeHead)
-import Pomc.Data (encode, decodeAtom, generate, FormulaSet, EncodedSet)
+import Pomc.Data (FormulaSet, EncodedSet)
+import qualified Pomc.Data as D
 import Pomc.PropConv (APType, convPropTokens)
 
 import Data.Maybe (fromJust, fromMaybe, isNothing)
@@ -40,8 +41,6 @@ import qualified Data.Set as S
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-
-import qualified Data.Vector.Unboxed as VU
 
 import Data.List (foldl')
 
@@ -227,8 +226,8 @@ atoms clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
 
       atomics = map makeCouples . map (S.map Atomic) $ S.toList validPropSets
-        where makeCouples aset = let easet = encode atomicLookup (S.size pAtomicClos) aset
-                                     aset' = decodeAtom (fetch pAtomicVec) easet
+        where makeCouples aset = let easet = D.encode atomicLookup (S.size pAtomicClos) aset
+                                     aset' = D.decode (fetch pAtomicVec) easet
                                  in (aset', easet)
 
       pclos = S.filter (not . negative) clos
@@ -262,14 +261,18 @@ atoms clos inputSet =
       consistent fset = all (\c -> c fset) checks
 
       prependCons as eset =
-        let fset = decodeAtom (fetch pFormulaVec) eset
+        let fset = D.decode (fetch pFormulaVec) eset
             combs = do (aset, easet) <- atomics
                        let fset' = fset `S.union` aset
-                           eset' = easet VU.++ eset
+                           eset' = easet D.++ eset
                        guard (consistent fset')
                        return (Atom fset' eset')
         in as SQ.>< (SQ.fromList combs)
-  in toList $ foldl' prependCons SQ.empty (generate $ V.length pFormulaVec)
+
+      combineAtoms 0 = SQ.fromList $ map (\(aset, easet) -> Atom aset easet) atomics
+      combineAtoms len = foldl' prependCons SQ.empty (D.generate len)
+
+  in toList $ combineAtoms (V.length pFormulaVec)
 
 atomicCons :: (Input -> Bool) -> FormulaSet -> Bool
 atomicCons valid set =
