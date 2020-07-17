@@ -68,7 +68,7 @@ emptySM = H.new
 
 
 -- States with unique IDs
-data StateId = StateId { getId :: !Int,
+data StateId = StateId { getId :: !Word,
                          getState :: State } deriving (Show)
 
 instance Eq StateId where
@@ -80,27 +80,28 @@ instance Ord StateId where
 instance Hashable StateId where
   hashWithSalt salt s = hashWithSalt salt $ getId s
 
-data SIdGen s = SIdGen { idSequence :: STRef s Int,
-                         stateToId :: HashTable s State Int }
+data SIdGen s = SIdGen { idSequence :: STRef s Word,
+                         stateToId :: HashTable s State StateId }
 
 initSIdGen :: ST.ST s (SIdGen s)
 initSIdGen = do
-  newIdSequence <- newSTRef (0 :: Int)
+  newIdSequence <- newSTRef (0 :: Word)
   newStateToId <- H.new
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }
 
 wrapState :: SIdGen s -> State -> ST.ST s StateId
 wrapState sig q = do
-  qid <- H.lookup (stateToId sig) q
-  if isJust qid
-    then return $ StateId (fromJust qid) q
+  qwrapped <- H.lookup (stateToId sig) q
+  if isJust qwrapped
+    then return $ fromJust qwrapped
     else do
     let idSeq = idSequence sig
     newId <- readSTRef idSeq
     modifySTRef' idSeq (+1)
-    H.insert (stateToId sig) q newId
-    return $ StateId newId q
+    let newQwrapped = StateId newId q
+    H.insert (stateToId sig) q newQwrapped
+    return newQwrapped
 
 wrapStates :: SIdGen s -> [State] -> ST.ST s [StateId]
 wrapStates sig states = mapM (wrapState sig) states
