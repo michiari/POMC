@@ -2,6 +2,7 @@ module Pomc.PropConv (
                        APType
                      , convPropTokens
                      , convPropLabels
+                     , convAP
                      ) where
 
 import Pomc.Prop (Prop(..))

@@ -1,4 +1,4 @@
-module TestSat (tests) where
+module TestSat (tests, cases) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -6,7 +6,7 @@ import Pomc.Satisfiability (isSatisfiableGen)
 import Pomc.Prec (StructPrecRel)
 import Pomc.Prop (Prop(..))
 import Pomc.PotlV2 (Formula(..), Dir(..))
-import Pomc.Example (stlPrecRelV2)
+import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
 import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
 
@@ -18,9 +18,6 @@ baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
 
 evalTests :: TestTree
 evalTests = testGroup "Sat Eval Tests" $ map makeV2TestCase EvalFormulas.formulas
-
-stlPrecV2sls :: [Prop String]
-stlPrecV2sls = map Prop ["ret", "call", "han", "exc"]
 
 makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [StructPrecRel String], Bool)
              -> TestTree

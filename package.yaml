@@ -30,6 +30,7 @@ library:
   - Pomc.Prop
   - Pomc.RPotl
   - Pomc.Satisfiability
+  - Pomc.ModelChecker
   ghc-options:
   - -Wall
   - -O2

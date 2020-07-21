@@ -13,6 +13,7 @@ module Pomc.Example ( -- * Stack Trace Language V1 precedence function
                     , stlPrecedenceV2
                     , stlAnnotateV2
                     , stlPrecRelV2
+                    , stlPrecV2sls
                     ) where
 
 import Pomc.Prec (Prec(..), StructPrecRel)
@@ -190,3 +191,6 @@ stlPrecRelV2 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
                 , ("exc",  "exc",  Take)
                 ]
         sl = ["call", "ret", "han", "exc"]
+
+stlPrecV2sls :: [Prop String]
+stlPrecV2sls = map Prop ["ret", "call", "han", "exc"]
