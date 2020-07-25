@@ -10,6 +10,7 @@
 module Pomc.Data ( EncodedAtom(..)
                  , EncodedSet
                  , FormulaSet
+                 , BitEncoding(..)
                  ) where
 
 import Pomc.RPotl
@@ -17,6 +18,8 @@ import Pomc.PropConv (APType)
 
 import Data.Set (Set)
 import qualified Data.Set as S
+
+import Data.Bits (Bits(..))
 
 import Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as VU
@@ -35,12 +38,21 @@ import Data.Hashable
 type EncodedSet = BVEA
 type FormulaSet = Set (Formula APType)
 
+data BitEncoding = BitEncoding
+  { fetch :: (Int -> Formula APType)
+  , index :: (Formula APType -> Int)
+  , width :: Int
+  }
 
 class EncodedAtom e where
-  decode :: (Int -> Formula APType) -> e -> FormulaSet
-  encode :: (Formula APType -> Int) -> Int -> FormulaSet -> e
+  decode :: BitEncoding -> e -> FormulaSet
+  encode :: BitEncoding -> FormulaSet -> e
   generate :: Int -> [e]
   (++) :: e -> e -> e
+  null :: e -> Bool
+  member :: BitEncoding -> Formula APType -> e -> Bool
+  any :: BitEncoding -> (Formula APType -> Bool) -> e -> Bool
+  filter :: BitEncoding -> (Formula APType -> Bool) -> e -> e
 
 
 newtype BitVecEA = BitVecEA (Vector Bit) deriving (Eq, Ord, Show, Generic, NFData)
@@ -52,19 +64,30 @@ instance Hashable BitVecEA where
     where ws = {-# SCC "hashBitVecEA:words" #-} B.cloneToWords vb
 
 instance EncodedAtom BitVecEA where
-  decode fetch (BitVecEA bv) =
-    let pos = map fetch (B.listBits bv)
-        neg = map (Not . fetch) (B.listBits . B.invertBits $ bv)
+  decode bitenc (BitVecEA bv) =
+    let pos = map (fetch bitenc) (B.listBits bv)
+        neg = map (Not . (fetch bitenc)) (B.listBits . B.invertBits $ bv)
     in S.fromList pos `S.union` S.fromList neg
 
-  encode index len set =
-    let zeroes = VU.replicate len (B.Bit False)
-        pairs = S.toList $ S.map (\phi -> (index phi, B.Bit True)) set
+  encode bitenc set =
+    let zeroes = VU.replicate (width bitenc) (B.Bit False)
+        pairs = S.toList $ S.map (\phi -> (index bitenc $ phi, B.Bit True)) set
     in BitVecEA $ zeroes VU.// pairs
 
   generate len = map BitVecEA $ VU.replicateM len [B.Bit False, B.Bit True]
 
   (BitVecEA v1) ++ (BitVecEA v2) = BitVecEA $ v1 VU.++ v2
+
+  null (BitVecEA bv) = bv == (zeroBits :: Vector Bit)
+
+  member bitenc phi (BitVecEA bv) | negative phi = not $ testBit bv (index bitenc $ negation phi)
+                                  | otherwise = testBit bv (index bitenc $ phi)
+
+  any bitenc predicate (BitVecEA bv) = Prelude.any (predicate . (fetch bitenc)) $ B.listBits bv
+
+  filter bitenc predicate (BitVecEA bv) =
+    let zeroes = VU.replicate (VU.length bv) (B.Bit False)
+    in BitVecEA $ zeroes VU.// map (\i -> (i, B.Bit (predicate . (fetch bitenc) $ i))) (B.listBits bv)
 
 
 newtype BVEA = BVEA BitVector deriving (Ord, Show)
@@ -78,16 +101,30 @@ instance Hashable BVEA where
   hashWithSalt salt (BVEA bv) = {-# SCC "hashBVEA" #-} (hashWithSalt salt $ BV.nat bv)
 
 instance EncodedAtom BVEA where
-  decode fetch (BVEA bv) =
-    let pos = map fetch (listBits bv)
-        neg = map (Not . fetch) (listBits . BV.complement $ bv)
+  decode bitenc (BVEA bv) =
+    let pos = map (fetch bitenc) (listBits bv)
+        neg = map (Not . (fetch bitenc)) (listBits . BV.complement $ bv)
     in S.fromList pos `S.union` S.fromList neg
-    where listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v
 
-  encode index len set =
-    BVEA $ S.foldl BV.setBit (BV.zeros len) (S.map index set)
+  encode bitenc set =
+    BVEA $ S.foldl BV.setBit (BV.zeros $ width bitenc) (S.map (index bitenc) set)
 
   generate 0 = []
   generate len = map (BVEA . BV.reverse) $ BV.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
 
   (BVEA v1) ++ (BVEA v2) = BVEA $ v2 BV.# v1
+
+  null (BVEA bv) = bv == BV.nil
+
+  member bitenc phi (BVEA bv) | negative phi = not $ bv BV.@. (index bitenc $ negation phi)
+                              | otherwise = bv BV.@. (index bitenc $ phi)
+
+  any bitenc predicate (BVEA bv) = Prelude.any (predicate . (fetch bitenc)) $ listBits bv
+
+  filter bitenc predicate (BVEA bv) = BVEA . snd $ BV.foldr filterVec (0, BV.zeros $ BV.width bv) bv
+    where filterVec b (i, acc) = if b && predicate (fetch bitenc $ i)
+                                 then (i+1, BV.setBit acc i)
+                                 else (i+1, acc)
+
+listBits :: BitVector -> [Int]
+listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v

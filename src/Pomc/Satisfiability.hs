@@ -15,9 +15,11 @@ module Pomc.Satisfiability (
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel, PrecFunc, fromStructPR)
-import Pomc.Check (Checkable(..), Input, Atom(..), State(..), makeOpa)
+import Pomc.Check (Checkable(..), getProps, Input, Atom(..), State(..), makeOpa)
 import Pomc.RPotl (Formula(Atomic), atomic)
 import Pomc.PropConv (APType, convPropLabels)
+import Pomc.Data (BitEncoding)
+import qualified Pomc.Data as D (member)
 
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
@@ -72,13 +74,13 @@ emptySM = H.new
 -- State class for satisfiability
 class SatState state where
   getSatState :: state -> State
-  getStateProps :: state -> Input
+  getStateProps :: BitEncoding -> state -> Input
 
 instance SatState State where
   getSatState = id
   {-# INLINABLE getSatState #-}
 
-  getStateProps s = Set.map (\(Atomic p) -> p) $ Set.filter atomic (atomFormulaSet . current $ s)
+  getStateProps bitenc s = getProps bitenc (current $ s)
   {-# INLINABLE getStateProps #-}
 
 
@@ -136,27 +138,28 @@ type Stack state = Maybe (Input, StateId state)
 data Globals s state = Globals
   { sIdGen :: SIdGen s state
   , visited :: HashTable s (StateId state, Stack state) ()
-  ,  suppStarts :: SetMap s (StateId state) (Stack state)
-  ,  suppEnds :: SetMap s (StateId state) (StateId state)
+  , suppStarts :: SetMap s (StateId state) (Stack state)
+  , suppEnds :: SetMap s (StateId state) (StateId state)
   }
 data Delta state = Delta
-  {  prec :: PrecFunc APType
-  ,  deltaPush :: state -> Input -> [state]
-  ,  deltaShift :: state -> Input -> [state]
-  ,  deltaPop :: state -> state -> [state]
+  { bitenc :: BitEncoding
+  , prec :: PrecFunc APType
+  , deltaPush :: state -> Input -> [state]
+  , deltaShift :: state -> Input -> [state]
+  , deltaPop :: state -> state -> [state]
   }
 
-getProps :: (SatState state) => StateId state -> Input
-getProps s = getStateProps . getState $ s
+getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
+getSidProps bitenc s = (getStateProps bitenc) . getState $ s
 
-popFirst :: (SatState state) => [state] -> [state]
-popFirst states =
+popFirst :: (SatState state) => BitEncoding -> [state] -> [state]
+popFirst bitenc states =
   let (popStates, others) = partition isMustPop states
       (endStates, otherPop) = partition isEndState popStates
   in endStates ++ otherPop ++ others
   where isMustPop s = let ss = getSatState s
                       in not (mustPush ss || mustShift ss)
-        isEndState s = Set.member (Atomic End) (atomFormulaSet . current . getSatState $ s)
+        isEndState s = D.member bitenc (Atomic End) (current . getSatState $ s)
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool)
@@ -172,15 +175,16 @@ reach isDestState isDestStack globals delta q g = do
     then return False
     else do
     H.insert (visited globals) (q, g) ()
-    let qProps = getProps q
+    let be = bitenc delta
+        qProps = getSidProps be q
         qState = getState q
         cases
           | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
           | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaPush delta) qState qProps)
+              newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaPush delta) qState qProps)
               foldM (reachPush isDestState isDestStack globals delta q g) False newStates
           | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaShift delta) qState qProps)
+              newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaShift delta) qState qProps)
               let reachShift acc p
                     = if acc
                       then return True
@@ -188,7 +192,7 @@ reach isDestState isDestStack globals delta q g = do
                            reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
               foldM reachShift False newStates
           | ((prec delta) (fst . fromJust $ g) qProps == Just Take) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst ((deltaPop delta) qState (getState . snd . fromJust $ g))
+              newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaPop delta) qState (getState . snd . fromJust $ g))
               foldM (reachPop isDestState isDestStack globals delta q g) False newStates
           | otherwise = return False
     cases
@@ -206,10 +210,10 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
 reachPush _ _ _ _ _ _ True _ = return True
 reachPush isDestState isDestStack globals delta q g False p = do
   insertSM (suppStarts globals) q g
-  alreadyVisited <- memberHT (visited globals) (p, Just (getProps q, p))
+  alreadyVisited <- memberHT (visited globals) (p, Just (getSidProps (bitenc delta) q, p))
   if not alreadyVisited
     then debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-         reach isDestState isDestStack globals delta p (Just (getProps q, q))
+         reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
     else do
     currentSuppEnds <- lookupSM (suppEnds globals) q
     foldM (\acc s -> if acc
@@ -240,7 +244,7 @@ reachPop isDestState isDestStack globals delta q g False p = do
                          reach isDestState isDestStack globals delta p g')
     False
     (Set.filter (\g' -> isNothing g' ||
-                        ((prec delta) (fst . fromJust $ g') (getProps r)) == Just Yield)
+                        ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield)
       currentSuppStarts)
 
 
@@ -274,11 +278,14 @@ isSatisfiable :: (Checkable f)
               -> PrecFunc APType
               -> Bool
 isSatisfiable phi ap precf =
-  let (initials, isFinal, dPush, dShift, dPop) = makeOpa phi ap precf
-      delta = Delta { prec = precf,
-                      deltaPush = dPush,
-                      deltaShift = dShift,
-                      deltaPop = dPop }
+  let (be, initials, isFinal, dPush, dShift, dPop) = makeOpa phi ap precf
+      delta = Delta
+        { bitenc = be
+        , prec = precf
+        , deltaPush = dPush
+        , deltaShift = dShift
+        , deltaPop = dPop
+        }
   in not $ isEmpty delta initials isFinal
 
 isSatisfiableGen :: (Checkable f, Ord a)

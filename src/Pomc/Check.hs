@@ -22,6 +22,7 @@ module Pomc.Check ( -- * Checking functions
                   , Input(..)
                   , Atom(..)
                   , State(..)
+                  , getProps
                   , makeOpa
                   ) where
 
@@ -30,7 +31,7 @@ import Pomc.Prec (Prec(..), PrecFunc, StructPrecRel, fromStructPR)
 import Pomc.Opa (run, augRun)
 import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
 import Pomc.Util (xor, implies, safeHead)
-import Pomc.Data (FormulaSet, EncodedSet)
+import Pomc.Data (FormulaSet, EncodedSet, BitEncoding(..))
 import qualified Pomc.Data as D
 import Pomc.PropConv (APType, convPropTokens)
 
@@ -69,10 +70,7 @@ instance Checkable (Formula) where
 -- Input symbol
 type Input = Set (Prop APType)
 
-data Atom = Atom
-    { atomFormulaSet :: FormulaSet
-    , atomEncodedSet :: EncodedSet
-    } deriving (Generic, NFData)
+type Atom = EncodedSet
 
 data State = State
     { current   :: Atom
@@ -82,18 +80,7 @@ data State = State
     , afterPop  :: !Bool
     } deriving (Generic, NFData, Ord, Eq)
 
--- Make things Hashable
-instance Hashable Atom where
-  hashWithSalt salt atom = hashWithSalt salt (atomEncodedSet atom)
-
 instance Hashable State
-
-
-instance Eq Atom where
-  p == q = (atomEncodedSet p) == (atomEncodedSet q)
-
-instance Ord Atom where
-  compare p q = compare (atomEncodedSet p) (atomEncodedSet q)
 
 showFormulaSet :: FormulaSet -> String
 showFormulaSet fset = let fs = S.toList fset
@@ -101,8 +88,8 @@ showFormulaSet fset = let fs = S.toList fset
                           negfs = filter (negative) fs
                       in show (posfs ++ negfs)
 
-instance Show Atom where
-  show (Atom fset eset) = "FS: " ++ showFormulaSet fset ++ "\t\tES: " ++ show eset
+showAtom :: BitEncoding -> Atom -> String
+showAtom bitenc atom = "FS: " ++ showFormulaSet (D.decode bitenc atom) ++ "\t\tES: " ++ show atom
 
 instance Show State where
   show (State c p xl xe xr) = "\n{ C: "  ++ show c             ++
@@ -112,8 +99,17 @@ instance Show State where
                               "\n, XR: " ++ show xr            ++
                               "\n}"
 
-showAtoms :: [Atom] -> String
-showAtoms = unlines . map show
+showState :: BitEncoding -> State -> String
+showState bitenc (State c p xl xe xr) =
+  "\n{ C: "  ++ showAtom bitenc c  ++
+  "\n, P: "  ++ show (S.toList p)  ++
+  "\n, XL: " ++ show xl            ++
+  "\n, X=: " ++ show xe            ++
+  "\n, XR: " ++ show xr            ++
+  "\n}"
+
+showAtoms :: BitEncoding -> [Atom] -> String
+showAtoms bitenc = unlines . map (showAtom bitenc)
 
 showPendCombs :: Set (FormulaSet, Bool, Bool, Bool) -> String
 showPendCombs = unlines . map show . S.toList
@@ -121,11 +117,14 @@ showPendCombs = unlines . map show . S.toList
 showStates :: [State] -> String
 showStates = unlines . map show
 
-atomicSet :: FormulaSet -> FormulaSet
-atomicSet = S.filter atomic
+atomicSet :: BitEncoding -> EncodedSet -> EncodedSet
+atomicSet bitenc set = D.filter bitenc atomic set
 
-compProps :: FormulaSet -> Input -> Bool
-compProps fset pset = atomicSet fset == S.map Atomic pset
+compProps :: BitEncoding -> EncodedSet -> Input -> Bool
+compProps bitenc fset pset = atomicSet bitenc fset == D.encode bitenc (S.map Atomic pset)
+
+getProps :: BitEncoding -> EncodedSet -> Input
+getProps bitenc fset = S.map (\(Atomic p) -> p) $ S.filter atomic $ D.decode bitenc fset
 
 closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
@@ -221,188 +220,205 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HierTakeHelper g   -> [f, Not f] ++ closList g
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
 
-atoms :: FormulaSet -> Set (Input) -> [Atom]
+atoms :: FormulaSet -> Set (Input) -> ([Atom], BitEncoding)
 atoms clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
 
-      atomics = map makeCouples . map (S.map Atomic) $ S.toList validPropSets
-        where makeCouples aset = let easet = D.encode atomicLookup (S.size pAtomicClos) aset
-                                     aset' = D.decode (fetch pAtomicVec) easet
-                                 in (aset', easet)
-
       pclos = S.filter (not . negative) clos
-
-      pProplessClos = S.filter (not . atomic) pclos
-      pFormulaVec = V.fromList . S.toAscList $ pProplessClos
-
-      pAtomicClos = S.filter (atomic) pclos
-      pAtomicVec = V.fromList . S.toAscList $ pAtomicClos
-      atomicLookup phi = fromJust (M.lookup phi atomicMap)
-        where atomicMap = M.fromAscList (zip (S.toAscList pAtomicClos) [0..])
 
       fetch vec i = vec V.! i
 
+      -- Mapping between positive formulas and bits
+      pFormulaClos = S.filter (not . atomic) pclos
+      pFormulaVec = V.fromList . S.toAscList $ pFormulaClos
+      pFormulaMap = M.fromAscList (zip (S.toAscList pFormulaClos) [0..])
+      pFormulaLookup phi = fromJust (M.lookup phi pFormulaMap)
+      fbitenc = BitEncoding (fetch pFormulaVec) pFormulaLookup (V.length pFormulaVec)
+
+      -- Mapping between positive atoms and bits
+      pAtomicClos = S.filter (atomic) pclos
+      pAtomicVec = V.fromList . S.toAscList $ pAtomicClos
+      pAtomicMap = M.fromAscList (zip (S.toAscList pAtomicClos) [0..])
+      pAtomicLookup phi = fromJust (M.lookup phi pAtomicMap)
+      abitenc = BitEncoding (fetch pAtomicVec) pAtomicLookup (V.length pAtomicVec)
+
+      -- Mapping between positive closure and bits
+      pClosVec = pAtomicVec V.++ pFormulaVec
+      pClosLookup phi = fromJust $ M.lookup phi pClosMap
+        where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
+      bitenc = BitEncoding (fetch pClosVec) pClosLookup (V.length pClosVec)
+
+      -- Make power set of AP
+      atomics = map (D.encode abitenc) . map (S.map Atomic) $ S.toList validPropSets
+
+      -- Consistency checks
       checks =
-        [ onlyif (T `S.member` clos) trueCons
-        , onlyif (not . null $ [f | f@(And _ _)            <- cl]) (andCons clos)
-        , onlyif (not . null $ [f | f@(Or _ _)             <- cl]) (orCons clos)
-        , onlyif (not . null $ [f | f@(ChainNext _ _)      <- cl]) (chainNextCons clos)
-        , onlyif (not . null $ [f | f@(ChainBack _ _)      <- cl]) (chainBackCons clos)
-        , onlyif (not . null $ [f | f@(Until _ _ _)        <- cl]) (untilCons clos)
-        , onlyif (not . null $ [f | f@(Since _ _ _)        <- cl]) (sinceCons clos)
-        , onlyif (not . null $ [f | f@(HierUntilYield _ _) <- cl]) (hierUntilYieldCons clos)
-        , onlyif (not . null $ [f | f@(HierSinceYield _ _) <- cl]) (hierSinceYieldCons clos)
-        , onlyif (not . null $ [f | f@(HierUntilTake _ _)  <- cl]) (hierUntilTakeCons clos)
-        , onlyif (not . null $ [f | f@(HierSinceTake _ _)  <- cl]) (hierSinceTakeCons clos)
-        , onlyif (not . null $ [f | f@(Eventually' _)      <- cl]) (evCons clos)
+        [ onlyif (T `S.member` clos) (trueCons bitenc)
+        , onlyif (not . null $ [f | f@(And _ _)            <- cl]) (andCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Or _ _)             <- cl]) (orCons bitenc clos)
+        , onlyif (not . null $ [f | f@(ChainNext _ _)      <- cl]) (chainNextCons bitenc clos)
+        , onlyif (not . null $ [f | f@(ChainBack _ _)      <- cl]) (chainBackCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Until _ _ _)        <- cl]) (untilCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Since _ _ _)        <- cl]) (sinceCons bitenc clos)
+        , onlyif (not . null $ [f | f@(HierUntilYield _ _) <- cl]) (hierUntilYieldCons bitenc clos)
+        , onlyif (not . null $ [f | f@(HierSinceYield _ _) <- cl]) (hierSinceYieldCons bitenc clos)
+        , onlyif (not . null $ [f | f@(HierUntilTake _ _)  <- cl]) (hierUntilTakeCons bitenc clos)
+        , onlyif (not . null $ [f | f@(HierSinceTake _ _)  <- cl]) (hierSinceTakeCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Eventually' _)      <- cl]) (evCons bitenc clos)
         ]
         where onlyif cond f = if cond then f else const True
               cl = S.toList clos
-      consistent fset = all (\c -> c fset) checks
+      consistent eset = all (\c -> c eset) checks
 
+      -- Make all consistent atoms
       prependCons as eset =
-        let fset = D.decode (fetch pFormulaVec) eset
-            combs = do (aset, easet) <- atomics
-                       let fset' = fset `S.union` aset
-                           eset' = easet D.++ eset
-                       guard (consistent fset')
-                       return (Atom fset' eset')
+        let combs = do easet <- atomics
+                       let eset' = easet D.++ eset
+                       guard (consistent eset')
+                       return eset'
         in as SQ.>< (SQ.fromList combs)
 
-      combineAtoms 0 = SQ.fromList $ map (\(aset, easet) -> Atom aset easet) atomics
+      combineAtoms 0 = SQ.fromList atomics
       combineAtoms len = foldl' prependCons SQ.empty (D.generate len)
 
-  in toList $ combineAtoms (V.length pFormulaVec)
+  in (toList $ combineAtoms (V.length pFormulaVec), bitenc)
 
-atomicCons :: (Input -> Bool) -> FormulaSet -> Bool
-atomicCons valid set =
-  let propSet = S.fromList [p | Atomic p <- S.toList set]
-      size = S.size propSet
-  in (End `S.member` propSet) `implies` (size == 1) && valid propSet
+trueCons :: BitEncoding -> EncodedSet -> Bool
+trueCons bitenc set = not $ D.member bitenc (Not T) set
 
-trueCons :: FormulaSet -> Bool
-trueCons set = not (Not T `S.member` set)
+andCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+andCons bitenc clos set = not (D.any bitenc consSet set)
+                          &&
+                          null [f | f@(And g h) <- S.toList clos,
+                                 (D.member bitenc g set) &&
+                                 (D.member bitenc h set) &&
+                                 not (D.member bitenc f set)]
+  where consSet (And g h) = not $ D.member bitenc g set && D.member bitenc h set
+        consSet _ = False
 
-andCons :: FormulaSet -> FormulaSet -> Bool
-andCons clos set = null [f | f@(And g h) <- S.toList set,
-                                            not (g `S.member` set) ||
-                                            not (h `S.member` set)]
-                   &&
-                   null [f | f@(And g h) <- S.toList clos,
-                                            (g `S.member` set) &&
-                                            (h `S.member` set) &&
-                                            not (f `S.member` set)]
-
-orCons :: FormulaSet -> FormulaSet -> Bool
-orCons clos set = null [f | f@(Or g h) <- S.toList set,
-                                          not (g `S.member` set) &&
-                                          not (h `S.member` set)]
-                  &&
-                  null [f | f@(Or g h) <- S.toList clos,
-                                          ((g `S.member` set) ||
-                                           (h `S.member` set)
-                                          ) && not (f `S.member` set)]
-
-chainNextCons :: FormulaSet -> FormulaSet -> Bool
-chainNextCons clos set = null [f | f@(ChainNext pset g) <- S.toList set,
-                                                           S.size pset > 1 &&
-                                                           not (present pset g)]
+orCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+orCons bitenc clos set = not (D.any bitenc consSet set)
                          &&
-                         null [f | f@(ChainNext pset g) <- S.toList clos,
-                                                           S.size pset > 1 &&
-                                                           present pset g &&
-                                                           not (f `S.member` set)]
-  where present pset g = any (\p -> ChainNext (S.singleton p) g `S.member` set)
+                         null [f | f@(Or g h) <- S.toList clos,
+                                ((D.member bitenc g set) ||
+                                 (D.member bitenc h set)
+                                ) && not (D.member bitenc f set)]
+  where consSet (Or g h) = not $ D.member bitenc g set || D.member bitenc h set
+        consSet _ = False
+
+chainNextCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+chainNextCons bitenc clos set = not (D.any bitenc consSet set)
+                                &&
+                                null [f | f@(ChainNext pset g) <- S.toList clos,
+                                                                  S.size pset > 1 &&
+                                                                  present pset g &&
+                                                                  not (D.member bitenc f set)]
+  where present pset g = any (\p -> D.member bitenc (ChainNext (S.singleton p) g) set)
                              (S.toList pset)
+        consSet (ChainNext pset g) = S.size pset > 1 && not (present pset g)
+        consSet _ = False
 
-chainBackCons :: FormulaSet -> FormulaSet -> Bool
-chainBackCons clos set = null [f | f@(ChainBack pset g) <- S.toList set,
-                                                           S.size pset > 1 &&
-                                                           not (present pset g)]
-                         &&
-                         null [f | f@(ChainBack pset g) <- S.toList clos,
-                                                           S.size pset > 1 &&
-                                                           present pset g &&
-                                                           not (f `S.member` set)]
-  where present pset g = any (\p -> ChainBack (S.singleton p) g `S.member` set)
+chainBackCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+chainBackCons bitenc clos set = not (D.any bitenc consSet set)
+                                &&
+                                null [f | f@(ChainBack pset g) <- S.toList clos,
+                                                                  S.size pset > 1 &&
+                                                                  present pset g &&
+                                                                  not (D.member bitenc f set)]
+  where present pset g = any (\p -> D.member bitenc (ChainBack (S.singleton p) g) set)
                              (S.toList pset)
+        consSet (ChainBack pset g) = S.size pset > 1 && not (present pset g)
+        consSet _ = False
 
-untilCons :: FormulaSet -> FormulaSet -> Bool
-untilCons clos set = null [f | f@(Until pset g h) <- S.toList set,
-                                                     not (present f pset g h)]
-                     &&
-                     null [f | f@(Until pset g h) <- S.toList clos,
-                                                     present f pset g h &&
-                                                     not (f `S.member` set)]
-  where present u pset g h = (h `S.member` set) ||
-                             ((S.fromList [g, PrecNext  pset u]) `S.isSubsetOf` set) ||
-                             ((S.fromList [g, ChainNext pset u]) `S.isSubsetOf` set)
+untilCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+untilCons bitenc clos set = not (D.any bitenc consSet set)
+                            &&
+                            null [f | f@(Until pset g h) <- S.toList clos,
+                                                            present f pset g h &&
+                                                            not (D.member bitenc f set)]
+  where present u pset g h = D.member bitenc h set
+                             || (D.member bitenc g set
+                                 && (D.member bitenc (PrecNext  pset u) set
+                                     || D.member bitenc (ChainNext pset u) set))
+        consSet f@(Until pset g h) = not $ present f pset g h
+        consSet _ = False
 
-sinceCons :: FormulaSet -> FormulaSet -> Bool
-sinceCons clos set = null [f | f@(Since pset g h) <- S.toList set,
-                                                     not (present f pset g h)]
-                     &&
-                     null [f | f@(Since pset g h) <- S.toList clos,
-                                                     present f pset g h &&
-                                                     not (f `S.member` set)]
-  where present s pset g h = (h `S.member` set) ||
-                             ((S.fromList [g, PrecBack  pset s]) `S.isSubsetOf` set) ||
-                             ((S.fromList [g, ChainBack pset s]) `S.isSubsetOf` set)
+sinceCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+sinceCons bitenc clos set = not (D.any bitenc consSet set)
+                            &&
+                            null [f | f@(Since pset g h) <- S.toList clos,
+                                                            present f pset g h &&
+                                                            not (D.member bitenc f set)]
+  where present s pset g h = D.member bitenc h set
+                             || (D.member bitenc g set
+                                 && (D.member bitenc (PrecBack pset s) set
+                                     || D.member bitenc (ChainBack pset s) set))
+        consSet f@(Since pset g h) = not $ present f pset g h
+        consSet _ = False
 
-hierUntilYieldCons :: FormulaSet -> FormulaSet -> Bool
-hierUntilYieldCons clos set = null [f | f@(HierUntilYield g h) <- S.toList set,
-                                                                  not (present f g h)]
-                              &&
-                              null [f | f@(HierUntilYield g h) <- S.toList clos,
-                                                                  present f g h &&
-                                                                  not (f `S.member` set)]
+hierUntilYieldCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+hierUntilYieldCons bitenc clos set = not (D.any bitenc consSet set)
+                                     &&
+                                     null [f | f@(HierUntilYield g h) <- S.toList clos,
+                                                                         present f g h &&
+                                                                         not (D.member bitenc f set)]
   where present huy g h =
-          ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
-          ((S.fromList [g, HierNextYield huy])               `S.isSubsetOf` set)
+          (D.member bitenc h set && D.member bitenc (ChainBack (S.singleton Yield) T) set)
+          ||
+          (D.member bitenc g set && D.member bitenc (HierNextYield huy) set)
+        consSet f@(HierUntilYield g h) = not $ present f g h
+        consSet _ = False
 
-hierSinceYieldCons :: FormulaSet -> FormulaSet -> Bool
-hierSinceYieldCons clos set = null [f | f@(HierSinceYield g h) <- S.toList set,
-                                                                  not (present f g h)]
-                              &&
-                              null [f | f@(HierSinceYield g h) <- S.toList clos,
-                                                                  present f g h &&
-                                                                  not (f `S.member` set)]
+hierSinceYieldCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+hierSinceYieldCons bitenc clos set = not (D.any bitenc consSet set)
+                                     &&
+                                     null [f | f@(HierSinceYield g h) <- S.toList clos,
+                                                                         present f g h &&
+                                                                         not (D.member bitenc f set)]
   where present hsy g h =
-          ((S.fromList [h, ChainBack (S.singleton Yield) T]) `S.isSubsetOf` set) ||
-          ((S.fromList [g, HierBackYield hsy])               `S.isSubsetOf` set)
+          (D.member bitenc h set && D.member bitenc (ChainBack (S.singleton Yield) T) set)
+          ||
+          (D.member bitenc g set && D.member bitenc (HierBackYield hsy) set)
+        consSet f@(HierSinceYield g h) = not $ present f g h
+        consSet _ = False
 
-hierUntilTakeCons :: FormulaSet -> FormulaSet -> Bool
-hierUntilTakeCons clos set = null [f | f@(HierUntilTake g h) <- S.toList set,
-                                                                not (present f g h)]
-                             &&
-                             null [f | f@(HierUntilTake g h) <- S.toList clos,
-                                                                present f g h &&
-                                                                not (f `S.member` set)]
+hierUntilTakeCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+hierUntilTakeCons bitenc clos set = not (D.any bitenc consSet set)
+                                    &&
+                                    null [f | f@(HierUntilTake g h) <- S.toList clos,
+                                                                       present f g h &&
+                                                                       not (D.member bitenc f set)]
   where present hut g h =
-          ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
-          ((S.fromList [g, HierNextTake hut])               `S.isSubsetOf` set)
+          (D.member bitenc h set && D.member bitenc (ChainNext (S.singleton Take) T) set)
+          ||
+          (D.member bitenc g set && D.member bitenc (HierNextTake hut) set)
+        consSet f@(HierUntilTake g h) = not $ present f g h
+        consSet _ = False
 
-hierSinceTakeCons :: FormulaSet -> FormulaSet -> Bool
-hierSinceTakeCons clos set = null [f | f@(HierSinceTake g h) <- S.toList set,
-                                                                not (present f g h)]
-                             &&
-                             null [f | f@(HierSinceTake g h) <- S.toList clos,
-                                                                present f g h &&
-                                                                not (f `S.member` set)]
+hierSinceTakeCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+hierSinceTakeCons bitenc clos set = not (D.any bitenc consSet set)
+                                    &&
+                                    null [f | f@(HierSinceTake g h) <- S.toList clos,
+                                                                       present f g h &&
+                                                                       not (D.member bitenc f set)]
   where present hst g h =
-          ((S.fromList [h, ChainNext (S.singleton Take) T]) `S.isSubsetOf` set) ||
-          ((S.fromList [g, HierBackTake hst])               `S.isSubsetOf` set)
+          (D.member bitenc h set && D.member bitenc (ChainNext (S.singleton Take) T) set)
+          ||
+          (D.member bitenc g set && D.member bitenc (HierBackTake hst) set)
+        consSet f@(HierSinceTake g h) = not $ present f g h
+        consSet _ = False
 
-evCons :: FormulaSet -> FormulaSet -> Bool
-evCons clos set = null [f | f@(Eventually' g) <- S.toList set,
-                                                 not (present f g)]
-                  &&
-                  null [f | f@(Eventually' g) <- S.toList clos,
-                                                 present f g &&
-                                                 not (f `S.member` set)]
+evCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+evCons bitenc clos set = not (D.any bitenc consSet set)
+                         &&
+                         null [f | f@(Eventually' g) <- S.toList clos,
+                                                        present f g &&
+                                                        not (D.member bitenc f set)]
   where present ev g =
-          (g `S.member` set) ||
-          (PrecNext (S.fromList [Yield, Equal, Take]) ev `S.member` set)
+          (D.member bitenc g set) ||
+          (D.member bitenc (PrecNext (S.fromList [Yield, Equal, Take]) ev) set)
+        consSet f@(Eventually' g) = not $ present f g
+        consSet _ = False
 
 pendCombs :: FormulaSet -> Set (FormulaSet, Bool, Bool, Bool)
 pendCombs clos =
@@ -421,11 +437,13 @@ pendCombs clos =
                                        xr <- [False, True],
                                        not (xl && xe)]
 
-initials :: Formula APType -> FormulaSet -> [Atom] -> [State]
-initials phi clos atoms =
-  let compatible atom = let fset = atomFormulaSet atom
-                        in phi `S.member` fset &&
-                           null [f | f@(PrecBack {}) <- S.toList fset]
+initials :: Formula APType -> FormulaSet -> ([Atom], BitEncoding) -> [State]
+initials phi clos (atoms, bitenc) =
+  let compatible atom = let set = atom
+                            checkPb (PrecBack {}) = True
+                            checkPb _ = False
+                        in D.member bitenc phi set &&
+                           (not $ D.any bitenc checkPb set)
       compAtoms = filter compatible atoms
       cnyfSet = S.fromList [f | f@(ChainNext pset _) <- S.toList clos,
                                                         pset == (S.singleton Yield)]
@@ -435,8 +453,8 @@ initials phi clos atoms =
 resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
 
-deltaRules :: FormulaSet -> (RuleGroup, RuleGroup, RuleGroup)
-deltaRules condInfo =
+deltaRules :: BitEncoding -> FormulaSet -> (RuleGroup, RuleGroup, RuleGroup)
+deltaRules bitenc condInfo =
   let shiftGroup = RuleGroup
         { ruleGroupPrs  = resolve condInfo [ (const True, xlShiftPr)
                                            , (const True, xeShiftPr)
@@ -546,9 +564,9 @@ deltaRules condInfo =
 
     -- Prop rules
     propPushPr info =
-      let pCurr = atomFormulaSet . current $ prState info
+      let pCurr = current $ prState info
           props = fromJust (prProps info)
-      in compProps pCurr props
+      in compProps bitenc pCurr props
 
     propShiftPr = propPushPr
     --
@@ -558,10 +576,10 @@ deltaRules condInfo =
 
     pnPushFcr info =
       let clos = fcrClos info
-          pCurr = atomFormulaSet . current $ fcrState info
+          pCurr = (D.decode bitenc) . current $ fcrState info
           precFunc = fcrPrecFunc info
           props = fromJust (fcrProps info)
-          fCurr = atomFormulaSet (fcrFutureCurr info)
+          fCurr = D.decode bitenc $ (fcrFutureCurr info)
 
           pCurrPnfs = [f | f@(PrecNext _ _) <- S.toList pCurr]
 
@@ -587,10 +605,10 @@ deltaRules condInfo =
 
     pbPushFcr info =
       let clos = fcrClos info
-          pCurr = atomFormulaSet . current $ fcrState info
+          pCurr = (D.decode bitenc) . current $ fcrState info
           precFunc = fcrPrecFunc info
           props = fromJust (fcrProps info)
-          fCurr = atomFormulaSet (fcrFutureCurr info)
+          fCurr = (D.decode bitenc) $ (fcrFutureCurr info)
 
           fCurrPbfs = [f | f@(PrecBack _ _) <- S.toList fCurr]
 
@@ -616,21 +634,21 @@ deltaRules condInfo =
                                                           pset == S.singleton Yield])
 
     cnyPushFpr info =
-      let pCurr = atomFormulaSet . current $ fprState info
+      let pCurr = current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
-          pCurrCnyfs = [f | f@(ChainNext pset _) <- S.toList pCurr,
-                                                    pset == S.singleton Yield]
-          fPendCnyfs = [f | f@(ChainNext pset _) <- S.toList fPend,
-                                                    pset == S.singleton Yield]
+          pCurrCnyfs = D.filter bitenc checkCny pCurr
+          fPendCnyfs = D.encode bitenc $ S.filter checkCny fPend
+          checkCny (ChainNext pset _) = pset == S.singleton Yield
+          checkCny _ = False
       in if fXl
-           then S.fromList pCurrCnyfs == S.fromList fPendCnyfs
-           else null pCurrCnyfs
+           then pCurrCnyfs == fPendCnyfs
+           else D.null pCurrCnyfs
 
     cnyShiftFpr = cnyPushFpr
 
     cnyPopFpr info =
       let clos = fprClos info
-          pCurr = atomFormulaSet . current $ fprState info
+          pCurr = (D.decode bitenc) . current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
           ppPend = pending $ fromJust (fprPopped info)
           ppPendCnyfs = [f | f@(ChainNext pset _) <- S.toList ppPend,
@@ -651,15 +669,15 @@ deltaRules condInfo =
                                                           pset == S.singleton Equal])
 
     cnePushFpr info =
-      let pCurr = atomFormulaSet . current $ fprState info
+      let pCurr = current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
-          fPendCnefs = [f | f@(ChainNext pset _) <- S.toList fPend,
-                                                    pset == S.singleton Equal]
-          pCurrCnefs = [f | f@(ChainNext pset _) <- S.toList pCurr,
-                                                    pset == S.singleton Equal]
+          fPendCnefs = D.encode bitenc $ S.filter checkCne fPend
+          pCurrCnefs = D.filter bitenc checkCne pCurr
+          checkCne (ChainNext pset _) = pset == S.singleton Equal
+          checkCne _ = False
       in if fXl
-           then S.fromList pCurrCnefs == S.fromList fPendCnefs
-           else null pCurrCnefs
+           then pCurrCnefs == fPendCnefs
+           else D.null pCurrCnefs
 
     cneShiftFpr = cnePushFpr
 
@@ -680,13 +698,13 @@ deltaRules condInfo =
 
     cneShiftPr info =
       let clos = prClos info
-          pCurr = atomFormulaSet . current $ prState info
+          pCurr = current $ prState info
           pPend = pending (prState info)
           pPendCnefs = [f | f@(ChainNext pset _) <- S.toList pPend,
                                                     pset == S.singleton Equal]
           pCheckList = [f | f@(ChainNext pset g) <- S.toList clos,
                                                     pset == S.singleton Equal,
-                                                    g `S.member` pCurr]
+                                                    D.member bitenc g pCurr]
       in S.fromList pCheckList == S.fromList pPendCnefs
     --
 
@@ -695,27 +713,27 @@ deltaRules condInfo =
                                                           pset == S.singleton Take])
 
     cntPushFpr info =
-      let pCurr = atomFormulaSet . current $ fprState info
+      let pCurr = current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
-          fPendCntfs = [f | f@(ChainNext pset _) <- S.toList fPend,
-                                                    pset == S.singleton Take]
-          pCurrCntfs = [f | f@(ChainNext pset _) <- S.toList pCurr,
-                                                    pset == S.singleton Take]
+          fPendCntfs = D.encode bitenc $ S.filter checkCnt fPend
+          pCurrCntfs = D.filter bitenc checkCnt pCurr
+          checkCnt (ChainNext pset _) = pset == S.singleton Take
+          checkCnt _ = False
       in if fXl
-           then S.fromList pCurrCntfs == S.fromList fPendCntfs
-           else null pCurrCntfs
+           then pCurrCntfs == fPendCntfs
+           else D.null pCurrCntfs
 
     cntShiftFpr = cntPushFpr
 
     cntPopPr info =
       let clos = prClos info
-          pCurr = atomFormulaSet . current $ prState info
+          pCurr = current $ prState info
           pPend = pending (prState info)
           pPendCntfs = [f | f@(ChainNext pset _) <- S.toList pPend,
                                                     pset == S.singleton Take]
           pCheckList = [f | f@(ChainNext pset g) <- S.toList clos,
                                                     pset == S.singleton Take,
-                                                    g `S.member` pCurr]
+                                                    D.member bitenc g pCurr]
       in S.fromList pCheckList == S.fromList pPendCntfs
 
     cntPopFpr info =
@@ -739,22 +757,22 @@ deltaRules condInfo =
                                                           pset == S.singleton Yield])
 
     cbyPushPr info =
-      let pCurr = atomFormulaSet . current $ prState info
+      let pCurr = current $ prState info
           pPend = pending (prState info)
           pXr = afterPop (prState info)
-          pCurrCbyfs = [f | f@(ChainBack pset _) <- S.toList pCurr,
-                                                    pset == S.singleton Yield]
-          pPendCbyfs = [f | f@(ChainBack pset _) <- S.toList pPend,
-                                                    pset == S.singleton Yield]
+          pCurrCbyfs = D.filter bitenc checkCby pCurr
+          pPendCbyfs = D.encode bitenc $ S.filter checkCby pPend
+          checkCby (ChainBack pset _) = pset == S.singleton Yield
+          checkCby _ = False
       in if pXr
-           then S.fromList pCurrCbyfs == S.fromList pPendCbyfs
-           else null pCurrCbyfs
+           then pCurrCbyfs == pPendCbyfs
+           else D.null pCurrCbyfs
 
     cbyShiftPr info =
-      let pCurr = atomFormulaSet . current $ prState info
-          pCurrCbyfs = [f | f@(ChainBack pset _) <- S.toList pCurr,
-                                                    pset == S.singleton Yield]
-      in null pCurrCbyfs
+      let pCurr = current $ prState info
+          checkCby (ChainBack pset _) = pset == S.singleton Yield
+          checkCby _ = False
+      in not $ D.any bitenc checkCby pCurr
 
     cbyPopFpr info =
       let ppPend = pending $ fromJust (fprPopped info)
@@ -767,13 +785,13 @@ deltaRules condInfo =
 
     cbyPushFpr info =
       let clos = fprClos info
-          pCurr = atomFormulaSet . current $ fprState info
+          pCurr = current $ fprState info
           (fPend, _, _, _) = fprFuturePendComb info
           fPendCbyfs = [f | f@(ChainBack pset _) <- S.toList fPend,
                                                     pset == S.singleton Yield]
           pCheckSet = S.fromList [f | f@(ChainBack pset g) <- S.toList clos,
                                                               pset == S.singleton Yield &&
-                                                              g `S.member` pCurr]
+                                                              D.member bitenc g pCurr]
       in S.fromList fPendCbyfs == pCheckSet
 
     cbyShiftFpr = cbyPushFpr
@@ -784,22 +802,22 @@ deltaRules condInfo =
                                                           pset == S.singleton Equal])
 
     cbeShiftPr info =
-      let pCurr = atomFormulaSet . current $ prState info
+      let pCurr = current $ prState info
           pPend = pending (prState info)
           pXr = afterPop (prState info)
-          pCurrCbefs = [f | f@(ChainBack pset _) <- S.toList pCurr,
-                                                    pset == S.singleton Equal]
-          pPendCbefs = [f | f@(ChainBack pset _) <- S.toList pPend,
-                                                    pset == S.singleton Equal]
+          pCurrCbefs = D.filter bitenc checkCbe pCurr
+          pPendCbefs = D.encode bitenc $ S.filter checkCbe pPend
+          checkCbe (ChainBack pset _) = pset == S.singleton Equal
+          checkCbe _ = False
       in if pXr
-           then S.fromList pCurrCbefs == S.fromList pPendCbefs
-           else null pCurrCbefs
+           then pCurrCbefs == pPendCbefs
+           else D.null pCurrCbefs
 
     cbePushPr info =
-      let pCurr = atomFormulaSet . current $ prState info
-          pCurrCbefs = [f | f@(ChainBack pset _) <- S.toList pCurr,
-                                                    pset == S.singleton Equal]
-      in null pCurrCbefs
+      let pCurr = current $ prState info
+          checkCbe (ChainBack pset _) = pset == S.singleton Equal
+          checkCbe _ = False
+      in not $ D.any bitenc checkCbe pCurr
 
     cbePopFpr info =
       let ppPend = pending $ fromJust (fprPopped info)
@@ -812,14 +830,14 @@ deltaRules condInfo =
 
     cbePushFpr info =
       let clos = fprClos info
-          pCurr = atomFormulaSet . current $ fprState info
+          pCurr = current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
 
           fPendCbefs = [f | f@(ChainBack pset _) <- S.toList fPend,
                                                     pset == S.singleton Equal]
           pCheckSet = S.fromList [f | f@(ChainBack pset g) <- S.toList clos,
                                                               pset == S.singleton Equal &&
-                                                              g `S.member` pCurr]
+                                                              D.member bitenc g pCurr]
       in S.fromList fPendCbefs == pCheckSet
 
     cbeShiftFpr = cbePushFpr
@@ -838,16 +856,16 @@ deltaRules condInfo =
     cbtShiftFpr = cbtPushFpr
 
     cbtPushPr info =
-      let pCurr = atomFormulaSet . current $ prState info
+      let pCurr = current $ prState info
           pPend = pending (prState info)
           pXr = afterPop (prState info)
-          pCurrCbtfs = [f | f@(ChainBack pset _) <- S.toList pCurr,
-                                                    pset == S.singleton Take]
-          pPendCbtfs = [f | f@(ChainBack pset _) <- S.toList pPend,
-                                                    pset == S.singleton Take]
+          pCurrCbtfs = D.filter bitenc checkCbt pCurr
+          pPendCbtfs = D.encode bitenc $ S.filter checkCbt pPend
+          checkCbt (ChainBack pset _) = pset == S.singleton Take
+          checkCbt _ = False
       in if pXr
-           then S.fromList pCurrCbtfs == S.fromList pPendCbtfs
-           else null pCurrCbtfs
+           then pCurrCbtfs == pPendCbtfs
+           else D.null pCurrCbtfs
 
     cbtShiftPr = cbtPushPr
 
@@ -855,7 +873,7 @@ deltaRules condInfo =
       let clos = fprClos info
           pPend = pending (fprState info)
           (fPend, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          ppCurr = (D.decode bitenc) . current $ fromJust (fprPopped info)
           pPendCbtfs = [f | f@(ChainBack pset _) <- S.toList pPend,
                                                     pset == S.singleton Take]
           fPendCbtfs = [f | f@(ChainBack pset _) <- S.toList fPend,
@@ -881,33 +899,36 @@ deltaRules condInfo =
     hnyCond clos = not (null [f | f@(HierNextYield _) <- S.toList clos])
 
     hnyPushPr1 info =
-      let pCurr = atomFormulaSet . current $ prState info
+      let pCurr = current $ prState info
           pXr = afterPop (prState info)
-          pCurrHnyfs = [f | f@(HierNextYield _) <- S.toList pCurr]
-      in if not (null pCurrHnyfs)
+          checkHny (HierNextYield _) = True
+          checkHny _ = False
+      in if D.any bitenc checkHny pCurr
            then pXr
            else True
 
     hnyPushPr2 info =
       let clos = prClos info
-          pCurr = atomFormulaSet . current $ prState info
+          pCurr = current $ prState info
           pPend = pending (prState info)
           pXr = afterPop (prState info)
           pPendHnyfs = [f | f@(HierNextYield _) <- S.toList pPend]
           checkSet = S.fromList [f | f@(HierNextYield g) <- S.toList clos,
-                                                            g `S.member` pCurr]
+                                                            D.member bitenc g pCurr]
       in if pXr
            then checkSet == S.fromList pPendHnyfs
            else null pPendHnyfs
 
     hnyPopFpr info =
       let (fPend, _, _, _) = fprFuturePendComb info
-          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          ppCurr = current $ fromJust (fprPopped info)
           ppXr = afterPop $ fromJust (fprPopped info)
-          fPendHnyfs = [f | f@(HierNextYield _) <- S.toList fPend]
-          ppCurrHnyfs = [f | f@(HierNextYield _) <- S.toList ppCurr]
+          fPendHnyfs = D.encode bitenc $ S.filter checkHny fPend
+          ppCurrHnyfs = D.filter bitenc checkHny ppCurr
+          checkHny (HierNextYield _) = True
+          checkHny _ = False
       in if ppXr
-           then S.fromList ppCurrHnyfs == S.fromList fPendHnyfs
+           then ppCurrHnyfs == fPendHnyfs
            else True
 
     hnyPopPr info =
@@ -916,39 +937,41 @@ deltaRules condInfo =
       in null pPendHnyfs
 
     hnyShiftPr info =
-      let pCurr = atomFormulaSet . current $ prState info
+      let pCurr = current $ prState info
           pPend = pending (prState info)
-          pCurrHnyfs = [f | f@(HierNextYield _) <- S.toList pCurr]
-          pPendHnyfs = [f | f@(HierNextYield _) <- S.toList pPend]
-      in null pCurrHnyfs && null pPendHnyfs
+          pPendHnyfs = S.filter checkHny pPend
+          checkHny (HierNextYield _) = True
+          checkHny _ = False
+      in (not $ D.any bitenc checkHny pCurr) && S.null pPendHnyfs
     --
 
     -- HBY
+    checkHby (HierBackYield _) = True
+    checkHby _ = False
+
     hbyCond clos = not (null [f | f@(HierBackYield _) <- S.toList clos])
 
     hbyPushPr info =
-      let pCurr = atomFormulaSet . current $ prState info
+      let pCurr = current $ prState info
           pXl = mustPush (prState info)
           pXr = afterPop (prState info)
-          pCurrHbyfs = [f | f@(HierBackYield _) <- S.toList pCurr]
-      in if not (null pCurrHbyfs)
+      in if D.any bitenc checkHby pCurr
            then pXl && pXr
            else True
 
     hbyShiftPr info =
-      let pCurr = atomFormulaSet . current $ prState info
-          pCurrHbyfs = [f | f@(HierBackYield _) <- S.toList pCurr]
-      in null pCurrHbyfs
+      let pCurr = current $ prState info
+      in not $ D.any bitenc checkHby pCurr
 
     hbyPopFr info =
       let clos = frClos info
           (_, fXl, _, _) = frFuturePendComb info
-          fCurr = atomFormulaSet (frFutureCurr info)
-          ppCurr = atomFormulaSet . current $ fromJust (frPopped info)
+          fCurr = (D.decode bitenc) $ frFutureCurr info
+          ppCurr = current $ fromJust (frPopped info)
           ppXr = afterPop $ fromJust (frPopped info)
           fCurrHbyfs = [f | f@(HierBackYield _) <- S.toList fCurr]
           checkSet = S.fromList [f | f@(HierBackYield g) <- S.toList clos,
-                                                            g `S.member` ppCurr]
+                                                            D.member bitenc g ppCurr]
       in if fXl
            then if ppXr
                   then S.fromList fCurrHbyfs == checkSet
@@ -962,13 +985,13 @@ deltaRules condInfo =
     hntPopFpr1 info =
       let clos = fprClos info
           (fPend, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          ppCurr = current $ fromJust (fprPopped info)
 
           fPendHntfs = [f | f@(HierNextTake _) <- S.toList fPend]
 
           hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierNextTake g) <- S.toList clos,
-                                                           hth g `S.member` ppCurr]
+                                                           D.member bitenc (hth g) ppCurr]
       in if not fXl && not fXe
            then S.fromList fPendHntfs == checkSet
            else True
@@ -977,13 +1000,13 @@ deltaRules condInfo =
       let clos = fprClos info
           pPend = pending (fprState info)
           (_, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          ppCurr = current $ fromJust (fprPopped info)
 
           pPendHntfs = [f | f@(HierNextTake _) <- S.toList pPend]
 
           hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierNextTake _) <- S.toList clos,
-                                                           hth f `S.member` ppCurr]
+                                                           D.member bitenc (hth f) ppCurr]
       in if not fXl && not fXe
            then S.fromList pPendHntfs == checkSet
            else True
@@ -992,20 +1015,21 @@ deltaRules condInfo =
       let clos = fprClos info
           pPend = pending (fprState info)
           (_, _, fXe, _) = fprFuturePendComb info
-          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          ppCurr = current $ fromJust (fprPopped info)
 
           hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierNextTake _) <- S.toList clos,
-                                                           hth f `S.member` ppCurr]
+                                                           D.member bitenc (hth f) ppCurr]
       in if not (null checkSet)
            then not fXe
            else True
 
     hntPushFpr1 info =
-      let pCurr = atomFormulaSet . current $ fprState info
+      let pCurr = current $ fprState info
           (_, fXl, _, _) = fprFuturePendComb info
-          pCurrHntfs = [f | f@(HierNextTake _) <- S.toList pCurr]
-      in if not (null pCurrHntfs)
+          checkHnt (HierNextTake _) = True
+          checkHnt _ = False
+      in if D.any bitenc checkHnt pCurr
            then fXl
            else True
 
@@ -1026,13 +1050,13 @@ deltaRules condInfo =
       let clos = fprClos info
           pPend = pending (fprState info)
           (_, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          ppCurr = current $ fromJust (fprPopped info)
 
           pPendHbtfs = [f | f@(HierBackTake _) <- S.toList pPend]
 
           hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierBackTake g) <- S.toList clos,
-                                                           hth g `S.member` ppCurr]
+                                                           D.member bitenc (hth g) ppCurr]
       in if not fXl && not fXe
            then S.fromList pPendHbtfs == checkSet
            else True
@@ -1040,13 +1064,13 @@ deltaRules condInfo =
     hbtPopFpr2 info =
       let clos = fprClos info
           (fPend, fXl, _, _) = fprFuturePendComb info
-          ppCurr = atomFormulaSet . current $ fromJust (fprPopped info)
+          ppCurr = current $ fromJust (fprPopped info)
 
           fPendHbtfs = [f | f@(HierBackTake _) <- S.toList fPend]
 
           hth = HierTakeHelper
           checkSet = S.fromList [f | f@(HierBackTake _) <- S.toList clos,
-                                                           hth f `S.member` ppCurr]
+                                                           D.member bitenc (hth f) ppCurr]
       in if not fXl
            then S.fromList fPendHbtfs == checkSet
            else True
@@ -1060,10 +1084,11 @@ deltaRules condInfo =
            else True
 
     hbtPushFpr info =
-      let pCurr = atomFormulaSet . current $ fprState info
+      let pCurr = current $ fprState info
           (_, fXl, _, _) = fprFuturePendComb info
-          pCurrHbtfs = [f | f@(HierBackTake _) <- S.toList pCurr]
-      in if not (null pCurrHbtfs)
+          checkHbt (HierBackTake _) = True
+          checkHbt _ = False
+      in if D.any bitenc checkHbt pCurr
            then fXl
            else True
 
@@ -1078,20 +1103,22 @@ deltaRules condInfo =
     --
 
     -- HTH
+    checkHth (HierTakeHelper _) = True
+    checkHth _ = False
+
     hthCond clos = not (null [f | f@(HierTakeHelper _) <- S.toList clos])
 
     hthPushPr info =
-      let pCurr = atomFormulaSet . current $ prState info
+      let pCurr = current $ prState info
           pPend = pending (prState info)
           pXr = afterPop (prState info)
-          pCurrHthfs = [f | f@(HierTakeHelper _) <- S.toList pCurr]
-          pPendHthfs = [f | f@(HierTakeHelper _) <- S.toList pPend]
-      in S.fromList pCurrHthfs == S.fromList pPendHthfs
+          pCurrHthfs = D.filter bitenc checkHth pCurr
+          pPendHthfs = D.encode bitenc $ S.filter checkHth pPend
+      in pCurrHthfs == pPendHthfs
 
     hthShiftPr info =
-      let pCurr = atomFormulaSet . current $ prState info
-          pCurrHthfs = [f | f@(HierTakeHelper _) <- S.toList pCurr]
-      in null pCurrHthfs
+      let pCurr = current $ prState info
+      in not $ D.any bitenc checkHth pCurr
 
     hthPopFpr info =
       let ppPend = pending $ fromJust (fprPopped info)
@@ -1102,11 +1129,11 @@ deltaRules condInfo =
 
     hthPushFpr info =
       let clos = fprClos info
-          pCurr = atomFormulaSet . current $ fprState info
+          pCurr = current $ fprState info
           (fPend, _, _, _) = fprFuturePendComb info
           fPendHthfs = [f | f@(HierTakeHelper _) <- S.toList fPend]
           pCheckSet = S.fromList [f | f@(HierTakeHelper g) <- S.toList clos,
-                                                              g `S.member` pCurr]
+                                                              D.member bitenc g pCurr]
       in S.fromList fPendHthfs == pCheckSet
 
     hthShiftFpr = hthPushFpr
@@ -1160,17 +1187,17 @@ data RuleGroup = RuleGroup { ruleGroupPrs  :: [PresentRule      ]
                            , ruleGroupFrs  :: [FutureRule       ]
                            }
 
-augDeltaRules :: FormulaSet -> (RuleGroup, RuleGroup, RuleGroup)
-augDeltaRules cl =
-  let (shiftrg, pushrg, poprg) = deltaRules cl
+augDeltaRules :: BitEncoding -> FormulaSet -> (RuleGroup, RuleGroup, RuleGroup)
+augDeltaRules bitenc cl =
+  let (shiftrg, pushrg, poprg) = deltaRules bitenc cl
       augShiftRg = shiftrg {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs shiftrg}
       augPushRg  = pushrg  {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs pushrg}
       augPopRg   = poprg
   in (augShiftRg, augPushRg, augPopRg)
   where
-    lookaheadFcr info = let fCurr = atomFormulaSet (fcrFutureCurr info)
+    lookaheadFcr info = let fCurr = fcrFutureCurr info
                             nextProps = fromJust (fcrNextProps info)
-                        in compProps fCurr nextProps
+                        in compProps bitenc fCurr nextProps
 
 delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
   where
@@ -1229,14 +1256,14 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                                             }
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
-isFinal :: State -> Bool
-isFinal s@(State c p xl xe xr) = debug $ not xl && -- xe can be instead accepted, as if # = #
-                                         currAtomic == S.singleton (Atomic End) &&
-                                         S.null currFuture &&
-                                         pendComb
-  where currFset = atomFormulaSet (current s)
-        currAtomic = S.filter atomic currFset
-        currFuture = S.filter future currFset
+isFinal :: BitEncoding -> State -> Bool
+isFinal bitenc s@(State c p xl xe xr) =
+  debug $ not xl -- xe can be instead accepted, as if # = #
+  && currAtomic == D.encode bitenc (S.singleton (Atomic End))
+  && (not $ D.any bitenc future currFset)
+  && pendComb
+  where currFset = current s
+        currAtomic = D.filter bitenc atomic currFset
         pendComb = all (\f -> case f of  -- only ChainBack Take formulas are allowed
                                 ChainBack pset _ -> pset == S.singleton Take
                                 _ -> False
@@ -1252,7 +1279,7 @@ check phi prec ts =
   debug $ run
             prec
             is
-            isFinal
+            (isFinal bitenc)
             (deltaShift cl as pcs prec shiftRules)
             (deltaPush  cl as pcs prec  pushRules)
             (deltaPop   cl as pcs prec   popRules)
@@ -1261,10 +1288,10 @@ check phi prec ts =
         tsprops = S.toList $ foldl' (S.union) S.empty ts
         inputSet = foldl' (flip S.insert) S.empty ts
         cl = closure nphi tsprops
-        as = atoms cl inputSet
+        ab@(as, bitenc) = atoms cl inputSet
         pcs = pendCombs cl
-        is = initials nphi cl as
-        (shiftRules, pushRules, popRules) = deltaRules cl
+        is = initials nphi cl ab
+        (shiftRules, pushRules, popRules) = deltaRules bitenc cl
         debug = id
 
         deltaShift clos atoms pcombs prec rgroup state props = fstates
@@ -1297,7 +1324,7 @@ fastcheck phi prec ts =
   debug $ augRun
             prec
             is
-            isFinal
+            (isFinal bitenc)
             (augDeltaShift cl as pcs prec shiftRules)
             (augDeltaPush  cl as pcs prec  pushRules)
             (augDeltaPop   cl as pcs prec   popRules)
@@ -1308,13 +1335,13 @@ fastcheck phi prec ts =
         inputSet = foldl' (flip S.insert) S.empty ts
 
         cl = closure nphi tsprops
-        as = atoms cl inputSet
+        ab@(as, bitenc) = atoms cl inputSet
         pcs = pendCombs cl
-        is = filter compInitial (initials nphi cl as)
-        (shiftRules, pushRules, popRules) = augDeltaRules cl
+        is = filter compInitial (initials nphi cl ab)
+        (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl
 
         compInitial s = fromMaybe True $
-                          compProps <$> (Just . atomFormulaSet . current) s <*> safeHead ts
+                          (compProps bitenc) <$> (Just . current) s <*> safeHead ts
 
         debug = id
         --debug = DT.trace ("\nRun with:"         ++
@@ -1368,23 +1395,28 @@ makeOpa :: (Checkable f)
         => f APType
         -> ([Prop APType], [Prop APType])
         -> PrecFunc APType
-        -> ([State],
-            State -> Bool,
-            State -> Input -> [State],
-            State -> Input -> [State],
-            State -> State -> [State])
-makeOpa phi (sls, als) prec = (is, isFinal,
-                          deltaPush  cl as pcs prec pushRules,
-                          deltaShift cl as pcs prec shiftRules,
-                          deltaPop   cl as pcs prec popRules)
+        -> (BitEncoding
+           , [State]
+           , State -> Bool
+           , State -> Input -> [State]
+           , State -> Input -> [State]
+           , State -> State -> [State]
+           )
+makeOpa phi (sls, als) prec = (bitenc
+                              , is
+                              , isFinal bitenc
+                              , deltaPush  cl as pcs prec pushRules
+                              ,  deltaShift cl as pcs prec shiftRules
+                              ,  deltaPop   cl as pcs prec popRules
+                              )
   where nphi = normalize . toReducedPotl $ phi
         tsprops = sls ++ als
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
         cl = closure nphi tsprops
-        as = atoms cl inputSet
+        ab@(as, bitenc) = atoms cl inputSet
         pcs = pendCombs cl
-        is = initials nphi cl as
-        (shiftRules, pushRules, popRules) = deltaRules cl
+        is = initials nphi cl ab
+        (shiftRules, pushRules, popRules) = deltaRules bitenc cl
 
         deltaShift clos atoms pcombs prec rgroup state props = fstates
           where fstates = delta rgroup prec clos atoms pcombs state

@@ -40,7 +40,7 @@ instance SatState (MCState s) where
   getSatState (MCState _ p) = p
   {-# INLINABLE getSatState #-}
 
-  getStateProps (MCState _ p) = getStateProps p
+  getStateProps bitenc (MCState _ p) = getStateProps bitenc p
   {-# INLINABLE getStateProps #-}
 
 
@@ -53,7 +53,7 @@ modelCheck :: (Checkable f, Ord s, Hashable s, Show s)
            -> Bool
 modelCheck phi opa =
   let precFunc = fromStructPR $ precRel opa
-      (phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
+      (bitenc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
         makeOpa (Not . toReducedPotl $ phi) (sigma opa) precFunc
 
       cInitials = cartesian (initials opa) phiInitials
@@ -72,7 +72,8 @@ modelCheck phi opa =
       cDeltaPop (MCState q p) (MCState q' p') = cartesian (opaDeltaPop q q') (phiDeltaPop p p')
 
       cDelta = Sat.Delta
-               { Sat.prec = precFunc
+               { Sat.bitenc = bitenc
+               , Sat.prec = precFunc
                , Sat.deltaPush = cDeltaPush
                , Sat.deltaShift = cDeltaShift
                , Sat.deltaPop = cDeltaPop
