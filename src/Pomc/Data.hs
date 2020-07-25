@@ -46,6 +46,7 @@ data BitEncoding = BitEncoding
 
 class EncodedAtom e where
   decode :: BitEncoding -> e -> FormulaSet
+  pdecode :: BitEncoding -> e -> FormulaSet
   encode :: BitEncoding -> FormulaSet -> e
   generate :: Int -> [e]
   (++) :: e -> e -> e
@@ -68,6 +69,9 @@ instance EncodedAtom BitVecEA where
     let pos = map (fetch bitenc) (B.listBits bv)
         neg = map (Not . (fetch bitenc)) (B.listBits . B.invertBits $ bv)
     in S.fromList pos `S.union` S.fromList neg
+
+  pdecode bitenc (BitVecEA bv) =
+    S.fromList $ map (fetch bitenc) (B.listBits bv)
 
   encode bitenc set =
     let zeroes = VU.replicate (width bitenc) (B.Bit False)
@@ -105,6 +109,9 @@ instance EncodedAtom BVEA where
     let pos = map (fetch bitenc) (listBits bv)
         neg = map (Not . (fetch bitenc)) (listBits . BV.complement $ bv)
     in S.fromList pos `S.union` S.fromList neg
+
+  pdecode bitenc (BVEA bv) =
+    S.fromList $ map (fetch bitenc) (listBits bv)
 
   encode bitenc set =
     BVEA $ S.foldl BV.setBit (BV.zeros $ width bitenc) (S.map (index bitenc) set)

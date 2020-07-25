@@ -124,7 +124,7 @@ compProps :: BitEncoding -> EncodedSet -> Input -> Bool
 compProps bitenc fset pset = atomicSet bitenc fset == D.encode bitenc (S.map Atomic pset)
 
 getProps :: BitEncoding -> EncodedSet -> Input
-getProps bitenc fset = S.map (\(Atomic p) -> p) $ S.filter atomic $ D.decode bitenc fset
+getProps bitenc fset = S.map (\(Atomic p) -> p) $ S.filter atomic $ D.pdecode bitenc fset
 
 closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
@@ -648,14 +648,14 @@ deltaRules bitenc condInfo =
 
     cnyPopFpr info =
       let clos = fprClos info
-          pCurr = (D.decode bitenc) . current $ fprState info
+          pCurr = current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
           ppPend = pending $ fromJust (fprPopped info)
           ppPendCnyfs = [f | f@(ChainNext pset _) <- S.toList ppPend,
                                                      pset == S.singleton Yield]
           pCheckSet = S.fromList [f | f@(ChainNext pset g) <- S.toList clos,
                                                               pset == S.singleton Yield &&
-                                                              g `S.member` pCurr]
+                                                              D.member bitenc g pCurr]
           fCheckSet = S.fromList [f | f@(ChainNext pset _) <- S.toList fPend,
                                                               pset == S.singleton Yield]
           checkSet = pCheckSet `S.union` fCheckSet
