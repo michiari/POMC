@@ -593,9 +593,10 @@ deltaRules bitenc condInfo =
           precComp prec = not $ D.any bitenc (\(PrecNext pset _) -> prec `S.notMember` pset) pCurrPnfs
 
           fsComp prec = pCurrPnfs == checkSet
-            where checkSet = D.encode bitenc $ S.filter checkSetPred clos
+            where checkSet = D.encode bitenc $ S.filter checkSetPred closPn
                   checkSetPred (PrecNext pset g) = prec `S.member` pset && D.member bitenc g fCurr
                   checkSetPred _ = False
+          closPn = S.filter checkPn clos
 
       in case precFunc props (getProps bitenc fCurr) of
            Nothing   -> False
@@ -609,24 +610,26 @@ deltaRules bitenc condInfo =
 
     pbPushFcr info =
       let clos = fcrClos info
-          pCurr = (D.decode bitenc) . current $ fcrState info
+          pCurr = current $ fcrState info
           precFunc = fcrPrecFunc info
           props = fromJust (fcrProps info)
-          fCurr = (D.decode bitenc) $ (fcrFutureCurr info)
+          fCurr = fcrFutureCurr info
 
-          fCurrPbfs = [f | f@(PrecBack _ _) <- S.toList fCurr]
+          maskPb = D.suchThat bitenc checkPb
+          checkPb (PrecBack _ _) = True
+          checkPb _ = False
 
-          fCurrProps = S.fromList [p | Atomic p <- S.toList fCurr]
+          fCurrPbfs = D.intersect fCurr maskPb
 
-          precComp prec = null [f | f@(PrecBack pset _) <- fCurrPbfs,
-                                                           prec `S.notMember` pset]
+          precComp prec = not $ D.any bitenc (\(PrecBack pset _) -> prec `S.notMember` pset) fCurrPbfs
 
-          fsComp prec = S.fromList fCurrPbfs == checkSet
-            where checkSet = S.fromList
-                               [f | f@(PrecBack pset g) <- S.toList clos,
-                                                           prec `S.member` pset &&
-                                                           g `S.member` pCurr]
-      in case precFunc props fCurrProps of
+          fsComp prec = fCurrPbfs == checkSet
+            where checkSet = D.encode bitenc $ S.filter checkSetPred closPb
+                  checkSetPred (PrecBack pset g) = prec `S.member` pset && D.member bitenc g pCurr
+                  checkSetPred _ = False
+          closPb = S.filter checkPb clos
+
+      in case precFunc props (getProps bitenc fCurr) of
            Nothing   -> False
            Just prec -> precComp prec && fsComp prec
 
