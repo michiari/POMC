@@ -42,6 +42,7 @@ data BitEncoding = BitEncoding
   { fetch :: (Int -> Formula APType)
   , index :: (Formula APType -> Int)
   , width :: Int
+  , propBits :: Int
   }
 
 class EncodedAtom e where
@@ -54,6 +55,9 @@ class EncodedAtom e where
   member :: BitEncoding -> Formula APType -> e -> Bool
   any :: BitEncoding -> (Formula APType -> Bool) -> e -> Bool
   filter :: BitEncoding -> (Formula APType -> Bool) -> e -> e
+  propsOnly :: BitEncoding -> e -> e
+  suchThat :: BitEncoding -> (Formula APType -> Bool) -> e
+  intersect :: e -> e -> e
 
 
 newtype BitVecEA = BitVecEA (Vector Bit) deriving (Eq, Ord, Show, Generic, NFData)
@@ -86,12 +90,23 @@ instance EncodedAtom BitVecEA where
 
   member bitenc phi (BitVecEA bv) | negative phi = not $ testBit bv (index bitenc $ negation phi)
                                   | otherwise = testBit bv (index bitenc $ phi)
+  {-# INLINABLE member #-}
 
   any bitenc predicate (BitVecEA bv) = Prelude.any (predicate . (fetch bitenc)) $ B.listBits bv
 
   filter bitenc predicate (BitVecEA bv) =
     let zeroes = VU.replicate (VU.length bv) (B.Bit False)
     in BitVecEA $ zeroes VU.// map (\i -> (i, B.Bit (predicate . (fetch bitenc) $ i))) (B.listBits bv)
+
+  propsOnly bitenc (BitVecEA bv) = BitVecEA $ VU.take (propBits bitenc) bv
+
+  suchThat bitenc predicate =
+    BitVecEA $ zeroes VU.// map (\i -> (i, B.Bit (predicate . (fetch bitenc) $ i))) [0..(len-1)]
+    where len = width bitenc
+          zeroes = VU.replicate len (B.Bit False)
+
+  intersect (BitVecEA v1) (BitVecEA v2) = BitVecEA $ v1 .&. v2
+
 
 
 newtype BVEA = BVEA BitVector deriving (Ord, Show)
@@ -132,6 +147,14 @@ instance EncodedAtom BVEA where
     where filterVec b (i, acc) = if b && predicate (fetch bitenc $ i)
                                  then (i+1, BV.setBit acc i)
                                  else (i+1, acc)
+
+  propsOnly bitenc (BVEA bv) = BVEA $ BV.least (propBits bitenc) bv
+
+  suchThat bitenc predicate = BVEA $ BV.fromBits bitList
+    where len = width bitenc
+          bitList = map (predicate . (fetch bitenc)) [(len-1), (len-2)..0]
+
+  intersect (BVEA v1) (BVEA v2) = BVEA $ v1 .&. v2
 
 listBits :: BitVector -> [Int]
 listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v

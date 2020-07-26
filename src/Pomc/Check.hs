@@ -124,7 +124,7 @@ compProps :: BitEncoding -> EncodedSet -> Input -> Bool
 compProps bitenc fset pset = atomicSet bitenc fset == D.encode bitenc (S.map Atomic pset)
 
 getProps :: BitEncoding -> EncodedSet -> Input
-getProps bitenc fset = S.map (\(Atomic p) -> p) $ S.filter atomic $ D.pdecode bitenc fset
+getProps bitenc fset = S.map (\(Atomic p) -> p) $ D.pdecode bitenc $ D.propsOnly bitenc fset
 
 closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
@@ -233,20 +233,24 @@ atoms clos inputSet =
       pFormulaVec = V.fromList . S.toAscList $ pFormulaClos
       pFormulaMap = M.fromAscList (zip (S.toAscList pFormulaClos) [0..])
       pFormulaLookup phi = fromJust (M.lookup phi pFormulaMap)
-      fbitenc = BitEncoding (fetch pFormulaVec) pFormulaLookup (V.length pFormulaVec)
+      fbitenc = BitEncoding (fetch pFormulaVec) pFormulaLookup (V.length pFormulaVec) 0
 
       -- Mapping between positive atoms and bits
       pAtomicClos = S.filter (atomic) pclos
       pAtomicVec = V.fromList . S.toAscList $ pAtomicClos
       pAtomicMap = M.fromAscList (zip (S.toAscList pAtomicClos) [0..])
       pAtomicLookup phi = fromJust (M.lookup phi pAtomicMap)
-      abitenc = BitEncoding (fetch pAtomicVec) pAtomicLookup (V.length pAtomicVec)
+      abitenc = BitEncoding
+                (fetch pAtomicVec)
+                pAtomicLookup
+                (V.length pAtomicVec)
+                (V.length pAtomicVec)
 
       -- Mapping between positive closure and bits
       pClosVec = pAtomicVec V.++ pFormulaVec
       pClosLookup phi = fromJust $ M.lookup phi pClosMap
         where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
-      bitenc = BitEncoding (fetch pClosVec) pClosLookup (V.length pClosVec)
+      bitenc = BitEncoding (fetch pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
       -- Make power set of AP
       atomics = map (D.encode abitenc) . map (S.map Atomic) $ S.toList validPropSets
@@ -576,24 +580,24 @@ deltaRules bitenc condInfo =
 
     pnPushFcr info =
       let clos = fcrClos info
-          pCurr = (D.decode bitenc) . current $ fcrState info
+          pCurr = current $ fcrState info
           precFunc = fcrPrecFunc info
           props = fromJust (fcrProps info)
-          fCurr = D.decode bitenc $ (fcrFutureCurr info)
+          fCurr = fcrFutureCurr info
 
-          pCurrPnfs = [f | f@(PrecNext _ _) <- S.toList pCurr]
+          maskPn = D.suchThat bitenc checkPn
+          checkPn (PrecNext _ _) = True
+          checkPn _ = False
 
-          fCurrProps = S.fromList [p | Atomic p <- S.toList fCurr]
+          pCurrPnfs = D.intersect pCurr maskPn
+          precComp prec = not $ D.any bitenc (\(PrecNext pset _) -> prec `S.notMember` pset) pCurrPnfs
 
-          precComp prec = null [f | f@(PrecNext pset _) <- pCurrPnfs,
-                                                           prec `S.notMember` pset]
+          fsComp prec = pCurrPnfs == checkSet
+            where checkSet = D.encode bitenc $ S.filter checkSetPred clos
+                  checkSetPred (PrecNext pset g) = prec `S.member` pset && D.member bitenc g fCurr
+                  checkSetPred _ = False
 
-          fsComp prec = S.fromList pCurrPnfs == checkSet
-            where checkSet = S.fromList
-                               [f | f@(PrecNext pset g) <- S.toList clos,
-                                                           prec `S.member` pset &&
-                                                           g `S.member` fCurr]
-      in case precFunc props fCurrProps of
+      in case precFunc props (getProps bitenc fCurr) of
            Nothing   -> False
            Just prec -> precComp prec && fsComp prec
 
@@ -1259,7 +1263,7 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
 isFinal :: BitEncoding -> State -> Bool
 isFinal bitenc s@(State c p xl xe xr) =
   debug $ not xl -- xe can be instead accepted, as if # = #
-  && currAtomic == D.encode bitenc (S.singleton (Atomic End))
+  && D.member bitenc (Atomic End) currFset
   && (not $ D.any bitenc future currFset)
   && pendComb
   where currFset = current s
