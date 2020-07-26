@@ -637,16 +637,21 @@ deltaRules bitenc condInfo =
     --
 
     -- CNY
+    maskCny = D.suchThat bitenc checkCny
+    checkCny (ChainNext _ _) = True
+    checkCny _ = False
+
     cnyCond clos = not (null [f | f@(ChainNext pset _) <- S.toList clos,
                                                           pset == S.singleton Yield])
 
     cnyPushFpr info =
       let pCurr = current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
-          pCurrCnyfs = D.filter bitenc checkCny pCurr
-          fPendCnyfs = D.encode bitenc $ S.filter checkCny fPend
-          checkCny (ChainNext pset _) = pset == S.singleton Yield
-          checkCny _ = False
+          pCurrCnyfs = D.filter bitenc checkCnyY $ D.intersect pCurr maskCny
+          fPendCnyfs = D.encode bitenc $ S.filter checkCnyY fPend
+
+          checkCnyY (ChainNext pset _) = pset == S.singleton Yield
+          checkCnyY _ = False
       in if fXl
            then pCurrCnyfs == fPendCnyfs
            else D.null pCurrCnyfs
@@ -903,14 +908,16 @@ deltaRules bitenc condInfo =
     --
 
     -- HNY
+    maskHny = D.suchThat bitenc checkHny
+    checkHny (HierNextYield _) = True
+    checkHny _ = False
+
     hnyCond clos = not (null [f | f@(HierNextYield _) <- S.toList clos])
 
     hnyPushPr1 info =
       let pCurr = current $ prState info
           pXr = afterPop (prState info)
-          checkHny (HierNextYield _) = True
-          checkHny _ = False
-      in if D.any bitenc checkHny pCurr
+      in if not $ D.null $ D.intersect pCurr maskHny
            then pXr
            else True
 
@@ -931,9 +938,7 @@ deltaRules bitenc condInfo =
           ppCurr = current $ fromJust (fprPopped info)
           ppXr = afterPop $ fromJust (fprPopped info)
           fPendHnyfs = D.encode bitenc $ S.filter checkHny fPend
-          ppCurrHnyfs = D.filter bitenc checkHny ppCurr
-          checkHny (HierNextYield _) = True
-          checkHny _ = False
+          ppCurrHnyfs = D.intersect maskHny ppCurr
       in if ppXr
            then ppCurrHnyfs == fPendHnyfs
            else True
