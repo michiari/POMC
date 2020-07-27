@@ -58,6 +58,7 @@ class EncodedAtom e where
   propsOnly :: BitEncoding -> e -> e
   suchThat :: BitEncoding -> (Formula APType -> Bool) -> e
   intersect :: e -> e -> e
+  union :: e -> e -> e
 
 
 newtype BitVecEA = BitVecEA (Vector Bit) deriving (Eq, Ord, Show, Generic, NFData)
@@ -107,6 +108,8 @@ instance EncodedAtom BitVecEA where
 
   intersect (BitVecEA v1) (BitVecEA v2) = BitVecEA $ v1 .&. v2
 
+  union (BitVecEA v1) (BitVecEA v2) = BitVecEA $ v1 .|. v2
+
 
 
 newtype BVEA = BVEA BitVector deriving (Ord, Show)
@@ -155,6 +158,9 @@ instance EncodedAtom BVEA where
           bitList = map (predicate . (fetch bitenc)) [(len-1), (len-2)..0]
 
   intersect (BVEA v1) (BVEA v2) = BVEA $ v1 .&. v2
+
+  union (BVEA v1) (BVEA v2) = BVEA $ v1 .|. v2
+
 
 listBits :: BitVector -> [Int]
 listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v
