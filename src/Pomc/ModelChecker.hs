@@ -13,6 +13,7 @@ import Pomc.Check (Checkable(..), State, makeOpa)
 import Pomc.Satisfiability (SatState(..), isEmpty)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
+import qualified Pomc.Data as D (encodeInput)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -52,9 +53,8 @@ modelCheck :: (Checkable f, Ord s, Hashable s, Show s)
            -> ExplicitOpa s APType
            -> Bool
 modelCheck phi opa =
-  let precFunc = fromStructPR $ precRel opa
-      (bitenc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
-        makeOpa (Not . toReducedPotl $ phi) (sigma opa) precFunc
+  let (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
+        makeOpa (Not . toReducedPotl $ phi) (sigma opa) (precRel opa)
 
       cInitials = cartesian (initials opa) phiInitials
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal p
@@ -62,10 +62,12 @@ modelCheck phi opa =
       maybeList Nothing = []
       maybeList (Just l) = l
 
-      makeDeltaMap delta = Map.fromList $ map (\(q', b', ps) -> ((q', b'), ps)) delta
-      opaDeltaPush q b = maybeList $ Map.lookup (q, b) $ makeDeltaMap (deltaPush opa)
-      opaDeltaShift q b = maybeList $ Map.lookup (q, b) $ makeDeltaMap (deltaShift opa)
-      opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMap (deltaPop opa)
+      makeDeltaMapI delta = Map.fromList $
+        map (\(q', b', ps) -> ((q', D.encodeInput bitenc b'), ps)) delta
+      makeDeltaMapS delta = Map.fromList $ map (\(q', b', ps) -> ((q', b'), ps)) delta
+      opaDeltaPush q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaPush opa)
+      opaDeltaShift q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaShift opa)
+      opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (deltaPop opa)
 
       cDeltaPush (MCState q p) b = cartesian (opaDeltaPush q b) (phiDeltaPush p b)
       cDeltaShift (MCState q p) b = cartesian (opaDeltaShift q b) (phiDeltaShift p b)

@@ -13,7 +13,7 @@ module Pomc.Parse ( potlv2P
                   , CheckRequest(..)
                   ) where
 
-import Pomc.Prec (Prec(..))
+import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.PotlV2 as P2
 
@@ -32,11 +32,10 @@ import Control.Monad.Combinators.Expr
 
 type Parser = Parsec Void Text
 
-type PrecRelation = (Set (Prop Text), Set (Prop Text), Prec)
 type P2Formula = P2.Formula Text
 type PropString = [Set (Prop Text)]
 
-data CheckRequest = CheckRequest { creqPrecRels :: [PrecRelation]
+data CheckRequest = CheckRequest { creqPrecRels :: [StructPrecRel Text]
                                  , creqFormulas :: [P2Formula]
                                  , creqStrings  :: [PropString]
                                  }
@@ -72,14 +71,11 @@ precP = choice [ Yield <$ symbolP "<"
                , Take  <$ symbolP ">"
                ]
 
-precRelP :: Parser PrecRelation
-precRelP = do sb1  <- matchP
+precRelP :: Parser (StructPrecRel Text)
+precRelP = do sb1  <- propP
               prec <- precP
-              sb2  <- matchP
+              sb2  <- propP
               return (sb1, sb2, prec)
-  where matchP = choice [ S.empty <$ symbolP "*" -- S.empty is subset of any set
-                        , propSetP
-                        ]
 
 potlv2P :: Parser P2Formula
 potlv2P = makeExprParser termParser operatorTable
@@ -165,7 +161,7 @@ stringSectionP = do symbolP "strings"
                     return propStrings
   where propStringsP = propStringP `sepBy1` symbolP ","
 
-precSectionP :: Parser [PrecRelation]
+precSectionP :: Parser [StructPrecRel Text]
 precSectionP = do symbolP "prec"
                   symbolP "="
                   precRels <- precRelsP

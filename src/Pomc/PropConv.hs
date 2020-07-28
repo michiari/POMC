@@ -19,6 +19,7 @@ import qualified Data.Map as Map
 
 type APType = Word
 
+
 convPropTokens :: (Ord a)
                => Formula a
                -> [StructPrecRel a]

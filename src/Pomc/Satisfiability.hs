@@ -15,10 +15,10 @@ module Pomc.Satisfiability (
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel, PrecFunc, fromStructPR)
-import Pomc.Check (Checkable(..), getProps, Input, State(..), makeOpa)
+import Pomc.Check (Checkable(..), Input, EncPrecFunc, State(..), makeOpa)
 import Pomc.RPotl (Formula(Atomic))
 import Pomc.PropConv (APType, convPropLabels)
-import Pomc.Data (BitEncoding)
+import Pomc.Data (BitEncoding, extractInput)
 import qualified Pomc.Data as D (member)
 
 import Control.Monad (foldM)
@@ -80,7 +80,7 @@ instance SatState State where
   getSatState = id
   {-# INLINABLE getSatState #-}
 
-  getStateProps bitenc s = getProps bitenc (current $ s)
+  getStateProps bitenc s = extractInput bitenc (current $ s)
   {-# INLINABLE getStateProps #-}
 
 
@@ -143,7 +143,7 @@ data Globals s state = Globals
   }
 data Delta state = Delta
   { bitenc :: BitEncoding
-  , prec :: PrecFunc APType
+  , prec :: EncPrecFunc
   , deltaPush :: state -> Input -> [state]
   , deltaShift :: state -> Input -> [state]
   , deltaPop :: state -> state -> [state]
@@ -275,10 +275,10 @@ isEmpty delta initials isFinal = not $
 isSatisfiable :: (Checkable f)
               => f APType
               -> ([Prop APType], [Prop APType])
-              -> PrecFunc APType
+              -> [StructPrecRel APType]
               -> Bool
-isSatisfiable phi ap precf =
-  let (be, initials, isFinal, dPush, dShift, dPop) = makeOpa phi ap precf
+isSatisfiable phi ap sprs =
+  let (be, precf, initials, isFinal, dPush, dShift, dPop) = makeOpa phi ap sprs
       delta = Delta
         { bitenc = be
         , prec = precf
@@ -295,5 +295,5 @@ isSatisfiableGen :: (Checkable f, Ord a)
                  -> Bool
 isSatisfiableGen phi ap precf =
   let (tphi, tap, tprecr) = convPropLabels (toReducedPotl phi) ap precf
-  in isSatisfiable tphi tap (fromStructPR tprecr)
+  in isSatisfiable tphi tap tprecr
 
