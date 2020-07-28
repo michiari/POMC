@@ -588,9 +588,23 @@ deltaRules bitenc cl =
           checkPn (PrecNext _ _) = True
           checkPn _ = False
 
-          pCurrPnfs = D.intersect pCurr maskPn
-          precComp prec = not $ D.any bitenc (\(PrecNext pset _) -> prec `S.notMember` pset) pCurrPnfs
+          maskPnny = D.suchThat bitenc checkPnny
+          checkPnny (PrecNext pset _) = Yield `S.notMember` pset
+          checkPnny _ = False
 
+          maskPnne = D.suchThat bitenc checkPnne
+          checkPnne (PrecNext pset _) = Equal `S.notMember` pset
+          checkPnne _ = False
+
+          maskPnnt = D.suchThat bitenc checkPnnt
+          checkPnnt (PrecNext pset _) = Take `S.notMember` pset
+          checkPnnt _ = False
+
+          precComp Yield = D.null $ D.intersect pCurr maskPnny
+          precComp Equal = D.null $ D.intersect pCurr maskPnne
+          precComp Take  = D.null $ D.intersect pCurr maskPnnt
+
+          pCurrPnfs = D.intersect pCurr maskPn
           fsComp prec = pCurrPnfs == checkSet
             where checkSet = D.encode bitenc $ S.filter checkSetPred closPn
                   checkSetPred (PrecNext pset g) = prec `S.member` pset && D.member bitenc g fCurr
@@ -617,10 +631,23 @@ deltaRules bitenc cl =
           checkPb (PrecBack _ _) = True
           checkPb _ = False
 
+          maskPbny = D.suchThat bitenc checkPbny
+          checkPbny (PrecBack pset _) = Yield `S.notMember` pset
+          checkPbny _ = False
+
+          maskPbne = D.suchThat bitenc checkPbne
+          checkPbne (PrecBack pset _) = Equal `S.notMember` pset
+          checkPbne _ = False
+
+          maskPbnt = D.suchThat bitenc checkPbnt
+          checkPbnt (PrecBack pset _) = Take `S.notMember` pset
+          checkPbnt _ = False
+
+          precComp Yield = D.null $ D.intersect pCurr maskPbny
+          precComp Equal = D.null $ D.intersect pCurr maskPbne
+          precComp Take  = D.null $ D.intersect pCurr maskPbnt
+
           fCurrPbfs = D.intersect fCurr maskPb
-
-          precComp prec = not $ D.any bitenc (\(PrecBack pset _) -> prec `S.notMember` pset) fCurrPbfs
-
           fsComp prec = fCurrPbfs == checkSet
             where checkSet = D.encode bitenc $ S.filter checkSetPred closPb
                   checkSetPred (PrecBack pset g) = prec `S.member` pset && D.member bitenc g pCurr
