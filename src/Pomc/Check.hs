@@ -588,25 +588,19 @@ deltaRules bitenc cl =
           checkPn (PrecNext _ _) = True
           checkPn _ = False
 
-          maskPnny = D.suchThat bitenc checkPnny
-          checkPnny (PrecNext pset _) = Yield `S.notMember` pset
-          checkPnny _ = False
-
-          maskPnne = D.suchThat bitenc checkPnne
-          checkPnne (PrecNext pset _) = Equal `S.notMember` pset
-          checkPnne _ = False
-
-          maskPnnt = D.suchThat bitenc checkPnnt
-          checkPnnt (PrecNext pset _) = Take `S.notMember` pset
-          checkPnnt _ = False
+          maskPnny = D.suchThat bitenc (checkPnnp Yield)
+          maskPnne = D.suchThat bitenc (checkPnnp Equal)
+          maskPnnt = D.suchThat bitenc (checkPnnp Take)
+          checkPnnp prec (PrecNext pset _) = prec `S.notMember` pset
+          checkPnnp prec _ = False
 
           precComp Yield = D.null $ D.intersect pCurr maskPnny
           precComp Equal = D.null $ D.intersect pCurr maskPnne
           precComp Take  = D.null $ D.intersect pCurr maskPnnt
 
-          pCurrPnfs = D.intersect pCurr maskPn
           fsComp prec = pCurrPnfs == checkSet
-            where checkSet = D.encode bitenc $ S.filter checkSetPred closPn
+            where pCurrPnfs = D.intersect pCurr maskPn
+                  checkSet = D.encode bitenc $ S.filter checkSetPred closPn
                   checkSetPred (PrecNext pset g) = prec `S.member` pset && D.member bitenc g fCurr
                   checkSetPred _ = False
                   closPn = S.filter checkPn cl
@@ -631,25 +625,19 @@ deltaRules bitenc cl =
           checkPb (PrecBack _ _) = True
           checkPb _ = False
 
-          maskPbny = D.suchThat bitenc checkPbny
-          checkPbny (PrecBack pset _) = Yield `S.notMember` pset
-          checkPbny _ = False
-
-          maskPbne = D.suchThat bitenc checkPbne
-          checkPbne (PrecBack pset _) = Equal `S.notMember` pset
-          checkPbne _ = False
-
-          maskPbnt = D.suchThat bitenc checkPbnt
-          checkPbnt (PrecBack pset _) = Take `S.notMember` pset
-          checkPbnt _ = False
+          maskPbny = D.suchThat bitenc (checkPbnp Yield)
+          maskPbne = D.suchThat bitenc (checkPbnp Equal)
+          maskPbnt = D.suchThat bitenc (checkPbnp Take)
+          checkPbnp prec (PrecBack pset _) = prec `S.notMember` pset
+          checkPbnp prec _ = False
 
           precComp Yield = D.null $ D.intersect pCurr maskPbny
           precComp Equal = D.null $ D.intersect pCurr maskPbne
           precComp Take  = D.null $ D.intersect pCurr maskPbnt
 
-          fCurrPbfs = D.intersect fCurr maskPb
           fsComp prec = fCurrPbfs == checkSet
-            where checkSet = D.encode bitenc $ S.filter checkSetPred closPb
+            where fCurrPbfs = D.intersect fCurr maskPb
+                  checkSet = D.encode bitenc $ S.filter checkSetPred closPb
                   checkSetPred (PrecBack pset g) = prec `S.member` pset && D.member bitenc g pCurr
                   checkSetPred _ = False
                   closPb = S.filter checkPb cl
