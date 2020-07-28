@@ -458,93 +458,93 @@ resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
 
 deltaRules :: BitEncoding -> FormulaSet -> (RuleGroup, RuleGroup, RuleGroup)
-deltaRules bitenc condInfo =
+deltaRules bitenc cl =
   let shiftGroup = RuleGroup
-        { ruleGroupPrs  = resolve condInfo [ (const True, xlShiftPr)
-                                           , (const True, xeShiftPr)
-                                           , (const True, propShiftPr)
-                                           , (cneCond,    cneShiftPr)
-                                           , (cntCond,    cntShiftPr)
-                                           , (cbyCond,    cbyShiftPr)
-                                           , (cbeCond,    cbeShiftPr)
-                                           , (cbtCond,    cbtShiftPr)
-                                           , (hnyCond,    hnyShiftPr)
-                                           , (hbyCond,    hbyShiftPr)
-                                           , (hbtCond,    hbtShiftPr)
-                                           , (hthCond,    hthShiftPr)
-                                           ]
-        , ruleGroupFcrs = resolve condInfo [ (pnCond, pnShiftFcr)
-                                           , (pbCond, pbShiftFcr)
-                                           ]
-        , ruleGroupFprs = resolve condInfo [ (const True, xrShiftFpr)
-                                           , (cnyCond,    cnyShiftFpr)
-                                           , (cneCond,    cneShiftFpr)
-                                           , (cntCond,    cntShiftFpr)
-                                           , (cbyCond,    cbyShiftFpr)
-                                           , (cbeCond,    cbeShiftFpr)
-                                           , (cbtCond,    cbtShiftFpr)
-                                           , (hntCond,    hntShiftFpr1)
-                                           , (hntCond,    hntShiftFpr2)
-                                           , (hbtCond,    hbtShiftFpr)
-                                           , (hthCond,    hthShiftFpr)
-                                           ]
-        , ruleGroupFrs  = resolve condInfo []
+        { ruleGroupPrs  = resolve cl [ (const True, xlShiftPr)
+                                     , (const True, xeShiftPr)
+                                     , (const True, propShiftPr)
+                                     , (cneCond,    cneShiftPr)
+                                     , (cntCond,    cntShiftPr)
+                                     , (cbyCond,    cbyShiftPr)
+                                     , (cbeCond,    cbeShiftPr)
+                                     , (cbtCond,    cbtShiftPr)
+                                     , (hnyCond,    hnyShiftPr)
+                                     , (hbyCond,    hbyShiftPr)
+                                     , (hbtCond,    hbtShiftPr)
+                                     , (hthCond,    hthShiftPr)
+                                     ]
+        , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr)
+                                     , (pbCond, pbShiftFcr)
+                                     ]
+        , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
+                                     , (cnyCond,    cnyShiftFpr)
+                                     , (cneCond,    cneShiftFpr)
+                                     , (cntCond,    cntShiftFpr)
+                                     , (cbyCond,    cbyShiftFpr)
+                                     , (cbeCond,    cbeShiftFpr)
+                                     , (cbtCond,    cbtShiftFpr)
+                                     , (hntCond,    hntShiftFpr1)
+                                     , (hntCond,    hntShiftFpr2)
+                                     , (hbtCond,    hbtShiftFpr)
+                                     , (hthCond,    hthShiftFpr)
+                                     ]
+        , ruleGroupFrs  = resolve cl []
         }
       pushGroup = RuleGroup
-        { ruleGroupPrs  = resolve condInfo [ (const True, xlPushPr)
-                                           , (const True, xePushPr)
-                                           , (const True, propPushPr)
-                                           , (cbyCond,    cbyPushPr)
-                                           , (cbeCond,    cbePushPr)
-                                           , (cbtCond,    cbtPushPr)
-                                           , (hnyCond,    hnyPushPr1)
-                                           , (hnyCond,    hnyPushPr2)
-                                           , (hbyCond,    hbyPushPr)
-                                           , (hbtCond,    hbtPushPr)
-                                           , (hthCond,    hthPushPr)
-                                           ]
-        , ruleGroupFcrs = resolve condInfo [ (pnCond, pnPushFcr)
-                                           , (pbCond, pbPushFcr)
-                                           ]
-        , ruleGroupFprs = resolve condInfo [ (const True, xrPushFpr)
-                                           , (cnyCond,    cnyPushFpr)
-                                           , (cneCond,    cnePushFpr)
-                                           , (cntCond,    cntPushFpr)
-                                           , (cbyCond,    cbyPushFpr)
-                                           , (cbeCond,    cbePushFpr)
-                                           , (cbtCond,    cbtPushFpr)
-                                           , (hntCond,    hntPushFpr1)
-                                           , (hntCond,    hntPushFpr2)
-                                           , (hbtCond,    hbtPushFpr)
-                                           , (hthCond,    hthPushFpr)
-                                           ]
-        , ruleGroupFrs  = resolve condInfo []
+        { ruleGroupPrs  = resolve cl [ (const True, xlPushPr)
+                                     , (const True, xePushPr)
+                                     , (const True, propPushPr)
+                                     , (cbyCond,    cbyPushPr)
+                                     , (cbeCond,    cbePushPr)
+                                     , (cbtCond,    cbtPushPr)
+                                     , (hnyCond,    hnyPushPr1)
+                                     , (hnyCond,    hnyPushPr2)
+                                     , (hbyCond,    hbyPushPr)
+                                     , (hbtCond,    hbtPushPr)
+                                     , (hthCond,    hthPushPr)
+                                     ]
+        , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr)
+                                     , (pbCond, pbPushFcr)
+                                     ]
+        , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
+                                     , (cnyCond,    cnyPushFpr)
+                                     , (cneCond,    cnePushFpr)
+                                     , (cntCond,    cntPushFpr)
+                                     , (cbyCond,    cbyPushFpr)
+                                     , (cbeCond,    cbePushFpr)
+                                     , (cbtCond,    cbtPushFpr)
+                                     , (hntCond,    hntPushFpr1)
+                                     , (hntCond,    hntPushFpr2)
+                                     , (hbtCond,    hbtPushFpr)
+                                     , (hthCond,    hthPushFpr)
+                                     ]
+        , ruleGroupFrs  = resolve cl []
         }
       popGroup = RuleGroup
-        { ruleGroupPrs  = resolve condInfo [ (const True, xlPopPr)
-                                           , (const True, xePopPr)
-                                           , (cneCond,    cnePopPr)
-                                           , (cntCond,    cntPopPr)
-                                           , (hnyCond,    hnyPopPr)
-                                           ]
-        , ruleGroupFcrs = resolve condInfo []
-        , ruleGroupFprs = resolve condInfo [ (const True, xrPopFpr)
-                                           , (cnyCond,    cnyPopFpr)
-                                           , (cneCond,    cnePopFpr)
-                                           , (cntCond,    cntPopFpr)
-                                           , (cbyCond,    cbyPopFpr)
-                                           , (cbeCond,    cbePopFpr)
-                                           , (cbtCond,    cbtPopFpr)
-                                           , (hnyCond,    hnyPopFpr)
-                                           , (hntCond,    hntPopFpr1)
-                                           , (hntCond,    hntPopFpr2)
-                                           , (hntCond,    hntPopFpr3)
-                                           , (hbtCond,    hbtPopFpr1)
-                                           , (hbtCond,    hbtPopFpr2)
-                                           , (hbtCond,    hbtPopFpr3)
-                                           , (hthCond,    hthPopFpr)
-                                           ]
-        , ruleGroupFrs  = resolve condInfo [(hbyCond, hbyPopFr)]
+        { ruleGroupPrs  = resolve cl [ (const True, xlPopPr)
+                                     , (const True, xePopPr)
+                                     , (cneCond,    cnePopPr)
+                                     , (cntCond,    cntPopPr)
+                                     , (hnyCond,    hnyPopPr)
+                                     ]
+        , ruleGroupFcrs = resolve cl []
+        , ruleGroupFprs = resolve cl [ (const True, xrPopFpr)
+                                     , (cnyCond,    cnyPopFpr)
+                                     , (cneCond,    cnePopFpr)
+                                     , (cntCond,    cntPopFpr)
+                                     , (cbyCond,    cbyPopFpr)
+                                     , (cbeCond,    cbePopFpr)
+                                     , (cbtCond,    cbtPopFpr)
+                                     , (hnyCond,    hnyPopFpr)
+                                     , (hntCond,    hntPopFpr1)
+                                     , (hntCond,    hntPopFpr2)
+                                     , (hntCond,    hntPopFpr3)
+                                     , (hbtCond,    hbtPopFpr1)
+                                     , (hbtCond,    hbtPopFpr2)
+                                     , (hbtCond,    hbtPopFpr3)
+                                     , (hthCond,    hthPopFpr)
+                                     ]
+        , ruleGroupFrs  = resolve cl [(hbyCond, hbyPopFr)]
         }
   in (shiftGroup, pushGroup, popGroup)
   where
@@ -579,8 +579,7 @@ deltaRules bitenc condInfo =
     pnCond clos = not (null [f | f@(PrecNext _ _) <- S.toList clos])
 
     pnPushFcr info =
-      let clos = fcrClos info
-          pCurr = current $ fcrState info
+      let pCurr = current $ fcrState info
           precFunc = fcrPrecFunc info
           props = fromJust (fcrProps info)
           fCurr = fcrFutureCurr info
@@ -596,7 +595,7 @@ deltaRules bitenc condInfo =
             where checkSet = D.encode bitenc $ S.filter checkSetPred closPn
                   checkSetPred (PrecNext pset g) = prec `S.member` pset && D.member bitenc g fCurr
                   checkSetPred _ = False
-          closPn = S.filter checkPn clos
+                  closPn = S.filter checkPn cl
 
       in case precFunc props (getProps bitenc fCurr) of
            Nothing   -> False
@@ -609,8 +608,7 @@ deltaRules bitenc condInfo =
     pbCond clos = not (null [f | f@(PrecBack _ _) <- S.toList clos])
 
     pbPushFcr info =
-      let clos = fcrClos info
-          pCurr = current $ fcrState info
+      let pCurr = current $ fcrState info
           precFunc = fcrPrecFunc info
           props = fromJust (fcrProps info)
           fCurr = fcrFutureCurr info
@@ -627,7 +625,7 @@ deltaRules bitenc condInfo =
             where checkSet = D.encode bitenc $ S.filter checkSetPred closPb
                   checkSetPred (PrecBack pset g) = prec `S.member` pset && D.member bitenc g pCurr
                   checkSetPred _ = False
-          closPb = S.filter checkPb clos
+                  closPb = S.filter checkPb cl
 
       in case precFunc props (getProps bitenc fCurr) of
            Nothing   -> False
@@ -657,13 +655,12 @@ deltaRules bitenc condInfo =
     cnyShiftFpr = cnyPushFpr
 
     cnyPopFpr info =
-      let clos = fprClos info
-          pCurr = current $ fprState info
+      let pCurr = current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
           ppPend = pending $ fromJust (fprPopped info)
           ppPendCnyfs = D.intersect maskCny ppPend
 
-          cnyClos = S.filter checkCny clos
+          cnyClos = S.filter checkCny cl
           pCheckSet = D.encode bitenc $
                       S.filter (\(ChainNext _ g) -> D.member bitenc g pCurr) cnyClos
 
@@ -707,12 +704,11 @@ deltaRules bitenc condInfo =
       in ppPendCnefs == fPendCnefs
 
     cneShiftPr info =
-      let clos = prClos info
-          pCurr = current $ prState info
+      let pCurr = current $ prState info
           pPend = pending $ prState info
           pPendCnefs = D.intersect pPend maskCne
 
-          cneClos = S.filter checkCne clos
+          cneClos = S.filter checkCne cl
           pCheckList = D.encode bitenc $
                        S.filter (\(ChainNext _ g) -> D.member bitenc g pCurr) cneClos
 
@@ -739,12 +735,11 @@ deltaRules bitenc condInfo =
     cntShiftFpr = cntPushFpr
 
     cntPopPr info =
-      let clos = prClos info
-          pCurr = current $ prState info
+      let pCurr = current $ prState info
           pPend = pending (prState info)
           pPendCntfs = D.intersect pPend maskCnt
 
-          cntClos = S.filter checkCnt clos
+          cntClos = S.filter checkCnt cl
           pCheckList = D.encode bitenc $
                        S.filter (\(ChainNext _ g) -> D.member bitenc g pCurr) cntClos
 
@@ -793,12 +788,11 @@ deltaRules bitenc condInfo =
       in ppPendCbyfs == fPendCbyfs
 
     cbyPushFpr info =
-      let clos = fprClos info
-          pCurr = current $ fprState info
+      let pCurr = current $ fprState info
           (fPend, _, _, _) = fprFuturePendComb info
           fPendCbyfs = D.intersect fPend maskCby
 
-          cbyClos = S.filter checkCby clos
+          cbyClos = S.filter checkCby cl
           pCheckSet = D.encode bitenc $
                       S.filter (\(ChainBack _ g) -> D.member bitenc g pCurr) cbyClos
 
@@ -837,13 +831,12 @@ deltaRules bitenc condInfo =
       in ppPendCbefs == fPendCbefs
 
     cbePushFpr info =
-      let clos = fprClos info
-          pCurr = current $ fprState info
+      let pCurr = current $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
 
           fPendCbefs = D.intersect fPend maskCbe
 
-          cbeClos = S.filter checkCbe clos
+          cbeClos = S.filter checkCbe cl
           pCheckSet = D.encode bitenc $
                       S.filter (\(ChainBack _ g) -> D.member bitenc g pCurr) cbeClos
 
@@ -880,8 +873,7 @@ deltaRules bitenc condInfo =
     cbtShiftPr = cbtPushPr
 
     cbtPopFpr info =
-      let clos = fprClos info
-          pPend = pending (fprState info)
+      let pPend = pending (fprState info)
           (fPend, fXl, fXe, _) = fprFuturePendComb info
           ppCurr = current $ fromJust (fprPopped info)
           pPendCbtfs = D.intersect pPend maskCbt
@@ -922,13 +914,12 @@ deltaRules bitenc condInfo =
            else True
 
     hnyPushPr2 info =
-      let clos = prClos info
-          pCurr = current $ prState info
+      let pCurr = current $ prState info
           pPend = pending $ prState info
           pXr = afterPop $ prState info
           pPendHnyfs = D.intersect pPend maskHny
 
-          hnyClos = S.filter checkHny clos
+          hnyClos = S.filter checkHny cl
           checkSet = D.encode bitenc $
                      S.filter (\(HierNextYield g) -> D.member bitenc g pCurr) hnyClos
       in if pXr
@@ -978,14 +969,13 @@ deltaRules bitenc condInfo =
       in D.null $ D.intersect pCurr maskHby
 
     hbyPopFr info =
-      let clos = frClos info
-          (_, fXl, _, _) = frFuturePendComb info
+      let (_, fXl, _, _) = frFuturePendComb info
           fCurr = frFutureCurr info
           ppCurr = current $ fromJust (frPopped info)
           ppXr = afterPop $ fromJust (frPopped info)
           fCurrHbyfs = D.intersect fCurr maskHby
 
-          hbyClos = S.filter checkHby clos
+          hbyClos = S.filter checkHby cl
           checkSet = D.encode bitenc $
                      S.filter (\(HierBackYield g) -> D.member bitenc g ppCurr) hbyClos
       in if fXl
@@ -999,18 +989,17 @@ deltaRules bitenc condInfo =
     maskHnt = D.suchThat bitenc checkHnt
     checkHnt (HierNextTake _) = True
     checkHnt _ = False
+    hntClos = S.filter checkHnt cl
 
     hntCond clos = not (null [f | f@(HierNextTake _) <- S.toList clos])
 
     hntPopFpr1 info =
-      let clos = fprClos info
-          (fPend, fXl, fXe, _) = fprFuturePendComb info
+      let (fPend, fXl, fXe, _) = fprFuturePendComb info
           ppCurr = current $ fromJust (fprPopped info)
 
           fPendHntfs = D.intersect fPend maskHnt
 
           hth = HierTakeHelper
-          hntClos = S.filter checkHnt clos -- TODO: factor this out
           checkSet = D.encode bitenc $
                      S.filter (\(HierNextTake g) -> D.member bitenc (hth g) ppCurr) hntClos
 
@@ -1019,15 +1008,13 @@ deltaRules bitenc condInfo =
            else True
 
     hntPopFpr2 info =
-      let clos = fprClos info
-          pPend = pending (fprState info)
+      let pPend = pending (fprState info)
           (_, fXl, fXe, _) = fprFuturePendComb info
           ppCurr = current $ fromJust (fprPopped info)
 
           pPendHntfs = D.intersect pPend maskHnt
 
           hth = HierTakeHelper
-          hntClos = S.filter checkHnt clos -- TODO: factor this out
           checkSet = D.encode bitenc $
                      S.filter (\f -> D.member bitenc (hth f) ppCurr) hntClos
 
@@ -1036,13 +1023,11 @@ deltaRules bitenc condInfo =
            else True
 
     hntPopFpr3 info =
-      let clos = fprClos info
-          pPend = pending (fprState info)
+      let pPend = pending (fprState info)
           (_, _, fXe, _) = fprFuturePendComb info
           ppCurr = current $ fromJust (fprPopped info)
 
           hth = HierTakeHelper
-          hntClos = S.filter checkHnt clos -- TODO: factor this out
           checkSet = S.filter (\f -> D.member bitenc (hth f) ppCurr) hntClos
 
       in if not (null checkSet)
@@ -1070,19 +1055,18 @@ deltaRules bitenc condInfo =
     maskHbt = D.suchThat bitenc checkHbt
     checkHbt (HierBackTake _) = True
     checkHbt _ = False
+    hbtClos = S.filter checkHbt cl
 
     hbtCond clos = not (null [f | f@(HierBackTake _) <- S.toList clos])
 
     hbtPopFpr1 info =
-      let clos = fprClos info
-          pPend = pending (fprState info)
+      let pPend = pending (fprState info)
           (_, fXl, fXe, _) = fprFuturePendComb info
           ppCurr = current $ fromJust (fprPopped info)
 
           pPendHbtfs = D.intersect pPend maskHbt
 
           hth = HierTakeHelper
-          hbtClos = S.filter checkHbt clos -- TODO: factor this out
           checkSet = D.encode bitenc $
                      S.filter (\(HierBackTake g) -> D.member bitenc (hth g) ppCurr) hbtClos
 
@@ -1091,14 +1075,12 @@ deltaRules bitenc condInfo =
            else True
 
     hbtPopFpr2 info =
-      let clos = fprClos info
-          (fPend, fXl, _, _) = fprFuturePendComb info
+      let (fPend, fXl, _, _) = fprFuturePendComb info
           ppCurr = current $ fromJust (fprPopped info)
 
           fPendHbtfs = D.intersect fPend maskHbt
 
           hth = HierTakeHelper
-          hbtClos = S.filter checkHbt clos -- TODO: factor this out
           checkSet = D.encode bitenc $
                      S.filter (\f -> D.member bitenc (hth f) ppCurr) hbtClos
 
@@ -1158,12 +1140,11 @@ deltaRules bitenc condInfo =
       in ppPendHthfs == fPendHthfs
 
     hthPushFpr info =
-      let clos = fprClos info
-          pCurr = current $ fprState info
+      let pCurr = current $ fprState info
           (fPend, _, _, _) = fprFuturePendComb info
           fPendHthfs = D.intersect fPend maskHth
 
-          hthClos = S.filter checkHth clos
+          hthClos = S.filter checkHth cl
           pCheckSet = D.encode bitenc $
                       S.filter (\(HierTakeHelper g) -> D.member bitenc g pCurr) hthClos
 
@@ -1173,16 +1154,14 @@ deltaRules bitenc condInfo =
     --
 
 data PrInfo = PrInfo
-  { prClos      :: FormulaSet
-  , prPrecFunc  :: PrecFunc APType
+  { prPrecFunc  :: PrecFunc APType
   , prState     :: State
   , prProps     :: Maybe (Input)
   , prPopped    :: Maybe (State)
   , prNextProps :: Maybe (Input)
   }
 data FcrInfo = FcrInfo
-  { fcrClos       :: FormulaSet
-  , fcrPrecFunc   :: PrecFunc APType
+  { fcrPrecFunc   :: PrecFunc APType
   , fcrState      :: State
   , fcrProps      :: Maybe (Input)
   , fcrPopped     :: Maybe (State)
@@ -1190,8 +1169,7 @@ data FcrInfo = FcrInfo
   , fcrNextProps  :: Maybe (Input)
   }
 data FprInfo = FprInfo
-  { fprClos           :: FormulaSet
-  , fprPrecFunc       :: PrecFunc APType
+  { fprPrecFunc       :: PrecFunc APType
   , fprState          :: State
   , fprProps          :: Maybe (Input)
   , fprPopped         :: Maybe (State)
@@ -1199,8 +1177,7 @@ data FprInfo = FprInfo
   , fprNextProps      :: Maybe (Input)
   }
 data FrInfo = FrInfo
-  { frClos           :: FormulaSet
-  , frPrecFunc       :: PrecFunc APType
+  { frPrecFunc       :: PrecFunc APType
   , frState          :: State
   , frProps          :: Maybe (Input)
   , frPopped         :: Maybe (State)
@@ -1240,8 +1217,7 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
     frs  = ruleGroupFrs  rgroup
 
     pvalid = null [r | r <- prs, not (r info)]
-      where info = PrInfo { prClos      = clos,
-                            prPrecFunc  = prec,
+      where info = PrInfo { prPrecFunc  = prec,
                             prState     = state,
                             prProps     = mprops,
                             prPopped    = mpopped,
@@ -1249,8 +1225,7 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                           }
 
     vas = filter valid nextAtoms
-      where makeInfo curr = FcrInfo { fcrClos       = clos,
-                                      fcrPrecFunc   = prec,
+      where makeInfo curr = FcrInfo { fcrPrecFunc   = prec,
                                       fcrState      = state,
                                       fcrProps      = mprops,
                                       fcrPopped     = mpopped,
@@ -1263,8 +1238,7 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                         else [current state]
 
     vpcs = S.toList . S.filter valid $ pcombs
-      where makeInfo pendComb = FprInfo { fprClos           = clos,
-                                          fprPrecFunc       = prec,
+      where makeInfo pendComb = FprInfo { fprPrecFunc       = prec,
                                           fprState          = state,
                                           fprProps          = mprops,
                                           fprPopped         = mpopped,
@@ -1278,8 +1252,7 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
                                                  pc@(pend, xl, xe, xr) <- vpcs,
                                                  valid curr pc]
                 else []
-      where makeInfo curr pendComb = FrInfo { frClos           = clos,
-                                              frPrecFunc       = prec,
+      where makeInfo curr pendComb = FrInfo { frPrecFunc       = prec,
                                               frState          = state,
                                               frProps          = mprops,
                                               frPopped         = mpopped,
@@ -1443,8 +1416,8 @@ makeOpa phi (sls, als) prec = (bitenc
                               , is
                               , isFinal bitenc
                               , deltaPush  cl as pcs prec pushRules
-                              ,  deltaShift cl as pcs prec shiftRules
-                              ,  deltaPop   cl as pcs prec popRules
+                              , deltaShift cl as pcs prec shiftRules
+                              , deltaPop   cl as pcs prec popRules
                               )
   where nphi = normalize . toReducedPotl $ phi
         tsprops = sls ++ als

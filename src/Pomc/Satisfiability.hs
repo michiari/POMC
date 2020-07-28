@@ -15,8 +15,8 @@ module Pomc.Satisfiability (
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel, PrecFunc, fromStructPR)
-import Pomc.Check (Checkable(..), getProps, Input, Atom(..), State(..), makeOpa)
-import Pomc.RPotl (Formula(Atomic), atomic)
+import Pomc.Check (Checkable(..), getProps, Input, State(..), makeOpa)
+import Pomc.RPotl (Formula(Atomic))
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding)
 import qualified Pomc.Data as D (member)
