@@ -642,9 +642,9 @@ deltaRules bitenc cl precFunc =
           checkPbnp prec (PrecBack pset _) = prec `S.notMember` pset
           checkPbnp prec _ = False
 
-          precComp Yield = D.null $ D.intersect pCurr maskPbny
-          precComp Equal = D.null $ D.intersect pCurr maskPbne
-          precComp Take  = D.null $ D.intersect pCurr maskPbnt
+          precComp Yield = D.null $ D.intersect fCurr maskPbny
+          precComp Equal = D.null $ D.intersect fCurr maskPbne
+          precComp Take  = D.null $ D.intersect fCurr maskPbnt
 
           fsComp prec = fCurrPbfs == checkSet
             where fCurrPbfs = D.intersect fCurr maskPb
