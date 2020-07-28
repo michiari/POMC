@@ -886,12 +886,16 @@ deltaRules bitenc condInfo =
           ppCurr = current $ fromJust (fprPopped info)
           pPendCbtfs = D.intersect pPend maskCbt
           fPendCbtfs = D.intersect fPend maskCbt
-          cbt f = ChainBack (S.singleton Take) f
-          yieldCheckSet = (D.filter bitenc (\(ChainBack _ f) -> cbt f `S.member` clos) $
-                           D.intersect ppCurr maskCby)
-                          `D.union`
-                          (D.filter bitenc (\(PrecBack _ f) -> cbt f `S.member` clos) $
-                           D.intersect ppCurr maskPby)
+
+          ppCurrCbyfs = D.intersect ppCurr maskCby
+          ppCurrPbyfs = D.intersect ppCurr maskPby
+          cby f = ChainBack (S.singleton Yield) f
+          pby f = PrecBack (S.singleton Yield) f
+          yieldCheckSet = D.filter
+            bitenc
+            (\(ChainBack _ f) -> D.member bitenc (cby f) ppCurrCbyfs
+                                 || D.member bitenc (pby f) ppCurrPbyfs)
+            maskCbt
           takeCheckSet = pPendCbtfs
           checkSet = yieldCheckSet `D.union` takeCheckSet
 
