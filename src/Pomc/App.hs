@@ -9,7 +9,7 @@ module Pomc.App (go) where
 
 import Pomc.Check (Checkable(..), fastcheckGen)
 import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..))
-import Pomc.Prec (fromRelations)
+import Pomc.Prec (Prec(..), fromRelations)
 import Pomc.Prop (Prop(..))
 import Pomc.RPotl (getProps)
 import Pomc.Util (safeHead, timeAction, timeToString)
@@ -51,7 +51,7 @@ go = do args <- getArgs
 
         let phis = creqFormulas creq
             strings = creqStrings creq
-            precRels = creqPrecRels creq
+            precRels = addEndPrec $ creqPrecRels creq
 
         times <- forM [(phi, s) | phi <- phis, s <- strings] (uncurry $ run precRels)
 
@@ -67,6 +67,12 @@ go = do args <- getArgs
              putStrLn (concat ["\nElapsed time: ", timeToString time])
 
              return time
+
+        addEndPrec precRels = noEndPR
+                              ++ map (\p -> (End, p, Yield)) sl
+                              ++ map (\p -> (p, End, Take)) sl
+          where sl = S.toList $ S.fromList $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) noEndPR
+                noEndPR = filter (\(p1, p2, _) -> p1 /= End && p2 /= End) precRels
 
         showp prop = case prop of Prop p -> show p
                                   End    -> "#"
