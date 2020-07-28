@@ -133,33 +133,44 @@ instance EncodedAtom BVEA where
 
   encode bitenc set =
     BVEA $ S.foldl BV.setBit (BV.zeros $ width bitenc) (S.map (index bitenc) set)
+  {-# INLINABLE encode #-}
 
   generate 0 = []
   generate len = map (BVEA . BV.reverse) $ BV.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
+  {-# INLINABLE generate #-}
 
   (BVEA v1) ++ (BVEA v2) = BVEA $ v2 BV.# v1
+  {-# INLINABLE (++) #-}
 
   null (BVEA bv) = bv == BV.nil
+  {-# INLINABLE null #-}
 
   member bitenc phi (BVEA bv) | negative phi = not $ bv BV.@. (index bitenc $ negation phi)
                               | otherwise = bv BV.@. (index bitenc $ phi)
+  {-# INLINABLE member #-}
 
   any bitenc predicate (BVEA bv) = Prelude.any (predicate . (fetch bitenc)) $ listBits bv
+  {-# INLINABLE any #-}
 
   filter bitenc predicate (BVEA bv) = BVEA . snd $ BV.foldr filterVec (0, BV.zeros $ BV.width bv) bv
     where filterVec b (i, acc) = if b && predicate (fetch bitenc $ i)
                                  then (i+1, BV.setBit acc i)
                                  else (i+1, acc)
+  {-# INLINABLE filter #-}
 
   propsOnly bitenc (BVEA bv) = BVEA $ BV.least (propBits bitenc) bv
+  {-# INLINABLE propsOnly #-}
 
   suchThat bitenc predicate = BVEA $ BV.fromBits bitList
     where len = width bitenc
           bitList = map (predicate . (fetch bitenc)) [(len-1), (len-2)..0]
+  {-# INLINABLE suchThat #-}
 
   intersect (BVEA v1) (BVEA v2) = BVEA $ v1 .&. v2
+  {-# INLINABLE intersect #-}
 
   union (BVEA v1) (BVEA v2) = BVEA $ v1 .|. v2
+  {-# INLINABLE union #-}
 
 
 listBits :: BitVector -> [Int]
