@@ -71,8 +71,8 @@ instance Checkable (Formula) where
 
 type EncPrecFunc = EncodedSet -> EncodedSet -> Maybe Prec
 
-fromStructEnc :: BitEncoding -> [StructPrecRel APType] -> EncPrecFunc
-fromStructEnc bitenc sprs = \s1 s2 -> M.lookup (structLabel s1, structLabel s2) relMap
+fromStructEnc :: BitEncoding -> [StructPrecRel APType] -> (EncPrecFunc, PropSet)
+fromStructEnc bitenc sprs = (\s1 s2 -> M.lookup (structLabel s1, structLabel s2) relMap, sl)
   where sl = S.fromList $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) sprs
         maskSL = D.inputSuchThat bitenc (flip S.member sl)
         structLabel s = s `D.intersect` maskSL
@@ -1312,13 +1312,13 @@ check phi sprs ts =
             (deltaPop   cl as pcs prec   popRules)
             encTs
   where nphi = normalize . toReducedPotl $ phi
-        tsprops = S.toList $ foldl' (S.union) S.empty ts
+        tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
         inputSet = foldl' (flip S.insert) S.empty ts
         encTs = map (D.encodeInput bitenc) ts
 
         cl = closure nphi tsprops
         bitenc = makeBitEncoding cl
-        prec = fromStructEnc bitenc sprs
+        (prec, sl) = fromStructEnc bitenc sprs
         as = atoms bitenc cl inputSet
         pcs = pendCombs bitenc cl
         is = initials nphi cl (as, bitenc)
@@ -1349,7 +1349,7 @@ checkGen phi precr ts =
 
 fastcheck :: Formula APType
           -> [StructPrecRel APType]
-          -> [Set (Prop APType)]
+          -> [PropSet]
           -> Bool
 fastcheck phi sprs ts =
   debug $ augRun
@@ -1362,13 +1362,13 @@ fastcheck phi sprs ts =
             encTs
   where nphi = normalize . toReducedPotl $ phi
 
-        tsprops = S.toList $ foldl' (S.union) S.empty ts
+        tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
         inputSet = foldl' (flip S.insert) S.empty ts
         encTs = map (D.encodeInput bitenc) ts
 
         cl = closure nphi tsprops
         bitenc = makeBitEncoding cl
-        prec = fromStructEnc bitenc sprs
+        (prec, sl) = fromStructEnc bitenc sprs
         as = atoms bitenc cl inputSet
         pcs = pendCombs bitenc cl
         is = filter compInitial (initials nphi cl (as, bitenc))
@@ -1451,7 +1451,7 @@ makeOpa phi (sls, als) sprs = (bitenc
 
         cl = closure nphi tsprops
         bitenc = makeBitEncoding cl
-        prec = fromStructEnc bitenc sprs
+        (prec, _) = fromStructEnc bitenc sprs
         as = atoms bitenc cl inputSet
         pcs = pendCombs bitenc cl
         is = initials nphi cl (as, bitenc)
