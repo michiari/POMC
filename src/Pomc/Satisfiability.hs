@@ -172,12 +172,17 @@ getSidProps bitenc s = (getStateProps bitenc) . getState $ s
 
 popFirst :: (SatState state) => BitEncoding -> [state] -> [state]
 popFirst bitenc states =
-  let (popStates, others) = partition isMustPop states
-      (endStates, otherPop) = partition isEndState popStates
+  let (endStates, otherPop, others) = foldl partitionStates ([], [], []) states
   in endStates ++ otherPop ++ others
   where isMustPop s = let ss = getSatState s
                       in not (mustPush ss || mustShift ss)
         isEndState s = D.member bitenc (Atomic End) (current . getSatState $ s)
+
+        partitionStates (endStates, otherPop, others) s
+          | isMustPop s = if isEndState s
+                          then (s:endStates, otherPop, others)
+                          else (endStates, s:otherPop, others)
+          | otherwise = (endStates, otherPop, s:others)
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool)
