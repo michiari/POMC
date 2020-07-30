@@ -63,21 +63,24 @@ insertSM smref stateId val = do
   let len = MV.length sm
       sid = getId stateId
   if sid < len
-    then MV.modify sm (Set.insert val) sid
+    then MV.unsafeModify sm (Set.insert val) sid
     else let newLen = computeLen len sid
 
              computeLen size idx | idx < size = size
                                  | otherwise = computeLen (size*2) idx
          in do { grown <- MV.grow sm (newLen-len)
-               ; mapM_ (\i -> MV.write grown i Set.empty) [len..(newLen-1)]
-               ; MV.modify grown (Set.insert val) sid
+               ; mapM_ (\i -> MV.unsafeWrite grown i Set.empty) [len..(newLen-1)]
+               ; MV.unsafeModify grown (Set.insert val) sid
                ; writeSTRef smref grown
                }
 
 lookupSM :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
 lookupSM smref stateId = do
   sm <- readSTRef smref
-  MV.read sm (getId stateId)
+  let sid = getId stateId
+  if sid < MV.length sm
+    then MV.unsafeRead sm sid
+    else return Set.empty
 
 emptySM :: ST.ST s (STRef s (SetMap s v))
 emptySM = do
