@@ -45,6 +45,7 @@ instance Checkable (Formula) where
   toReducedPotl f =
     case f of
       T               -> RP.T
+      Atomic End      -> RP.Atomic End
       Atomic (Prop p) -> RP.Atomic (Prop p)
       Not g           -> RP.Not (trp g)
       And g h         -> RP.And (trp g) (trp h)
@@ -111,7 +112,7 @@ instance (Show a) => Show (Formula a) where
     where showp T = "T"
           showp (Atomic (Prop p)) = show p
           showp (Atomic End) = "#"
-          showp f = concat ["(", show f, ")"]
+          showp g = concat ["(", show g, ")"]
 
 instance Functor Formula where
   fmap func f = case f of

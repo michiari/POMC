@@ -81,7 +81,7 @@ instance (Show a) => Show (Formula a) where
     where showp T = "T"
           showp (Atomic (Prop p)) = show p
           showp (Atomic End)      = "#"
-          showp f = concat ["(", show f, ")"]
+          showp g = concat ["(", show g, ")"]
 
 instance Hashable a => Hashable (Formula a)
 
@@ -151,23 +151,25 @@ future (Eventually'    {}) = True
 future _ = False
 
 negative :: Formula a -> Bool
-negative (Not f) = True
-negative f = False
+negative (Not _) = True
+negative _ = False
 
-formulaAt :: Integral n => n -> Formula a -> Formula a
+formulaAt :: Int -> Formula a -> Formula a
 formulaAt n f
   | n <= 1    = f
   | otherwise = formulaAt (n-1) (PrecNext (PS.fromList [Yield, Equal, Take]) f)
 
+showps :: PrecSet -> String
 showps pset = "[" ++ concat (map show (PS.toList pset)) ++ "]"
 
 negation :: Formula a -> Formula a
 negation (Not f) = f
 negation f = Not f
 
+normalize :: Formula a -> Formula a
 normalize f = case f of
                 T                  -> f
-                Atomic p           -> f
+                Atomic _           -> f
                 Not (Not g)        -> normalize g    -- remove double negation
                 Not g              -> Not (normalize g)
                 Or g h             -> Or  (normalize g) (normalize h)

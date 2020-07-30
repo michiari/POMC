@@ -7,13 +7,11 @@
 
 module Pomc.App (go) where
 
-import Pomc.Check (Checkable(..), fastcheckGen)
+import Pomc.Check (fastcheckGen)
 import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..))
-import Pomc.Prec (Prec(..), fromRelations)
+import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.RPotl (getProps)
 import Pomc.Util (safeHead, timeAction, timeToString)
-import Pomc.PropConv (APType)
 
 import Prelude hiding (readFile)
 
@@ -25,17 +23,9 @@ import Data.Text.IO (readFile)
 
 import Data.List (intersperse)
 
-import Data.Set (Set)
 import qualified Data.Set as S
 
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
-
-import Data.Maybe (fromJust)
-
 import Control.Monad
-
-import Data.Text (Text)
 
 go :: IO ()
 go = do args <- getArgs

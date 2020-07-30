@@ -25,9 +25,7 @@ import Control.Monad (foldM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
-
 import Data.Maybe
-import Data.List (partition)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -98,7 +96,7 @@ instance SatState State where
   getSatState = id
   {-# INLINABLE getSatState #-}
 
-  getStateProps bitenc s = extractInput bitenc (current $ s)
+  getStateProps bitencoding s = extractInput bitencoding (current $ s)
   {-# INLINABLE getStateProps #-}
 
 
@@ -169,15 +167,15 @@ data Delta state = Delta
   }
 
 getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
-getSidProps bitenc s = (getStateProps bitenc) . getState $ s
+getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
 
 popFirst :: (SatState state) => BitEncoding -> [state] -> [state]
-popFirst bitenc states =
+popFirst bitencoding states =
   let (endStates, otherPop, others) = foldl partitionStates ([], [], []) states
   in endStates ++ otherPop ++ others
   where isMustPop s = let ss = getSatState s
                       in not (mustPush ss || mustShift ss)
-        isEndState s = D.member bitenc (Atomic End) (current . getSatState $ s)
+        isEndState s = D.member bitencoding (Atomic End) (current . getSatState $ s)
 
         partitionStates (endStates, otherPop, others) s
           | isMustPop s = if isEndState s

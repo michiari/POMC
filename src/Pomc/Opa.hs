@@ -20,10 +20,7 @@ import Pomc.Prec (Prec(..))
 import Pomc.Util (any', safeHead, safeTail)
 
 import Control.Parallel.Strategies
-
-import Control.DeepSeq
 import GHC.Generics (Generic)
-
 import qualified Data.Vector as V
 
 data Opa s t = Opa

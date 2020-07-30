@@ -97,7 +97,7 @@ compose precRules = apply precRules
                                  Nothing   -> apply prs s1 s2
 
 fromPredicate :: (Set (Prop a) -> Set (Prop a) -> Bool) -> Prec -> PrecFunc a
-fromPredicate pred prec = \s1 s2 -> if pred s1 s2 then Just prec else Nothing
+fromPredicate predicate prec = \s1 s2 -> if predicate s1 s2 then Just prec else Nothing
 
 fromRelation :: Ord a => PrecRel a -> PrecFunc a
 fromRelation (sb1, sb2, prec) = \s1 s2 -> if (sb1 `S.isSubsetOf` s1) &&

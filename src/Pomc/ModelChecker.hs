@@ -7,7 +7,7 @@ module Pomc.ModelChecker (
                          ) where
 
 import Pomc.Prop (Prop)
-import Pomc.Prec (StructPrecRel, fromStructPR)
+import Pomc.Prec (StructPrecRel)
 import Pomc.RPotl (Formula(..))
 import Pomc.Check (Checkable(..), State, makeOpa)
 import Pomc.Satisfiability (SatState(..), isEmpty)

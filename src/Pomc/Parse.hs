@@ -19,7 +19,6 @@ import qualified Pomc.PotlV2 as P2
 
 import Data.Void (Void)
 
-import Data.Text (Text)
 import Data.Text as T
 
 import Data.Set (Set)
@@ -146,26 +145,26 @@ potlv2P = makeExprParser termParser operatorTable
           ]
 
 formulaSectionP :: Parser [P2Formula]
-formulaSectionP = do symbolP "formulas"
-                     symbolP "="
+formulaSectionP = do _ <- symbolP "formulas"
+                     _ <- symbolP "="
                      formulas <- formulasP
-                     symbolP ";"
+                     _ <- symbolP ";"
                      return formulas
   where formulasP = potlv2P `sepBy1` symbolP ","
 
 stringSectionP :: Parser [PropString]
-stringSectionP = do symbolP "strings"
-                    symbolP "="
+stringSectionP = do _ <- symbolP "strings"
+                    _ <- symbolP "="
                     propStrings <- propStringsP
-                    symbolP ";"
+                    _ <- symbolP ";"
                     return propStrings
   where propStringsP = propStringP `sepBy1` symbolP ","
 
 precSectionP :: Parser [StructPrecRel Text]
-precSectionP = do symbolP "prec"
-                  symbolP "="
+precSectionP = do _ <- symbolP "prec"
+                  _ <- symbolP "="
                   precRels <- precRelsP
-                  symbolP ";"
+                  _ <- symbolP ";"
                   return precRels
   where precRelsP = precRelP `sepBy1` symbolP ","
 

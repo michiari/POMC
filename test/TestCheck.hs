@@ -1,6 +1,6 @@
 module TestCheck (tests) where
 
-import Pomc.Check (fastcheckGen, Checkable(..))
+import Pomc.Check (fastcheckGen)
 import Pomc.Example (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
 import Pomc.Prec (Prec(..))
 import qualified Pomc.Prec as PS (singleton, fromList)
@@ -873,7 +873,7 @@ unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
 
 propTests :: TestTree
 propTests = testGroup "QuickCheck tests" (map makePropTest propTuples)
-  where makePropTest (name, expected, phi, prec, gen) =
+  where makePropTest (name, expected, phi, _, gen) =
           testProperty name $
             forAll (sized gen) $ \input -> fastcheckGen phi stlPrecRelV1 input == expected
 
@@ -898,9 +898,9 @@ wellFormedTrace :: Int -> Gen [String]
 wellFormedTrace m = return ["call"] `gconcat` (arb m) `gconcat` return ["ret"]
   where gconcat = liftM2 (++)
         arb 0 = return []
-        arb m = do n <- choose (0, m `div` 2)
+        arb l = do n <- choose (0, l `div` 2)
                    oneof [ return ["call"] `gconcat` (arb n) `gconcat` return ["ret"] `gconcat` (arb n)
                          , return ["han"]  `gconcat` (arb n) `gconcat` (arbStr "thr" 3) `gconcat` (arb n)
                          ]
-        arbStr str m = do n <- choose (0, m)
+        arbStr str l = do n <- choose (0, l)
                           return (replicate n str)

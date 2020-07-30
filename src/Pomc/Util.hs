@@ -18,10 +18,6 @@ module Pomc.Util ( unsafeLookup
                  ) where
 
 import Data.Foldable (foldl')
-
-import Data.List (sort)
-import Control.Monad (filterM)
-
 import Criterion.Measurement (initializeTime, getTime, secs)
 
 unsafeLookup :: Eq a => a -> [(a, b)] -> b

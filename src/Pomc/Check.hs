@@ -20,8 +20,8 @@ module Pomc.Check ( -- * Checking functions
                   , showAtoms
                   , showStates
                   , EncPrecFunc
-                  , Input(..)
-                  , Atom(..)
+                  , Input
+                  , Atom
                   , State(..)
                   , makeOpa
                   ) where
@@ -31,7 +31,7 @@ import Pomc.Prec (Prec(..), StructPrecRel)
 import qualified Pomc.Prec as PS (singleton, size, member, notMember, fromList, toList)
 import Pomc.Opa (run, augRun)
 import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
-import Pomc.Util (xor, implies, safeHead)
+import Pomc.Util (safeHead)
 import Pomc.Data (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
 import qualified Pomc.Data as D
 import Pomc.PropConv (APType, convPropTokens)
@@ -41,12 +41,10 @@ import Data.Maybe (fromJust, fromMaybe, isNothing)
 import Data.Set (Set)
 import qualified Data.Set as S
 
-import Data.Vector (Vector)
 import qualified Data.Vector as V
 
 import Data.List (foldl', sortOn)
 
-import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
 
 import Control.Monad (guard, filterM)
@@ -232,7 +230,7 @@ makeBitEncoding :: FormulaSet -> BitEncoding
 makeBitEncoding clos =
   let pclos = S.filter (not . negative) clos
 
-      fetch vec i = vec V.! i
+      fetchVec vec i = vec V.! i
 
       -- Mapping between positive formulas and bits
       pFormulaClos = S.filter (not . atomic) pclos
@@ -256,15 +254,15 @@ makeBitEncoding clos =
       pClosLookup phi = fromJust $ M.lookup phi pClosMap
         where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
 
-  in BitEncoding { D.fetch = fetch pClosVec
+  in BitEncoding { D.fetch = fetchVec pClosVec
                  , D.index = pClosLookup
                  , D.width = V.length pClosVec
                  , D.propBits = V.length pAtomicVec
                  }
 
 
-atoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
-atoms bitenc clos inputSet =
+genAtoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
+genAtoms bitenc clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
 
       -- Make power set of AP
@@ -605,7 +603,7 @@ deltaRules bitenc cl precFunc =
           maskPnne = D.suchThat bitenc (checkPnnp Equal)
           maskPnnt = D.suchThat bitenc (checkPnnp Take)
           checkPnnp prec (PrecNext pset _) = prec `PS.notMember` pset
-          checkPnnp prec _ = False
+          checkPnnp _ _ = False
 
           precComp Yield = D.null $ D.intersect pCurr maskPnny
           precComp Equal = D.null $ D.intersect pCurr maskPnne
@@ -641,7 +639,7 @@ deltaRules bitenc cl precFunc =
           maskPbne = D.suchThat bitenc (checkPbnp Equal)
           maskPbnt = D.suchThat bitenc (checkPbnp Take)
           checkPbnp prec (PrecBack pset _) = prec `PS.notMember` pset
-          checkPbnp prec _ = False
+          checkPbnp _ _ = False
 
           precComp Yield = D.null $ D.intersect fCurr maskPbny
           precComp Equal = D.null $ D.intersect fCurr maskPbne
@@ -859,7 +857,7 @@ deltaRules bitenc cl precFunc =
 
     cbePushFpr info =
       let pCurr = current $ fprState info
-          (fPend, fXl, _, _) = fprFuturePendComb info
+          (fPend, _, _, _) = fprFuturePendComb info
 
           fPendCbefs = D.intersect fPend maskCbe
 
@@ -1050,8 +1048,7 @@ deltaRules bitenc cl precFunc =
            else True
 
     hntPopFpr3 info =
-      let pPend = pending (fprState info)
-          (_, _, fXe, _) = fprFuturePendComb info
+      let (_, _, fXe, _) = fprFuturePendComb info
           ppCurr = current $ fromJust (fprPopped info)
 
           hth = HierTakeHelper
@@ -1150,7 +1147,6 @@ deltaRules bitenc cl precFunc =
     hthPushPr info =
       let pCurr = current $ prState info
           pPend = pending (prState info)
-          pXr = afterPop (prState info)
           pCurrHthfs = D.intersect pCurr maskHth
           pPendHthfs = D.intersect pPend maskHth
       in pCurrHthfs == pPendHthfs
@@ -1232,7 +1228,15 @@ augDeltaRules bitenc cl prec =
                             nextProps = fromJust (fcrNextProps info)
                         in compProps bitenc fCurr nextProps
 
-delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
+delta :: RuleGroup
+      -> [Atom]
+      -> Set (EncodedSet, Bool, Bool, Bool)
+      -> State
+      -> Maybe Input
+      -> Maybe State
+      -> Maybe Input
+      -> [State]
+delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
   where
     prs  = ruleGroupPrs  rgroup
     fcrs = ruleGroupFcrs rgroup
@@ -1282,8 +1286,8 @@ delta rgroup prec clos atoms pcombs state mprops mpopped mnextprops = fstates
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
 isFinal :: BitEncoding -> State -> Bool
-isFinal bitenc s@(State c p xl xe xr) =
-  debug $ not xl -- xe can be instead accepted, as if # = #
+isFinal bitenc s =
+  debug $ not (mustPush s) -- xe can be instead accepted, as if # = #
   && D.member bitenc (Atomic End) currFset
   && (not $ D.any bitenc future currFset) -- TODO: mask this
   && pendComb
@@ -1308,9 +1312,9 @@ check phi sprs ts =
             prec
             is
             (isFinal bitenc)
-            (deltaShift cl as pcs prec shiftRules)
-            (deltaPush  cl as pcs prec  pushRules)
-            (deltaPop   cl as pcs prec   popRules)
+            (deltaShift as pcs shiftRules)
+            (deltaPush  as pcs pushRules)
+            (deltaPop   as pcs popRules)
             encTs
   where nphi = normalize . toReducedPotl $ phi
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
@@ -1320,22 +1324,22 @@ check phi sprs ts =
         cl = closure nphi tsprops
         bitenc = makeBitEncoding cl
         (prec, sl) = fromStructEnc bitenc sprs
-        as = atoms bitenc cl inputSet
+        as = genAtoms bitenc cl inputSet
         pcs = pendCombs bitenc cl
         is = initials nphi cl (as, bitenc)
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
         debug = id
 
-        deltaShift clos atoms pcombs prec rgroup state props = fstates
-          where fstates = delta rgroup prec clos atoms pcombs state
+        deltaShift atoms pcombs rgroup state props = fstates
+          where fstates = delta rgroup atoms pcombs state
                                 (Just props) Nothing Nothing
 
-        deltaPush clos atoms pcombs prec rgroup state props = fstates
-          where fstates = delta rgroup prec clos atoms pcombs state
+        deltaPush atoms pcombs rgroup state props = fstates
+          where fstates = delta rgroup atoms pcombs state
                                 (Just props) Nothing Nothing
 
-        deltaPop clos atoms pcombs prec rgroup state popped = fstates
-          where fstates = delta rgroup prec clos atoms pcombs state
+        deltaPop atoms pcombs rgroup state popped = fstates
+          where fstates = delta rgroup atoms pcombs state
                                 Nothing (Just popped) Nothing
 
 checkGen :: (Checkable f, Ord a, Show a)
@@ -1357,9 +1361,9 @@ fastcheck phi sprs ts =
             prec
             is
             (isFinal bitenc)
-            (augDeltaShift cl as pcs prec shiftRules)
-            (augDeltaPush  cl as pcs prec  pushRules)
-            (augDeltaPop   cl as pcs prec   popRules)
+            (augDeltaShift as pcs shiftRules)
+            (augDeltaPush  as pcs pushRules)
+            (augDeltaPop   as pcs popRules)
             encTs
   where nphi = normalize . toReducedPotl $ phi
 
@@ -1370,7 +1374,7 @@ fastcheck phi sprs ts =
         cl = closure nphi tsprops
         bitenc = makeBitEncoding cl
         (prec, sl) = fromStructEnc bitenc sprs
-        as = atoms bitenc cl inputSet
+        as = genAtoms bitenc cl inputSet
         pcs = pendCombs bitenc cl
         is = filter compInitial (initials nphi cl (as, bitenc))
         (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl prec
@@ -1392,28 +1396,28 @@ fastcheck phi sprs ts =
                               Just npset -> npset
                               Nothing    -> D.encodeInput bitenc $ S.singleton End
 
-        augDeltaShift clos atoms pcombs prec rgroup lookahead state props = debug fstates
+        augDeltaShift atoms pcombs rgroup lookahead state props = debug fstates
           where
             debug = id
             --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
             --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup prec clos atoms pcombs state
+            fstates = delta rgroup atoms pcombs state
                             (Just props) Nothing (Just . laProps $ lookahead)
 
-        augDeltaPush clos atoms pcombs prec rgroup lookahead state props = debug fstates
+        augDeltaPush atoms pcombs rgroup lookahead state props = debug fstates
           where
             debug = id
             --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
             --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup prec clos atoms pcombs state
+            fstates = delta rgroup atoms pcombs state
                             (Just props) Nothing (Just . laProps $ lookahead)
 
-        augDeltaPop clos atoms pcombs prec rgroup lookahead state popped = debug fstates
+        augDeltaPop atoms pcombs rgroup lookahead state popped = debug fstates
           where
             debug = id
             --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
             --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup prec clos atoms pcombs state
+            fstates = delta rgroup atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
 
 fastcheckGen :: (Checkable f, Ord a, Show a)
@@ -1442,9 +1446,9 @@ makeOpa phi (sls, als) sprs = (bitenc
                               , prec
                               , is
                               , isFinal bitenc
-                              , deltaPush  cl as pcs prec pushRules
-                              , deltaShift cl as pcs prec shiftRules
-                              , deltaPop   cl as pcs prec popRules
+                              , deltaPush  as pcs pushRules
+                              , deltaShift as pcs shiftRules
+                              , deltaPop   as pcs popRules
                               )
   where nphi = normalize . toReducedPotl $ phi
         tsprops = sls ++ als
@@ -1453,19 +1457,19 @@ makeOpa phi (sls, als) sprs = (bitenc
         cl = closure nphi tsprops
         bitenc = makeBitEncoding cl
         (prec, _) = fromStructEnc bitenc sprs
-        as = atoms bitenc cl inputSet
+        as = genAtoms bitenc cl inputSet
         pcs = pendCombs bitenc cl
         is = initials nphi cl (as, bitenc)
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
 
-        deltaShift clos atoms pcombs prec rgroup state props = fstates
-          where fstates = delta rgroup prec clos atoms pcombs state
+        deltaShift atoms pcombs rgroup state props = fstates
+          where fstates = delta rgroup atoms pcombs state
                                 (Just props) Nothing Nothing
 
-        deltaPush clos atoms pcombs prec rgroup state props = fstates
-          where fstates = delta rgroup prec clos atoms pcombs state
+        deltaPush atoms pcombs rgroup state props = fstates
+          where fstates = delta rgroup atoms pcombs state
                                 (Just props) Nothing Nothing
 
-        deltaPop clos atoms pcombs prec rgroup state popped = fstates
-          where fstates = delta rgroup prec clos atoms pcombs state
+        deltaPop atoms pcombs rgroup state popped = fstates
+          where fstates = delta rgroup atoms pcombs state
                                 Nothing (Just popped) Nothing
