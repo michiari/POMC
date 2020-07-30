@@ -20,33 +20,29 @@ module Pomc.RPotl ( -- * RPOTL type
                   , normalize
                   ) where
 
-import Pomc.Prec (Prec(..))
+import Pomc.Prec (Prec(..), PrecSet)
+import qualified Pomc.Prec as PS (fromList, toList)
 import Pomc.Prop (Prop(..))
 
 import Data.List (nub)
-
-import Data.Set (Set)
-import qualified Data.Set as S
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 
 import Data.Hashable
 
-instance Hashable a => Hashable (Set a) where
-  hashWithSalt salt s = {-# SCC "hashSet" #-} hashWithSalt salt $ S.toAscList s
 
 data Formula a = T
                | Atomic !(Prop a)
                | Not (Formula a)
                | Or  (Formula a) (Formula a)
                | And (Formula a) (Formula a)
-               | PrecNext  (Set Prec) (Formula a)
-               | PrecBack  (Set Prec) (Formula a)
-               | ChainNext (Set Prec) (Formula a)
-               | ChainBack (Set Prec) (Formula a)
-               | Until (Set Prec) (Formula a) (Formula a)
-               | Since (Set Prec) (Formula a) (Formula a)
+               | PrecNext  PrecSet (Formula a)
+               | PrecBack  PrecSet (Formula a)
+               | ChainNext PrecSet (Formula a)
+               | ChainBack PrecSet (Formula a)
+               | Until PrecSet (Formula a) (Formula a)
+               | Since PrecSet (Formula a) (Formula a)
                | HierNextYield (Formula a)
                | HierBackYield (Formula a)
                | HierNextTake  (Formula a)
@@ -161,9 +157,9 @@ negative f = False
 formulaAt :: Integral n => n -> Formula a -> Formula a
 formulaAt n f
   | n <= 1    = f
-  | otherwise = formulaAt (n-1) (PrecNext (S.fromList [Yield, Equal, Take]) f)
+  | otherwise = formulaAt (n-1) (PrecNext (PS.fromList [Yield, Equal, Take]) f)
 
-showps pset = "[" ++ concat (map show (S.toList pset)) ++ "]"
+showps pset = "[" ++ concat (map show (PS.toList pset)) ++ "]"
 
 negation :: Formula a -> Formula a
 negation (Not f) = f

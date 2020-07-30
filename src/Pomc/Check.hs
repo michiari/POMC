@@ -28,6 +28,7 @@ module Pomc.Check ( -- * Checking functions
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
+import qualified Pomc.Prec as PS (singleton, size, member, notMember, fromList, toList)
 import Pomc.Opa (run, augRun)
 import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
 import Pomc.Util (xor, implies, safeHead)
@@ -138,17 +139,17 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
   where
-    chainNextExp pset g = concatMap (\p -> [ ChainNext (S.singleton p) g
-                                           , Not (ChainNext (S.singleton p) g)
-                                           ]) (S.toList pset)
-    chainBackExp pset g = concatMap (\p -> [ ChainBack (S.singleton p) g
-                                           , Not (ChainBack (S.singleton p) g)
-                                           ]) (S.toList pset) ++
-                          if Take `S.member` pset
-                            then [ PrecBack  (S.singleton Yield) g
-                                 , ChainBack (S.singleton Yield) g
-                                 , Not $ PrecBack  (S.singleton Yield) g
-                                 , Not $ ChainBack (S.singleton Yield) g
+    chainNextExp pset g = concatMap (\p -> [ ChainNext (PS.singleton p) g
+                                           , Not (ChainNext (PS.singleton p) g)
+                                           ]) (PS.toList pset)
+    chainBackExp pset g = concatMap (\p -> [ ChainBack (PS.singleton p) g
+                                           , Not (ChainBack (PS.singleton p) g)
+                                           ]) (PS.toList pset) ++
+                          if Take `PS.member` pset
+                            then [ PrecBack  (PS.singleton Yield) g
+                                 , ChainBack (PS.singleton Yield) g
+                                 , Not $ PrecBack  (PS.singleton Yield) g
+                                 , Not $ ChainBack (PS.singleton Yield) g
                                  ]
                             else []
 
@@ -174,35 +175,35 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
                , Not $ HierTakeHelper (HierBackTake g)
                ]
     huyExp g h = [ T
-                 , ChainBack (S.singleton Yield) T
+                 , ChainBack (PS.singleton Yield) T
                  , HierNextYield (HierUntilYield g h)
                  , Not $ T
-                 , Not $ ChainBack (S.singleton Yield) T
+                 , Not $ ChainBack (PS.singleton Yield) T
                  , Not $ HierNextYield (HierUntilYield g h)
                  ]
     hsyExp g h = [ T
-                 , ChainBack (S.singleton Yield) T
+                 , ChainBack (PS.singleton Yield) T
                  , HierBackYield (HierSinceYield g h)
                  , Not $ T
-                 , Not $ ChainBack (S.singleton Yield) T
+                 , Not $ ChainBack (PS.singleton Yield) T
                  , Not $ HierBackYield (HierSinceYield g h)
                  ]
     hutExp g h = [ T
-                 , ChainNext (S.singleton Take) T
+                 , ChainNext (PS.singleton Take) T
                  , HierNextTake (HierUntilTake g h)
                  , Not $ T
-                 , Not $ ChainNext (S.singleton Take) T
+                 , Not $ ChainNext (PS.singleton Take) T
                  , Not $ HierNextTake (HierUntilTake g h)
                  ] ++ hntExp (HierUntilTake g h)
     hstExp g h = [ T
-                 , ChainNext (S.singleton Take) T
+                 , ChainNext (PS.singleton Take) T
                  , HierBackTake (HierSinceTake g h)
                  , Not $ T
-                 , Not $ ChainNext (S.singleton Take) T
+                 , Not $ ChainNext (PS.singleton Take) T
                  , Not $ HierBackTake (HierSinceTake g h)
                  ] ++ hbtExp (HierSinceTake g h)
-    evExp g = [ PrecNext (S.fromList [Yield, Equal, Take]) (Eventually' g)
-              , Not $ PrecNext (S.fromList [Yield, Equal, Take]) (Eventually' g)
+    evExp g = [ PrecNext (PS.fromList [Yield, Equal, Take]) (Eventually' g)
+              , Not $ PrecNext (PS.fromList [Yield, Equal, Take]) (Eventually' g)
               ]
     closList f = case f of
       T                  -> [f, Not f]
@@ -327,24 +328,24 @@ chainNextCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
 chainNextCons bitenc clos set = not (D.any bitenc consSet set)
                                 &&
                                 null [f | f@(ChainNext pset g) <- S.toList clos,
-                                                                  S.size pset > 1 &&
+                                                                  PS.size pset > 1 &&
                                                                   present pset g &&
                                                                   not (D.member bitenc f set)]
-  where present pset g = any (\p -> D.member bitenc (ChainNext (S.singleton p) g) set)
-                             (S.toList pset)
-        consSet (ChainNext pset g) = S.size pset > 1 && not (present pset g)
+  where present pset g = any (\p -> D.member bitenc (ChainNext (PS.singleton p) g) set)
+                             (PS.toList pset)
+        consSet (ChainNext pset g) = PS.size pset > 1 && not (present pset g)
         consSet _ = False
 
 chainBackCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
 chainBackCons bitenc clos set = not (D.any bitenc consSet set)
                                 &&
                                 null [f | f@(ChainBack pset g) <- S.toList clos,
-                                                                  S.size pset > 1 &&
+                                                                  PS.size pset > 1 &&
                                                                   present pset g &&
                                                                   not (D.member bitenc f set)]
-  where present pset g = any (\p -> D.member bitenc (ChainBack (S.singleton p) g) set)
-                             (S.toList pset)
-        consSet (ChainBack pset g) = S.size pset > 1 && not (present pset g)
+  where present pset g = any (\p -> D.member bitenc (ChainBack (PS.singleton p) g) set)
+                             (PS.toList pset)
+        consSet (ChainBack pset g) = PS.size pset > 1 && not (present pset g)
         consSet _ = False
 
 untilCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
@@ -380,7 +381,7 @@ hierUntilYieldCons bitenc clos set = not (D.any bitenc consSet set)
                                                                          present f g h &&
                                                                          not (D.member bitenc f set)]
   where present huy g h =
-          (D.member bitenc h set && D.member bitenc (ChainBack (S.singleton Yield) T) set)
+          (D.member bitenc h set && D.member bitenc (ChainBack (PS.singleton Yield) T) set)
           ||
           (D.member bitenc g set && D.member bitenc (HierNextYield huy) set)
         consSet f@(HierUntilYield g h) = not $ present f g h
@@ -393,7 +394,7 @@ hierSinceYieldCons bitenc clos set = not (D.any bitenc consSet set)
                                                                          present f g h &&
                                                                          not (D.member bitenc f set)]
   where present hsy g h =
-          (D.member bitenc h set && D.member bitenc (ChainBack (S.singleton Yield) T) set)
+          (D.member bitenc h set && D.member bitenc (ChainBack (PS.singleton Yield) T) set)
           ||
           (D.member bitenc g set && D.member bitenc (HierBackYield hsy) set)
         consSet f@(HierSinceYield g h) = not $ present f g h
@@ -406,7 +407,7 @@ hierUntilTakeCons bitenc clos set = not (D.any bitenc consSet set)
                                                                        present f g h &&
                                                                        not (D.member bitenc f set)]
   where present hut g h =
-          (D.member bitenc h set && D.member bitenc (ChainNext (S.singleton Take) T) set)
+          (D.member bitenc h set && D.member bitenc (ChainNext (PS.singleton Take) T) set)
           ||
           (D.member bitenc g set && D.member bitenc (HierNextTake hut) set)
         consSet f@(HierUntilTake g h) = not $ present f g h
@@ -419,7 +420,7 @@ hierSinceTakeCons bitenc clos set = not (D.any bitenc consSet set)
                                                                        present f g h &&
                                                                        not (D.member bitenc f set)]
   where present hst g h =
-          (D.member bitenc h set && D.member bitenc (ChainNext (S.singleton Take) T) set)
+          (D.member bitenc h set && D.member bitenc (ChainNext (PS.singleton Take) T) set)
           ||
           (D.member bitenc g set && D.member bitenc (HierBackTake hst) set)
         consSet f@(HierSinceTake g h) = not $ present f g h
@@ -433,14 +434,14 @@ evCons bitenc clos set = not (D.any bitenc consSet set)
                                                         not (D.member bitenc f set)]
   where present ev g =
           (D.member bitenc g set) ||
-          (D.member bitenc (PrecNext (S.fromList [Yield, Equal, Take]) ev) set)
+          (D.member bitenc (PrecNext (PS.fromList [Yield, Equal, Take]) ev) set)
         consSet f@(Eventually' g) = not $ present f g
         consSet _ = False
 
 pendCombs :: BitEncoding -> FormulaSet -> Set (EncodedSet, Bool, Bool, Bool)
 pendCombs bitenc clos =
-  let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (S.size pset) == 1]
-      cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (S.size pset) == 1]
+  let cnfs  = [f | f@(ChainNext pset _) <- S.toList clos, (PS.size pset) == 1]
+      cbfs  = [f | f@(ChainBack pset _) <- S.toList clos, (PS.size pset) == 1]
       hnyfs = [f | f@(HierNextYield _)  <- S.toList clos]
       hntfs = [f | f@(HierNextTake _)   <- S.toList clos]
       hbtfs = [f | f@(HierBackTake _)   <- S.toList clos]
@@ -463,7 +464,7 @@ initials phi clos (atoms, bitenc) =
                            (not $ D.any bitenc checkPb set)
       compAtoms = filter compatible atoms
       cnyfSet = S.fromList [f | f@(ChainNext pset _) <- S.toList clos,
-                                                        pset == (S.singleton Yield)]
+                                                        pset == (PS.singleton Yield)]
   in [State ia (D.encode bitenc ip) True False False | ia <- compAtoms,
                                                        ip <- S.toList (S.powerSet cnyfSet)]
 
@@ -603,7 +604,7 @@ deltaRules bitenc cl precFunc =
           maskPnny = D.suchThat bitenc (checkPnnp Yield)
           maskPnne = D.suchThat bitenc (checkPnnp Equal)
           maskPnnt = D.suchThat bitenc (checkPnnp Take)
-          checkPnnp prec (PrecNext pset _) = prec `S.notMember` pset
+          checkPnnp prec (PrecNext pset _) = prec `PS.notMember` pset
           checkPnnp prec _ = False
 
           precComp Yield = D.null $ D.intersect pCurr maskPnny
@@ -613,7 +614,7 @@ deltaRules bitenc cl precFunc =
           fsComp prec = pCurrPnfs == checkSet
             where pCurrPnfs = D.intersect pCurr maskPn
                   checkSet = D.encode bitenc $ S.filter checkSetPred closPn
-                  checkSetPred (PrecNext pset g) = prec `S.member` pset && D.member bitenc g fCurr
+                  checkSetPred (PrecNext pset g) = prec `PS.member` pset && D.member bitenc g fCurr
                   checkSetPred _ = False
                   closPn = S.filter checkPn cl
 
@@ -639,7 +640,7 @@ deltaRules bitenc cl precFunc =
           maskPbny = D.suchThat bitenc (checkPbnp Yield)
           maskPbne = D.suchThat bitenc (checkPbnp Equal)
           maskPbnt = D.suchThat bitenc (checkPbnp Take)
-          checkPbnp prec (PrecBack pset _) = prec `S.notMember` pset
+          checkPbnp prec (PrecBack pset _) = prec `PS.notMember` pset
           checkPbnp prec _ = False
 
           precComp Yield = D.null $ D.intersect fCurr maskPbny
@@ -649,7 +650,7 @@ deltaRules bitenc cl precFunc =
           fsComp prec = fCurrPbfs == checkSet
             where fCurrPbfs = D.intersect fCurr maskPb
                   checkSet = D.encode bitenc $ S.filter checkSetPred closPb
-                  checkSetPred (PrecBack pset g) = prec `S.member` pset && D.member bitenc g pCurr
+                  checkSetPred (PrecBack pset g) = prec `PS.member` pset && D.member bitenc g pCurr
                   checkSetPred _ = False
                   closPb = S.filter checkPb cl
 
@@ -662,11 +663,11 @@ deltaRules bitenc cl precFunc =
 
     -- CNY
     maskCny = D.suchThat bitenc checkCny
-    checkCny (ChainNext pset _) = pset == S.singleton Yield
+    checkCny (ChainNext pset _) = pset == PS.singleton Yield
     checkCny _ = False
 
     cnyCond clos = not (null [f | f@(ChainNext pset _) <- S.toList clos,
-                                                          pset == S.singleton Yield])
+                                                          pset == PS.singleton Yield])
 
     cnyPushFpr info =
       let pCurr = current $ fprState info
@@ -700,11 +701,11 @@ deltaRules bitenc cl precFunc =
 
     -- CNE rules
     maskCne = D.suchThat bitenc checkCne
-    checkCne (ChainNext pset _) = pset == S.singleton Equal
+    checkCne (ChainNext pset _) = pset == PS.singleton Equal
     checkCne _ = False
 
     cneCond clos = not (null [f | f@(ChainNext pset _) <- S.toList clos,
-                                                          pset == S.singleton Equal])
+                                                          pset == PS.singleton Equal])
 
     cnePushFpr info =
       let pCurr = current $ fprState info
@@ -743,11 +744,11 @@ deltaRules bitenc cl precFunc =
 
     -- CNT rules
     maskCnt = D.suchThat bitenc checkCnt
-    checkCnt (ChainNext pset _) = pset == S.singleton Take
+    checkCnt (ChainNext pset _) = pset == PS.singleton Take
     checkCnt _ = False
 
     cntCond clos = not (null [f | f@(ChainNext pset _) <- S.toList clos,
-                                                          pset == S.singleton Take])
+                                                          pset == PS.singleton Take])
 
     cntPushFpr info =
       let pCurr = current $ fprState info
@@ -786,11 +787,11 @@ deltaRules bitenc cl precFunc =
 
     -- CBY
     maskCby = D.suchThat bitenc checkCby
-    checkCby (ChainBack pset _) = pset == S.singleton Yield
+    checkCby (ChainBack pset _) = pset == PS.singleton Yield
     checkCby _ = False
 
     cbyCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
-                                                          pset == S.singleton Yield])
+                                                          pset == PS.singleton Yield])
 
     cbyPushPr info =
       let pCurr = current $ prState info
@@ -829,11 +830,11 @@ deltaRules bitenc cl precFunc =
 
     -- CBE
     maskCbe = D.suchThat bitenc checkCbe
-    checkCbe (ChainBack pset _) = pset == S.singleton Equal
+    checkCbe (ChainBack pset _) = pset == PS.singleton Equal
     checkCbe _ = False
 
     cbeCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
-                                                          pset == S.singleton Equal])
+                                                          pset == PS.singleton Equal])
 
     cbeShiftPr info =
       let pCurr = current $ prState info
@@ -873,11 +874,11 @@ deltaRules bitenc cl precFunc =
 
     -- CBT
     maskCbt = D.suchThat bitenc checkCbt
-    checkCbt (ChainBack pset _) = pset == S.singleton Take
+    checkCbt (ChainBack pset _) = pset == PS.singleton Take
     checkCbt _ = False
 
     cbtCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
-                                                          pset == S.singleton Take])
+                                                          pset == PS.singleton Take])
 
     cbtPushFpr info =
       let (fPend, _, _, _) = fprFuturePendComb info
@@ -907,8 +908,8 @@ deltaRules bitenc cl precFunc =
 
           ppCurrCbyfs = D.intersect ppCurr maskCby
           ppCurrPbyfs = D.intersect ppCurr maskPby
-          cby f = ChainBack (S.singleton Yield) f
-          pby f = PrecBack (S.singleton Yield) f
+          cby f = ChainBack (PS.singleton Yield) f
+          pby f = PrecBack (PS.singleton Yield) f
           yieldCheckSet = D.filter
             bitenc
             (\(ChainBack _ f) -> D.member bitenc (cby f) ppCurrCbyfs
@@ -918,7 +919,7 @@ deltaRules bitenc cl precFunc =
           checkSet = yieldCheckSet `D.union` takeCheckSet
 
           maskPby = D.suchThat bitenc checkPby
-          checkPby (PrecBack pset _) = pset == S.singleton Yield
+          checkPby (PrecBack pset _) = pset == PS.singleton Yield
           checkPby _ = False
       in if fXl || fXe
            then pPendCbtfs == fPendCbtfs
@@ -1292,7 +1293,7 @@ isFinal bitenc s@(State c p xl xe xr) =
         -- only ChainBack Take formulas are allowed
 
         maskCbt = D.suchThat bitenc checkCbt
-        checkCbt (ChainBack pset _) = pset == S.singleton Take
+        checkCbt (ChainBack pset _) = pset == PS.singleton Take
         checkCbt _ = False
 
         debug = id

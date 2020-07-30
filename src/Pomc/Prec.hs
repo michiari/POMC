@@ -9,6 +9,14 @@
 
 module Pomc.Prec ( -- * Main precedence type
                    Prec(..)
+                 , PrecSet(..)
+                 , empty
+                 , singleton
+                 , size
+                 , member
+                 , notMember
+                 , fromList
+                 , toList
                    -- * Precedence function utilities
                  , PrecFunc
                  , PrecRel
@@ -27,6 +35,7 @@ import GHC.Generics (Generic)
 import Data.Hashable
 import Data.List (nub, find)
 import Data.Maybe (fromJust)
+import Data.Bits (Bits(..))
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -41,6 +50,40 @@ instance Show Prec where
   show Yield = "<"
   show Equal = "="
   show Take  = ">"
+
+newtype PrecSet = PrecSet Word deriving (Eq, Ord, Generic, NFData)
+
+instance Hashable PrecSet
+
+instance Show PrecSet where
+  show = show . toList
+
+empty :: PrecSet
+empty = PrecSet 0
+
+singleton :: Prec -> PrecSet
+singleton = PrecSet . mask
+
+size :: PrecSet -> Int
+size (PrecSet pset) = popCount pset
+
+member :: Prec -> PrecSet -> Bool
+member p (PrecSet pset) = pset .&. (mask p) /= 0
+
+notMember :: Prec -> PrecSet -> Bool
+notMember p (PrecSet pset) = pset .&. (mask p) == 0
+
+fromList :: [Prec] -> PrecSet
+fromList plist = PrecSet $ foldl (\pset prec -> pset .|. mask prec) 0 plist
+
+toList :: PrecSet -> [Prec]
+toList pset = filter (\prec -> prec `member` pset) [Yield, Equal, Take]
+
+mask :: Prec -> Word
+mask Yield = 1
+mask Equal = 2
+mask Take  = 4
+
 
 type PrecFunc a = Set (Prop a) -> Set (Prop a) -> Maybe Prec
 type PrecRel a = (Set (Prop a), Set (Prop a), Prec)
