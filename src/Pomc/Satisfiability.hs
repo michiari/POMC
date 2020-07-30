@@ -14,7 +14,7 @@ module Pomc.Satisfiability (
                            ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.Prec (Prec(..), StructPrecRel, PrecFunc, fromStructPR)
+import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Check (Checkable(..), Input, EncPrecFunc, State(..), makeOpa)
 import Pomc.RPotl (Formula(Atomic))
 import Pomc.PropConv (APType, convPropLabels)
@@ -24,7 +24,7 @@ import qualified Pomc.Data as D (member)
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
+import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 
 import Data.Maybe
 import Data.List (partition)
@@ -35,6 +35,8 @@ import qualified Data.Set as Set
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
+
+import qualified Data.Vector.Mutable as MV
 
 --import Debug.Trace (trace)
 
@@ -52,23 +54,35 @@ memberHT ht key = do
   val <- H.lookup ht key
   return $ isJust val
 
--- Map to lists
-type SetMap s k v = HashTable s k (Set v)
+-- Map to sets
+type SetMap s v = MV.MVector s (Set v)
 
-insertSM :: (Eq k, Hashable k, Ord v) => SetMap s k v -> k -> v -> ST.ST s ()
-insertSM lm key val = H.mutate lm key consVal
-  where consVal Nothing = (Just $ Set.singleton val, ())
-        consVal (Just vals) = (Just $ Set.insert val vals, ())
+insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
+insertSM smref stateId val = do
+  sm <- readSTRef smref
+  let len = MV.length sm
+      sid = fromIntegral $ getId stateId
+  if sid < len
+    then MV.modify sm (Set.insert val) sid
+    else let newLen = computeLen len sid
 
-lookupSM :: (Eq k, Hashable k) => SetMap s k v -> k -> ST.ST s (Set v)
-lookupSM lm key = do
-  val <- H.lookup lm key
-  return $ maybeList val
-    where maybeList Nothing = Set.empty
-          maybeList (Just l) = l
+             computeLen size idx | idx < size = size
+                                 | otherwise = computeLen (size*2) idx
+         in do { grown <- MV.grow sm (newLen-len)
+               ; mapM_ (\i -> MV.write grown i Set.empty) [len..(newLen-1)]
+               ; MV.modify grown (Set.insert val) sid
+               ; writeSTRef smref grown
+               }
 
-emptySM :: ST.ST s (SetMap s k v)
-emptySM = H.new
+lookupSM :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
+lookupSM smref stateId = do
+  sm <- readSTRef smref
+  MV.read sm (fromIntegral $ getId stateId)
+
+emptySM :: ST.ST s (STRef s (SetMap s v))
+emptySM = do
+  sm <- MV.replicate 4 Set.empty
+  newSTRef sm
 
 
 -- State class for satisfiability
@@ -138,9 +152,10 @@ type Stack state = Maybe (Input, StateId state)
 data Globals s state = Globals
   { sIdGen :: SIdGen s state
   , visited :: HashTable s (StateId state, Stack state) ()
-  , suppStarts :: SetMap s (StateId state) (Stack state)
-  , suppEnds :: SetMap s (StateId state) (StateId state)
+  , suppStarts :: STRef s (SetMap s (Stack state))
+  , suppEnds :: STRef s (SetMap s (StateId state))
   }
+
 data Delta state = Delta
   { bitenc :: BitEncoding
   , prec :: EncPrecFunc
