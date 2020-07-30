@@ -61,7 +61,7 @@ insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
 insertSM smref stateId val = do
   sm <- readSTRef smref
   let len = MV.length sm
-      sid = fromIntegral $ getId stateId
+      sid = getId stateId
   if sid < len
     then MV.modify sm (Set.insert val) sid
     else let newLen = computeLen len sid
@@ -77,7 +77,7 @@ insertSM smref stateId val = do
 lookupSM :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
 lookupSM smref stateId = do
   sm <- readSTRef smref
-  MV.read sm (fromIntegral $ getId stateId)
+  MV.read sm (getId stateId)
 
 emptySM :: ST.ST s (STRef s (SetMap s v))
 emptySM = do
@@ -99,7 +99,7 @@ instance SatState State where
 
 
 -- States with unique IDs
-data StateId state = StateId { getId :: !Word,
+data StateId state = StateId { getId :: !Int,
                                getState :: state } deriving (Show)
 
 instance Eq (StateId state) where
@@ -112,13 +112,13 @@ instance Hashable (StateId state) where
   hashWithSalt salt s = hashWithSalt salt $ getId s
 
 data SIdGen s state = SIdGen
-  { idSequence :: STRef s Word
+  { idSequence :: STRef s Int
   , stateToId :: HashTable s state (StateId state)
   }
 
 initSIdGen :: ST.ST s (SIdGen s state)
 initSIdGen = do
-  newIdSequence <- newSTRef (0 :: Word)
+  newIdSequence <- newSTRef (0 :: Int)
   newStateToId <- H.new
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }
