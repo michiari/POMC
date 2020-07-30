@@ -46,8 +46,8 @@ import qualified Data.Vector as V
 
 import Data.List (foldl', sortOn)
 
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as M
 
 import Control.Monad (guard, filterM)
 
@@ -237,7 +237,7 @@ makeBitEncoding clos =
       -- Mapping between positive formulas and bits
       pFormulaClos = S.filter (not . atomic) pclos
       pFormulaVec = V.fromList . S.toAscList $ pFormulaClos
-      pFormulaMap = M.fromAscList (zip (S.toAscList pFormulaClos) [0..])
+      pFormulaMap = M.fromList (zip (S.toAscList pFormulaClos) [0..])
 
       -- Mapping between positive atoms and bits
       pAtomicClos = S.filter atomic pclos

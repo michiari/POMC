@@ -49,6 +49,7 @@ library:
   - mtl
   - hashable
   - hashtables
+  - unordered-containers
 
 executables:
   pomc:
