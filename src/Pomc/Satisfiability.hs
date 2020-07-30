@@ -49,10 +49,6 @@ debug _ x = x
 
 type HashTable s k v = BH.HashTable s k v
 
-memberHT :: (Eq k, Hashable k) => HashTable s k v -> k -> ST.ST s Bool
-memberHT ht key = do
-  val <- H.lookup ht key
-  return $ isJust val
 
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
@@ -81,6 +77,11 @@ lookupSM smref stateId = do
   if sid < MV.length sm
     then MV.unsafeRead sm sid
     else return Set.empty
+
+memberSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s Bool
+memberSM smref stateId val = do
+  vset <- lookupSM smref stateId
+  return $ val `Set.member` vset
 
 emptySM :: ST.ST s (STRef s (SetMap s v))
 emptySM = do
@@ -154,7 +155,7 @@ type Stack state = Maybe (Input, StateId state)
 
 data Globals s state = Globals
   { sIdGen :: SIdGen s state
-  , visited :: HashTable s (StateId state, Stack state) ()
+  , visited :: STRef s (SetMap s (Stack state))
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (SetMap s (StateId state))
   }
@@ -193,11 +194,11 @@ reach :: (SatState state, Eq state, Hashable state, Show state)
       -> Stack state
       -> ST s Bool
 reach isDestState isDestStack globals delta q g = do
-  alreadyVisited <- memberHT (visited globals) (q, g)
+  alreadyVisited <- memberSM (visited globals) q g
   if alreadyVisited
     then return False
     else do
-    H.insert (visited globals) (q, g) ()
+    insertSM (visited globals) q g
     let be = bitenc delta
         qProps = getSidProps be q
         qState = getState q
@@ -233,7 +234,7 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
 reachPush _ _ _ _ _ _ True _ = return True
 reachPush isDestState isDestStack globals delta q g False p = do
   insertSM (suppStarts globals) q g
-  alreadyVisited <- memberHT (visited globals) (p, Just (getSidProps (bitenc delta) q, p))
+  alreadyVisited <- memberSM (visited globals) p (Just (getSidProps (bitenc delta) q, p))
   if not alreadyVisited
     then debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
          reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
@@ -279,7 +280,7 @@ isEmpty :: (SatState state, Eq state, Hashable state, Show state)
 isEmpty delta initials isFinal = not $
   ST.runST (do
                newSig <- initSIdGen
-               emptyVisited <- H.new
+               emptyVisited <- emptySM
                emptySuppStarts <- emptySM
                emptySuppEnds <- emptySM
                let globals = Globals { sIdGen = newSig
