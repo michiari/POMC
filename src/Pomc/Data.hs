@@ -68,10 +68,7 @@ class EncodedAtom e where
   inputSuchThat :: BitEncoding -> (Prop APType -> Bool) -> e
 
 
-newtype BVEA = BVEA BitVector deriving (Ord, Show)
-
-instance Eq BVEA where
-  (BVEA v1) == (BVEA v2) = v1 BV.==. v2
+newtype BVEA = BVEA BitVector deriving (Eq, Ord, Show)
 
 instance NFData BVEA where rnf = rwhnf
 
