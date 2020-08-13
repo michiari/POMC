@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+
 {- |
    Module      : Pomc.Satisfiability
    Copyright   : 2020 Michele Chiari
@@ -24,6 +26,8 @@ import qualified Pomc.Data as D (member)
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
+import Control.DeepSeq (NFData, force)
+import GHC.Generics (Generic)
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 import Data.Maybe
 
@@ -35,6 +39,8 @@ import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
 import qualified Data.Vector.Mutable as MV
+import Data.Vector (Vector)
+import qualified Data.Vector as V
 
 --import Debug.Trace (trace)
 
@@ -51,7 +57,7 @@ type HashTable s k v = BH.HashTable s k v
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
 
-insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
+insertSM :: (Ord v, NFData v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
 insertSM smref stateId val = do
   sm <- readSTRef smref
   let len = MV.length sm
@@ -102,7 +108,7 @@ instance SatState State where
 
 -- States with unique IDs
 data StateId state = StateId { getId :: !Int,
-                               getState :: state } deriving (Show)
+                               getState :: state } deriving (Show, Generic, NFData)
 
 instance Eq (StateId state) where
   p == q = getId p == getId q
@@ -141,11 +147,13 @@ wrapState sig q = do
     H.insert (stateToId sig) q newQwrapped
     return newQwrapped
 
-wrapStates :: (Eq state, Hashable state)
+wrapStates :: (Eq state, Hashable state, NFData state)
            => SIdGen s state
            -> [state]
-           -> ST.ST s [StateId state]
-wrapStates sig states = mapM (wrapState sig) states
+           -> ST.ST s (Vector (StateId state))
+wrapStates sig states = do
+  wrappedList <- mapM (wrapState sig) states
+  return $! V.fromList wrappedList
 
 
 -- Stack symbol
@@ -183,7 +191,7 @@ popFirst bitencoding states =
                           else (endStates, s:otherPop, others)
           | otherwise = (endStates, otherPop, s:others)
 
-reach :: (SatState state, Eq state, Hashable state, Show state)
+reach :: (SatState state, Eq state, Hashable state, Show state, NFData state)
       => (StateId state -> Bool)
       -> (Stack state-> Bool)
       -> Globals s state
@@ -204,7 +212,7 @@ reach isDestState isDestStack globals delta q g = do
           | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
           | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) = do
               newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaPush delta) qState qProps)
-              foldM (reachPush isDestState isDestStack globals delta q g) False newStates
+              V.foldM' (reachPush isDestState isDestStack globals delta q g) False newStates
           | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) = do
               newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaShift delta) qState qProps)
               let reachShift acc p
@@ -212,14 +220,14 @@ reach isDestState isDestStack globals delta q g = do
                       then return True
                       else debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
                            reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
-              foldM reachShift False newStates
+              V.foldM' reachShift False newStates
           | ((prec delta) (fst . fromJust $ g) qProps == Just Take) = do
               newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaPop delta) qState (getState . snd . fromJust $ g))
-              foldM (reachPop isDestState isDestStack globals delta q g) False newStates
+              V.foldM' (reachPop isDestState isDestStack globals delta q g) False newStates
           | otherwise = return False
     cases
 
-reachPush :: (SatState state, Eq state, Hashable state, Show state)
+reachPush :: (SatState state, Eq state, Hashable state, Show state, NFData state)
           => (StateId state -> Bool)
           -> (Stack state -> Bool)
           -> Globals s state
@@ -245,7 +253,7 @@ reachPush isDestState isDestStack globals delta q g False p = do
       False
       currentSuppEnds
 
-reachPop :: (SatState state, Eq state, Hashable state, Show state)
+reachPop :: (SatState state, Eq state, Hashable state, Show state, NFData state)
          => (StateId state -> Bool)
          -> (Stack state -> Bool)
          -> Globals s state
@@ -270,7 +278,7 @@ reachPop isDestState isDestStack globals delta q g False p = do
       currentSuppStarts)
 
 
-isEmpty :: (SatState state, Eq state, Hashable state, Show state)
+isEmpty :: (SatState state, Eq state, Hashable state, Show state, NFData state)
         => Delta state
         -> [state]
         -> (state -> Bool)
