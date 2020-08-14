@@ -240,10 +240,11 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state, NFData state
 reachPush _ _ _ _ _ _ True _ = return True
 reachPush isDestState isDestStack globals delta q g False p = do
   insertSM (suppStarts globals) q g
-  alreadyVisited <- memberSM (visited globals) p (Just (getSidProps (bitenc delta) q, p))
+  let g' = Just (getSidProps (bitenc delta) q, q)
+  alreadyVisited <- memberSM (visited globals) p g'
   if not alreadyVisited
     then debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-         reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
+         reach isDestState isDestStack globals delta p g'
     else do
     currentSuppEnds <- lookupSM (suppEnds globals) q
     foldM (\acc s -> if acc
