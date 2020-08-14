@@ -265,18 +265,19 @@ reachPop :: (SatState state, Eq state, Hashable state, Show state, NFData state)
          -> StateId state
          -> ST s Bool
 reachPop _ _ _ _ _ _ True _ = return True
-reachPop isDestState isDestStack globals delta q g False p = do
+reachPop isDestState isDestStack globals delta q g False p =
   let r = snd . fromJust $ g
-  insertSM (suppEnds globals) r p
-  currentSuppStarts <- lookupSM (suppStarts globals) r
-  foldM (\acc g' -> if acc
-                    then return True
-                    else debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-                         reach isDestState isDestStack globals delta p g')
-    False
-    (Set.filter (\g' -> isNothing g' ||
-                        ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield)
-      currentSuppStarts)
+      closeSupports True _ = return True
+      closeSupports False g'
+        | isNothing g' ||
+          ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
+        = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+          reach isDestState isDestStack globals delta p g'
+        | otherwise = return False
+  in do
+    insertSM (suppEnds globals) r p
+    currentSuppStarts <- lookupSM (suppStarts globals) r
+    foldM closeSupports False currentSuppStarts
 
 
 isEmpty :: (SatState state, Eq state, Hashable state, Show state, NFData state)
