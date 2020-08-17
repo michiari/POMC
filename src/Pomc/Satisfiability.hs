@@ -212,7 +212,17 @@ reach isDestState isDestStack globals delta q g = do
           | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
           | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) = do
               newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaPush delta) qState qProps)
-              V.foldM' (reachPush isDestState isDestStack globals delta q g) False newStates
+              pushReached <- V.foldM' (reachPush isDestState isDestStack globals delta q g) False newStates
+              if pushReached
+                then return True
+                else do
+                currentSuppEnds <- lookupSM (suppEnds globals) q
+                foldM (\acc s -> if acc
+                                 then return True
+                                 else debug ("Push (summary): q = " ++ show q ++ "\ng = " ++ show g ++ "\ns = " ++ show s) $
+                                      reach isDestState isDestStack globals delta s g)
+                  False
+                  currentSuppEnds
           | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) = do
               newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaShift delta) qState qProps)
               let reachShift acc p
@@ -240,19 +250,9 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state, NFData state
 reachPush _ _ _ _ _ _ True _ = return True
 reachPush isDestState isDestStack globals delta q g False p = do
   insertSM (suppStarts globals) q g
-  let g' = Just (getSidProps (bitenc delta) q, q)
-  alreadyVisited <- memberSM (visited globals) p g'
-  if not alreadyVisited
-    then debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-         reach isDestState isDestStack globals delta p g'
-    else do
-    currentSuppEnds <- lookupSM (suppEnds globals) q
-    foldM (\acc s -> if acc
-                     then return True
-                     else debug ("Push (summary): q = " ++ show q ++ "\ng = " ++ show g ++ "\np = "++ show p ++ "\ns = " ++ show s) $
-                          reach isDestState isDestStack globals delta s g)
-      False
-      currentSuppEnds
+  debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+    reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
+
 
 reachPop :: (SatState state, Eq state, Hashable state, Show state, NFData state)
          => (StateId state -> Bool)
