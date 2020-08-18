@@ -599,22 +599,31 @@ deltaRules bitenc cl precFunc =
           checkPn (PrecNext _ _) = True
           checkPn _ = False
 
-          maskPnny = D.suchThat bitenc (checkPnnp Yield)
-          maskPnne = D.suchThat bitenc (checkPnnp Equal)
-          maskPnnt = D.suchThat bitenc (checkPnnp Take)
+          pnArgs = V.fromList $ map getPnArg $ filter checkPn (S.toList cl)
+          getPnArg f@(PrecNext _ g) = (D.singleton bitenc f, D.singleton bitenc g)
+
+          maskPnp Yield = D.suchThat bitenc (checkPnp Yield)
+          maskPnp Equal = D.suchThat bitenc (checkPnp Equal)
+          maskPnp Take  = D.suchThat bitenc (checkPnp Take)
+          checkPnp prec (PrecNext pset _) = prec `PS.member` pset
+          checkPnp _ _ = False
+
+          maskPnnp Yield = D.suchThat bitenc (checkPnnp Yield)
+          maskPnnp Equal = D.suchThat bitenc (checkPnnp Equal)
+          maskPnnp Take  = D.suchThat bitenc (checkPnnp Take)
           checkPnnp prec (PrecNext pset _) = prec `PS.notMember` pset
           checkPnnp _ _ = False
 
-          precComp Yield = D.null $ D.intersect pCurr maskPnny
-          precComp Equal = D.null $ D.intersect pCurr maskPnne
-          precComp Take  = D.null $ D.intersect pCurr maskPnnt
+          precComp prec = D.null $ D.intersect pCurr (maskPnnp prec)
 
           fsComp prec = pCurrPnfs == checkSet
             where pCurrPnfs = D.intersect pCurr maskPn
-                  checkSet = D.encode bitenc $ S.filter checkSetPred closPn
-                  checkSetPred (PrecNext pset g) = prec `PS.member` pset && D.member bitenc g fCurr
-                  checkSetPred _ = False
-                  closPn = S.filter checkPn cl
+                  checkSet = V.foldl' checkSetFold (D.empty bitenc) pnArgs
+                  checkSetFold acc (fMask, gMask)
+                    | not $ (D.null $ D.intersect fMask (maskPnp prec))
+                            || (D.null $ D.intersect gMask fCurr)
+                    = D.union acc fMask
+                    | otherwise = acc
 
       in case precFunc props (D.extractInput bitenc fCurr) of
            Nothing   -> False
@@ -635,22 +644,31 @@ deltaRules bitenc cl precFunc =
           checkPb (PrecBack _ _) = True
           checkPb _ = False
 
-          maskPbny = D.suchThat bitenc (checkPbnp Yield)
-          maskPbne = D.suchThat bitenc (checkPbnp Equal)
-          maskPbnt = D.suchThat bitenc (checkPbnp Take)
+          pbArgs = V.fromList $ map getPbArg $ filter checkPb (S.toList cl)
+          getPbArg f@(PrecBack _ g) = (D.singleton bitenc f, D.singleton bitenc g)
+
+          maskPbp Yield = D.suchThat bitenc (checkPbp Yield)
+          maskPbp Equal = D.suchThat bitenc (checkPbp Equal)
+          maskPbp Take  = D.suchThat bitenc (checkPbp Take)
+          checkPbp prec (PrecBack pset _) = prec `PS.member` pset
+          checkPbp _ _ = False
+
+          maskPbnp Yield = D.suchThat bitenc (checkPbnp Yield)
+          maskPbnp Equal = D.suchThat bitenc (checkPbnp Equal)
+          maskPbnp Take  = D.suchThat bitenc (checkPbnp Take)
           checkPbnp prec (PrecBack pset _) = prec `PS.notMember` pset
           checkPbnp _ _ = False
 
-          precComp Yield = D.null $ D.intersect fCurr maskPbny
-          precComp Equal = D.null $ D.intersect fCurr maskPbne
-          precComp Take  = D.null $ D.intersect fCurr maskPbnt
+          precComp prec = D.null $ D.intersect fCurr (maskPbnp prec)
 
           fsComp prec = fCurrPbfs == checkSet
             where fCurrPbfs = D.intersect fCurr maskPb
-                  checkSet = D.encode bitenc $ S.filter checkSetPred closPb
-                  checkSetPred (PrecBack pset g) = prec `PS.member` pset && D.member bitenc g pCurr
-                  checkSetPred _ = False
-                  closPb = S.filter checkPb cl
+                  checkSet = V.foldl' checkSetFold (D.empty bitenc) pbArgs
+                  checkSetFold acc (fMask, gMask)
+                    | not $ (D.null $ D.intersect fMask (maskPbp prec))
+                            || (D.null $ D.intersect gMask pCurr)
+                    = D.union acc fMask
+                    | otherwise = acc
 
       in case precFunc props (D.extractInput bitenc fCurr) of
            Nothing   -> False

@@ -48,6 +48,8 @@ class EncodedAtom e where
   decode :: BitEncoding -> e -> FormulaSet
   pdecode :: BitEncoding -> e -> FormulaSet
   encode :: BitEncoding -> FormulaSet -> e
+  singleton :: BitEncoding -> Formula APType -> e
+  empty :: BitEncoding -> e
   generateFormulas :: BitEncoding -> [e]
   null :: e -> Bool
   member :: BitEncoding -> Formula APType -> e -> Bool
@@ -84,6 +86,13 @@ instance EncodedAtom BVEA where
   encode bitenc set =
     BVEA $ S.foldl BV.setBit (BV.zeros $ width bitenc) (S.map (index bitenc) set)
   {-# INLINABLE encode #-}
+
+  singleton bitenc f =
+    BVEA $ BV.setBit (BV.zeros $ width bitenc) (index bitenc $ f)
+  {-# INLINABLE singleton #-}
+
+  empty bitenc = BVEA . BV.zeros $ width bitenc
+  {-# INLINABLE empty #-}
 
   generateFormulas bitenc =
     let len = width bitenc - propBits bitenc
