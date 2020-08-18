@@ -36,7 +36,6 @@ library:
   - -O2
   - -fllvm
   dependencies:
-  - bitvec
   - bv
   - containers
   - criterion-measurement

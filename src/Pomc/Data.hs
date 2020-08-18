@@ -26,14 +26,10 @@ import Data.Bits (Bits(..))
 import Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as VU
 
-import Data.Bit (Bit)
-import qualified Data.Bit as B
-
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 
 import Control.DeepSeq (NFData(..), rwhnf)
-import GHC.Generics (Generic)
 import Data.Hashable
 
 
@@ -147,68 +143,3 @@ instance EncodedAtom BVEA where
 
 listBits :: BitVector -> [Int]
 listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v
-
-
-newtype BitVecEA = BitVecEA (Vector Bit) deriving (Eq, Ord, Show, Generic, NFData)
-
-instance Hashable Bit
-instance Hashable BitVecEA where
-  hashWithSalt salt (BitVecEA vb) =
-    {-# SCC "hashBitVecEA:foldl" #-} (VU.foldl' (\acc v -> hashWithSalt acc v) salt ws)
-    where ws = {-# SCC "hashBitVecEA:words" #-} B.cloneToWords vb
-
-instance EncodedAtom BitVecEA where
-  decode bitenc (BitVecEA bv) =
-    let pos = map (fetch bitenc) (B.listBits bv)
-        neg = map (Not . (fetch bitenc)) (B.listBits . B.invertBits $ bv)
-    in S.fromList pos `S.union` S.fromList neg
-
-  pdecode bitenc (BitVecEA bv) =
-    S.fromList $ map (fetch bitenc) (B.listBits bv)
-
-  encode bitenc set =
-    let zeroes = VU.replicate (width bitenc) (B.Bit False)
-        pairs = S.toList $ S.map (\phi -> (index bitenc $ phi, B.Bit True)) set
-    in BitVecEA $ zeroes VU.// pairs
-
-  generateFormulas bitenc = map BitVecEA $ VU.replicateM len [B.Bit False, B.Bit True]
-    where len = width bitenc - propBits bitenc
-
-  null (BitVecEA bv) = bv == (zeroBits :: Vector Bit)
-
-  member bitenc phi (BitVecEA bv) | negative phi = not $ testBit bv (index bitenc $ negation phi)
-                                  | otherwise = testBit bv (index bitenc $ phi)
-
-  any bitenc predicate (BitVecEA bv) = Prelude.any (predicate . (fetch bitenc)) $ B.listBits bv
-
-  filter bitenc predicate (BitVecEA bv) =
-    let zeroes = VU.replicate (VU.length bv) (B.Bit False)
-    in BitVecEA $ zeroes VU.// map (\i -> (i, B.Bit (predicate . (fetch bitenc) $ i))) (B.listBits bv)
-
-  suchThat bitenc predicate =
-    BitVecEA $ zeroes VU.// map (\i -> (i, B.Bit (predicate . (fetch bitenc) $ i))) [0..(len-1)]
-    where len = width bitenc
-          zeroes = VU.replicate len (B.Bit False)
-
-  intersect (BitVecEA v1) (BitVecEA v2) = BitVecEA $ v1 .&. v2
-
-  union (BitVecEA v1) (BitVecEA v2) = BitVecEA $ v1 .|. v2
-
-  joinInputFormulas (BitVecEA v1) (BitVecEA v2) = BitVecEA $ v1 VU.++ v2
-
-  extractInput bitenc (BitVecEA bv) = BitVecEA $ VU.take (propBits bitenc) bv
-
-  decodeInput bitenc (BitVecEA bv) =
-    S.fromList $ map (getProp . (fetch bitenc)) (B.listBits bv)
-    where getProp (Atomic p) = p
-
-  encodeInput bitenc set =
-    let zeroes = VU.replicate (propBits bitenc) (B.Bit False)
-        pairs = S.toList $ S.map (\phi -> (index bitenc . Atomic $ phi, B.Bit True)) set
-    in BitVecEA $ zeroes VU.// pairs
-
-  inputSuchThat bitenc predicate =
-    BitVecEA $ zeroes VU.// map (\i -> (i, B.Bit (atomicPred . (fetch bitenc) $ i))) [0..(len-1)]
-    where len = propBits bitenc
-          zeroes = VU.replicate len (B.Bit False)
-          atomicPred (Atomic p) = predicate p
