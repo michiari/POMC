@@ -253,11 +253,7 @@ makeBitEncoding clos =
       pClosLookup phi = fromJust $ M.lookup phi pClosMap
         where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
 
-  in BitEncoding { D.fetch = fetchVec pClosVec
-                 , D.index = pClosLookup
-                 , D.width = V.length pClosVec
-                 , D.propBits = V.length pAtomicVec
-                 }
+  in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
 
 genAtoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]

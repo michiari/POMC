@@ -11,6 +11,7 @@ module Pomc.Data ( EncodedSet
                  , FormulaSet
                  , PropSet
                  , BitEncoding(..)
+                 , newBitEncoding
                  , decode
                  , pdecode
                  , encode
@@ -55,8 +56,17 @@ data BitEncoding = BitEncoding
   , index :: (Formula APType -> Int)
   , width :: Int
   , propBits :: Int
+  , maskProps :: EncodedAtom
   }
 
+newBitEncoding :: (Int -> Formula APType)
+               -> (Formula APType -> Int)
+               -> Int
+               -> Int
+               -> BitEncoding
+newBitEncoding fetch_ index_ width_ propBits_ =
+  BitEncoding fetch_ index_ width_ propBits_ maskProps_
+  where maskProps_ = EncodedAtom $ BV.ones propBits_
 
 newtype EncodedAtom = EncodedAtom BitVector deriving (Eq, Ord, Show)
 
@@ -136,7 +146,7 @@ joinInputFormulas (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v2 BV.# v1
 {-# INLINABLE joinInputFormulas #-}
 
 extractInput :: BitEncoding -> EncodedAtom -> EncodedAtom
-extractInput bitenc (EncodedAtom bv) = EncodedAtom $ BV.least (propBits bitenc) bv
+extractInput bitenc ea = intersect ea (maskProps bitenc)
 {-# INLINABLE extractInput #-}
 
 decodeInput :: BitEncoding -> EncodedAtom -> PropSet
