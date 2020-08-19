@@ -1,21 +1,20 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 {- |
    Module      : Pomc.Prop
-   Copyright   : 2020 Davide Bergamaschi
+   Copyright   : 2020 Davide Bergamaschi, Michele Chiari
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
 
 module Pomc.Prop ( -- * Atomic proposition type
                    Prop(..)
                  ) where
 
-import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 import Data.Hashable
 
-data Prop a = Prop !a | End deriving (Eq, Ord, Show, Generic, NFData)
+data Prop a = Prop !a | End deriving (Eq, Ord, Show, Generic)
 
 instance Hashable a => Hashable (Prop a)
 

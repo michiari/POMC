@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 {- |
    Module      : Pomc.Check
@@ -49,7 +49,6 @@ import qualified Data.HashMap.Strict as M
 
 import Control.Monad (guard, filterM)
 
-import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 import Data.Hashable
 
@@ -89,7 +88,7 @@ data State = State
     , mustPush  :: !Bool
     , mustShift :: !Bool
     , afterPop  :: !Bool
-    } deriving (Generic, NFData, Ord, Eq)
+    } deriving (Generic, Ord, Eq)
 
 instance Hashable State
 

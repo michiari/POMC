@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass, FlexibleInstances #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 {- |
    Module      : Pomc.Data
@@ -29,7 +29,6 @@ import qualified Data.Vector.Unboxed as VU
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 
-import Control.DeepSeq (NFData(..), rwhnf)
 import Data.Hashable
 
 
@@ -67,8 +66,6 @@ class EncodedAtom e where
 
 
 newtype BVEA = BVEA BitVector deriving (Eq, Ord, Show)
-
-instance NFData BVEA where rnf = rwhnf
 
 instance Hashable BVEA where
   hashWithSalt salt (BVEA bv) = {-# SCC "hashBVEA" #-} (hashWithSalt salt $ BV.nat bv)

@@ -1,4 +1,11 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+
+{- |
+   Module      : Pomc.ModelChecker
+   Copyright   : 2020 Michele Chiari
+   License     : MIT
+   Maintainer  : Michele Chiari
+-}
 
 module Pomc.ModelChecker (
                            ExplicitOpa(..)
@@ -21,7 +28,6 @@ import qualified Data.Set as Set
 import qualified Data.Map as Map
 
 import GHC.Generics (Generic)
-import Control.DeepSeq (NFData)
 import Data.Hashable
 
 data ExplicitOpa s a = ExplicitOpa
@@ -34,7 +40,7 @@ data ExplicitOpa s a = ExplicitOpa
   , deltaPop   :: [(s, s, [s])]
   } deriving (Show)
 
-data MCState s = MCState s State deriving (Generic, Eq, NFData, Show)
+data MCState s = MCState s State deriving (Generic, Eq, Show)
 
 instance Hashable s => Hashable (MCState s)
 
@@ -49,7 +55,7 @@ instance SatState (MCState s) where
 cartesian :: [a] -> [State] -> [MCState a]
 cartesian xs ys = [MCState x y | x <- xs, y <- ys]
 
-modelCheck :: (Checkable f, Ord s, Hashable s, NFData s, Show s)
+modelCheck :: (Checkable f, Ord s, Hashable s, Show s)
            => f APType
            -> ExplicitOpa s APType
            -> Bool
@@ -84,7 +90,7 @@ modelCheck phi opa =
 
   in isEmpty cDelta cInitials cIsFinal
 
-modelCheckGen :: (Checkable f, Ord s, Hashable s, Show s, NFData s, Ord a)
+modelCheckGen :: (Checkable f, Ord s, Hashable s, Show s, Ord a)
               => f a
               -> ExplicitOpa s a
               -> Bool

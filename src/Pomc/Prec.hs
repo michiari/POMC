@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 {- |
    Module      : Pomc.Prec
@@ -30,7 +30,6 @@ module Pomc.Prec ( -- * Main precedence type
 
 import Pomc.Prop (Prop)
 
-import Control.DeepSeq
 import GHC.Generics (Generic)
 import Data.Hashable
 import Data.List (nub, find)
@@ -42,7 +41,7 @@ import qualified Data.Set as S
 
 import qualified Data.Map as M
 
-data Prec = Yield | Equal | Take deriving (Eq, Ord, Generic, NFData)
+data Prec = Yield | Equal | Take deriving (Eq, Ord, Generic)
 
 instance Hashable Prec
 
@@ -51,7 +50,7 @@ instance Show Prec where
   show Equal = "="
   show Take  = ">"
 
-newtype PrecSet = PrecSet Word deriving (Eq, Ord, Generic, NFData)
+newtype PrecSet = PrecSet Word deriving (Eq, Ord, Generic)
 
 instance Hashable PrecSet
 

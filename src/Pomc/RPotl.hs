@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 {- |
    Module      : Pomc.RPotl
@@ -26,7 +26,6 @@ import Pomc.Prop (Prop(..))
 
 import Data.List (nub)
 
-import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 
 import Data.Hashable
@@ -53,7 +52,7 @@ data Formula a = T
                | HierSinceTake  (Formula a) (Formula a)
                | HierTakeHelper (Formula a)
                | Eventually' (Formula a)
-               deriving (Eq, Ord, Generic, NFData)
+               deriving (Eq, Ord, Generic)
 
 instance (Show a) => Show (Formula a) where
   show f = case f of

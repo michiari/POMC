@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
-
 {- |
    Module      : Pomc.Satisfiability
    Copyright   : 2020 Michele Chiari
@@ -24,8 +22,6 @@ import Pomc.Data (BitEncoding, extractInput)
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
-import Control.DeepSeq (NFData)
-import GHC.Generics (Generic)
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 import Data.Maybe
 
@@ -55,7 +51,7 @@ type HashTable s k v = BH.HashTable s k v
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
 
-insertSM :: (Ord v, NFData v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
+insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
 insertSM smref stateId val = do
   sm <- readSTRef smref
   let len = MV.length sm
@@ -106,7 +102,7 @@ instance SatState State where
 
 -- States with unique IDs
 data StateId state = StateId { getId :: !Int,
-                               getState :: state } deriving (Show, Generic, NFData)
+                               getState :: state } deriving (Show)
 
 instance Eq (StateId state) where
   p == q = getId p == getId q
@@ -145,7 +141,7 @@ wrapState sig q = do
     H.insert (stateToId sig) q newQwrapped
     return newQwrapped
 
-wrapStates :: (Eq state, Hashable state, NFData state)
+wrapStates :: (Eq state, Hashable state)
            => SIdGen s state
            -> [state]
            -> ST.ST s (Vector (StateId state))
@@ -176,7 +172,7 @@ getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
 getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
 
 
-reach :: (SatState state, Eq state, Hashable state, Show state, NFData state)
+reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool)
       -> (Stack state-> Bool)
       -> Globals s state
@@ -210,7 +206,7 @@ reach isDestState isDestStack globals delta q g = do
     cases
 
 
-reachPush :: (SatState state, Eq state, Hashable state, Show state, NFData state)
+reachPush :: (SatState state, Eq state, Hashable state, Show state)
           => (StateId state -> Bool)
           -> (Stack state -> Bool)
           -> Globals s state
@@ -243,7 +239,7 @@ reachPush isDestState isDestStack globals delta q g qState qProps =
         currentSuppEnds
 
 
-reachShift :: (SatState state, Eq state, Hashable state, Show state, NFData state)
+reachShift :: (SatState state, Eq state, Hashable state, Show state)
            => (StateId state -> Bool)
            -> (Stack state -> Bool)
            -> Globals s state
@@ -263,7 +259,7 @@ reachShift isDestState isDestStack globals delta q g qState qProps =
     V.foldM' doShift False newStates
 
 
-reachPop :: (SatState state, Eq state, Hashable state, Show state, NFData state)
+reachPop :: (SatState state, Eq state, Hashable state, Show state)
          => (StateId state -> Bool)
          -> (Stack state -> Bool)
          -> Globals s state
@@ -293,7 +289,7 @@ reachPop isDestState isDestStack globals delta q g qState =
     V.foldM' doPop False newStates
 
 
-isEmpty :: (SatState state, Eq state, Hashable state, Show state, NFData state)
+isEmpty :: (SatState state, Eq state, Hashable state, Show state)
         => Delta state
         -> [state]
         -> (state -> Bool)
