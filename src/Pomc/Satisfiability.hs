@@ -26,7 +26,7 @@ import qualified Pomc.Data as D (member)
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
-import Control.DeepSeq (NFData, force)
+import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 import Data.Maybe
@@ -152,8 +152,8 @@ wrapStates :: (Eq state, Hashable state, NFData state)
            -> [state]
            -> ST.ST s (Vector (StateId state))
 wrapStates sig states = do
-  wrappedList <- mapM (wrapState sig) states
-  return $! V.fromList wrappedList
+  wrappedList <- V.mapM (wrapState sig) (V.fromList states)
+  return wrappedList
 
 
 -- Stack symbol
@@ -177,19 +177,6 @@ data Delta state = Delta
 getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
 getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
 
-popFirst :: (SatState state) => BitEncoding -> [state] -> [state]
-popFirst bitencoding states =
-  let (endStates, otherPop, others) = foldl partitionStates ([], [], []) states
-  in endStates ++ otherPop ++ others
-  where isMustPop s = let ss = getSatState s
-                      in not (mustPush ss || mustShift ss)
-        isEndState s = D.member bitencoding (Atomic End) (current . getSatState $ s)
-
-        partitionStates (endStates, otherPop, others) s
-          | isMustPop s = if isEndState s
-                          then (s:endStates, otherPop, others)
-                          else (endStates, s:otherPop, others)
-          | otherwise = (endStates, otherPop, s:others)
 
 reach :: (SatState state, Eq state, Hashable state, Show state, NFData state)
       => (StateId state -> Bool)
@@ -211,7 +198,7 @@ reach isDestState isDestStack globals delta q g = do
         cases
           | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
           | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaPush delta) qState qProps)
+              newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
               pushReached <- V.foldM' (reachPush isDestState isDestStack globals delta q g) False newStates
               if pushReached
                 then return True
@@ -224,7 +211,7 @@ reach isDestState isDestStack globals delta q g = do
                   False
                   currentSuppEnds
           | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaShift delta) qState qProps)
+              newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
               let reachShift acc p
                     = if acc
                       then return True
@@ -232,7 +219,7 @@ reach isDestState isDestStack globals delta q g = do
                            reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
               V.foldM' reachShift False newStates
           | ((prec delta) (fst . fromJust $ g) qProps == Just Take) = do
-              newStates <- wrapStates (sIdGen globals) $ popFirst be ((deltaPop delta) qState (getState . snd . fromJust $ g))
+              newStates <- wrapStates (sIdGen globals) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
               V.foldM' (reachPop isDestState isDestStack globals delta q g) False newStates
           | otherwise = return False
     cases
