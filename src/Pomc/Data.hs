@@ -7,11 +7,28 @@
    Maintainer  : Davide Bergamaschi
 -}
 
-module Pomc.Data ( EncodedAtom(..)
-                 , EncodedSet
+module Pomc.Data ( EncodedSet
                  , FormulaSet
                  , PropSet
                  , BitEncoding(..)
+                 , decode
+                 , pdecode
+                 , encode
+                 , singleton
+                 , empty
+                 , generateFormulas
+                 , Pomc.Data.null
+                 , member
+                 , Pomc.Data.any
+                 , Pomc.Data.filter
+                 , suchThat
+                 , intersect
+                 , union
+                 , joinInputFormulas
+                 , extractInput
+                 , decodeInput
+                 , encodeInput
+                 , inputSuchThat
                  ) where
 
 import Pomc.Prop (Prop)
@@ -23,16 +40,13 @@ import qualified Data.Set as S
 
 import Data.Bits (Bits(..))
 
-import Data.Vector.Unboxed (Vector)
-import qualified Data.Vector.Unboxed as VU
-
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 
 import Data.Hashable
 
 
-type EncodedSet = BVEA
+type EncodedSet = EncodedAtom
 type FormulaSet = Set (Formula APType)
 type PropSet = Set (Prop APType)
 
@@ -43,108 +57,105 @@ data BitEncoding = BitEncoding
   , propBits :: Int
   }
 
-class EncodedAtom e where
-  decode :: BitEncoding -> e -> FormulaSet
-  pdecode :: BitEncoding -> e -> FormulaSet
-  encode :: BitEncoding -> FormulaSet -> e
-  singleton :: BitEncoding -> Formula APType -> e
-  empty :: BitEncoding -> e
-  generateFormulas :: BitEncoding -> [e]
-  null :: e -> Bool
-  member :: BitEncoding -> Formula APType -> e -> Bool
-  any :: BitEncoding -> (Formula APType -> Bool) -> e -> Bool
-  filter :: BitEncoding -> (Formula APType -> Bool) -> e -> e
-  suchThat :: BitEncoding -> (Formula APType -> Bool) -> e
-  intersect :: e -> e -> e
-  union :: e -> e -> e
 
-  joinInputFormulas :: e -> e -> e
-  extractInput :: BitEncoding -> e -> e
-  decodeInput :: BitEncoding -> e -> PropSet
-  encodeInput :: BitEncoding -> PropSet -> e
-  inputSuchThat :: BitEncoding -> (Prop APType -> Bool) -> e
+newtype EncodedAtom = EncodedAtom BitVector deriving (Eq, Ord, Show)
+
+instance Hashable EncodedAtom where
+  hashWithSalt salt (EncodedAtom bv) = hashWithSalt salt $ BV.nat bv
 
 
-newtype BVEA = BVEA BitVector deriving (Eq, Ord, Show)
+decode :: BitEncoding -> EncodedAtom -> FormulaSet
+decode bitenc (EncodedAtom bv) =
+  let pos = map (fetch bitenc) (listBits bv)
+      neg = map (Not . (fetch bitenc)) (listBits . BV.complement $ bv)
+  in S.fromList pos `S.union` S.fromList neg
 
-instance Hashable BVEA where
-  hashWithSalt salt (BVEA bv) = {-# SCC "hashBVEA" #-} (hashWithSalt salt $ BV.nat bv)
+pdecode :: BitEncoding -> EncodedAtom -> FormulaSet
+pdecode bitenc (EncodedAtom bv) =
+  S.fromList $ map (fetch bitenc) (listBits bv)
+{-# INLINABLE pdecode #-}
 
-instance EncodedAtom BVEA where
-  decode bitenc (BVEA bv) =
-    let pos = map (fetch bitenc) (listBits bv)
-        neg = map (Not . (fetch bitenc)) (listBits . BV.complement $ bv)
-    in S.fromList pos `S.union` S.fromList neg
+encode :: BitEncoding -> FormulaSet -> EncodedAtom
+encode bitenc set =
+  EncodedAtom $ S.foldl BV.setBit (BV.zeros $ width bitenc) (S.map (index bitenc) set)
+{-# INLINABLE encode #-}
 
-  pdecode bitenc (BVEA bv) =
-    S.fromList $ map (fetch bitenc) (listBits bv)
-  {-# INLINABLE pdecode #-}
+singleton :: BitEncoding -> Formula APType -> EncodedAtom
+singleton bitenc f =
+  EncodedAtom $ BV.setBit (BV.zeros $ width bitenc) (index bitenc $ f)
+{-# INLINABLE singleton #-}
 
-  encode bitenc set =
-    BVEA $ S.foldl BV.setBit (BV.zeros $ width bitenc) (S.map (index bitenc) set)
-  {-# INLINABLE encode #-}
+empty :: BitEncoding -> EncodedAtom
+empty bitenc = EncodedAtom . BV.zeros $ width bitenc
+{-# INLINABLE empty #-}
 
-  singleton bitenc f =
-    BVEA $ BV.setBit (BV.zeros $ width bitenc) (index bitenc $ f)
-  {-# INLINABLE singleton #-}
+generateFormulas :: BitEncoding -> [EncodedAtom]
+generateFormulas bitenc =
+  let len = width bitenc - propBits bitenc
+  in if len == 0
+     then []
+     else map (EncodedAtom . BV.reverse) $ BV.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
+{-# INLINABLE generateFormulas #-}
 
-  empty bitenc = BVEA . BV.zeros $ width bitenc
-  {-# INLINABLE empty #-}
+null :: EncodedAtom -> Bool
+null (EncodedAtom bv) = bv == BV.nil
+{-# INLINE null #-}
 
-  generateFormulas bitenc =
-    let len = width bitenc - propBits bitenc
-    in if len == 0
-       then []
-       else map (BVEA . BV.reverse) $ BV.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
-  {-# INLINABLE generateFormulas #-}
+member :: BitEncoding -> Formula APType -> EncodedAtom -> Bool
+member bitenc phi (EncodedAtom bv) | negative phi = not $ bv BV.@. (index bitenc $ negation phi)
+                            | otherwise = bv BV.@. (index bitenc $ phi)
+{-# INLINABLE member #-}
 
-  null (BVEA bv) = bv == BV.nil
-  {-# INLINE null #-}
+any :: BitEncoding -> (Formula APType -> Bool) -> EncodedAtom -> Bool
+any bitenc predicate (EncodedAtom bv) = Prelude.any (predicate . (fetch bitenc)) $ listBits bv
+{-# INLINABLE any #-}
 
-  member bitenc phi (BVEA bv) | negative phi = not $ bv BV.@. (index bitenc $ negation phi)
-                              | otherwise = bv BV.@. (index bitenc $ phi)
-  {-# INLINABLE member #-}
+filter :: BitEncoding -> (Formula APType -> Bool) -> EncodedAtom -> EncodedAtom
+filter bitenc predicate (EncodedAtom bv) = EncodedAtom . snd $ BV.foldr filterVec (0, BV.zeros $ BV.width bv) bv
+  where filterVec b (i, acc) = if b && predicate (fetch bitenc $ i)
+                               then (i+1, BV.setBit acc i)
+                               else (i+1, acc)
+{-# INLINABLE filter #-}
 
-  any bitenc predicate (BVEA bv) = Prelude.any (predicate . (fetch bitenc)) $ listBits bv
-  {-# INLINABLE any #-}
+suchThat :: BitEncoding -> (Formula APType -> Bool) -> EncodedAtom
+suchThat bitenc predicate = EncodedAtom $ BV.fromBits bitList
+  where len = width bitenc
+        bitList = map (predicate . (fetch bitenc)) [(len-1), (len-2)..0]
+{-# INLINABLE suchThat #-}
 
-  filter bitenc predicate (BVEA bv) = BVEA . snd $ BV.foldr filterVec (0, BV.zeros $ BV.width bv) bv
-    where filterVec b (i, acc) = if b && predicate (fetch bitenc $ i)
-                                 then (i+1, BV.setBit acc i)
-                                 else (i+1, acc)
-  {-# INLINABLE filter #-}
+intersect :: EncodedAtom -> EncodedAtom -> EncodedAtom
+intersect (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v1 .&. v2
+{-# INLINE intersect #-}
 
-  suchThat bitenc predicate = BVEA $ BV.fromBits bitList
-    where len = width bitenc
-          bitList = map (predicate . (fetch bitenc)) [(len-1), (len-2)..0]
-  {-# INLINABLE suchThat #-}
+union :: EncodedAtom -> EncodedAtom -> EncodedAtom
+union (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v1 .|. v2
+{-# INLINE union #-}
 
-  intersect (BVEA v1) (BVEA v2) = BVEA $ v1 .&. v2
-  {-# INLINE intersect #-}
+joinInputFormulas :: EncodedAtom -> EncodedAtom -> EncodedAtom
+joinInputFormulas (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v2 BV.# v1
+{-# INLINABLE joinInputFormulas #-}
 
-  union (BVEA v1) (BVEA v2) = BVEA $ v1 .|. v2
-  {-# INLINE union #-}
+extractInput :: BitEncoding -> EncodedAtom -> EncodedAtom
+extractInput bitenc (EncodedAtom bv) = EncodedAtom $ BV.least (propBits bitenc) bv
+{-# INLINABLE extractInput #-}
 
-  joinInputFormulas (BVEA v1) (BVEA v2) = BVEA $ v2 BV.# v1
-  {-# INLINABLE joinInputFormulas #-}
+decodeInput :: BitEncoding -> EncodedAtom -> PropSet
+decodeInput bitenc (EncodedAtom bv) =
+  S.fromList $ map (getProp . (fetch bitenc)) (listBits bv)
+  where getProp (Atomic p) = p
+{-# INLINABLE decodeInput #-}
 
-  extractInput bitenc (BVEA bv) = BVEA $ BV.least (propBits bitenc) bv
-  {-# INLINABLE extractInput #-}
+encodeInput :: BitEncoding -> PropSet -> EncodedAtom
+encodeInput bitenc set =
+  EncodedAtom $ S.foldl BV.setBit (BV.zeros $ propBits bitenc) (S.map (index bitenc . Atomic) set)
+{-# INLINABLE encodeInput #-}
 
-  decodeInput bitenc (BVEA bv) =
-    S.fromList $ map (getProp . (fetch bitenc)) (listBits bv)
-    where getProp (Atomic p) = p
-  {-# INLINABLE decodeInput #-}
-
-  encodeInput bitenc set =
-    BVEA $ S.foldl BV.setBit (BV.zeros $ propBits bitenc) (S.map (index bitenc . Atomic) set)
-  {-# INLINABLE encodeInput #-}
-
-  inputSuchThat bitenc predicate = BVEA $ BV.fromBits bitList
-    where len = propBits bitenc
-          bitList = map (atomicPred . (fetch bitenc)) [(len-1), (len-2)..0]
-          atomicPred (Atomic p) = predicate p
-  {-# INLINABLE inputSuchThat #-}
+inputSuchThat :: BitEncoding -> (Prop APType -> Bool) -> EncodedAtom
+inputSuchThat bitenc predicate = EncodedAtom $ BV.fromBits bitList
+  where len = propBits bitenc
+        bitList = map (atomicPred . (fetch bitenc)) [(len-1), (len-2)..0]
+        atomicPred (Atomic p) = predicate p
+{-# INLINABLE inputSuchThat #-}
 
 
 listBits :: BitVector -> [Int]
