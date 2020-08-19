@@ -1,6 +1,7 @@
 import Pomc.Check (fastcheckGen)
 import Pomc.Example (stlPrecRelV1, stlAnnotateV1)
 import Pomc.Prec (Prec(..))
+import qualified Pomc.Prec as PS (fromList)
 import Pomc.Prop (Prop(..))
 import Pomc.RPotl (Formula(..), formulaAt)
 
@@ -18,43 +19,43 @@ import System.IO
 benchCases =
   [ ( "StlV1, PrecNext bench 1"
     , True
-    , formulaAt 2 $ PrecNext (S.fromList [Yield]) (Atomic . Prop  $ "c_b")
+    , formulaAt 2 $ PrecNext (PS.fromList [Yield]) (Atomic . Prop  $ "c_b")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["c_a", "han", "c_b", "c_c", "c_d", "t_a", "t_b", "t_c", "r_a"])
     )
   , ( "StlV1, PrecNext bench 2"
     , False
-    , formulaAt 2 $ PrecNext (S.fromList [Equal, Take]) (Atomic . Prop  $ "c_b")
+    , formulaAt 2 $ PrecNext (PS.fromList [Equal, Take]) (Atomic . Prop  $ "c_b")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["c_a", "han", "c_b", "c_c", "c_d", "t_a", "t_b", "t_c", "r_a"])
     )
   , ( "StlV1, ChainNext bench 1"
     , True
-    , formulaAt 2 $ ChainNext (S.fromList [Take]) (Atomic . Prop  $ "r_a")
+    , formulaAt 2 $ ChainNext (PS.fromList [Take]) (Atomic . Prop  $ "r_a")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["c_a", "han", "c_b", "c_c", "c_d", "t_a", "t_b", "t_c", "r_a"])
     )
   , ( "StlV1, ChainNext bench 2"
     , True
-    , formulaAt 2 $ ChainNext (S.fromList [Yield]) (Atomic . Prop  $ "t_a")
+    , formulaAt 2 $ ChainNext (PS.fromList [Yield]) (Atomic . Prop  $ "t_a")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["c_a", "han", "c_b", "c_c", "c_d", "t_a", "t_b", "t_c", "r_a"])
     )
   , ( "StlV1, Until bench 1"
     , True
-    , formulaAt 3 $ Until (S.fromList [Equal, Take]) T (Atomic . Prop  $ "thr")
+    , formulaAt 3 $ Until (PS.fromList [Equal, Take]) T (Atomic . Prop  $ "thr")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"])
     )
   , ( "StlV1, Until bench 2"
     , False
-    , formulaAt 2 $ Until (S.fromList [Equal, Take]) T (Atomic . Prop  $ "thr")
+    , formulaAt 2 $ Until (PS.fromList [Equal, Take]) T (Atomic . Prop  $ "thr")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"])
     )
   , ( "StlV1, Until bench 3"
     , True
-    , Until (S.fromList [Yield, Equal]) T (Atomic . Prop  $ "thr")
+    , Until (PS.fromList [Yield, Equal]) T (Atomic . Prop  $ "thr")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"])
     )
@@ -72,19 +73,19 @@ benchCases =
     )
   , ( "StlV1, ChainNext bench 3"
     , True
-    , formulaAt 3 $ ChainNext (S.fromList [Take]) (Atomic . Prop  $ "thr")
+    , formulaAt 3 $ ChainNext (PS.fromList [Take]) (Atomic . Prop  $ "thr")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"])
     )
   , ( "StlV1, ChainBack bench 1" -- ERROR!
     , True
-    , formulaAt 6 $ ChainBack (S.fromList [Take]) (Atomic . Prop  $ "call")
+    , formulaAt 6 $ ChainBack (PS.fromList [Take]) (Atomic . Prop  $ "call")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"])
     )
   , ( "StlV1, ChainNext bench 4"
     , True
-    , formulaAt 1 $ ChainNext (S.fromList [Equal]) (Atomic . Prop  $ "ret")
+    , formulaAt 1 $ ChainNext (PS.fromList [Equal]) (Atomic . Prop  $ "ret")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["call", "han", "call", "call", "call", "thr", "thr", "thr", "ret"])
     )
@@ -102,13 +103,13 @@ benchCases =
     )
   , ( "StlV1, Until bench 4"
     , True
-    , formulaAt 2 $ Until (S.fromList [Yield]) ((Atomic . Prop  $ "han") `Or` (Atomic . Prop  $ "thr")) (Atomic . Prop  $ "t_b")
+    , formulaAt 2 $ Until (PS.fromList [Yield]) ((Atomic . Prop  $ "han") `Or` (Atomic . Prop  $ "thr")) (Atomic . Prop  $ "t_b")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["c_a", "han", "c_b", "c_c", "c_d", "t_a", "t_b", "t_c", "r_a"])
     )
   , ( "StlV1, Since bench 1"
     , True
-    , formulaAt 7 $ Since (S.fromList [Take]) (Atomic . Prop  $ "thr") (Atomic . Prop  $ "c_c")
+    , formulaAt 7 $ Since (PS.fromList [Take]) (Atomic . Prop  $ "thr") (Atomic . Prop  $ "c_c")
     , stlPrecRelV1
     , map (S.fromList . map Prop) (stlAnnotateV1 ["c_a", "han", "c_b", "c_c", "c_d", "t_a", "t_b", "t_c", "r_a"])
     )
