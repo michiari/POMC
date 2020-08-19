@@ -30,7 +30,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import qualified Pomc.Prec as PS (singleton, size, member, notMember, fromList, toList)
 import Pomc.Opa (run, augRun)
-import Pomc.RPotl (Formula(..), negative, atomic, normalize, future)
+import Pomc.RPotl (Formula(..), negative, negation, atomic, normalize, future)
 import Pomc.Util (safeHead)
 import Pomc.Data (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
 import qualified Pomc.Data as D
@@ -599,7 +599,9 @@ deltaRules bitenc cl precFunc =
           checkPn _ = False
 
           pnArgs = V.fromList $ map getPnArg $ filter checkPn (S.toList cl)
-          getPnArg f@(PrecNext _ g) = (D.singleton bitenc f, D.singleton bitenc g)
+          getPnArg f@(PrecNext _ g)
+            | negative g = (True, D.singleton bitenc f, D.singleton bitenc (negation g))
+            | otherwise  = (False, D.singleton bitenc f, D.singleton bitenc g)
 
           maskPnp Yield = D.suchThat bitenc (checkPnp Yield)
           maskPnp Equal = D.suchThat bitenc (checkPnp Equal)
@@ -618,9 +620,10 @@ deltaRules bitenc cl precFunc =
           fsComp prec = pCurrPnfs == checkSet
             where pCurrPnfs = D.intersect pCurr maskPn
                   checkSet = V.foldl' checkSetFold (D.empty bitenc) pnArgs
-                  checkSetFold acc (fMask, gMask)
-                    | not $ (D.null $ D.intersect fMask (maskPnp prec))
-                            || (D.null $ D.intersect gMask fCurr)
+                  checkSetFold acc (negf, fMask, gMask)
+                    | (not . D.null $ D.intersect fMask (maskPnp prec))
+                      && ((not negf && (not . D.null $ D.intersect gMask fCurr))
+                         || (negf && (D.null $ D.intersect gMask fCurr)))
                     = D.union acc fMask
                     | otherwise = acc
 
@@ -644,7 +647,9 @@ deltaRules bitenc cl precFunc =
           checkPb _ = False
 
           pbArgs = V.fromList $ map getPbArg $ filter checkPb (S.toList cl)
-          getPbArg f@(PrecBack _ g) = (D.singleton bitenc f, D.singleton bitenc g)
+          getPbArg f@(PrecBack _ g)
+            | negative g = (True, D.singleton bitenc f, D.singleton bitenc (negation g))
+            | otherwise  = (False, D.singleton bitenc f, D.singleton bitenc g)
 
           maskPbp Yield = D.suchThat bitenc (checkPbp Yield)
           maskPbp Equal = D.suchThat bitenc (checkPbp Equal)
@@ -663,9 +668,10 @@ deltaRules bitenc cl precFunc =
           fsComp prec = fCurrPbfs == checkSet
             where fCurrPbfs = D.intersect fCurr maskPb
                   checkSet = V.foldl' checkSetFold (D.empty bitenc) pbArgs
-                  checkSetFold acc (fMask, gMask)
-                    | not $ (D.null $ D.intersect fMask (maskPbp prec))
-                            || (D.null $ D.intersect gMask pCurr)
+                  checkSetFold acc (negf, fMask, gMask)
+                    | (not . D.null $ D.intersect fMask (maskPbp prec))
+                      && ((not negf && (not . D.null $ D.intersect gMask pCurr))
+                         || (negf && (D.null $ D.intersect gMask pCurr)))
                     = D.union acc fMask
                     | otherwise = acc
 
