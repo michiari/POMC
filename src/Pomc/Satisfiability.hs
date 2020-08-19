@@ -18,10 +18,8 @@ module Pomc.Satisfiability (
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Check (Checkable(..), Input, EncPrecFunc, State(..), makeOpa)
-import Pomc.RPotl (Formula(Atomic))
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
-import qualified Pomc.Data as D (member)
 
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
@@ -196,33 +194,21 @@ reach isDestState isDestStack globals delta q g = do
         qProps = getSidProps be q
         qState = getState q
         cases
-          | (isDestState q) && (isDestStack g) = debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
-          | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) = do
-              newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
-              pushReached <- V.foldM' (reachPush isDestState isDestStack globals delta q g) False newStates
-              if pushReached
-                then return True
-                else do
-                currentSuppEnds <- lookupSM (suppEnds globals) q
-                foldM (\acc s -> if acc
-                                 then return True
-                                 else debug ("Push (summary): q = " ++ show q ++ "\ng = " ++ show g ++ "\ns = " ++ show s) $
-                                      reach isDestState isDestStack globals delta s g)
-                  False
-                  currentSuppEnds
-          | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) = do
-              newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
-              let reachShift acc p
-                    = if acc
-                      then return True
-                      else debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-                           reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
-              V.foldM' reachShift False newStates
-          | ((prec delta) (fst . fromJust $ g) qProps == Just Take) = do
-              newStates <- wrapStates (sIdGen globals) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
-              V.foldM' (reachPop isDestState isDestStack globals delta q g) False newStates
+          | (isDestState q) && (isDestStack g) =
+            debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
+
+          | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) =
+            reachPush isDestState isDestStack globals delta q g qState qProps
+
+          | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) =
+            reachShift isDestState isDestStack globals delta q g qState qProps
+
+          | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
+            reachPop isDestState isDestStack globals delta q g qState
+
           | otherwise = return False
     cases
+
 
 reachPush :: (SatState state, Eq state, Hashable state, Show state, NFData state)
           => (StateId state -> Bool)
@@ -231,14 +217,50 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state, NFData state
           -> Delta state
           -> StateId state
           -> Stack state
-          -> Bool
-          -> StateId state
+          -> state
+          -> Input
           -> ST s Bool
-reachPush _ _ _ _ _ _ True _ = return True
-reachPush isDestState isDestStack globals delta q g False p = do
-  insertSM (suppStarts globals) q g
-  debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-    reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
+reachPush isDestState isDestStack globals delta q g qState qProps =
+  let doPush True _ = return True
+      doPush False p = do
+        insertSM (suppStarts globals) q g
+        debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+          reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
+  in do
+    newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
+    pushReached <- V.foldM' doPush False newStates
+    if pushReached
+      then return True
+      else do
+      currentSuppEnds <- lookupSM (suppEnds globals) q
+      foldM (\acc s -> if acc
+                       then return True
+                       else debug ("Push (summary): q = " ++ show q
+                                   ++ "\ng = " ++ show g
+                                   ++ "\ns = " ++ show s) $
+                            reach isDestState isDestStack globals delta s g)
+        False
+        currentSuppEnds
+
+
+reachShift :: (SatState state, Eq state, Hashable state, Show state, NFData state)
+           => (StateId state -> Bool)
+           -> (Stack state -> Bool)
+           -> Globals s state
+           -> Delta state
+           -> StateId state
+           -> Stack state
+           -> state
+           -> Input
+           -> ST s Bool
+reachShift isDestState isDestStack globals delta q g qState qProps =
+  let doShift True _ = return True
+      doShift False p =
+        debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+        reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
+  in do
+    newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
+    V.foldM' doShift False newStates
 
 
 reachPop :: (SatState state, Eq state, Hashable state, Show state, NFData state)
@@ -248,23 +270,27 @@ reachPop :: (SatState state, Eq state, Hashable state, Show state, NFData state)
          -> Delta state
          -> StateId state
          -> Stack state
-         -> Bool
-         -> StateId state
+         -> state
          -> ST s Bool
-reachPop _ _ _ _ _ _ True _ = return True
-reachPop isDestState isDestStack globals delta q g False p =
-  let r = snd . fromJust $ g
-      closeSupports True _ = return True
-      closeSupports False g'
-        | isNothing g' ||
-          ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
-        = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-          reach isDestState isDestStack globals delta p g'
-        | otherwise = return False
+reachPop isDestState isDestStack globals delta q g qState =
+  let doPop True _ = return True
+      doPop False p =
+        let r = snd . fromJust $ g
+            closeSupports True _ = return True
+            closeSupports False g'
+              | isNothing g' ||
+                ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
+              = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+                reach isDestState isDestStack globals delta p g'
+              | otherwise = return False
+        in do
+          insertSM (suppEnds globals) r p
+          currentSuppStarts <- lookupSM (suppStarts globals) r
+          foldM closeSupports False currentSuppStarts
   in do
-    insertSM (suppEnds globals) r p
-    currentSuppStarts <- lookupSM (suppStarts globals) r
-    foldM closeSupports False currentSuppStarts
+    newStates <- wrapStates (sIdGen globals) $
+                 (deltaPop delta) qState (getState . snd . fromJust $ g)
+    V.foldM' doPop False newStates
 
 
 isEmpty :: (SatState state, Eq state, Hashable state, Show state, NFData state)

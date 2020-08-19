@@ -102,7 +102,7 @@ instance EncodedAtom BVEA where
   {-# INLINABLE generateFormulas #-}
 
   null (BVEA bv) = bv == BV.nil
-  {-# INLINABLE null #-}
+  {-# INLINE null #-}
 
   member bitenc phi (BVEA bv) | negative phi = not $ bv BV.@. (index bitenc $ negation phi)
                               | otherwise = bv BV.@. (index bitenc $ phi)
@@ -123,10 +123,10 @@ instance EncodedAtom BVEA where
   {-# INLINABLE suchThat #-}
 
   intersect (BVEA v1) (BVEA v2) = BVEA $ v1 .&. v2
-  {-# INLINABLE intersect #-}
+  {-# INLINE intersect #-}
 
   union (BVEA v1) (BVEA v2) = BVEA $ v1 .|. v2
-  {-# INLINABLE union #-}
+  {-# INLINE union #-}
 
   joinInputFormulas (BVEA v1) (BVEA v2) = BVEA $ v2 BV.# v1
   {-# INLINABLE joinInputFormulas #-}
