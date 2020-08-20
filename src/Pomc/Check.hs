@@ -17,7 +17,9 @@ module Pomc.Check ( -- * Checking functions
                     -- * Checking helpers
                   , closure
                     -- * Printing
+                  , showAtom
                   , showAtoms
+                  , showState
                   , showStates
                   , EncPrecFunc
                   , Input
@@ -32,7 +34,7 @@ import qualified Pomc.Prec as PS (singleton, size, member, notMember, fromList, 
 import Pomc.Opa (run, augRun)
 import Pomc.RPotl (Formula(..), negative, negation, atomic, normalize, future)
 import Pomc.Util (safeHead)
-import Pomc.Data (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
+import Pomc.Data (EncodedSet, FormulaSet, PropSet, BitEncoding(..), EncodedAtom, EncodedState)
 import qualified Pomc.Data as D
 import Pomc.PropConv (APType, convPropTokens)
 
@@ -79,18 +81,17 @@ fromStructEnc bitenc sprs = (\s1 s2 -> M.lookup (structLabel s1, structLabel s2)
         encodeProp = D.encodeInput bitenc . S.singleton
 
 
-type Input = EncodedSet
-type Atom = EncodedSet
+type Input = EncodedAtom -- This allows faster comparisons with atoms.
+type Atom = EncodedAtom
+type State = EncodedState
 
-data State = State
-    { current   :: Atom
-    , pending   :: EncodedSet
-    , mustPush  :: !Bool
-    , mustShift :: !Bool
-    , afterPop  :: !Bool
-    } deriving (Generic, Ord, Eq)
+newState = D.newEncodedState
+current = D.currToAtom
+pending = D.pendToAtom
+mustPush = D.getXl
+mustShift = D.getXe
+afterPop = D.getXr
 
-instance Hashable State
 
 showFormulaSet :: FormulaSet -> String
 showFormulaSet fset = let fs = S.toList fset
@@ -101,22 +102,14 @@ showFormulaSet fset = let fs = S.toList fset
 showAtom :: BitEncoding -> Atom -> String
 showAtom bitenc atom = "FS: " ++ showFormulaSet (D.decode bitenc atom) ++ "\t\tES: " ++ show atom
 
-instance Show State where
-  show (State c p xl xe xr) = "\n{ C: "  ++ show c  ++
-                              "\n, P: "  ++ show p  ++
-                              "\n, XL: " ++ show xl ++
-                              "\n, X=: " ++ show xe ++
-                              "\n, XR: " ++ show xr ++
-                              "\n}"
-
 showState :: BitEncoding -> State -> String
-showState bitenc (State c p xl xe xr) =
-  "\n{ C: "  ++ showAtom bitenc c  ++
-  "\n, P: "  ++ showAtom bitenc p  ++
-  "\n, XL: " ++ show xl            ++
-  "\n, X=: " ++ show xe            ++
-  "\n, XR: " ++ show xr            ++
-  "\n}"
+showState bitenc s =
+  "\n{ C: "  ++ showAtom bitenc (current bitenc s) ++
+  "\n, P: "  ++ showAtom bitenc (pending bitenc s) ++
+  "\n, XL: " ++ show (mustPush bitenc s)           ++
+  "\n, X=: " ++ show (mustShift bitenc s)          ++
+  "\n, XR: " ++ show (afterPop bitenc s)           ++
+  "\n}\t\tES: " ++ show s
 
 showAtoms :: BitEncoding -> [Atom] -> String
 showAtoms bitenc = unlines . map (showAtom bitenc)
@@ -253,7 +246,7 @@ makeBitEncoding clos =
       pClosLookup phi = fromJust $ M.lookup phi pClosMap
         where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
 
-  in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
+  in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pFormulaVec) (V.length pAtomicVec)
 
 
 genAtoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
@@ -290,7 +283,7 @@ genAtoms bitenc clos inputSet =
                        return eset'
         in as SQ.>< (SQ.fromList combs)
 
-  in toList $ if width bitenc - propBits bitenc == 0
+  in toList $ if formulaBits bitenc == 0
               then SQ.fromList atomics
               else foldl' prependCons SQ.empty (D.generateFormulas bitenc)
 
@@ -458,8 +451,8 @@ initials phi clos (atoms, bitenc) =
       compAtoms = filter compatible atoms
       cnyfSet = S.fromList [f | f@(ChainNext pset _) <- S.toList clos,
                                                         pset == (PS.singleton Yield)]
-  in [State ia (D.encode bitenc ip) True False False | ia <- compAtoms,
-                                                       ip <- S.toList (S.powerSet cnyfSet)]
+  in [newState bitenc ia (D.encode bitenc ip) True False False | ia <- compAtoms,
+                                                                 ip <- S.toList (S.powerSet cnyfSet)]
 
 resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
@@ -556,15 +549,15 @@ deltaRules bitenc cl precFunc =
   in (shiftGroup, pushGroup, popGroup)
   where
     -- XL rules
-    xlShiftPr info = let pXl = mustPush (prState info) in not pXl
-    xlPushPr  info = let pXl = mustPush (prState info) in pXl
-    xlPopPr   info = let pXl = mustPush (prState info) in not pXl
+    xlShiftPr info = let pXl = mustPush bitenc (prState info) in not pXl
+    xlPushPr  info = let pXl = mustPush bitenc (prState info) in pXl
+    xlPopPr   info = let pXl = mustPush bitenc (prState info) in not pXl
     --
 
     -- XE rules
-    xeShiftPr info = let pXe = mustShift (prState info) in pXe
-    xePushPr  info = let pXe = mustShift (prState info) in not pXe
-    xePopPr   info = let pXe = mustShift (prState info) in not pXe
+    xeShiftPr info = let pXe = mustShift bitenc (prState info) in pXe
+    xePushPr  info = let pXe = mustShift bitenc (prState info) in not pXe
+    xePopPr   info = let pXe = mustShift bitenc (prState info) in not pXe
     --
 
     -- XR rules
@@ -575,7 +568,7 @@ deltaRules bitenc cl precFunc =
 
     -- Prop rules
     propPushPr info =
-      let pCurr = current $ prState info
+      let pCurr = current bitenc $ prState info
           props = fromJust (prProps info)
       in compProps bitenc pCurr props
 
@@ -586,7 +579,7 @@ deltaRules bitenc cl precFunc =
     pnCond clos = not (null [f | f@(PrecNext _ _) <- S.toList clos])
 
     pnPushFcr info =
-      let pCurr = current $ fcrState info
+      let pCurr = current bitenc $ fcrState info
           props = fromJust (fcrProps info)
           fCurr = fcrFutureCurr info
 
@@ -634,7 +627,7 @@ deltaRules bitenc cl precFunc =
     pbCond clos = not (null [f | f@(PrecBack _ _) <- S.toList clos])
 
     pbPushFcr info =
-      let pCurr = current $ fcrState info
+      let pCurr = current bitenc $ fcrState info
           props = fromJust (fcrProps info)
           fCurr = fcrFutureCurr info
 
@@ -687,7 +680,7 @@ deltaRules bitenc cl precFunc =
                                                           pset == PS.singleton Yield])
 
     cnyPushFpr info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
           pCurrCnyfs = D.intersect pCurr maskCny
           fPendCnyfs = D.intersect fPend maskCny
@@ -699,9 +692,9 @@ deltaRules bitenc cl precFunc =
     cnyShiftFpr = cnyPushFpr
 
     cnyPopFpr info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
-          ppPend = pending $ fromJust (fprPopped info)
+          ppPend = pending bitenc $ fromJust (fprPopped info)
           ppPendCnyfs = D.intersect maskCny ppPend
 
           cnyClos = S.filter checkCny cl
@@ -725,7 +718,7 @@ deltaRules bitenc cl precFunc =
                                                           pset == PS.singleton Equal])
 
     cnePushFpr info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
           fPendCnefs = D.intersect maskCne fPend
           pCurrCnefs = D.intersect maskCne pCurr
@@ -736,20 +729,20 @@ deltaRules bitenc cl precFunc =
     cneShiftFpr = cnePushFpr
 
     cnePopPr info =
-      let pPend = pending (prState info)
+      let pPend = pending bitenc (prState info)
           pPendCnefs = D.intersect pPend maskCne
       in D.null pPendCnefs
 
     cnePopFpr info =
-      let ppPend = pending $ fromJust (fprPopped info)
+      let ppPend = pending bitenc $ fromJust (fprPopped info)
           (fPend, _, _, _) = fprFuturePendComb info
           ppPendCnefs = D.intersect ppPend maskCne
           fPendCnefs = D.intersect fPend maskCne
       in ppPendCnefs == fPendCnefs
 
     cneShiftPr info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
+      let pCurr = current bitenc $ prState info
+          pPend = pending bitenc $ prState info
           pPendCnefs = D.intersect pPend maskCne
 
           cneClos = S.filter checkCne cl
@@ -768,7 +761,7 @@ deltaRules bitenc cl precFunc =
                                                           pset == PS.singleton Take])
 
     cntPushFpr info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (fPend, fXl, _, _) = fprFuturePendComb info
           fPendCntfs = D.intersect fPend maskCnt
           pCurrCntfs = D.intersect pCurr maskCnt
@@ -779,8 +772,8 @@ deltaRules bitenc cl precFunc =
     cntShiftFpr = cntPushFpr
 
     cntPopPr info =
-      let pCurr = current $ prState info
-          pPend = pending (prState info)
+      let pCurr = current bitenc $ prState info
+          pPend = pending bitenc (prState info)
           pPendCntfs = D.intersect pPend maskCnt
 
           cntClos = S.filter checkCnt cl
@@ -790,14 +783,14 @@ deltaRules bitenc cl precFunc =
       in pCheckList == pPendCntfs
 
     cntPopFpr info =
-      let ppPend = pending $ fromJust (fprPopped info)
+      let ppPend = pending bitenc $ fromJust (fprPopped info)
           (fPend, _, _, _) = fprFuturePendComb info
           ppPendCntfs = D.intersect ppPend maskCnt
           fPendCntfs = D.intersect fPend maskCnt
       in ppPendCntfs == fPendCntfs
 
     cntShiftPr info =
-      let pPend = pending (prState info)
+      let pPend = pending bitenc (prState info)
           pPendCntfs = D.intersect pPend maskCnt
       in D.null pPendCntfs
     --
@@ -811,9 +804,9 @@ deltaRules bitenc cl precFunc =
                                                           pset == PS.singleton Yield])
 
     cbyPushPr info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
-          pXr = afterPop (prState info)
+      let pCurr = current bitenc $ prState info
+          pPend = pending bitenc $ prState info
+          pXr = afterPop bitenc (prState info)
           pCurrCbyfs = D.intersect pCurr maskCby
           pPendCbyfs = D.intersect pPend maskCby
       in if pXr
@@ -821,18 +814,18 @@ deltaRules bitenc cl precFunc =
            else D.null pCurrCbyfs
 
     cbyShiftPr info =
-      let pCurr = current $ prState info
+      let pCurr = current bitenc $ prState info
       in D.null $ D.intersect pCurr maskCby
 
     cbyPopFpr info =
-      let ppPend = pending $ fromJust (fprPopped info)
+      let ppPend = pending bitenc $ fromJust (fprPopped info)
           (fPend, _, _, _) = fprFuturePendComb info
           ppPendCbyfs = D.intersect ppPend maskCby
           fPendCbyfs = D.intersect fPend maskCby
       in ppPendCbyfs == fPendCbyfs
 
     cbyPushFpr info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (fPend, _, _, _) = fprFuturePendComb info
           fPendCbyfs = D.intersect fPend maskCby
 
@@ -854,9 +847,9 @@ deltaRules bitenc cl precFunc =
                                                           pset == PS.singleton Equal])
 
     cbeShiftPr info =
-      let pCurr = current $ prState info
-          pPend = pending (prState info)
-          pXr = afterPop (prState info)
+      let pCurr = current bitenc $ prState info
+          pPend = pending bitenc (prState info)
+          pXr = afterPop bitenc (prState info)
           pCurrCbefs = D.intersect pCurr maskCbe
           pPendCbefs = D.intersect pPend maskCbe
       in if pXr
@@ -864,18 +857,18 @@ deltaRules bitenc cl precFunc =
            else D.null pCurrCbefs
 
     cbePushPr info =
-      let pCurr = current $ prState info
+      let pCurr = current bitenc $ prState info
       in D.null $ D.intersect pCurr maskCbe
 
     cbePopFpr info =
-      let ppPend = pending $ fromJust (fprPopped info)
+      let ppPend = pending bitenc $ fromJust (fprPopped info)
           (fPend, _, _, _) = fprFuturePendComb info
           ppPendCbefs = D.intersect ppPend maskCbe
           fPendCbefs = D.intersect fPend maskCbe
       in ppPendCbefs == fPendCbefs
 
     cbePushFpr info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (fPend, _, _, _) = fprFuturePendComb info
 
           fPendCbefs = D.intersect fPend maskCbe
@@ -905,9 +898,9 @@ deltaRules bitenc cl precFunc =
     cbtShiftFpr = cbtPushFpr
 
     cbtPushPr info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
-          pXr = afterPop $ prState info
+      let pCurr = current bitenc $ prState info
+          pPend = pending bitenc $ prState info
+          pXr = afterPop bitenc $ prState info
           pCurrCbtfs = D.intersect pCurr maskCbt
           pPendCbtfs = D.intersect pPend maskCbt
       in if pXr
@@ -917,9 +910,9 @@ deltaRules bitenc cl precFunc =
     cbtShiftPr = cbtPushPr
 
     cbtPopFpr info =
-      let pPend = pending (fprState info)
+      let pPend = pending bitenc (fprState info)
           (fPend, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+          ppCurr = current bitenc $ fromJust (fprPopped info)
           pPendCbtfs = D.intersect pPend maskCbt
           fPendCbtfs = D.intersect fPend maskCbt
 
@@ -951,16 +944,16 @@ deltaRules bitenc cl precFunc =
     hnyCond clos = not (null [f | f@(HierNextYield _) <- S.toList clos])
 
     hnyPushPr1 info =
-      let pCurr = current $ prState info
-          pXr = afterPop (prState info)
+      let pCurr = current bitenc $ prState info
+          pXr = afterPop bitenc (prState info)
       in if not $ D.null $ D.intersect pCurr maskHny
            then pXr
            else True
 
     hnyPushPr2 info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
-          pXr = afterPop $ prState info
+      let pCurr = current bitenc $ prState info
+          pPend = pending bitenc $ prState info
+          pXr = afterPop bitenc $ prState info
           pPendHnyfs = D.intersect pPend maskHny
 
           hnyClos = S.filter checkHny cl
@@ -972,8 +965,8 @@ deltaRules bitenc cl precFunc =
 
     hnyPopFpr info =
       let (fPend, _, _, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
-          ppXr = afterPop $ fromJust (fprPopped info)
+          ppCurr = current bitenc $ fromJust (fprPopped info)
+          ppXr = afterPop bitenc $ fromJust (fprPopped info)
           fPendHnyfs = D.intersect fPend maskHny
           ppCurrHnyfs = D.intersect ppCurr maskHny
       in if ppXr
@@ -981,13 +974,13 @@ deltaRules bitenc cl precFunc =
            else True
 
     hnyPopPr info =
-      let pPend = pending (prState info)
+      let pPend = pending bitenc (prState info)
           pPendHnyfs = D.intersect pPend maskHny
       in D.null pPendHnyfs
 
     hnyShiftPr info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
+      let pCurr = current bitenc $ prState info
+          pPend = pending bitenc $ prState info
           pCurrHnyfs = D.intersect pCurr maskHny
           pPendHnyfs = D.intersect pPend maskHny
       in D.null pCurrHnyfs && D.null pPendHnyfs
@@ -1001,22 +994,22 @@ deltaRules bitenc cl precFunc =
     hbyCond clos = not (null [f | f@(HierBackYield _) <- S.toList clos])
 
     hbyPushPr info =
-      let pCurr = current $ prState info
-          pXl = mustPush $ prState info
-          pXr = afterPop $ prState info
+      let pCurr = current bitenc $ prState info
+          pXl = mustPush bitenc $ prState info
+          pXr = afterPop bitenc $ prState info
       in if not $ D.null $ D.intersect pCurr maskHby
          then pXl && pXr
          else True
 
     hbyShiftPr info =
-      let pCurr = current $ prState info
+      let pCurr = current bitenc $ prState info
       in D.null $ D.intersect pCurr maskHby
 
     hbyPopFr info =
       let (_, fXl, _, _) = frFuturePendComb info
           fCurr = frFutureCurr info
-          ppCurr = current $ fromJust (frPopped info)
-          ppXr = afterPop $ fromJust (frPopped info)
+          ppCurr = current bitenc $ fromJust (frPopped info)
+          ppXr = afterPop bitenc $ fromJust (frPopped info)
           fCurrHbyfs = D.intersect fCurr maskHby
 
           hbyClos = S.filter checkHby cl
@@ -1039,7 +1032,7 @@ deltaRules bitenc cl precFunc =
 
     hntPopFpr1 info =
       let (fPend, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+          ppCurr = current bitenc $ fromJust (fprPopped info)
 
           fPendHntfs = D.intersect fPend maskHnt
 
@@ -1052,9 +1045,9 @@ deltaRules bitenc cl precFunc =
            else True
 
     hntPopFpr2 info =
-      let pPend = pending (fprState info)
+      let pPend = pending bitenc (fprState info)
           (_, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+          ppCurr = current bitenc $ fromJust (fprPopped info)
 
           pPendHntfs = D.intersect pPend maskHnt
 
@@ -1068,7 +1061,7 @@ deltaRules bitenc cl precFunc =
 
     hntPopFpr3 info =
       let (_, _, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+          ppCurr = current bitenc $ fromJust (fprPopped info)
 
           hth = HierTakeHelper
           checkSet = S.filter (\f -> D.member bitenc (hth f) ppCurr) hntClos
@@ -1078,7 +1071,7 @@ deltaRules bitenc cl precFunc =
            else True
 
     hntPushFpr1 info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (_, fXl, _, _) = fprFuturePendComb info
       in if not $ D.null $ D.intersect pCurr maskHnt
          then fXl
@@ -1103,9 +1096,9 @@ deltaRules bitenc cl precFunc =
     hbtCond clos = not (null [f | f@(HierBackTake _) <- S.toList clos])
 
     hbtPopFpr1 info =
-      let pPend = pending (fprState info)
+      let pPend = pending bitenc (fprState info)
           (_, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+          ppCurr = current bitenc $ fromJust (fprPopped info)
 
           pPendHbtfs = D.intersect pPend maskHbt
 
@@ -1119,7 +1112,7 @@ deltaRules bitenc cl precFunc =
 
     hbtPopFpr2 info =
       let (fPend, fXl, _, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+          ppCurr = current bitenc $ fromJust (fprPopped info)
 
           fPendHbtfs = D.intersect fPend maskHbt
 
@@ -1132,7 +1125,7 @@ deltaRules bitenc cl precFunc =
            else True
 
     hbtPopFpr3 info =
-      let pPend = pending (fprState info)
+      let pPend = pending bitenc (fprState info)
           (_, fXl, fXe, _) = fprFuturePendComb info
           pPendHbtfs = D.intersect pPend maskHbt
       in if not (D.null pPendHbtfs)
@@ -1140,7 +1133,7 @@ deltaRules bitenc cl precFunc =
            else True
 
     hbtPushFpr info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (_, fXl, _, _) = fprFuturePendComb info
       in if not $ D.null $ D.intersect pCurr maskHbt
          then fXl
@@ -1149,7 +1142,7 @@ deltaRules bitenc cl precFunc =
     hbtShiftFpr = hbtPushFpr
 
     hbtPushPr info =
-      let pPend = pending (prState info)
+      let pPend = pending bitenc (prState info)
           pPendHbtfs = D.intersect pPend maskHbt
       in D.null pPendHbtfs
 
@@ -1164,25 +1157,25 @@ deltaRules bitenc cl precFunc =
     hthCond clos = not (null [f | f@(HierTakeHelper _) <- S.toList clos])
 
     hthPushPr info =
-      let pCurr = current $ prState info
-          pPend = pending (prState info)
+      let pCurr = current bitenc $ prState info
+          pPend = pending bitenc (prState info)
           pCurrHthfs = D.intersect pCurr maskHth
           pPendHthfs = D.intersect pPend maskHth
       in pCurrHthfs == pPendHthfs
 
     hthShiftPr info =
-      let pCurr = current $ prState info
+      let pCurr = current bitenc $ prState info
       in D.null $ D.intersect pCurr maskHth
 
     hthPopFpr info =
-      let ppPend = pending $ fromJust (fprPopped info)
+      let ppPend = pending bitenc $ fromJust (fprPopped info)
           (fPend, _, _, _) = fprFuturePendComb info
           ppPendHthfs = D.intersect ppPend maskHth
           fPendHthfs = D.intersect fPend maskHth
       in ppPendHthfs == fPendHthfs
 
     hthPushFpr info =
-      let pCurr = current $ fprState info
+      let pCurr = current bitenc $ fprState info
           (fPend, _, _, _) = fprFuturePendComb info
           fPendHthfs = D.intersect fPend maskHth
 
@@ -1247,7 +1240,8 @@ augDeltaRules bitenc cl prec =
                             nextProps = fromJust (fcrNextProps info)
                         in compProps bitenc fCurr nextProps
 
-delta :: RuleGroup
+delta :: BitEncoding
+      -> RuleGroup
       -> [Atom]
       -> Set (EncodedSet, Bool, Bool, Bool)
       -> State
@@ -1255,7 +1249,7 @@ delta :: RuleGroup
       -> Maybe State
       -> Maybe Input
       -> [State]
-delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
+delta bitenc rgroup atoms pcombs state mprops mpopped mnextprops = fstates
   where
     prs  = ruleGroupPrs  rgroup
     fcrs = ruleGroupFcrs rgroup
@@ -1279,7 +1273,7 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
             valid atom = null [r | r <- fcrs, not (r $ makeInfo atom)]
             nextAtoms = if isNothing mpopped
                         then atoms
-                        else [current state]
+                        else [current bitenc state]
 
     vpcs = S.toList . S.filter valid $ pcombs
       where makeInfo pendComb = FprInfo { fprState          = state,
@@ -1291,9 +1285,9 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
             valid pcomb = null [r | r <- fprs, not (r $ makeInfo pcomb)]
 
     fstates = if (pvalid)
-                then [State curr pend xl xe xr | curr <- vas,
-                                                 pc@(pend, xl, xe, xr) <- vpcs,
-                                                 valid curr pc]
+                then [newState bitenc curr pend xl xe xr | curr <- vas,
+                                                           pc@(pend, xl, xe, xr) <- vpcs,
+                                                           valid curr pc]
                 else []
       where makeInfo curr pendComb = FrInfo { frState          = state,
                                               frProps          = mprops,
@@ -1306,12 +1300,12 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
 
 isFinal :: BitEncoding -> State -> Bool
 isFinal bitenc s =
-  debug $ not (mustPush s) -- xe can be instead accepted, as if # = #
+  debug $ not (mustPush bitenc s) -- xe can be instead accepted, as if # = #
   && D.member bitenc (Atomic End) currFset
   && (not $ D.any bitenc future currFset) -- TODO: mask this
   && pendComb
-  where currFset = current s
-        currPend = pending s
+  where currFset = current bitenc s
+        currPend = pending bitenc s
         pendComb = currPend == (D.intersect currPend maskCbt)
         -- only ChainBack Take formulas are allowed
 
@@ -1350,15 +1344,15 @@ check phi sprs ts =
         debug = id
 
         deltaShift atoms pcombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+          where fstates = delta bitenc rgroup atoms pcombs state
                                 (Just props) Nothing Nothing
 
         deltaPush atoms pcombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+          where fstates = delta bitenc rgroup atoms pcombs state
                                 (Just props) Nothing Nothing
 
         deltaPop atoms pcombs rgroup state popped = fstates
-          where fstates = delta rgroup atoms pcombs state
+          where fstates = delta bitenc rgroup atoms pcombs state
                                 Nothing (Just popped) Nothing
 
 checkGen :: (Checkable f, Ord a, Show a)
@@ -1399,7 +1393,7 @@ fastcheck phi sprs ts =
         (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl prec
 
         compInitial s = fromMaybe True $
-                          (compProps bitenc) <$> (Just . current) s <*> safeHead encTs
+                          (compProps bitenc) <$> (Just . current bitenc) s <*> safeHead encTs
 
         debug = id
         --debug = DT.trace ("\nRun with:"         ++
@@ -1420,7 +1414,7 @@ fastcheck phi sprs ts =
             debug = id
             --debug = DT.trace ("\nShift with: " ++ show (S.toList props) ++
             --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup atoms pcombs state
+            fstates = delta bitenc rgroup atoms pcombs state
                             (Just props) Nothing (Just . laProps $ lookahead)
 
         augDeltaPush atoms pcombs rgroup lookahead state props = debug fstates
@@ -1428,7 +1422,7 @@ fastcheck phi sprs ts =
             debug = id
             --debug = DT.trace ("\nPush with: " ++ show (S.toList props) ++
             --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup atoms pcombs state
+            fstates = delta bitenc rgroup atoms pcombs state
                             (Just props) Nothing (Just . laProps $ lookahead)
 
         augDeltaPop atoms pcombs rgroup lookahead state popped = debug fstates
@@ -1436,7 +1430,7 @@ fastcheck phi sprs ts =
             debug = id
             --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
             --                  "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup atoms pcombs state
+            fstates = delta bitenc rgroup atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
 
 fastcheckGen :: (Checkable f, Ord a, Show a)
@@ -1482,13 +1476,13 @@ makeOpa phi (sls, als) sprs = (bitenc
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
 
         deltaShift atoms pcombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+          where fstates = delta bitenc rgroup atoms pcombs state
                                 (Just props) Nothing Nothing
 
         deltaPush atoms pcombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+          where fstates = delta bitenc rgroup atoms pcombs state
                                 (Just props) Nothing Nothing
 
         deltaPop atoms pcombs rgroup state popped = fstates
-          where fstates = delta rgroup atoms pcombs state
+          where fstates = delta bitenc rgroup atoms pcombs state
                                 Nothing (Just popped) Nothing
