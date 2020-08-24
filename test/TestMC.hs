@@ -3,6 +3,7 @@ module TestMC (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified TestSat (cases)
+import qualified EvalFormulas (formulas)
 import Pomc.Prop (Prop(..))
 import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
 import Pomc.PotlV2 (Formula)
@@ -12,7 +13,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 tests :: TestTree
-tests = testGroup "TestMC.hs Tests" [baseTests]
+tests = testGroup "ModelChecking.hs Tests" [baseTests, evalTests]
 
 baseTests :: TestTree
 baseTests = testGroup "MC Base Tests" $ map makeTestCase (zip TestSat.cases expectedBase)
@@ -45,19 +46,19 @@ simpleExc = ExplicitOpa
                 , (8, makeInputSet ["call", "perr"], [7])
                 ]
             , deltaShift =
-              [ (4, makeInputSet ["exc"],         [5])
-              , (7, makeInputSet ["ret", "perr"], [7])
-              , (9, makeInputSet ["ret", "pa"],   [11])
-              ]
+                [ (4, makeInputSet ["exc"],         [5])
+                , (7, makeInputSet ["ret", "perr"], [7])
+                , (9, makeInputSet ["ret", "pa"],   [11])
+                ]
             , deltaPop =
-              [ (4, 2, [4])
-              , (4, 3, [4])
-              , (4, 4, [4])
-              , (5, 1, [6])
-              , (7, 6, [8])
-              , (7, 8, [9])
-              , (11, 0, [10])
-              ]
+                [ (4, 2, [4])
+                , (4, 3, [4])
+                , (4, 4, [4])
+                , (5, 1, [6])
+                , (7, 6, [8])
+                , (7, 8, [9])
+                , (11, 0, [10])
+                ]
             }
 
 expectedBase :: [Bool]
@@ -65,3 +66,24 @@ expectedBase = [True, False, False, False, False, False,
                 False, False, False, True, True, False,
                 True, False, True, False, False, False,
                 False, False, False, False]
+
+evalTests :: TestTree
+evalTests = testGroup "MC Eval Tests" $ map makeTestCase (zip EvalFormulas.formulas expectedEval)
+
+expectedEval :: [Bool]
+expectedEval = [True, True, True, True,   -- chain_next
+                True, False,              -- contains_exc
+                True,                     -- data_access
+                False, True, False,       -- empty_frame
+                False,                    -- exception_safety
+                False, True, True, False, -- hier_down
+                True,                     -- hier_insp
+                True,                     -- hier_insp_exc
+                True, True, False, False, -- hier_up
+                False, False,             -- normal_ret
+                True, True,               -- no_throw
+                True, True,               -- stack_inspection
+                False,                    -- uninstall_han
+                False, True, True,        -- until_exc
+                True, True, True          -- until_misc
+               ]

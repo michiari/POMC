@@ -50,15 +50,15 @@ chain_next =
 
 contains_exc :: [TestCase]
 contains_exc =
-  [ ( "First position is a call whose function frame contains excs,\
+  [ ( "First position is a call whose function frame contains excs, \
       \but which is not directly terminated by one of them."
     , Until Down T (ap "exc")
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
-    ( "Third position is a call whose function frame contains excs,\
+    ( "Third position is a call whose function frame contains excs, \
       \but which is not directly terminated by one of them."
-    , Until Down T (ap "exc")
+    , PNext Down $ PNext Down $ Until Down T (ap "exc")
     , ["pa", "pb", "pc", "perr"]
     , True
     )
@@ -66,7 +66,7 @@ contains_exc =
 
 data_access :: [TestCase]
 data_access =
-  [ ( "If a procedure pa or its subprocedures write to a variable x,\
+  [ ( "If a procedure pa or its subprocedures write to a variable x, \
       \then they are terminated by an exception."
     , Always $ (ap "call" `And` ap "pa" `And` Until Down (Not $ ap "ret") (ap "WRx"))
       `Implies` XNext Up (ap "exc")
@@ -135,7 +135,7 @@ hier_down =
 
 hier_insp :: [TestCase]
 hier_insp =
-  [ ( "if procedure pb is called by a function, \
+  [ ( "If procedure pb is called by a function, \
       \the same function must later call perr after pb returns, \
       \without calling pc in the meantime."
     , Always $ (ap "call" `And` ap "pb") `Implies` (HUntil Up (Not . ap $ "pc") (ap "perr"))
@@ -172,7 +172,7 @@ hier_up =
     , ["pa", "pb", "perr"]
     , True
     ),
-    ( "There is a call to function pb such that its parent previously called pb."
+    ( "There is a call to function pb such that its parent previously called pa."
     , Eventually $ ap "pb" `And` HSince Up (ap "call") (ap "pa")
     , ["pa", "pb", "perr"]
     , True
@@ -240,13 +240,13 @@ uninstall_han =
 until_exc :: [TestCase]
 until_exc =
   [ ( "The first position is inside a function call terminated by an exception, \
-      \or a handler thet catches an exception."
+      \or a handler that catches an exception."
     , Until Up T (ap "exc")
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
     ( "The third position is inside a function call terminated by an exception, \
-      \or a handler thet catches an exception."
+      \or a handler that catches an exception."
     , PNext Down $ PNext Down $ Until Up T (ap "exc")
     , ["pa", "pb", "pc", "perr"]
     , True
@@ -269,11 +269,11 @@ until_misc =
     ),
     ( "The call in the first position makes a function call, \
       \and before that, there is an instance of function pb (even in a previous inner call)."
-    , XNext Down $ ap "call" `And` (Since Up (ap "call" `Or` ap "exp") (ap "ret"))
+    , XNext Down $ ap "call" `And` (Since Up (ap "call" `Or` ap "exc") (ap "pb"))
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
-    ( "From the thirt position, it is possible to reach a return, possibly of another function."
+    ( "From the third position, it is possible to reach a return, possibly of another function."
     , PNext Down $ PNext Down $ Until Up (ap "call" `Or` ap "ret") (ap "ret")
     , ["pa", "pb", "pc", "perr"]
     , True
