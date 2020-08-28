@@ -13,14 +13,32 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 tests :: TestTree
-tests = testGroup "ModelChecking.hs Tests" [baseTests, evalTests]
+tests = testGroup "ModelChecking.hs Tests" [sasBaseTests, sasEvalTests,
+                                            lRBaseTests, lREvalTests]
 
-baseTests :: TestTree
-baseTests = testGroup "MC Base Tests" $ map makeTestCase (zip TestSat.cases expectedBase)
+sasBaseTests :: TestTree
+sasBaseTests = testGroup "SAS OPA: MC Base Tests" $
+  map (makeTestCase simpleExc) (zip TestSat.cases expectedSasBase)
 
-makeTestCase :: ((String, Formula String, [String], Bool), Bool) -> TestTree
-makeTestCase ((name, phi, _, _), expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ modelCheckGen phi simpleExc @?= expected
+sasEvalTests :: TestTree
+sasEvalTests = testGroup "SAS OPA: MC Eval Tests" $
+  map (makeTestCase simpleExc) (zip EvalFormulas.formulas expectedSasEval)
+
+
+lRBaseTests :: TestTree
+lRBaseTests = testGroup "LargerRec OPA: MC Base Tests" $
+  map (makeTestCase largerRec) (zip TestSat.cases expectedLargerRecBase)
+
+lREvalTests :: TestTree
+lREvalTests = testGroup "LargerRec OPA: MC Eval Tests" $
+  map (makeTestCase largerRec) (zip EvalFormulas.formulas expectedLargerRecEval)
+
+
+makeTestCase :: ExplicitOpa Word String
+             -> ((String, Formula String, [String], Bool), Bool)
+             -> TestTree
+makeTestCase opa ((name, phi, _, _), expected) =
+  testCase (name ++ " (" ++ show phi ++ ")") $ modelCheckGen phi opa @?= expected
 
 
 makeInputSet :: (Ord a) => [a] -> Set (Prop a)
@@ -61,29 +79,106 @@ simpleExc = ExplicitOpa
                 ]
             }
 
-expectedBase :: [Bool]
-expectedBase = [True, False, False, False, False, False,
-                False, False, False, True, True, False,
-                True, False, True, False, False, False,
-                False, False, False, False]
+expectedSasBase :: [Bool]
+expectedSasBase = [True, False, False, False, False, False,
+                   False, False, False, True, True, False,
+                   True, False, True, False, False, False,
+                   False, False, False, False
+                  ]
 
-evalTests :: TestTree
-evalTests = testGroup "MC Eval Tests" $ map makeTestCase (zip EvalFormulas.formulas expectedEval)
+expectedSasEval :: [Bool]
+expectedSasEval = [True, True, True, True,     -- chain_next
+                   True, False,                -- contains_exc
+                   True,                       -- data_access
+                   False, False, True,         -- empty_frame
+                   True,                       -- exception_safety
+                   False, False, False, False, -- hier_down
+                   False,                      -- hier_insp
+                   True,                       -- hier_insp_exc
+                   True, True, False, False,   -- hier_up
+                   False, False,               -- normal_ret
+                   True, True,                 -- no_throw
+                   True, True,                 -- stack_inspection
+                   False,                      -- uninstall_han
+                   False, True, True,          -- until_exc
+                   True, True, False           -- until_misc
+                  ]
 
-expectedEval :: [Bool]
-expectedEval = [True, True, True, True,     -- chain_next
-                True, False,                -- contains_exc
-                True,                       -- data_access
-                False, False, True,         -- empty_frame
-                True,                       -- exception_safety
-                False, False, False, False, -- hier_down
-                False,                      -- hier_insp
-                True,                       -- hier_insp_exc
-                True, True, False, False,   -- hier_up
-                False, False,               -- normal_ret
-                True, True,                 -- no_throw
-                True, True,                 -- stack_inspection
-                False,                      -- uninstall_han
-                False, True, True,          -- until_exc
-                True, True, False           -- until_misc
-               ]
+largerRec :: ExplicitOpa Word String
+largerRec = ExplicitOpa
+            { sigma = (stlPrecV2sls, map Prop ["pa", "pb", "pc", "perr"])
+            , precRel = stlPrecRelV2
+            , initials = [0]
+            , finals = [8]
+            , deltaPush =
+                [ (0,  makeInputSet ["call", "pa"],    [1])
+                , (1,  makeInputSet ["call", "pb"],    [2])
+                , (2,  makeInputSet ["call", "pc"],    [3])
+                , (2,  makeInputSet ["han"],           [4])
+                , (3,  makeInputSet ["call", "pb"],    [2])
+                , (4,  makeInputSet ["call", "pc"],    [3])
+                , (7,  makeInputSet ["exc"],           [8])
+                , (9,  makeInputSet ["call", "perr"], [10])
+                , (10, makeInputSet ["call", "perr"], [10])
+                , (15, makeInputSet ["han"],          [19])
+                , (19, makeInputSet ["call", "pc"],    [3])
+                , (23, makeInputSet ["call", "perr"], [10])
+                ]
+            , deltaShift =
+                [ (9,  makeInputSet ["exc"],          [9])
+                , (10, makeInputSet ["ret", "perr"], [11])
+                , (12, makeInputSet ["ret", "perr"], [11])
+                , (13, makeInputSet ["ret", "pb"],   [14])
+                , (16, makeInputSet ["ret", "pc"],   [17])
+                , (20, makeInputSet ["exc"],         [23])
+                , (21, makeInputSet ["ret", "pa"],   [22])
+                ]
+            , deltaPop =
+                [ (3,   2,  [5])
+                , (3,   4,  [9])
+                , (3,  19, [20])
+                , (5,   1,  [6])
+                , (5,   3, [18])
+                , (6,   0,  [7])
+                , (8,   7,  [8])
+                , (9,   2,  [9])
+                , (11, 10, [12])
+                , (11,  9, [13])
+                , (11, 23, [21])
+                , (14,  1, [15])
+                , (14,  3, [16])
+                , (17,  4, [17])
+                , (17,  2, [13])
+                , (17, 19, [21])
+                , (18,  2,  [5])
+                , (18,  4,  [9])
+                , (18, 19, [20])
+                , (22,  0,  [8])
+                , (23, 15, [23])
+                ]
+            }
+
+expectedLargerRecBase :: [Bool]
+expectedLargerRecBase = [True, False, False, False, False, False,
+                         False, False, False, True, True, False,
+                         True, False, True, False, False, False,
+                         False, False, False, False
+                        ]
+
+expectedLargerRecEval :: [Bool]
+expectedLargerRecEval = [True, True, True, True,     -- chain_next
+                         True, False,                -- contains_exc
+                         True,                       -- data_access
+                         False, False, True,         -- empty_frame
+                         True,                       -- exception_safety
+                         False, False, False, False, -- hier_down
+                         False,                      -- hier_insp
+                         True,                       -- hier_insp_exc
+                         True, True, False, False,   -- hier_up
+                         False, False,               -- normal_ret
+                         True, True,                 -- no_throw
+                         True, True,                 -- stack_inspection
+                         False,                      -- uninstall_han
+                         False, True, True,          -- until_exc
+                         True, True, False           -- until_misc
+                        ]
