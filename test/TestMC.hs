@@ -106,7 +106,7 @@ expectedSasEval = [True, True, True, True,     -- chain_next
 
 largerRec :: ExplicitOpa Word String
 largerRec = ExplicitOpa
-            { sigma = (stlPrecV2sls, map Prop ["pa", "pb", "pc", "perr"])
+            { sigma = (stlPrecV2sls, map Prop ["pa", "pb", "pc", "perr", "eb"])
             , precRel = stlPrecRelV2
             , initials = [0]
             , finals = [8]
@@ -117,7 +117,7 @@ largerRec = ExplicitOpa
                 , (2,  makeInputSet ["han"],           [4])
                 , (3,  makeInputSet ["call", "pb"],    [2])
                 , (4,  makeInputSet ["call", "pc"],    [3])
-                , (7,  makeInputSet ["exc"],           [8])
+                , (7,  makeInputSet ["exc", "eb"],     [8])
                 , (9,  makeInputSet ["call", "perr"], [10])
                 , (10, makeInputSet ["call", "perr"], [10])
                 , (15, makeInputSet ["han"],          [19])
@@ -160,25 +160,25 @@ largerRec = ExplicitOpa
 
 expectedLargerRecBase :: [Bool]
 expectedLargerRecBase = [True, False, False, False, False, False,
-                         False, False, False, True, True, False,
-                         True, False, True, False, False, False,
+                         True, False, False, False, False, False,
+                         False, False, False, False, False, False,
                          False, False, False, False
                         ]
 
 expectedLargerRecEval :: [Bool]
-expectedLargerRecEval = [True, True, True, True,     -- chain_next
-                         True, False,                -- contains_exc
+expectedLargerRecEval = [False, False, False, False, -- chain_next
+                         False, False,               -- contains_exc
                          True,                       -- data_access
-                         False, False, True,         -- empty_frame
+                         False, False, False,        -- empty_frame
                          True,                       -- exception_safety
                          False, False, False, False, -- hier_down
                          False,                      -- hier_insp
-                         True,                       -- hier_insp_exc
-                         True, True, False, False,   -- hier_up
+                         False,                      -- hier_insp_exc
+                         False, False, False, False, -- hier_up
                          False, False,               -- normal_ret
-                         True, True,                 -- no_throw
-                         True, True,                 -- stack_inspection
+                         False, False,               -- no_throw
+                         False, True,                -- stack_inspection
                          False,                      -- uninstall_han
-                         False, True, True,          -- until_exc
-                         True, True, False           -- until_misc
+                         False, True, False,         -- until_exc
+                         False, False, False         -- until_misc
                         ]
