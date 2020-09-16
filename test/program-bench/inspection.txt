@@ -1,0 +1,44 @@
+main() {
+       pA();
+       try {
+           pA();
+           pB();
+       } catch {
+           pErr();
+       }
+}
+
+pA() {
+     pC();
+     pD();
+     if (*) {
+        pA();
+     }
+}
+
+pB() {
+     try {
+         pE();
+     catch {
+         pErr();
+     }
+}
+
+pC() {
+     if (*) {
+        pA();
+     } else {
+        pE();
+     }
+}
+
+pD() {
+     pC();
+     pA();
+}
+
+pE() {
+     if (*) {
+        throw;
+     }
+}

@@ -3,10 +3,10 @@ module TestMC (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified TestSat (cases)
-import qualified EvalFormulas (formulas)
+import EvalFormulas (ap, formulas)
 import Pomc.Prop (Prop(..))
 import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
-import Pomc.PotlV2 (Formula)
+import Pomc.PotlV2 (Formula(..), Dir(..))
 import Pomc.ModelChecker (ExplicitOpa(..), modelCheckGen)
 
 import Data.Set (Set)
@@ -14,7 +14,8 @@ import qualified Data.Set as Set
 
 tests :: TestTree
 tests = testGroup "ModelChecking.hs Tests" [sasBaseTests, sasEvalTests,
-                                            lRBaseTests, lREvalTests]
+                                            lRBaseTests, lREvalTests,
+                                            inspectionTest, overflowTest]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA: MC Base Tests" $
@@ -182,3 +183,85 @@ expectedLargerRecEval = [False, False, False, False, -- chain_next
                          False, True, False,         -- until_exc
                          False, False, False         -- until_misc
                         ]
+
+
+inspectionTest :: TestTree
+inspectionTest = testGroup "Stack Inspection OPA" $
+  [makeTestCase inspection (("If perr is called, pa is not on the stack."
+                            , Always $ (ap "call" `And` ap "perr") `Implies`
+                              (Not $ Since Down T (ap "pa"))
+                            , []
+                            , True)
+                           , True)]
+
+overflowTest :: TestTree
+overflowTest = testGroup "Stack Overflow" $
+  [makeTestCase inspection (("The stack is never deeper than 3."
+                            , Always . Not $ maxStackDepth 3
+                            , []
+                            , True)
+                           , False)]
+
+maxStackDepth :: Int -> Formula String
+maxStackDepth 0 = ap "call"
+maxStackDepth n = ap "call" `And` ((XBack Down $ maxStackDepth (n-1))
+                                    `Or` (PBack Down $ maxStackDepth (n-1)))
+
+inspection :: ExplicitOpa Word String
+inspection = ExplicitOpa
+  { sigma = (stlPrecV2sls, map Prop ["pa", "pb", "pc", "pd", "pe", "perr"])
+            , precRel = stlPrecRelV2
+            , initials = [0]
+            , finals = [5]
+            , deltaPush =
+                [ (0, makeInputSet ["call", "pa"],    [6])
+                , (1, makeInputSet ["han"], [2])
+                , (2, makeInputSet ["call", "pa"], [6])
+                , (3, makeInputSet ["call", "pb"], [11])
+                , (4, makeInputSet ["call", "perr"], [28])
+                , (6, makeInputSet ["call", "pc"], [16, 17])
+                , (7, makeInputSet ["call", "pd"], [20])
+                , (8, makeInputSet ["call", "pa"], [6])
+                , (11, makeInputSet ["han"], [12])
+                , (12, makeInputSet ["call", "pe"], [24, 26])
+                , (13, makeInputSet ["call", "perr"], [28])
+                , (16, makeInputSet ["call", "pa"], [6])
+                , (17, makeInputSet ["call", "pe"], [24, 26])
+                , (20, makeInputSet ["call", "pc"], [16, 17])
+                , (21, makeInputSet ["call", "pa"], [6])
+                , (24, makeInputSet ["exc"], [5])
+                ]
+            , deltaShift =
+                [ (9, makeInputSet ["ret", "pa"], [10])
+                , (14, makeInputSet ["ret", "pb"], [15])
+                , (18, makeInputSet ["ret", "pc"], [19])
+                , (22, makeInputSet ["ret", "pd"], [23])
+                , (24, makeInputSet ["exc"], [25])
+                , (26, makeInputSet ["ret", "pe"], [27])
+                , (28, makeInputSet ["ret", "perr"], [29])
+                ]
+            , deltaPop =
+                [ (5, 24, [5])
+                , (10, 0, [1])
+                , (10, 2, [3])
+                , (15, 3, [5])
+                , (19, 6, [7])
+                , (19, 20, [21])
+                , (23, 7, [8, 9])
+                , (24, 12, [24])
+                , (24, 3, [24])
+                , (24, 17, [24])
+                , (24, 6, [24])
+                , (24, 0, [24])
+                , (24, 2, [24])
+                , (24, 8, [24])
+                , (24, 16, [24])
+                , (24, 21, [24])
+                , (25, 11, [13])
+                , (25, 1, [4])
+                , (27, 17, [18])
+                , (27, 12, [14])
+                , (29, 4, [5])
+                , (29, 13, [14])
+                ]
+            }
