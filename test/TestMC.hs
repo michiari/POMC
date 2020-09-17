@@ -15,7 +15,8 @@ import qualified Data.Set as Set
 tests :: TestTree
 tests = testGroup "ModelChecking.hs Tests" [sasBaseTests, sasEvalTests,
                                             lRBaseTests, lREvalTests,
-                                            inspectionTest, overflowTest]
+                                            inspectionTest, overflowTest,
+                                            jensenTests]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA: MC Base Tests" $
@@ -265,3 +266,106 @@ inspection = ExplicitOpa
                 , (29, 13, [14])
                 ]
             }
+
+
+jensenTests :: TestTree
+jensenTests = testGroup "Jensen Tests" [jensenRd, jensenWr]
+
+jensenRd :: TestTree
+jensenRd = makeTestCase jensen (("Only privileged reads."
+                                , Always $ ((ap "call" `And` ap "raw_rd")
+                                            `Implies`
+                                             (Not $ Since Down T
+                                               (ap "call"
+                                                `And` (Not $ ap "P_all")
+                                                `And` (Not $ ap "raw_rd"))))
+                                , []
+                                , True)
+                               , True)
+
+jensenWr :: TestTree
+jensenWr = makeTestCase jensen (("Only privileged writes."
+                                , Always $ ((ap "call" `And` ap "raw_wr")
+                                            `Implies`
+                                             (Not $ Since Down T
+                                               (ap "call"
+                                                `And` (Not $ ap "P_all")
+                                                `And` (Not $ ap "raw_wr"))))
+                                , []
+                                , True)
+                               , True)
+
+jensen :: ExplicitOpa Word String
+jensen = ExplicitOpa
+  { sigma = (stlPrecV2sls, map Prop ["sp", "cl", "cp", "db", "rd", "wr", "raw_rd", "raw_wr", "P_all"])
+  , precRel = stlPrecRelV2
+  , initials = [0]
+  , finals = [2]
+  , deltaPush =
+      [ (0, makeInputSet ["call", "sp", "P_all"], [3])
+      , (1, makeInputSet ["call", "cl"], [8])
+      , (3, makeInputSet ["call", "cp", "P_all"], [12])
+      , (4, makeInputSet ["call", "db", "P_all"], [18])
+      , (5, makeInputSet ["call", "sp", "P_all"], [3])
+      , (8, makeInputSet ["call", "db"], [25])
+      , (9, makeInputSet ["call", "cl"], [8])
+      , (12, makeInputSet ["call", "rd", "P_all"], [27])
+      , (16, makeInputSet ["exc"], [2])
+      , (18, makeInputSet ["call", "cp", "P_all"], [12])
+      , (19, makeInputSet ["call", "rd", "P_all"], [27])
+      , (20, makeInputSet ["call", "wr", "P_all"], [32])
+      , (21, makeInputSet ["exc"], [2])
+      , (25, makeInputSet ["exc"], [2])
+      , (27, makeInputSet ["call", "raw_rd"], [37])
+      , (30, makeInputSet ["exc"], [2])
+      , (32, makeInputSet ["call", "raw_wr"], [39])
+      , (35, makeInputSet ["exc"], [2])
+      ]
+  , deltaShift =
+      [ (6, makeInputSet ["ret", "sp", "P_all"], [7])
+      , (10, makeInputSet ["ret", "cl"], [11])
+      , (13, makeInputSet ["ret", "cp", "P_all"], [41])
+      , (14, makeInputSet ["ret", "cp", "P_all"], [15])
+      , (16, makeInputSet ["exc"], [17])
+      , (21, makeInputSet ["exc"], [22])
+      , (23, makeInputSet ["ret", "db", "P_all"], [24])
+      , (25, makeInputSet ["exc"], [26])
+      , (28, makeInputSet ["ret", "rd", "P_all"], [29])
+      , (30, makeInputSet ["exc"], [31])
+      , (33, makeInputSet ["ret", "wr", "P_all"], [34])
+      , (35, makeInputSet ["exc"], [36])
+      , (37, makeInputSet ["ret", "raw_rd"], [38])
+      , (39, makeInputSet ["ret", "raw_wr"], [40])
+      ]
+  , deltaPop =
+      [ (2, 16, [2])
+      , (2, 21, [2])
+      , (2, 25, [2])
+      , (2, 30, [2])
+      , (2, 35, [2])
+      , (7, 0, [1])
+      , (7, 5, [6])
+      , (11, 1, [2])
+      , (11, 9, [10])
+      , (15, 3, [4])
+      , (15, 18, [19])
+      , (21, 0, [21])
+      , (21, 4, [21])
+      , (24, 4, [5, 6])
+      , (25, 1, [25])
+      , (25, 8, [25])
+      , (29, 12, [13, 14])
+      , (29, 19, [20])
+      , (30, 1, [30])
+      , (30, 8, [30])
+      , (30, 25, [30])
+      , (34, 20, [23])
+      , (35, 1, [35])
+      , (35, 8, [35])
+      , (35, 25, [35])
+      , (38, 27, [28])
+      , (40, 32, [33])
+      , (41, 3, [5, 6])
+      , (41, 18, [21])
+      ]
+  }
