@@ -16,7 +16,8 @@ tests :: TestTree
 tests = testGroup "ModelChecking.hs Tests" [sasBaseTests, sasEvalTests,
                                             lRBaseTests, lREvalTests,
                                             inspectionTest, overflowTest,
-                                            jensenTests, jensenFullTests]
+                                            jensenTests, jensenFullTests,
+                                            stackExcTests]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA: MC Base Tests" $
@@ -504,3 +505,157 @@ jensenFull = ExplicitOpa
   }
 
 
+
+stackExcTests :: TestTree
+stackExcTests = testGroup "Exception Safety: Unsafe Stack" [stackExcConsistent]
+
+stackExcConsistent :: TestTree
+stackExcConsistent = makeTestCase stackExc
+  (("The stack is left in a consistent state."
+   , Always $ (ap "exc"
+               `Implies`
+               (Not $ (PBack Up (ap "tainted")
+                       `Or` XBack Up (ap "tainted"))
+                `And` XBack Up (ap "Stack::push(const T&)" `Or` ap "Stack::pop()")))
+   , []
+   , True)
+  , False)
+
+stackExc :: ExplicitOpa Word String
+stackExc = ExplicitOpa
+  { sigma = (stlPrecV2sls, map Prop [ "Stack::Stack()"
+                                    , "Stack::push(const T&)"
+                                    , "Stack::size() const"
+                                    , "Stack::pop()"
+                                    , "Stack::~Stack()"
+                                    , "T::operator new()"
+                                    , "Stack::NewCopy(...)"
+                                    , "T::operator delete()"
+                                    , "T::T()"
+                                    , "std::copy(...)"
+                                    , "T::operator=(const T&)"
+                                    , "T::T(const T&)"
+                                    , "Stack::Stack(const Stack<T>&)"
+                                    , "Stack::operator=(const Stack<T>&)"
+                                    , "tainted"])
+  , precRel = stlPrecRelV2
+  , initials = [0]
+  , finals = [6]
+  , deltaPush =
+      [ (0, makeInputSet ["call", "Stack::Stack()"], [7])
+      , (1, makeInputSet ["call", "Stack::push(const T&)"], [36, 38])
+      , (2, makeInputSet ["call", "Stack::push(const T&)"], [36, 38])
+      , (3, makeInputSet ["call", "Stack::size() const"], [34])
+      , (4, makeInputSet ["call", "Stack::pop()"], [41, 43])
+      , (5, makeInputSet ["call", "Stack::~Stack()"], [17])
+      , (7, makeInputSet ["call", "T::operator new()"], [62, 22])
+      , (10, makeInputSet ["call", "Stack::NewCopy(...)"], [26])
+      , (13, makeInputSet ["call", "Stack::NewCopy(...)"], [26])
+      , (14, makeInputSet ["call", "T::operator delete()"], [24])
+      , (17, makeInputSet ["call", "T::operator delete()"], [24])
+      , (62, makeInputSet ["call", "T::T()"], [58, 60])
+      , (22, makeInputSet ["exc"], [6])
+      , (26, makeInputSet ["call", "T::operator new()"], [62, 22])
+      , (27, makeInputSet ["han"], [28])
+      , (28, makeInputSet ["call", "std::copy(...)"], [47])
+      , (31, makeInputSet ["call", "T::operator delete()"], [24])
+      , (32, makeInputSet ["exc"], [6])
+      , (36, makeInputSet ["call", "Stack::NewCopy(...)"], [26])
+      , (37, makeInputSet ["call", "T::operator delete()"], [24])
+      , (38, makeInputSet ["call", "T::operator=(const T&)", "tainted"], [54, 56])
+      , (41, makeInputSet ["exc"], [5])
+      , (43, makeInputSet ["call", "T::T(const T&)"], [50, 52])
+      , (44, makeInputSet ["call", "T::T(const T&)", "tainted"], [50, 52])
+      , (47, makeInputSet ["call", "T::operator=(const T&)"], [54, 56])
+      , (52, makeInputSet ["exc"], [6])
+      , (56, makeInputSet ["exc"], [6])
+      , (60, makeInputSet ["exc"], [6])
+      ]
+  , deltaShift =
+      [ (8, makeInputSet ["ret", "Stack::Stack()"], [9])
+      , (11, makeInputSet ["ret", "Stack::Stack(const Stack<T>&)"], [12])
+      , (15, makeInputSet ["ret", "Stack::operator=(const Stack<T>&)"], [16])
+      , (18, makeInputSet ["ret", "Stack::~Stack()"], [19])
+      , (20, makeInputSet ["ret", "T::operator new()"], [21])
+      , (22, makeInputSet ["exc"], [23])
+      , (24, makeInputSet ["ret", "T::operator delete()"], [25])
+      , (29, makeInputSet ["ret", "Stack::NewCopy(...)"], [30])
+      , (32, makeInputSet ["exc"], [33])
+      , (34, makeInputSet ["ret", "Stack::size() const"], [35])
+      , (39, makeInputSet ["ret", "Stack::push(const T&)", "tainted"], [40])
+      , (41, makeInputSet ["exc"], [42])
+      , (45, makeInputSet ["ret", "Stack::pop()", "tainted"], [46])
+      , (48, makeInputSet ["ret", "std::copy(...)"], [49])
+      , (50, makeInputSet ["ret", "T::T(const T&)"], [51])
+      , (52, makeInputSet ["exc"], [53])
+      , (54, makeInputSet ["ret", "T::operator=(const T&)"], [55])
+      , (56, makeInputSet ["exc"], [57])
+      , (58, makeInputSet ["ret", "T::T()"], [59])
+      , (60, makeInputSet ["exc"], [61])
+      ]
+  , deltaPop =
+      [ (6, 22, [6])
+      , (6, 32, [6])
+      , (6, 41, [6])
+      , (6, 52, [6])
+      , (6, 56, [6])
+      , (6, 60, [6])
+      , (9, 0, [1])
+      , (19, 5, [6])
+      , (21, 7, [8])
+      , (21, 26, [27])
+      , (22, 0, [22])
+      , (22, 1, [22])
+      , (22, 2, [22])
+      , (22, 7, [22])
+      , (22, 10, [22])
+      , (22, 13, [22])
+      , (22, 26, [22])
+      , (22, 36, [22])
+      , (25, 14, [15])
+      , (25, 17, [18])
+      , (25, 31, [32])
+      , (25, 37, [38])
+      , (30, 10, [10])
+      , (30, 13, [14])
+      , (30, 36, [37])
+      , (32, 1, [32])
+      , (32, 2, [32])
+      , (32, 10, [32])
+      , (32, 13, [32])
+      , (32, 36, [32])
+      , (35, 3, [4])
+      , (40, 1, [2])
+      , (40, 2, [3])
+      , (41, 4, [41])
+      , (46, 4, [6])
+      , (49, 28, [29])
+      , (51, 43, [44])
+      , (51, 44, [45])
+      , (52, 4, [52])
+      , (52, 43, [52])
+      , (52, 44, [52])
+      , (55, 38, [39])
+      , (55, 43, [44])
+      , (55, 47, [48])
+      , (56, 1, [56])
+      , (56, 2, [56])
+      , (56, 10, [56])
+      , (56, 13, [56])
+      , (56, 28, [56])
+      , (56, 36, [56])
+      , (56, 38, [56])
+      , (56, 47, [56])
+      , (57, 27, [31])
+      , (59, 62, [20])
+      , (60, 0, [60])
+      , (60, 1, [60])
+      , (60, 2, [60])
+      , (60, 7, [60])
+      , (60, 10, [60])
+      , (60, 13, [60])
+      , (60, 26, [60])
+      , (60, 36, [60])
+      , (60, 62, [60])
+      ]
+  }
