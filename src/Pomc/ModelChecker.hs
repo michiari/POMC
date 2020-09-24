@@ -13,9 +13,9 @@ module Pomc.ModelChecker (
                          , modelCheckGen
                          ) where
 
-import Pomc.Prop (Prop)
+import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
-import Pomc.RPotl (Formula(..))
+import Pomc.RPotl (Formula(..), getProps)
 import Pomc.Check (Checkable(..), State, makeOpa)
 import Pomc.Satisfiability (SatState(..), isEmpty)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
@@ -60,8 +60,11 @@ modelCheck :: (Checkable f, Ord s, Hashable s, Show s)
            -> ExplicitOpa s APType
            -> Bool
 modelCheck phi opa =
-  let (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
-        makeOpa (Not . toReducedPotl $ phi) (sigma opa) (precRel opa)
+  let reducedPhi = toReducedPotl $ phi
+      essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps reducedPhi)
+
+      (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
+        makeOpa (Not reducedPhi) (fst $ sigma opa, getProps reducedPhi) (precRel opa)
 
       cInitials = cartesian (initials opa) phiInitials
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal p
@@ -69,8 +72,9 @@ modelCheck phi opa =
       maybeList Nothing = []
       maybeList (Just l) = l
 
-      makeDeltaMapI delta = Map.fromList $
-        map (\(q', b', ps) -> ((q', D.encodeInput bitenc b'), ps)) delta
+      makeDeltaMapI delta = Map.fromListWith (++) $
+        map (\(q', b', ps) -> ((q', D.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
+            delta
       makeDeltaMapS delta = Map.fromList $ map (\(q', b', ps) -> ((q', b'), ps)) delta
       opaDeltaPush q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaPush opa)
       opaDeltaShift q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaShift opa)
@@ -96,7 +100,9 @@ modelCheckGen :: (Checkable f, Ord s, Hashable s, Show s, Ord a)
               -> Bool
 modelCheckGen phi opa =
   let (sls, als) = sigma opa
-      (tphi, tprec, trans) = convAP (toReducedPotl phi) (precRel opa) (sls ++ als)
+      reducedPhi = toReducedPotl phi
+      (tphi, tprec, trans) =
+        convAP reducedPhi (precRel opa) (sls ++ (getProps reducedPhi) ++ als)
       transProps props = fmap (fmap trans) props
       transDelta delta = map (\(q, b, p) -> (q, Set.map (fmap trans) b, p)) delta
       tOpa = ExplicitOpa
