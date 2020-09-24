@@ -238,11 +238,9 @@ makeBitEncoding clos =
 
       -- Mapping between positive atoms and bits
       pAtomicClos = S.filter atomic pclos
-      pAtomicIndices = sortOn snd $
-                       map (\p -> (p, unwrapProp p)) $
-                       S.toAscList pAtomicClos
-      pAtomicVec = V.fromList $ map fst pAtomicIndices
-      pAtomicMap = M.fromList pAtomicIndices
+      pAtomicSorted = sortOn unwrapProp $ S.toAscList pAtomicClos
+      pAtomicVec = V.fromList pAtomicSorted
+      pAtomicMap = M.fromList (zip pAtomicSorted [0..])
 
       unwrapProp :: Formula APType -> Int
       unwrapProp (Atomic End) = 0
