@@ -507,7 +507,8 @@ jensenFull = ExplicitOpa
 
 
 stackExcTests :: TestTree
-stackExcTests = testGroup "Exception Safety: Unsafe Stack" [stackExcConsistent]
+stackExcTests = testGroup "Exception Safety Unsafe Stack" [stackExcConsistent
+                                                          , stackExcNeutral]
 
 stackExcConsistent :: TestTree
 stackExcConsistent = makeTestCase stackExc
@@ -521,13 +522,27 @@ stackExcConsistent = makeTestCase stackExc
    , True)
   , False)
 
+stackExcNeutral :: TestTree
+stackExcNeutral = makeTestCase stackExc
+  (("All Stack member functions are exception neutral."
+   , Always ((ap "exc"
+              `And` PBack Up (ap "T")
+              `And` XBack Down (ap "han" `And` XBack Up (ap "Stack")))
+              `Implies`
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
+     , []
+     , True)
+  , True)
+
 stackExc :: ExplicitOpa Word String
 stackExc = ExplicitOpa
-  { sigma = (stlPrecV2sls, map Prop [ "Stack::Stack()"
+  { sigma = (stlPrecV2sls, map Prop [ "Stack"
+                                    , "Stack::Stack()"
                                     , "Stack::push(const T&)"
                                     , "Stack::size() const"
                                     , "Stack::pop()"
                                     , "Stack::~Stack()"
+                                    , "T"
                                     , "T::operator new()"
                                     , "Stack::NewCopy(...)"
                                     , "T::operator delete()"
@@ -542,55 +557,55 @@ stackExc = ExplicitOpa
   , initials = [0]
   , finals = [6]
   , deltaPush =
-      [ (0, makeInputSet ["call", "Stack::Stack()"], [7])
-      , (1, makeInputSet ["call", "Stack::push(const T&)"], [36, 38])
-      , (2, makeInputSet ["call", "Stack::push(const T&)"], [36, 38])
-      , (3, makeInputSet ["call", "Stack::size() const"], [34])
-      , (4, makeInputSet ["call", "Stack::pop()"], [41, 43])
-      , (5, makeInputSet ["call", "Stack::~Stack()"], [17])
-      , (7, makeInputSet ["call", "T::operator new()"], [62, 22])
-      , (10, makeInputSet ["call", "Stack::NewCopy(...)"], [26])
-      , (13, makeInputSet ["call", "Stack::NewCopy(...)"], [26])
-      , (14, makeInputSet ["call", "T::operator delete()"], [24])
-      , (17, makeInputSet ["call", "T::operator delete()"], [24])
-      , (62, makeInputSet ["call", "T::T()"], [58, 60])
+      [ (0, makeInputSet ["call", "Stack", "Stack::Stack()"], [7])
+      , (1, makeInputSet ["call", "Stack", "Stack::push(const T&)"], [36, 38])
+      , (2, makeInputSet ["call", "Stack", "Stack::push(const T&)"], [36, 38])
+      , (3, makeInputSet ["call", "Stack", "Stack::size() const"], [34])
+      , (4, makeInputSet ["call", "Stack", "Stack::pop()"], [41, 43])
+      , (5, makeInputSet ["call", "Stack", "Stack::~Stack()"], [17])
+      , (7, makeInputSet ["call", "T", "T::operator new()"], [62, 22])
+      , (10, makeInputSet ["call", "Stack", "Stack::NewCopy(...)"], [26])
+      , (13, makeInputSet ["call", "Stack", "Stack::NewCopy(...)"], [26])
+      , (14, makeInputSet ["call", "T", "T::operator delete()"], [24])
+      , (17, makeInputSet ["call", "T", "T::operator delete()"], [24])
+      , (62, makeInputSet ["call", "T", "T::T()"], [58, 60])
       , (22, makeInputSet ["exc"], [6])
-      , (26, makeInputSet ["call", "T::operator new()"], [62, 22])
+      , (26, makeInputSet ["call", "T", "T::operator new()"], [62, 22])
       , (27, makeInputSet ["han"], [28])
       , (28, makeInputSet ["call", "std::copy(...)"], [47])
-      , (31, makeInputSet ["call", "T::operator delete()"], [24])
+      , (31, makeInputSet ["call", "T", "T::operator delete()"], [24])
       , (32, makeInputSet ["exc"], [6])
-      , (36, makeInputSet ["call", "Stack::NewCopy(...)"], [26])
-      , (37, makeInputSet ["call", "T::operator delete()"], [24])
-      , (38, makeInputSet ["call", "T::operator=(const T&)", "tainted"], [54, 56])
+      , (36, makeInputSet ["call", "Stack", "Stack::NewCopy(...)"], [26])
+      , (37, makeInputSet ["call", "T", "T::operator delete()"], [24])
+      , (38, makeInputSet ["call", "T", "T::operator=(const T&)", "tainted"], [54, 56])
       , (41, makeInputSet ["exc"], [5])
-      , (43, makeInputSet ["call", "T::T(const T&)"], [50, 52])
-      , (44, makeInputSet ["call", "T::T(const T&)", "tainted"], [50, 52])
-      , (47, makeInputSet ["call", "T::operator=(const T&)"], [54, 56])
+      , (43, makeInputSet ["call", "T", "T::T(const T&)"], [50, 52])
+      , (44, makeInputSet ["call", "T", "T::T(const T&)", "tainted"], [50, 52])
+      , (47, makeInputSet ["call", "T", "T::operator=(const T&)"], [54, 56])
       , (52, makeInputSet ["exc"], [6])
       , (56, makeInputSet ["exc"], [6])
       , (60, makeInputSet ["exc"], [6])
       ]
   , deltaShift =
-      [ (8, makeInputSet ["ret", "Stack::Stack()"], [9])
-      , (11, makeInputSet ["ret", "Stack::Stack(const Stack<T>&)"], [12])
-      , (15, makeInputSet ["ret", "Stack::operator=(const Stack<T>&)"], [16])
-      , (18, makeInputSet ["ret", "Stack::~Stack()"], [19])
-      , (20, makeInputSet ["ret", "T::operator new()"], [21])
+      [ (8, makeInputSet ["ret", "Stack", "Stack::Stack()"], [9])
+      , (11, makeInputSet ["ret", "Stack", "Stack::Stack(const Stack<T>&)"], [12])
+      , (15, makeInputSet ["ret", "Stack", "Stack::operator=(const Stack<T>&)"], [16])
+      , (18, makeInputSet ["ret", "Stack", "Stack::~Stack()"], [19])
+      , (20, makeInputSet ["ret", "T", "T::operator new()"], [21])
       , (22, makeInputSet ["exc"], [23])
-      , (24, makeInputSet ["ret", "T::operator delete()"], [25])
-      , (29, makeInputSet ["ret", "Stack::NewCopy(...)"], [30])
+      , (24, makeInputSet ["ret", "T", "T::operator delete()"], [25])
+      , (29, makeInputSet ["ret", "Stack", "Stack::NewCopy(...)"], [30])
       , (32, makeInputSet ["exc"], [33])
-      , (34, makeInputSet ["ret", "Stack::size() const"], [35])
-      , (39, makeInputSet ["ret", "Stack::push(const T&)", "tainted"], [40])
+      , (34, makeInputSet ["ret", "Stack", "Stack::size() const"], [35])
+      , (39, makeInputSet ["ret", "Stack", "Stack::push(const T&)", "tainted"], [40])
       , (41, makeInputSet ["exc"], [42])
-      , (45, makeInputSet ["ret", "Stack::pop()", "tainted"], [46])
+      , (45, makeInputSet ["ret", "Stack", "Stack::pop()", "tainted"], [46])
       , (48, makeInputSet ["ret", "std::copy(...)"], [49])
-      , (50, makeInputSet ["ret", "T::T(const T&)"], [51])
+      , (50, makeInputSet ["ret", "T", "T::T(const T&)"], [51])
       , (52, makeInputSet ["exc"], [53])
-      , (54, makeInputSet ["ret", "T::operator=(const T&)"], [55])
+      , (54, makeInputSet ["ret", "T", "T::operator=(const T&)"], [55])
       , (56, makeInputSet ["exc"], [57])
-      , (58, makeInputSet ["ret", "T::T()"], [59])
+      , (58, makeInputSet ["ret", "T", "T::T()"], [59])
       , (60, makeInputSet ["exc"], [61])
       ]
   , deltaPop =
