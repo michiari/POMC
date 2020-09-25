@@ -508,7 +508,8 @@ jensenFull = ExplicitOpa
 
 stackExcTests :: TestTree
 stackExcTests = testGroup "Exception Safety Unsafe Stack" [stackExcConsistent
-                                                          , stackExcNeutral]
+                                                          , stackExcNeutral
+                                                          , stackExcNeutralS]
 
 stackExcConsistent :: TestTree
 stackExcConsistent = makeTestCase stackExc
