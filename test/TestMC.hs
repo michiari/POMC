@@ -527,7 +527,19 @@ stackExcNeutral = makeTestCase stackExc
   (("All Stack member functions are exception neutral."
    , Always ((ap "exc"
               `And` PBack Up (ap "T")
-              `And` XBack Down (ap "han" `And` XBack Up (ap "Stack")))
+              `And` XBack Down (ap "han"))
+              `Implies`
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
+     , []
+     , True)
+  , True)
+
+stackExcNeutralS :: TestTree
+stackExcNeutralS = makeTestCase stackExc
+  (("All Stack member functions are exception neutral (slow)."
+   , Always ((ap "exc"
+              `And` PBack Up (ap "T")
+              `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
      , []
