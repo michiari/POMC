@@ -195,7 +195,7 @@ stlPrecRelV2 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
         sl = ["call", "ret", "han", "exc"]
 
 stlPrecV2sls :: [Prop String]
-stlPrecV2sls = map Prop ["ret", "call", "han", "exc"]
+stlPrecV2sls = map Prop ["call", "ret", "exc", "han"]
 
 stlPrecRelV2Text :: [StructPrecRel T.Text]
 stlPrecRelV2Text = map (\(p1, p2, pr) -> (fmap T.pack p1, fmap T.pack p2, pr)) stlPrecRelV2
