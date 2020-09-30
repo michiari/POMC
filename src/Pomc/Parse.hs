@@ -13,9 +13,11 @@ module Pomc.Parse ( potlv2P
                   , CheckRequest(..)
                   ) where
 
-import Pomc.Prec (Prec(..), StructPrecRel)
+import Pomc.Prec (Prec(..), StructPrecRel, extractSLs)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.PotlV2 as P2
+import Pomc.Example (stlPrecRelV2Text)
+import Pomc.ModelChecker (ExplicitOpa(..), extractALs)
 
 import Data.Void (Void)
 
@@ -36,7 +38,8 @@ type PropString = [Set (Prop Text)]
 
 data CheckRequest = CheckRequest { creqPrecRels :: [StructPrecRel Text]
                                  , creqFormulas :: [P2Formula]
-                                 , creqStrings  :: [PropString]
+                                 , creqStrings  :: Maybe [PropString]
+                                 , creqOpa :: Maybe (ExplicitOpa Word Text)
                                  }
 
 spaceP :: Parser ()
@@ -58,7 +61,7 @@ propP = choice [ End           <$  symbolP "#"
 
 propSetP :: Parser (Set (Prop Text))
 propSetP = choice [ S.singleton <$> propP
-                  ,  S.fromList <$> parensP (some propP)
+                  , S.fromList <$> parensP (some propP)
                   ]
 
 propStringP :: Parser PropString
@@ -144,6 +147,32 @@ potlv2P = makeExprParser termParser operatorTable
             ]
           ]
 
+stateP :: Parser Word
+stateP = L.decimal
+
+stateListP :: Parser [Word]
+stateListP = choice [ pure <$> stateP
+                    , parensP (some stateP)
+                    ]
+
+deltaInputP :: Parser [(Word, Set (Prop Text), [Word])]
+deltaInputP = parensP deltaRel `sepBy1` symbolP ","
+  where deltaRel = do q <- stateP
+                      _ <- symbolP ","
+                      a <- propSetP
+                      _ <- symbolP ","
+                      ps <- stateListP
+                      return (q, a, ps)
+
+deltaPopP :: Parser [(Word, Word, [Word])]
+deltaPopP = parensP deltaRel `sepBy1` symbolP ","
+  where deltaRel = do q <- stateP
+                      _ <- symbolP ","
+                      s <- stateP
+                      _ <- symbolP ","
+                      ps <- stateListP
+                      return (q, s, ps)
+
 formulaSectionP :: Parser [P2Formula]
 formulaSectionP = do _ <- symbolP "formulas"
                      _ <- symbolP "="
@@ -163,13 +192,60 @@ stringSectionP = do _ <- symbolP "strings"
 precSectionP :: Parser [StructPrecRel Text]
 precSectionP = do _ <- symbolP "prec"
                   _ <- symbolP "="
-                  precRels <- precRelsP
+                  precRels <- (stlPrecRelV2Text <$ symbolP "Mcall") <|> precRelsP
                   _ <- symbolP ";"
                   return precRels
   where precRelsP = precRelP `sepBy1` symbolP ","
 
+opaSectionP :: Parser (ExplicitOpa Word Text)
+opaSectionP = do
+  _ <- symbolP "opa"
+  _ <- symbolP ":"
+  _ <- symbolP "initials"
+  _ <- symbolP "="
+  opaInitials <- stateListP
+  _ <- symbolP ";"
+  _ <- symbolP "finals"
+  _ <- symbolP "="
+  opaFinals <- stateListP
+  _ <- symbolP ";"
+  _ <- symbolP "deltaPush"
+  _ <- symbolP "="
+  opaDeltaPush <- deltaInputP
+  _ <- symbolP ";"
+  _ <- symbolP "deltaShift"
+  _ <- symbolP "="
+  opaDeltaShift <- deltaInputP
+  _ <- symbolP ";"
+  _ <- symbolP "deltaPop"
+  _ <- symbolP "="
+  opaDeltaPop <- deltaPopP
+  _ <- symbolP ";"
+  return (ExplicitOpa ([], []) [] opaInitials opaFinals opaDeltaPush opaDeltaShift opaDeltaPop)
+
 checkRequestP :: Parser CheckRequest
-checkRequestP = do prs <- precSectionP
-                   fs  <- formulaSectionP
-                   pss <- stringSectionP
-                   return (CheckRequest prs fs pss)
+checkRequestP = do
+  prs <- precSectionP
+  fs  <- formulaSectionP
+  pss <- optional stringSectionP
+  opa <- optional opaSectionP
+  return (CheckRequest prs fs pss (fullOpa opa prs))
+
+fullOpa :: Maybe (ExplicitOpa Word Text)
+        -> [StructPrecRel Text]
+        -> Maybe (ExplicitOpa Word Text)
+fullOpa Nothing _ = Nothing
+fullOpa (Just opa) prs = Just $ ExplicitOpa
+                         { sigma = (sls, als)
+                         , precRel = prs
+                         , initials = initials opa
+                         , finals = finals opa
+                         , deltaPush = deltaPush opa
+                         , deltaShift = deltaShift opa
+                         , deltaPop = deltaPop opa
+                         }
+  where sls = extractSLs prs
+        als = S.toList $
+              (S.fromList (extractALs $ deltaPush opa)
+               `S.union` S.fromList (extractALs $ deltaShift opa))
+              `S.difference` (S.fromList sls)

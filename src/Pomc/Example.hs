@@ -14,17 +14,19 @@ module Pomc.Example ( -- * Stack Trace Language V1 precedence function
                     , stlAnnotateV2
                     , stlPrecRelV2
                     , stlPrecV2sls
+                    , stlPrecRelV2Text
                     ) where
 
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
+import qualified Data.Text as T
+import Data.Maybe (fromMaybe)
 
 import Data.Set (Set)
 import qualified Data.Set as S
 
-import Data.Maybe (fromMaybe)
 
 -- Precedence function for the Stack Trace Language Version 1
 stlPrecedenceV1 :: Set (Prop String) -> Set (Prop String) -> Maybe Prec
@@ -194,3 +196,6 @@ stlPrecRelV2 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
 
 stlPrecV2sls :: [Prop String]
 stlPrecV2sls = map Prop ["ret", "call", "han", "exc"]
+
+stlPrecRelV2Text :: [StructPrecRel T.Text]
+stlPrecRelV2Text = map (\(p1, p2, pr) -> (fmap T.pack p1, fmap T.pack p2, pr)) stlPrecRelV2

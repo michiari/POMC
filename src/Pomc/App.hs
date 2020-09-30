@@ -8,6 +8,7 @@
 module Pomc.App (go) where
 
 import Pomc.Check (fastcheckGen)
+import Pomc.ModelChecker (modelCheckGen)
 import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
@@ -40,22 +41,34 @@ go = do args <- getArgs
                   Right creq      -> return creq
 
         let phis = creqFormulas creq
-            strings = creqStrings creq
             precRels = addEndPrec $ creqPrecRels creq
 
-        times <- forM [(phi, s) | phi <- phis, s <- strings] (uncurry $ run precRels)
+        stringTimes <- case creqStrings creq of
+                         Just strings -> forM [(phi, s) | phi <- phis, s <- strings]
+                                         (uncurry $ runString precRels)
+                         Nothing -> return []
 
-        putStrLn ("\n\nTotal elapsed time: " ++ timeToString (sum times))
-  where run precRels phi s =
+        mcTimes <- case creqOpa creq of
+                     Just opa -> forM phis (runMC opa)
+                     Nothing -> return []
+
+        putStrLn ("\n\nTotal elapsed time: " ++ timeToString (sum stringTimes + sum mcTimes))
+
+  where runString precRels phi s =
           do putStr (concat [ "\nFormula: ", show phi
                             , "\nString:  ", showstring s
                             , "\nResult:  "
                             ])
-
              (_, time) <- timeAction . putStr . show $ fastcheckGen phi precRels s
-
              putStrLn (concat ["\nElapsed time: ", timeToString time])
+             return time
 
+        runMC opa phi =
+          do putStr (concat [ "\nModel Checking\nFormula: ", show phi
+                            , "\nResult:  "
+                            ])
+             (_, time) <- timeAction . putStr . show $ modelCheckGen phi opa
+             putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 
         addEndPrec precRels = noEndPR

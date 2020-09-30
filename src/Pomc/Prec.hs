@@ -26,13 +26,15 @@ module Pomc.Prec ( -- * Main precedence type
                  , fromRelation
                  , fromRelations
                  , fromStructPR
+                 , extractSLs
                  ) where
 
 import Pomc.Prop (Prop)
 
 import GHC.Generics (Generic)
 import Data.Hashable
-import Data.List (nub, find)
+import Data.List (find)
+import Data.Containers.ListUtils (nubOrd)
 import Data.Maybe (fromJust)
 import Data.Bits (Bits(..))
 
@@ -113,6 +115,8 @@ fromRelations prs = compose (map fromRelation prs)
 -- and does not check if there are more than one.
 fromStructPR :: Ord a => [StructPrecRel a] -> PrecFunc a
 fromStructPR sprs = \s1 s2 -> M.lookup (structLabel s1, structLabel s2) relMap
-  where sl = nub $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) sprs
-        structLabel s = fromJust $ find (\p -> S.member p s) sl
+  where structLabel s = fromJust $ find (\p -> S.member p s) (extractSLs sprs)
         relMap = M.fromList $ map (\(sl1, sl2, pr) -> ((sl1, sl2), pr)) sprs
+
+extractSLs :: Ord a => [StructPrecRel a] -> [Prop a]
+extractSLs sprs = nubOrd $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) sprs

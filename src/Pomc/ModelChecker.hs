@@ -11,6 +11,7 @@ module Pomc.ModelChecker (
                            ExplicitOpa(..)
                          , modelCheck
                          , modelCheckGen
+                         , extractALs
                          ) where
 
 import Pomc.Prop (Prop(..))
@@ -115,3 +116,6 @@ modelCheckGen phi opa =
              , deltaPop   = deltaPop opa
              }
   in modelCheck tphi tOpa
+
+extractALs :: Ord a => [(s, Set (Prop a), [s])] -> [Prop a]
+extractALs deltaRels = Set.toList $ foldl (\als (_, a, _) -> als `Set.union` a) Set.empty deltaRels
