@@ -5,7 +5,7 @@ description:        A model-checking tool for POTL
 category:           Formal methods
 
 author:             Davide Bergamaschi, Michele Chiari
-maintainer:         davide.bergamaschi@protonmail.com
+maintainer:         michele.chiari@polimi.it
 
 copyright:          2020 Davide Bergamaschi and Michele Chiari
 license:            MIT
@@ -31,6 +31,7 @@ library:
   - Pomc.RPotl
   - Pomc.Satisfiability
   - Pomc.ModelChecker
+  - Pomc.OpaGen
   ghc-options:
   - -Wall
   - -O2
@@ -49,6 +50,7 @@ library:
   - hashable
   - hashtables
   - unordered-containers
+  - random
 
 executables:
   pomc:

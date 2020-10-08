@@ -15,6 +15,7 @@ module Pomc.Example ( -- * Stack Trace Language V1 precedence function
                     , stlPrecRelV2
                     , stlPrecV2sls
                     , stlPrecRelV2Text
+                    , stlPrecV2slsText
                     ) where
 
 import Pomc.Prec (Prec(..), StructPrecRel)
@@ -199,3 +200,6 @@ stlPrecV2sls = map Prop ["call", "ret", "exc", "han"]
 
 stlPrecRelV2Text :: [StructPrecRel T.Text]
 stlPrecRelV2Text = map (\(p1, p2, pr) -> (fmap T.pack p1, fmap T.pack p2, pr)) stlPrecRelV2
+
+stlPrecV2slsText :: [Prop T.Text]
+stlPrecV2slsText = map (fmap T.pack) stlPrecV2sls
