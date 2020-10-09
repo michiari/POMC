@@ -54,9 +54,23 @@ symbolP = L.symbol spaceP
 parensP :: Parser a -> Parser a
 parensP = between (symbolP "(") (symbolP ")")
 
+quotesP :: Parser a -> Parser a
+quotesP = between (symbolP "\"") (symbolP "\"")
+
+allPropChars :: Parser Char
+allPropChars = choice [ alphaNumChar
+                      , char ':', char '('
+                      , char ')', char '&'
+                      , char ' ', char '.'
+                      , char '~', char '='
+                      , char '-', char '+'
+                      , char '<', char '>'
+                      , char '_', char ';']
+
 propP :: Parser (Prop Text)
 propP = choice [ End           <$  symbolP "#"
                , Prop . T.pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
+               , Prop . T.pack <$> quotesP (some allPropChars <?> "atomic proposition")
                ]
 
 propSetP :: Parser (Set (Prop Text))
@@ -148,7 +162,7 @@ potlv2P = makeExprParser termParser operatorTable
           ]
 
 stateP :: Parser Word
-stateP = L.decimal
+stateP = L.lexeme spaceP L.decimal
 
 stateListP :: Parser [Word]
 stateListP = choice [ pure <$> stateP

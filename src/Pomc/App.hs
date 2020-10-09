@@ -15,6 +15,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.Util (safeHead, timeAction, timeToString)
 
 import Prelude hiding (readFile)
+import Numeric (showEFloat)
 
 import System.Environment
 import System.Exit
@@ -52,7 +53,9 @@ go = do args <- getArgs
                      Just opa -> forM phis (runMC opa)
                      Nothing -> return []
 
-        putStrLn ("\n\nTotal elapsed time: " ++ timeToString (sum stringTimes + sum mcTimes))
+        let totalTime = sum stringTimes + sum mcTimes
+        putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
+                  " (" ++ showEFloat (Just 4) totalTime " s)")
 
   where runString precRels phi s =
           do putStr (concat [ "\nFormula: ", show phi
