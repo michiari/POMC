@@ -3,7 +3,7 @@
 function run_test {
     echo "_______________________________________________________________________________"
     echo "Evaluating file "$1" ..."
-    stack exec pomc -- "$1"
+    /usr/bin/time -f "Max memory used (KB): %M" stack exec pomc -- "$1"
 }
 
 if [ $# -eq 0 ]; then

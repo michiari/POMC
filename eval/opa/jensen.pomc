@@ -1,0 +1,75 @@
+
+prec = Mcall;
+
+formulas = G ((call And rawrd) --> Not (T Sd (call And (Not Prd) And (Not rawrd)))),
+           G ((call And rawrd) --> Not (T Sd (call And (Not Pcp) And (Not rawrd)))),
+           G ((call And rawwr) --> Not (T Sd (call And (Not Pwr) And (Not rawwr)))),
+           G ((call And rawwr) --> Not (T Sd (call And (Not Pdb) And (Not rawwr))));
+
+opa:
+  initials = 0;
+  finals = 2;
+  deltaPush =
+    (0, (call sp Pcp Pdb Prd Pwr), 3),
+    (1, (call cl), 8),
+    (3, (call cp Pcp Pdb Prd Pwr), 12),
+    (4, (call db Pcp Pdb Prd Pwr), 18),
+    (5, (call sp Pcp Pdb Prd Pwr), 3),
+    (8, (call db), 25),
+    (9, (call cl), 8),
+    (12, (call rd Pcp Pdb Prd Pwr), 27),
+    (16, (exc), 2),
+    (18, (call cp Pcp Pdb Prd Pwr), 12),
+    (19, (call rd Pcp Pdb Prd Pwr), 27),
+    (20, (call wr Pcp Pdb Prd Pwr), 32),
+    (21, (exc), 2),
+    (25, (exc), 2),
+    (27, (call rawrd), 37),
+    (30, (exc), 2),
+    (32, (call rawwr), 39),
+    (35, (exc), 2);
+  deltaShift =
+    (6, (ret sp Pcp Pdb Prd Pwr), 7),
+    (10, (ret cl), 11),
+    (13, (ret cp Pcp Pdb Prd Pwr), 41),
+    (14, (ret cp Pcp Pdb Prd Pwr), 15),
+    (16, (exc), 17),
+    (21, (exc), 22),
+    (23, (ret db Pcp Pdb Prd Pwr), 24),
+    (25, (exc), 26),
+    (28, (ret rd Pcp Pdb Prd Pwr), 29),
+    (30, (exc), 31),
+    (33, (ret wr Pcp Pdb Prd Pwr), 34),
+    (35, (exc), 36),
+    (37, (ret rawrd), 38),
+    (39, (ret rawwr), 40);
+  deltaPop =
+    (2, 16, 2),
+    (2, 21, 2),
+    (2, 25, 2),
+    (2, 30, 2),
+    (2, 35, 2),
+    (7, 0, 1),
+    (7, 5, 6),
+    (11, 1, 2),
+    (11, 9, 10),
+    (15, 3, 4),
+    (15, 18, 19),
+    (21, 0, 21),
+    (21, 4, 21),
+    (24, 4, (5 6)),
+    (25, 1, 25),
+    (25, 8, 25),
+    (29, 12, (13 14)),
+    (29, 19, 20),
+    (30, 1, 30),
+    (30, 8, 30),
+    (30, 25, 30),
+    (34, 20, 23),
+    (35, 1, 35),
+    (35, 8, 35),
+    (35, 25, 35),
+    (38, 27, 28),
+    (40, 32, 33),
+    (41, 3, (5 6)),
+    (41, 18, 21);
