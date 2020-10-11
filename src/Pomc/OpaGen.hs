@@ -12,6 +12,7 @@ import Pomc.ModelChecker (ExplicitOpa(..))
 import Pomc.Example (stlPrecRelV2Text, stlPrecV2slsText)
 
 import System.Random
+import System.IO
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Map (Map)
@@ -90,7 +91,9 @@ printFunctions nf maxCalls = do
   gen <- newStdGen
   (skeletons, _) <- return $ genSkeletons gen nf maxCalls
   putStrLn $ show skeletons
-  putStrLn . show $ skeletonsToOpa skeletons
+  let opa = skeletonsToOpa skeletons
+  putStrLn $ show opa
+  hWriteOpa opa stdout
 
 
 skeletonsToOpa :: [FunctionSkeleton] -> ExplicitOpa Word Text
@@ -224,14 +227,14 @@ lowerBlock :: Map Text FunctionSkeleton
            -> (LowerState -> [Word] -> LowerState)
            -> [Statement]
            -> (LowerState, LowerState -> [Word] -> LowerState, [Word])
-lowerBlock sks lowerState _ linkPred [] = (lowerState, linkPred, [])
+lowerBlock _ lowerState _ linkPred [] = (lowerState, linkPred, [])
 lowerBlock sks lowerState thisFinfo linkPred block =
   foldBlock lowerStateH linkPredH (tail block)
   where (lowerStateH, linkPredH, entryStates) =
           lowerStatement sks lowerState thisFinfo linkPred (head block)
 
         foldBlock lowerState1 linkPred1 [] = (lowerState1, linkPred1, entryStates)
-        foldBlock lowerState1 linkPred1 (Throw : stmts) =
+        foldBlock lowerState1 linkPred1 (Throw : _) =
           let (lowerState2, linkPred2, _) =
                 lowerStatement sks lowerState1 thisFinfo linkPred1 Throw
           in (lowerState2, linkPred2, entryStates)
@@ -246,3 +249,92 @@ insertAll kvPairs m = m `M.union` M.fromList kvPairs
 
 makeInputSet :: (Ord a) => [a] -> Set (Prop a)
 makeInputSet ilst = S.fromList $ map Prop ilst
+
+
+genOpa :: String -> Int -> Int -> IO ()
+genOpa file nf maxCalls = do
+  gen <- newStdGen
+  (skeletons, _) <- return $ genSkeletons gen nf maxCalls
+  opa <- return $ skeletonsToOpa skeletons
+  withFile file WriteMode (hWriteOpa opa)
+
+hWriteOpa :: (Show s, Show a) => ExplicitOpa s a -> Handle -> IO ()
+hWriteOpa opa h = do
+  hPutStrLn h evalHeader
+  hPutStrLn h $ "  initials = " ++ formatList (map show $ initials opa) ++ ";"
+  hPutStrLn h $ "  finals = " ++ formatList (map show $ finals opa) ++ ";"
+  hPutStrLn h $ "  deltaPush = " ++ formatDeltaInput (deltaPush opa) ++ ";"
+  hPutStrLn h $ "  deltaShift = " ++ formatDeltaInput (deltaShift opa) ++ ";"
+  hPutStrLn h $ "  deltaPop = " ++ formatDeltaPop (deltaPop opa) ++ ";"
+
+formatList :: [String] -> String
+formatList [] = ""
+formatList (x : []) = x
+formatList (x : xs) = foldl (\acc y -> acc ++ " " ++ y) ("(" ++ x) xs ++ ")"
+
+formatDeltaInput :: (Show s, Show a) => [(s, Set (Prop a), [s])] -> String
+formatDeltaInput di = formatDeltaList $ map formatRel di
+  where formatRel (q, b, ps) =
+          "(" ++ show q ++ ", " ++ formatPropSet b ++ ", " ++ formatStateList ps ++ ")"
+        formatPropSet b = formatList $ map unProp (S.toList b)
+
+        unProp (Prop p) = show p
+        unProp End = "#"
+
+formatDeltaPop :: (Show s) => [(s, s, [s])] -> String
+formatDeltaPop dp = formatDeltaList $ map formatRel dp
+  where formatRel (q, r, ps) =
+          "(" ++ show q ++ ", " ++ show r ++ ", " ++ formatStateList ps ++ ")"
+
+formatDeltaList :: [String] -> String
+formatDeltaList [] = ""
+formatDeltaList (x : []) = x
+formatDeltaList (x : xs) = foldl (\acc rel -> acc ++ ", " ++ rel) x xs
+
+formatStateList :: (Show s) => [s] -> String
+formatStateList sl = formatList $ map show sl
+
+evalHeader :: String
+evalHeader =
+  "prec = Mcall;\n\
+  \\n\
+  \formulas = XNd perr,\n\
+  \           PNd (PNd (call And (XNu exc))),\n\
+  \           PNd (han And (XNd (exc And (XBu call)))),\n\
+  \           G (exc --> XBu call),\n\
+  \           T Ud exc,\n\
+  \           PNd (PNd (T Ud exc)),\n\
+  \           G ((call And pa And ((~ ret) Ud WRx)) --> XNu exc),\n\
+  \           PNd (PBu call),\n\
+  \           PNd (PNd (PNd (PBu call))),\n\
+  \           XNd (PNd (PBu call)),\n\
+  \           G ((call And pa And (PNu exc Or XNu exc)) --> (PNu eb Or XNu eb)),\n\
+  \           F (HNd pb),\n\
+  \           F (HBd pb),\n\
+  \           F (pa And (call HUd pc)),\n\
+  \           F (pc And (call HSd pa)),\n\
+  \           G ((pc And (XNu exc)) --> ((~ pa) HSd pb)),\n\
+  \           G ((call And pb) --> (~ pc) HUu perr),\n\
+  \           F (HNu perr),\n\
+  \           F (HBu perr),\n\
+  \           F (pa And (call HUu pb)),\n\
+  \           F (pb And (call HSu pa)),\n\
+  \           PNd call,\n\
+  \           PNd (PNd call),\n\
+  \           PNd (PNd (PNd call)),\n\
+  \           PNd (PNd (PNd (PNd call))),\n\
+  \           G (call --> XNd ret),\n\
+  \           G (call --> Not (PNu exc)),\n\
+  \           G ((call And pa) --> ~ (PNu exc Or XNu exc)),\n\
+  \           G (exc --> ~ (PBu (call And pa) Or XBu (call And pa))),\n\
+  \           G ((call And pb And (call Sd (call And pa))) --> (PNu exc Or XNu exc)),\n\
+  \           G (han --> XNu ret),\n\
+  \           T Uu exc,\n\
+  \           PNd (PNd (T Uu exc)),\n\
+  \           PNd (PNd (PNd (T Uu exc))),\n\
+  \           G (call And pc --> (T Uu (exc And XBd han))),\n\
+  \           call Ud (ret And perr),\n\
+  \           XNd (call And ((call Or exc) Su pb)),\n\
+  \           PNd (PNd ((call Or exc) Uu ret));\n\
+  \\n\
+  \opa:"
