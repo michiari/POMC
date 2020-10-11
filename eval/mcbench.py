@@ -5,6 +5,7 @@ import os
 import subprocess
 import re
 import statistics
+import joblib
 from tabulate import tabulate
 
 time_pattern = re.compile(r"Total elapsed time: .+ \(([0-9]+\.[0-9]+e[\+\-0-9]+) s\)")
@@ -21,11 +22,16 @@ def iter_bench(fname, iters):
     results = [exec_bench(fname) for _ in range(0, iters)]
     times = [t for t, _ in results]
     mems = [m for _, m in results]
-    return (statistics.mean(times), statistics.mean(mems)/1024)
+    return (fname, statistics.mean(times), statistics.mean(mems)/1024)
 
-def exec_all(fnames, iters):
+def exec_all(fnames, iters, jobs):
     make_row = lambda fname, time, mem: [fname, time, mem]
-    return [make_row(fname, *iter_bench(fname, iters)) for fname in fnames]
+    if jobs <= 1:
+        return [make_row(*iter_bench(fname, iters)) for fname in fnames]
+    else:
+        results = joblib.Parallel(n_jobs=jobs)(joblib.delayed(iter_bench)(fname, iters)
+                                               for fname in fnames)
+        return [make_row(*res) for res in results]
 
 def expand_files(arglist):
     files = []
@@ -43,9 +49,23 @@ def pretty_print(results):
     print(tabulate(results, headers=header))
 
 if len(sys.argv) < 2:
-    print("Usage: ", sys.argv[0], " <#iters> [file.pomc [...]]")
+    print("Usage: ", sys.argv[0], " [-iter <#iters>] [-jobs <#jobs>] [file.pomc [...]]\n")
     exit(0)
 
+iters = 1
+jobs = 1
+files = []
+i = 1
+while i < len(sys.argv):
+    if sys.argv[i] == "-iter":
+        iters = int(sys.argv[i+1])
+        i = i + 2
+    elif sys.argv[i] == "-jobs":
+        jobs = int(sys.argv[i+1])
+        i = i + 2
+    else:
+        files.append(sys.argv[i])
+        i = i + 1
 
-results = exec_all(expand_files(sys.argv[2:]), int(sys.argv[1]))
+results = exec_all(expand_files(files), iters, jobs)
 pretty_print(results)
