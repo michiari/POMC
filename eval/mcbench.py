@@ -10,22 +10,33 @@ from tabulate import tabulate
 
 time_pattern = re.compile(r"Total elapsed time: .+ \(([0-9]+\.[0-9]+e[\+\-0-9]+) s\)")
 mem_pattern = re.compile(r"Max memory used \(KB\): ([0-9]+)")
+result_pattern = re.compile(r"Result:  ((True)|(False))")
+states_pattern = re.compile(r"Input OPA state count: ([0-9]+)")
 pomc_pattern = re.compile(r".*\.pomc$")
 
 def exec_bench(fname):
     raw_res = subprocess.run(["./eval.sh", fname], capture_output=True)
-    time_match = time_pattern.search(raw_res.stdout.decode('utf-8'))
-    mem_match = mem_pattern.search(raw_res.stderr.decode('utf-8'))
-    return (float(time_match.group(1)), int(mem_match.group(1)))
+    raw_stdout = raw_res.stdout.decode('utf-8')
+    raw_stderr = raw_res.stderr.decode('utf-8')
+    time_match = time_pattern.search(raw_stdout)
+    mem_match = mem_pattern.search(raw_stderr)
+    result_match = result_pattern.search(raw_stdout)
+    states_match = states_pattern.search(raw_stdout)
+    return (int(states_match.group(1)), float(time_match.group(1)),
+            int(mem_match.group(1)), result_match.group(1))
 
 def iter_bench(fname, iters):
+    get_column = lambda rows, i: [r[i] for r in rows]
     results = [exec_bench(fname) for _ in range(0, iters)]
-    times = [t for t, _ in results]
-    mems = [m for _, m in results]
-    return (fname, statistics.mean(times), statistics.mean(mems)/1024)
+    states = get_column(results, 0)
+    times = get_column(results, 1)
+    mems = get_column(results, 2)
+    res = get_column(results, 3)
+    return (fname, states[0], statistics.mean(times),
+            statistics.mean(mems)/1024, res[0])
 
 def exec_all(fnames, iters, jobs):
-    make_row = lambda fname, time, mem: [fname, time, mem]
+    make_row = lambda fname, states, time, mem, res: [fname, states, time, mem, res]
     if jobs <= 1:
         return [make_row(*iter_bench(fname, iters)) for fname in fnames]
     else:
@@ -45,7 +56,7 @@ def expand_files(arglist):
     return files
 
 def pretty_print(results):
-    header = ["Name", "Time (s)", "Max memory (MiB)"]
+    header = ["Name", "# states", "Time (s)", "Max memory (MiB)", "Result"]
     print(tabulate(results, headers=header))
 
 if len(sys.argv) < 2:
