@@ -12,6 +12,7 @@ module Pomc.ModelChecker (
                          , modelCheck
                          , modelCheckGen
                          , extractALs
+                         , countStates
                          ) where
 
 import Pomc.Prop (Prop(..))
@@ -119,3 +120,12 @@ modelCheckGen phi opa =
 
 extractALs :: Ord a => [(s, Set (Prop a), [s])] -> [Prop a]
 extractALs deltaRels = Set.toList $ foldl (\als (_, a, _) -> als `Set.union` a) Set.empty deltaRels
+
+countStates :: Ord s => ExplicitOpa s a -> Int
+countStates opa =
+  let foldDeltaInput set (q, _, ps) = set `Set.union` (Set.fromList (q : ps))
+      pushStates = foldl foldDeltaInput Set.empty (deltaPush opa)
+      shiftStates = foldl foldDeltaInput pushStates (deltaShift opa)
+      popStates = foldl (\set (q, r, ps) -> set `Set.union` (Set.fromList (q : r : ps)))
+                  shiftStates (deltaPop opa)
+  in Set.size $ popStates `Set.union` (Set.fromList $ initials opa ++ finals opa)

@@ -8,7 +8,7 @@
 module Pomc.App (go) where
 
 import Pomc.Check (fastcheckGen)
-import Pomc.ModelChecker (modelCheckGen)
+import Pomc.ModelChecker (modelCheckGen, countStates)
 import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
@@ -68,6 +68,7 @@ go = do args <- getArgs
 
         runMC opa phi =
           do putStr (concat [ "\nModel Checking\nFormula: ", show phi
+                            , "\nInput OPA state count: ", show $ countStates opa
                             , "\nResult:  "
                             ])
              (_, time) <- timeAction . putStr . show $ modelCheckGen phi opa
