@@ -1,5 +1,7 @@
 #!/bin/bash
 
+trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
+
 function run_test {
     echo "_______________________________________________________________________________"
     echo "Evaluating file "$1" ..."
