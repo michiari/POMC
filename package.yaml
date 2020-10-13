@@ -50,6 +50,7 @@ library:
   - hashtables
   - unordered-containers
   - random
+  - filepath
 
 executables:
   pomc:

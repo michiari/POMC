@@ -13,6 +13,8 @@ import Pomc.Example (stlPrecRelV2Text, stlPrecV2slsText)
 
 import System.Random
 import System.IO
+import System.FilePath ((</>))
+import Control.Monad (foldM)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Map (Map)
@@ -43,53 +45,55 @@ genFunctionSkeleton :: RandomGen g
                     => g
                     -> [FunctionName]
                     -> Int
+                    -> Int
                     -> FunctionName
                     -> (FunctionSkeleton, g)
-genFunctionSkeleton gen fs maxCalls fname =
-  let (statements, gen') = genBlock gen fs maxCalls [genTryCatch, genIfThenElse, genThrow]
+genFunctionSkeleton gen fs maxCalls maxDepth fname =
+  let (statements, gen') = genBlock gen fs maxCalls maxDepth [genTryCatch, genIfThenElse, genThrow]
   in (FunctionSkeleton fname statements, gen')
 
 genBlock :: RandomGen g
          => g
          -> [FunctionName]
          -> Int
-         -> [g -> [FunctionName] -> Int -> (Statement, g)]
+         -> Int
+         -> [g -> [FunctionName] -> Int -> Int -> (Statement, g)]
          -> ([Statement], g)
-genBlock gen fs maxCalls stmtGens =
+genBlock gen fs maxCalls maxDepth stmtGens =
   foldl createStatements ([], gen') stmtIndices
   where (stmtIndices, gen') = genIndices gen maxCalls (length fs + length stmtGens - 1)
         createStatements (stmts, oldGen) idx
-          | idx < length fs = ((Call (fs !! idx)) : stmts, oldGen)
-          | otherwise = let (tcStmt, newGen) = (stmtGens !! (idx - length fs)) oldGen fs maxCalls
+          | idx < length fs || maxDepth == 0 = ((Call (fs !! (idx `mod` length fs))) : stmts, oldGen)
+          | otherwise = let (tcStmt, newGen) = (stmtGens !! (idx - length fs)) oldGen fs maxCalls (maxDepth-1)
                         in (tcStmt : stmts, newGen)
 
-genTryCatch :: RandomGen g => g -> [FunctionName] -> Int -> (Statement, g)
-genTryCatch gen fs maxCalls =
-  let (try, gen') = genBlock gen fs maxCalls [genIfThenElse, genThrow]
-      (catch, gen'') = genBlock gen' fs maxCalls [genIfThenElse]
+genTryCatch :: RandomGen g => g -> [FunctionName] -> Int -> Int -> (Statement, g)
+genTryCatch gen fs maxCalls maxDepth =
+  let (try, gen') = genBlock gen fs maxCalls maxDepth [genIfThenElse, genThrow]
+      (catch, gen'') = genBlock gen' fs maxCalls maxDepth [genIfThenElse]
   in (TryCatch try catch, gen'')
 
-genIfThenElse :: RandomGen g => g -> [FunctionName] -> Int -> (Statement, g)
-genIfThenElse gen fs maxCalls =
-  let (thenBlock, gen') = genBlock gen fs maxCalls [genTryCatch, genIfThenElse, genThrow]
-      (elseBlock, gen'') = genBlock gen' fs maxCalls [genTryCatch, genIfThenElse, genThrow]
+genIfThenElse :: RandomGen g => g -> [FunctionName] -> Int -> Int -> (Statement, g)
+genIfThenElse gen fs maxCalls maxDepth =
+  let (thenBlock, gen') = genBlock gen fs maxCalls maxDepth [genTryCatch, genIfThenElse, genThrow]
+      (elseBlock, gen'') = genBlock gen' fs maxCalls maxDepth [genTryCatch, genIfThenElse, genThrow]
   in (IfThenElse thenBlock elseBlock, gen'')
 
-genThrow :: RandomGen g => g -> [FunctionName] -> Int -> (Statement, g)
-genThrow gen _ _ = (Throw, gen)
+genThrow :: RandomGen g => g -> [FunctionName] -> Int -> Int -> (Statement, g)
+genThrow gen _ _ _ = (Throw, gen)
 
-genSkeletons :: RandomGen g => g -> Int -> Int -> ([FunctionSkeleton], g)
-genSkeletons gen nf maxCalls = foldl foldSkeletons ([], gen) fs
+genSkeletons :: RandomGen g => g -> Int -> Int -> Int -> ([FunctionSkeleton], g)
+genSkeletons gen nf maxCalls maxDepth = foldl foldSkeletons ([], gen) fs
   where fs = map (\n -> T.pack $ "p" ++ show n) [nf, nf-1 .. 0]
         foldSkeletons (sks, oldGen) fname =
-          let (sk, newGen) = genFunctionSkeleton oldGen fs maxCalls fname
+          let (sk, newGen) = genFunctionSkeleton oldGen fs maxCalls maxDepth fname
           in (sk : sks, newGen)
 
 
-printFunctions :: Int -> Int -> IO ()
-printFunctions nf maxCalls = do
+printFunctions :: Int -> Int -> Int -> IO ()
+printFunctions nf maxCalls maxDepth = do
   gen <- newStdGen
-  (skeletons, _) <- return $ genSkeletons gen nf maxCalls
+  (skeletons, _) <- return $ genSkeletons gen nf maxCalls maxDepth
   putStrLn $ show skeletons
   let opa = skeletonsToOpa skeletons
   putStrLn $ show opa
@@ -251,12 +255,27 @@ makeInputSet :: (Ord a) => [a] -> Set (Prop a)
 makeInputSet ilst = S.fromList $ map Prop ilst
 
 
-genOpa :: String -> Int -> Int -> IO ()
-genOpa file nf maxCalls = do
+genOpa :: String -> Int -> Int -> Int -> IO ()
+genOpa file nf maxCalls maxDepth = do
   gen <- newStdGen
-  (skeletons, _) <- return $ genSkeletons gen nf maxCalls
+  (skeletons, _) <- return $ genSkeletons gen nf maxCalls maxDepth
   opa <- return $ skeletonsToOpa skeletons
   withFile file WriteMode (hWriteOpa opa)
+
+genBench :: String -> IO ()
+genBench dir = do
+  gen <- newStdGen
+  _ <- foldM genSomeOpa gen [4..36]
+  return ()
+  where genSomeOpa gen maxCalls = foldM genSingleOpa gen [1..8]
+          where genSingleOpa :: RandomGen g => g -> Int -> IO (g)
+                genSingleOpa gen' n = do
+                  (skeletons, gen'') <- return $ genSkeletons gen' (maxCalls `div` 4) maxCalls 4
+                  opa <- return $ skeletonsToOpa skeletons
+                  withFile (dir </> (show maxCalls ++ "-" ++ show n ++ ".pomc"))
+                    WriteMode (hWriteOpa opa)
+                  return gen''
+
 
 hWriteOpa :: (Show s, Show a) => ExplicitOpa s a -> Handle -> IO ()
 hWriteOpa opa h = do
@@ -298,43 +317,25 @@ evalHeader :: String
 evalHeader =
   "prec = Mcall;\n\
   \\n\
-  \formulas = XNd perr,\n\
-  \           PNd (PNd (call And (XNu exc))),\n\
-  \           PNd (han And (XNd (exc And (XBu call)))),\n\
-  \           G (exc --> XBu call),\n\
-  \           T Ud exc,\n\
-  \           PNd (PNd (T Ud exc)),\n\
-  \           G ((call And pa And ((~ ret) Ud WRx)) --> XNu exc),\n\
-  \           PNd (PBu call),\n\
-  \           PNd (PNd (PNd (PBu call))),\n\
-  \           XNd (PNd (PBu call)),\n\
-  \           G ((call And pa And (PNu exc Or XNu exc)) --> (PNu eb Or XNu eb)),\n\
-  \           F (HNd pb),\n\
-  \           F (HBd pb),\n\
-  \           F (pa And (call HUd pc)),\n\
-  \           F (pc And (call HSd pa)),\n\
-  \           G ((pc And (XNu exc)) --> ((~ pa) HSd pb)),\n\
-  \           G ((call And pb) --> (~ pc) HUu perr),\n\
-  \           F (HNu perr),\n\
-  \           F (HBu perr),\n\
-  \           F (pa And (call HUu pb)),\n\
-  \           F (pb And (call HSu pa)),\n\
-  \           PNd call,\n\
-  \           PNd (PNd call),\n\
-  \           PNd (PNd (PNd call)),\n\
-  \           PNd (PNd (PNd (PNd call))),\n\
-  \           G (call --> XNd ret),\n\
-  \           G (call --> Not (PNu exc)),\n\
-  \           G ((call And pa) --> ~ (PNu exc Or XNu exc)),\n\
-  \           G (exc --> ~ (PBu (call And pa) Or XBu (call And pa))),\n\
-  \           G ((call And pb And (call Sd (call And pa))) --> (PNu exc Or XNu exc)),\n\
-  \           G (han --> XNu ret),\n\
-  \           T Uu exc,\n\
-  \           PNd (PNd (T Uu exc)),\n\
-  \           PNd (PNd (PNd (T Uu exc))),\n\
-  \           G (call And pc --> (T Uu (exc And XBd han))),\n\
-  \           call Ud (ret And perr),\n\
-  \           XNd (call And ((call Or exc) Su pb)),\n\
-  \           PNd (PNd ((call Or exc) Uu ret));\n\
+  \formulas = PNd (PNd (call And (XNu exc))),\
+  \\n           PNd (han And (XNd (exc And (XBu call)))),\
+  \\n           G (exc --> XBu call),\
+  \\n           T Ud exc,\
+  \\n           F (HNd p1),\
+  \\n           F (HBd p2),\
+  \\n           G ((call And p0) --> (~ p1) HUu p2),\
+  \\n           F (HNu p1),\
+  \\n           F (HBu p1),\
+  \\n           F (p0 And (call HUu p1)),\
+  \\n           F (p1 And (call HSu p0)),\
+  \\n           G (call --> XNd ret),\
+  \\n           G (call --> Not (PNu exc)),\
+  \\n           G ((call And p0) --> ~ (PNu exc Or XNu exc)),\
+  \\n           G (exc --> ~ (PBu (call And p0) Or XBu (call And p0))),\
+  \\n           G ((call And p2 And (call Sd (call And p1))) --> (PNu exc Or XNu exc)),\
+  \\n           G (han --> XNu ret),\
+  \\n           G (call And p2 --> (T Uu (exc And XBd han))),\
+  \\n           call Ud (ret And p1),\
+  \\n           XNd (call And ((call Or exc) Su p0));\
   \\n\
-  \opa:"
+  \\nopa:"
