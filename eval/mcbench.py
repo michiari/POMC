@@ -18,6 +18,8 @@ def exec_bench(fname):
     raw_res = subprocess.run(["./eval.sh", fname], capture_output=True)
     raw_stdout = raw_res.stdout.decode('utf-8')
     raw_stderr = raw_res.stderr.decode('utf-8')
+    print(raw_stdout)
+    print(raw_stderr)
     time_match = time_pattern.search(raw_stdout)
     mem_match = mem_pattern.search(raw_stderr)
     result_match = result_pattern.search(raw_stdout)
@@ -53,7 +55,7 @@ def expand_files(arglist):
             for dirpath, _, filenames in os.walk(arg):
                 files.extend(map(lambda fn: os.path.join(dirpath, fn),
                                  filter(pomc_pattern.match, filenames)))
-    return files
+    return sorted(files)
 
 def pretty_print(results):
     header = ["Name", "# states", "Time (s)", "Max memory (MiB)", "Result"]
