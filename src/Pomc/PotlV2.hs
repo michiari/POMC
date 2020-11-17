@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {- |
    Module      : Pomc.PotlV2
    Copyright   : 2020 Davide Bergamaschi
@@ -9,7 +10,15 @@ module Pomc.PotlV2 ( -- * POTL V2 types
                      Dir(..)
                    , Prop(..)
                    , Formula(..)
-                   , normalize
+                   , getProps
+                    -- * Predicates on formulas
+                  , atomic
+                  , future
+                  , negative
+                    -- * Operations on formulas
+                  , formulaAt
+                  , negation
+                  , normalize
                    ) where
 
 import Pomc.Check (Checkable(..))
@@ -17,6 +26,13 @@ import Pomc.Prec (Prec(..))
 import qualified Pomc.Prec as PS (fromList)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.RPotl as RP (Formula(..))
+
+import Data.List (nub)
+
+import GHC.Generics (Generic)
+
+import Data.Hashable
+
 
 data Dir = Up | Down deriving (Eq, Ord, Show)
 
@@ -115,6 +131,8 @@ instance (Show a) => Show (Formula a) where
           showp (Atomic End) = "#"
           showp g = concat ["(", show g, ")"]
 
+instance Hashable a => Hashable (Formula a)
+
 instance Functor Formula where
   fmap func f = case f of
                   T               -> T
@@ -148,28 +166,60 @@ instance Functor Formula where
                   Eventually g    -> Eventually (fmap func g)
                   Always g        -> Always (fmap func g)
 
-= T
-               | Atomic (Prop a)
-               | Not    (Formula a)
-               | Or      (Formula a) (Formula a)
-               | And     (Formula a) (Formula a)
-               | Xor     (Formula a) (Formula a)
-               | Implies (Formula a) (Formula a)
-               | Iff     (Formula a) (Formula a)
-               | PNext  Dir (Formula a)
-               | PBack  Dir (Formula a)
-               | XNext  Dir (Formula a)
-               | XBack  Dir (Formula a)
-               | HNext  Dir (Formula a)
-               | HBack  Dir (Formula a)
-               | Until  Dir (Formula a) (Formula a)
-               | Since  Dir (Formula a) (Formula a)
-               | HUntil Dir (Formula a) (Formula a)
-               | HSince Dir (Formula a) (Formula a)
-               | Eventually (Formula a)
-               | Always     (Formula a)
-               deriving (Eq, Ord)
 
+getProps :: (Eq a) => Formula a -> [Prop a]
+getProps formula = nub $ collectProps formula
+  where collectProps f = case f of
+          T                  -> []
+          Atomic p           -> [p]
+          Not g              -> getProps g
+          Or g h             -> getProps g ++ getProps h
+          And g h            -> getProps g ++ getProps h
+          Xor g h            -> getProps g ++ getProps h
+          Implies g h        -> getProps g ++ getProps h
+          Iff g h            -> getProps g ++ getProps h
+          PNext dir g        -> getProps g
+          PBack dir g        -> getProps g
+          XNext dir g        -> getProps g
+          XBack dir g        -> getProps g
+          HNext dir g        -> getProps g
+          HBack dir g        -> getProps g
+          Until dir g h      -> getProps g ++ getProps h
+          Since dir g h      -> getProps g ++ getProps h
+          HUntil dir g h     -> getProps g ++ getProps h
+          HSince dir g h     -> getProps g ++ getProps h
+          Eventually g       -> getProps g
+          Always g           -> getProps g
+
+atomic :: Formula a -> Bool
+atomic (Atomic _) = True
+atomic _ = False
+
+future :: Formula a -> Bool
+future (PNext      {}) = True
+future (CNext      {}) = True
+future (Until      {}) = True
+future (HNext      {}) = True
+future (HUntil     {}) = True
+future (Eventually {}) = True
+future (Always     {}) = True
+future _ = False
+
+negative :: Formula a -> Bool
+negative (Not _) = True
+negative _ = False
+
+
+--- TO DO: fix this
+formulaAt :: Int -> Formula a -> Formula a
+formulaAt n f
+  | n <= 1    = f
+  | otherwise = formulaAt (n-1) (PrecNext (PS.fromList [Yield, Equal, Take]) f)
+
+
+negation :: Formula a -> Formula a
+negation (Not f) = f
+negation f = Not f
 
 normalize :: Formula a -> Formula a
 normalize f = case f of
@@ -194,3 +244,6 @@ normalize f = case f of
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)            
                 Eventually g       -> Eventually (normalize g)
                 Always g           _> Always (normalize g)
+
+
+
