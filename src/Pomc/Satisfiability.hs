@@ -15,7 +15,7 @@ module Pomc.Satisfiability (
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.Check (Checkable(..), Input, EncPrecFunc, State(..), makeOpa)
+import Pomc.Check ( Input, EncPrecFunc, State(..), makeOpa)
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
 
@@ -313,8 +313,7 @@ isEmpty delta initials isFinal = not $
                    False
                    initialsId)
 
-isSatisfiable :: (Checkable f)
-              => f APType
+isSatisfiable :: Formula APType
               -> ([Prop APType], [Prop APType])
               -> [StructPrecRel APType]
               -> Bool
@@ -329,12 +328,12 @@ isSatisfiable phi ap sprs =
         }
   in not $ isEmpty delta initials isFinal
 
-isSatisfiableGen :: (Checkable f, Ord a)
-                 => f a
+isSatisfiableGen :: ( Ord a)
+                 => Formula a
                  -> ([Prop a], [Prop a])
                  -> [StructPrecRel a]
                  -> Bool
 isSatisfiableGen phi ap precf =
-  let (tphi, tap, tprecr) = convPropLabels (toReducedPotl phi) ap precf
+  let (tphi, tap, tprecr) = convPropLabels phi ap precf
   in isSatisfiable tphi tap tprecr
 

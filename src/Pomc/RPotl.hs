@@ -82,7 +82,7 @@ instance (Show a) => Show (Formula a) where
           showp (Atomic End)      = "#"
           showp g = concat ["(", show g, ")"]
 
-instance Hashable a => Hashable (Formula a)
+
 
 instance Functor Formula where
   fmap f formula = case formula of

@@ -131,6 +131,8 @@ showStates = unlines . map show
 compProps :: BitEncoding -> EncodedSet -> Input -> Bool
 compProps bitenc fset pset = D.extractInput bitenc fset == pset
 
+
+-- to be updated
 closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
                              phiClos  = closList phi
@@ -208,8 +210,11 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       Not g              -> [f] ++ closList g
       Or g h             -> [f, Not f] ++ closList g ++ closList h
       And g h            -> [f, Not f] ++ closList g ++ closList h
-      PrecNext _ g       -> [f, Not f] ++ closList g
-      PrecBack _ g       -> [f, Not f] ++ closList g
+      Xor g h            -> [f, Not f] ++ closList g ++ closList h
+      Implies g h        -> [f, Not f] ++ closList g ++ closList h
+      Iff g h            -> [f, Not f] ++ closList g ++ closList h
+      PNext _ g          -> [f, Not f] ++ closList g
+      PBack _ g          -> [f, Not f] ++ closList g
       ChainNext pset g   -> [f, Not f] ++ closList g ++ chainNextExp pset g
       ChainBack pset g   -> [f, Not f] ++ closList g ++ chainBackExp pset g
       Until pset g h     -> [f, Not f] ++ closList g ++ closList h ++ untilExp pset g h
@@ -224,6 +229,8 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hstExp g h
       HierTakeHelper g   -> [f, Not f] ++ closList g
       Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
+
+
 
 makeBitEncoding :: FormulaSet -> BitEncoding
 makeBitEncoding clos =

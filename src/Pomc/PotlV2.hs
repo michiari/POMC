@@ -16,7 +16,6 @@ module Pomc.PotlV2 ( -- * POTL V2 types
                   , future
                   , negative
                     -- * Operations on formulas
-                  , formulaAt
                   , negation
                   , normalize
                    ) where
@@ -131,7 +130,6 @@ instance (Show a) => Show (Formula a) where
           showp (Atomic End) = "#"
           showp g = concat ["(", show g, ")"]
 
-instance Hashable a => Hashable (Formula a)
 
 instance Functor Formula where
   fmap func f = case f of
@@ -167,6 +165,8 @@ instance Functor Formula where
                   Always g        -> Always (fmap func g)
 
 
+instance Hashable a => Hashable (Formula a)
+
 getProps :: (Eq a) => Formula a -> [Prop a]
 getProps formula = nub $ collectProps formula
   where collectProps f = case f of
@@ -178,7 +178,7 @@ getProps formula = nub $ collectProps formula
           Xor g h            -> getProps g ++ getProps h
           Implies g h        -> getProps g ++ getProps h
           Iff g h            -> getProps g ++ getProps h
-          PNext dir g        -> getProps g
+          PNext - g        -> getProps g
           PBack dir g        -> getProps g
           XNext dir g        -> getProps g
           XBack dir g        -> getProps g
@@ -197,9 +197,9 @@ atomic _ = False
 
 future :: Formula a -> Bool
 future (PNext      {}) = True
-future (CNext      {}) = True
-future (Until      {}) = True
+future (XNext      {}) = True
 future (HNext      {}) = True
+future (Until      {}) = True
 future (HUntil     {}) = True
 future (Eventually {}) = True
 future (Always     {}) = True
@@ -211,10 +211,10 @@ negative _ = False
 
 
 --- TO DO: fix this
-formulaAt :: Int -> Formula a -> Formula a
-formulaAt n f
-  | n <= 1    = f
-  | otherwise = formulaAt (n-1) (PrecNext (PS.fromList [Yield, Equal, Take]) f)
+--formulaAt :: Int -> Formula a -> Formula a
+--formulaAt n f
+  -- | n <= 1    = f
+  -- | otherwise = formulaAt (n-1) (RP.PrecNext (PS.fromList [Yield, Equal, Take]) f)
 
 
 negation :: Formula a -> Formula a
@@ -243,7 +243,7 @@ normalize f = case f of
                 HUntil dir g h     -> HUntil dir  (normalize g) (normalize h)
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)            
                 Eventually g       -> Eventually (normalize g)
-                Always g           _> Always (normalize g)
+                Always g           -> Always (normalize g)
 
 
 

@@ -17,8 +17,8 @@ module Pomc.ModelChecker (
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
-import Pomc.RPotl (Formula(..), getProps)
-import Pomc.Check (Checkable(..), State, makeOpa)
+import Pomc.PotlV2 (Formula(..), getProps)
+import Pomc.Check (State, makeOpa)
 import Pomc.Satisfiability (SatState(..), isEmpty)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
@@ -57,16 +57,15 @@ instance SatState (MCState s) where
 cartesian :: [a] -> [State] -> [MCState a]
 cartesian xs ys = [MCState x y | x <- xs, y <- ys]
 
-modelCheck :: (Checkable f, Ord s, Hashable s, Show s)
-           => f APType
+modelCheck :: (Ord s, Hashable s, Show s)
+           => Formula APType
            -> ExplicitOpa s APType
            -> Bool
 modelCheck phi opa =
-  let reducedPhi = toReducedPotl $ phi
-      essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps reducedPhi)
+  let essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
-        makeOpa (Not reducedPhi) (fst $ sigma opa, getProps reducedPhi) (precRel opa)
+        makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa)
 
       cInitials = cartesian (initials opa) phiInitials
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal p
@@ -96,15 +95,14 @@ modelCheck phi opa =
 
   in isEmpty cDelta cInitials cIsFinal
 
-modelCheckGen :: (Checkable f, Ord s, Hashable s, Show s, Ord a)
-              => f a
+modelCheckGen :: ( Ord s, Hashable s, Show s, Ord a)
+              => Formula a
               -> ExplicitOpa s a
               -> Bool
 modelCheckGen phi opa =
   let (sls, als) = sigma opa
-      reducedPhi = toReducedPotl phi
       (tphi, tprec, trans) =
-        convAP reducedPhi (precRel opa) (sls ++ (getProps reducedPhi) ++ als)
+        convAP phi (precRel opa) (sls ++ (getProps phi) ++ als)
       transProps props = fmap (fmap trans) props
       transDelta delta = map (\(q, b, p) -> (q, Set.map (fmap trans) b, p)) delta
       tOpa = ExplicitOpa

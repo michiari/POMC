@@ -33,7 +33,7 @@ module Pomc.Data ( EncodedSet
                  ) where
 
 import Pomc.Prop (Prop)
-import Pomc.RPotl
+import Pomc.PotlV2
 import Pomc.PropConv (APType)
 
 import Data.Set (Set)
