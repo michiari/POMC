@@ -9,6 +9,7 @@ module Pomc.PotlV2 ( -- * POTL V2 types
                      Dir(..)
                    , Prop(..)
                    , Formula(..)
+                   , normalize
                    ) where
 
 import Pomc.Check (Checkable(..))
@@ -146,3 +147,50 @@ instance Functor Formula where
                   HSince Up   g h -> HSince Up   (fmap func g) (fmap func h)
                   Eventually g    -> Eventually (fmap func g)
                   Always g        -> Always (fmap func g)
+
+= T
+               | Atomic (Prop a)
+               | Not    (Formula a)
+               | Or      (Formula a) (Formula a)
+               | And     (Formula a) (Formula a)
+               | Xor     (Formula a) (Formula a)
+               | Implies (Formula a) (Formula a)
+               | Iff     (Formula a) (Formula a)
+               | PNext  Dir (Formula a)
+               | PBack  Dir (Formula a)
+               | XNext  Dir (Formula a)
+               | XBack  Dir (Formula a)
+               | HNext  Dir (Formula a)
+               | HBack  Dir (Formula a)
+               | Until  Dir (Formula a) (Formula a)
+               | Since  Dir (Formula a) (Formula a)
+               | HUntil Dir (Formula a) (Formula a)
+               | HSince Dir (Formula a) (Formula a)
+               | Eventually (Formula a)
+               | Always     (Formula a)
+               deriving (Eq, Ord)
+
+
+normalize :: Formula a -> Formula a
+normalize f = case f of
+                T                  -> f
+                Atomic _           -> f
+                Not (Not g)        -> normalize g    -- remove double negation
+                Not g              -> Not (normalize g)
+                Or g h             -> Or  (normalize g) (normalize h)
+                And g h            -> And (normalize g) (normalize h)
+                Xor g h            -> Xor (normalize g) (normalize h)
+                Implies g h        -> Implies (normalize g) (normalize h)
+                Iff g h            -> Iff (normalize g) (normalize h)
+                PNext dir g        -> PNext dir (normalize g)
+                PBack dir g        -> PBack dir (normalize g)
+                XNext dir g        -> XNext dir  (normalize g)
+                XBack dir g        -> XBack dir  (normalize g)
+                HNext dir g        -> HNext dir  (normalize g)
+                HBack dir g        -> HBack dir  (normalize g)
+                Until dir g h      -> Until dir (normalize g) (normalize h)
+                Since dir g h      -> Since dir (normalize g) (normalize h)
+                HUntil dir g h     -> HUntil dir  (normalize g) (normalize h)
+                HSince dir g h     -> HSince dir  (normalize g) (normalize h)            
+                Eventually g       -> Eventually (normalize g)
+                Always g           _> Always (normalize g)
