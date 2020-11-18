@@ -6,6 +6,8 @@
    Maintainer  : Davide Bergamaschi
 -}
 
+-- TODO: add formulaAt
+
 module Pomc.PotlV2 ( -- * POTL V2 types
                      Dir(..)
                    , Prop(..)
@@ -178,16 +180,16 @@ getProps formula = nub $ collectProps formula
           Xor g h            -> getProps g ++ getProps h
           Implies g h        -> getProps g ++ getProps h
           Iff g h            -> getProps g ++ getProps h
-          PNext - g        -> getProps g
-          PBack dir g        -> getProps g
-          XNext dir g        -> getProps g
-          XBack dir g        -> getProps g
-          HNext dir g        -> getProps g
-          HBack dir g        -> getProps g
-          Until dir g h      -> getProps g ++ getProps h
-          Since dir g h      -> getProps g ++ getProps h
-          HUntil dir g h     -> getProps g ++ getProps h
-          HSince dir g h     -> getProps g ++ getProps h
+          PNext _ g          -> getProps g
+          PBack _ g          -> getProps g
+          XNext _ g          -> getProps g
+          XBack _ g          -> getProps g
+          HNext _ g          -> getProps g
+          HBack _ g          -> getProps g
+          Until _ g h        -> getProps g ++ getProps h
+          Since _ g h        -> getProps g ++ getProps h
+          HUntil _ g h       -> getProps g ++ getProps h
+          HSince _ g h       -> getProps g ++ getProps h
           Eventually g       -> getProps g
           Always g           -> getProps g
 

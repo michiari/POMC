@@ -33,13 +33,13 @@ import GHC.Generics (Generic)
 import Data.Hashable
 
 data ExplicitOpa s a = ExplicitOpa
-  { sigma :: ([Prop a], [Prop a])
-  , precRel :: [StructPrecRel a]
-  , initials   :: [s]
-  , finals     :: [s]
-  , deltaPush  :: [(s, Set (Prop a), [s])]
-  , deltaShift :: [(s, Set (Prop a), [s])]
-  , deltaPop   :: [(s, s, [s])]
+  { sigma :: ([Prop a], [Prop a]) -- the alphabet
+  , precRel :: [StructPrecRel a] --precedence relation between structural labels of the alphabet
+  , initials   :: [s] -- initial states of the OPA
+  , finals     :: [s] -- final states of the OPA
+  , deltaPush  :: [(s, Set (Prop a), [s])] --push transition relation
+  , deltaShift :: [(s, Set (Prop a), [s])] -- shift transition relation
+  , deltaPop   :: [(s, s, [s])] -- pop transition relation
   } deriving (Show)
 
 data MCState s = MCState s State deriving (Generic, Eq, Show)

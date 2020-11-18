@@ -15,6 +15,7 @@ module Pomc.Satisfiability (
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
+import Pomc.PotlV2(Formula)
 import Pomc.Check ( Input, EncPrecFunc, State(..), makeOpa)
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
