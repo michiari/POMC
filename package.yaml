@@ -32,6 +32,8 @@ library:
   - Pomc.Satisfiability
   - Pomc.ModelChecker
   - Pomc.OpaGen
+  - Pomc.MiniProcParse
+  - Pomc.Util
   ghc-options:
   - -Wall
   - -O2
@@ -63,6 +65,18 @@ executables:
     - -O2
     dependencies:
     - pomc
+  miniproc:
+    main:           Main.hs
+    source-dirs:    mpapp
+    ghc-options:
+    - -rtsopts
+    - -with-rtsopts=-H
+    - -Wall
+    - -O2
+    dependencies:
+    - pomc
+    - megaparsec
+    - text
 
 tests:
   test-pomc:

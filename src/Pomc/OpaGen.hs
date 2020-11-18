@@ -5,7 +5,11 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.OpaGen where
+module Pomc.OpaGen ( FunctionSkeleton(..)
+                   , Statement(..)
+                   , FunctionName
+                   , skeletonsToOpa
+                   ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.ModelChecker (ExplicitOpa(..))
