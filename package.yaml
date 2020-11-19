@@ -97,6 +97,9 @@ tests:
     - tasty-quickcheck
     - hashable
     - unordered-containers
+    - raw-strings-qq
+    - megaparsec
+    - text
 
 benchmarks:
   bench-pomc:
