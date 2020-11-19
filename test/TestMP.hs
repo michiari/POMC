@@ -16,7 +16,9 @@ import Text.RawString.QQ
 import qualified Data.Text as T
 
 tests :: TestTree
-tests = testGroup "MiniProc Tests" [sasBaseTests, sasEvalTests]
+tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
+                                   , noHanBaseTests, noHanEvalTests
+                                   ]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS MiniProc MC Base Tests" $
@@ -26,6 +28,13 @@ sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS MiniProc MC Eval Tests" $
   map (makeTestCase sasMPSource) (zip EvalFormulas.formulas expectedSasEval)
 
+noHanBaseTests :: TestTree
+noHanBaseTests = testGroup "NoHan MiniProc MC Base Tests" $
+  map (makeTestCase noHanSource) (zip TestSat.cases expectedNoHanBase)
+
+noHanEvalTests :: TestTree
+noHanEvalTests = testGroup "NoHan MiniProc MC Eval Tests" $
+  map (makeTestCase noHanSource) (zip EvalFormulas.formulas expectedSasEval)
 
 makeTestCase :: T.Text
              -> ((String, Formula String, [String], Bool), Bool)
@@ -65,7 +74,8 @@ expectedSasEval = [True, True, True, True,     -- chain_next
                   ]
 
 sasMPSource :: T.Text
-sasMPSource = T.pack [r|pa() {
+sasMPSource = T.pack [r|
+pa() {
   try {
     pb();
   } catch {
@@ -87,4 +97,30 @@ pc() {
 }
 
 perr() { }
+|]
+
+expectedNoHanBase :: [Bool]
+expectedNoHanBase = [True, False, False, False, False, False,
+                     True, False, False, False, False, False,
+                     False, True, False, False, False, False,
+                     False, False, False, False
+                    ]
+
+noHanSource :: T.Text
+noHanSource = T.pack [r|
+pA() {
+  pB();
+}
+
+pB() {
+  pC();
+}
+
+pC() {
+  if {
+    throw;
+  } else {
+    pC();
+  }
+}
 |]

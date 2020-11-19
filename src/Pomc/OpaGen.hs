@@ -110,11 +110,11 @@ skeletonsToOpa sks = ExplicitOpa
   , precRel = stlPrecRelV2Text
   , initials = [0]
   , finals = [1]
-  , deltaPush = toListDelta $ dPush'
+  , deltaPush = toListDelta $ dPush''
   , deltaShift = toListDelta $ lsDShift lowerState
-  , deltaPop = toListDelta $ dPop'
+  , deltaPop = toListDelta $ dPop'''
   }
-  where lowerState = lowerFunction sksMap (LowerState M.empty M.empty M.empty M.empty 2) (head sks)
+  where lowerState = lowerFunction sksMap (LowerState M.empty M.empty M.empty M.empty 3) (head sks)
         sksMap = M.fromList $ map (\sk -> (skName sk, sk)) sks
         toListDelta deltaMap = map (\((a, b), dt) -> (a, b, resolveTarget dt)) $ M.toList deltaMap
         firstFname = skName $ head sks
@@ -122,6 +122,9 @@ skeletonsToOpa sks = ExplicitOpa
         dPush' = M.insert (0, makeInputSet [T.pack "call", firstFname])
                  (EntryStates firstFname) (lsDPush lowerState)
         dPop' = M.insert (fiRetPad firstFinfo, 0) (States [1]) (lsDPop lowerState)
+        dPop'' = M.insert (fiThrow firstFinfo, 0) (States [2]) dPop'
+        dPush'' = M.insert (2, makeInputSet [T.pack "exc"]) (States [1]) dPush'
+        dPop''' = M.insert (1, 2) (States [1]) dPop''
 
         resolveTarget (EntryStates fname) =
           fiEntry . fromJust $ M.lookup fname (lsFinfo lowerState)
@@ -161,12 +164,8 @@ lowerFunction sks lowerState0 fsk =
                  (States [fiRetPad thisFinfo]) (lsDShift lowerState2)
       dShift'' = M.insert (fiThrow thisFinfo, makeInputSet [T.pack "exc"])
                  (States [fiExcPad thisFinfo]) dShift'
-      dPush'' = M.insert (fiThrow thisFinfo, makeInputSet [T.pack "exc"])
-                (States [1]) (lsDPush lowerState2)
-      dPop'' = M.insert (1, fiThrow thisFinfo) (States [1]) (lsDPop lowerState2)
       finfo'' = M.insert (skName fsk) (thisFinfo { fiEntry = entryStates' }) (lsFinfo lowerState2)
-  in linkPred (lowerState2 { lsDPush = dPush'', lsDShift = dShift'',
-                             lsDPop = dPop'', lsFinfo = finfo'' }) [sidRet]
+  in linkPred (lowerState2 { lsDShift = dShift'', lsFinfo = finfo'' }) [sidRet]
 
 lowerStatement :: Map Text FunctionSkeleton
                -> LowerState
