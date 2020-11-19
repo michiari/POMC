@@ -34,7 +34,7 @@ noHanBaseTests = testGroup "NoHan MiniProc MC Base Tests" $
 
 noHanEvalTests :: TestTree
 noHanEvalTests = testGroup "NoHan MiniProc MC Eval Tests" $
-  map (makeTestCase noHanSource) (zip EvalFormulas.formulas expectedSasEval)
+  map (makeTestCase noHanSource) (zip EvalFormulas.formulas expectedNoHanEval)
 
 makeTestCase :: T.Text
              -> ((String, Formula String, [String], Bool), Bool)
@@ -106,21 +106,39 @@ expectedNoHanBase = [True, False, False, False, False, False,
                      False, False, False, False
                     ]
 
+expectedNoHanEval :: [Bool]
+expectedNoHanEval = [False, False, False, True,  -- chain_next
+                     False, False,               -- contains_exc
+                     True,                       -- data_access
+                     False, False, False,        -- empty_frame
+                     False,                      -- exception_safety
+                     False, False, False, False, -- hier_down
+                     False,                      -- hier_insp
+                     True,                       -- hier_insp_exc
+                     False, False, False, False, -- hier_up
+                     False, False,               -- normal_ret
+                     True, True,                 -- no_throw
+                     True, True,                 -- stack_inspection
+                     True,                       -- uninstall_han
+                     True, True, True,           -- until_exc
+                     False, False, False         -- until_misc
+                  ]
+
 noHanSource :: T.Text
 noHanSource = T.pack [r|
-pA() {
-  pB();
+pa() {
+  pb();
 }
 
-pB() {
-  pC();
+pb() {
+  pc();
 }
 
-pC() {
+pc() {
   if {
     throw;
   } else {
-    pC();
+    pc();
   }
 }
 |]
