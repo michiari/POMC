@@ -57,6 +57,7 @@ data Formula a = T
                | HSince Dir (Formula a) (Formula a)
                | Eventually (Formula a)
                | Always     (Formula a)
+               | AuXBack Dir  (Formula a)
                deriving (Eq, Ord)
 
 instance Checkable (Formula) where
@@ -93,6 +94,7 @@ instance Checkable (Formula) where
       HSince Up   g h -> RP.HierSinceYield (trp g) (trp h)
       Eventually g    -> RP.Eventually' (RP.And (RP.Not . RP.Atomic $ End) (trp g))
       Always g        -> trp . Not . Eventually . Not $ g
+      AuXBack d g    -> RP.Or ( trp (XBack d g )) (trp (PBack d g))
     where trp = toReducedPotl
 
 instance (Show a) => Show (Formula a) where
@@ -127,6 +129,8 @@ instance (Show a) => Show (Formula a) where
              HSince Up   g h -> concat [showp g, " HSu ", showp h]
              Eventually g    -> concat ["F ", showp g]
              Always g        -> concat ["G ", showp g]
+             AuXBack Down g  -> concat ["AuXBd " showp g]
+             AuXBack Up g  -> concat ["AuXBu " showp g]
     where showp T = "T"
           showp (Atomic (Prop p)) = show p
           showp (Atomic End) = "#"
@@ -143,28 +147,20 @@ instance Functor Formula where
                   Xor     g h     -> Xor     (fmap func g) (fmap func h)
                   Implies g h     -> Implies (fmap func g) (fmap func h)
                   Iff     g h     -> Iff     (fmap func g) (fmap func h)
-                  PNext Down g    -> PNext Down (fmap func g)
-                  PNext Up   g    -> PNext Up   (fmap func g)
-                  PBack Down g    -> PBack Down (fmap func g)
-                  PBack Up   g    -> PBack Up   (fmap func g)
-                  XNext Down g    -> XNext Down (fmap func g)
-                  XNext Up   g    -> XNext Up   (fmap func g)
-                  XBack Down g    -> XBack Down (fmap func g)
-                  XBack Up   g    -> XBack Up   (fmap func g)
-                  HNext Down g    -> HNext Down (fmap func g)
-                  HNext Up   g    -> HNext Up   (fmap func g)
-                  HBack Down g    -> HBack Down (fmap func g)
-                  HBack Up   g    -> HBack Up   (fmap func g)
-                  Until Down g h  -> Until Down (fmap func g) (fmap func h)
-                  Until Up   g h  -> Until Up   (fmap func g) (fmap func h)
-                  Since Down g h  -> Since Down (fmap func g) (fmap func h)
-                  Since Up   g h  -> Since Up   (fmap func g) (fmap func h)
-                  HUntil Down g h -> HUntil Down (fmap func g) (fmap func h)
-                  HUntil Up   g h -> HUntil Up   (fmap func g) (fmap func h)
-                  HSince Down g h -> HSince Down (fmap func g) (fmap func h)
-                  HSince Up   g h -> HSince Up   (fmap func g) (fmap func h)
+                  PNext dir g     -> PNext dir (fmap func g)
+                  PBack dir g     -> PBack dir (fmap func g)
+                  XNext dir g     -> XNext dir (fmap func g)
+                  XBack dir g     -> XBack dir (fmap func g)
+                  HNext dir g     -> HNext dir (fmap func g)
+                  HBack dir g     -> HBack dir (fmap func g)
+                  Until dir g h   -> Until dir (fmap func g) (fmap func h)
+                  Since dir g h   -> Since dir (fmap func g) (fmap func h)
+                  HUntil dir g h -> HUntil dir (fmap func g) (fmap func h)
+                  HSince dir g h -> HSince dir (fmap func g) (fmap func h)
                   Eventually g    -> Eventually (fmap func g)
                   Always g        -> Always (fmap func g)
+                  AuXBack dir g  -> AuXBack dir (fmap func g)
+
 
 
 instance Hashable a => Hashable (Formula a)
@@ -192,7 +188,8 @@ getProps formula = nub $ collectProps formula
           HSince _ g h       -> getProps g ++ getProps h
           Eventually g       -> getProps g
           Always g           -> getProps g
-
+          AuXBack _ g        -> getProps g
+ 
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
 atomic _ = False
@@ -246,6 +243,7 @@ normalize f = case f of
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)            
                 Eventually g       -> Eventually (normalize g)
                 Always g           -> Always (normalize g)
+                AuXBack dir g      -> AuXBack dir (normalize g)
 
 
 

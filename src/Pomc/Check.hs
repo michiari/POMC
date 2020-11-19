@@ -132,65 +132,17 @@ compProps :: BitEncoding -> EncodedSet -> Input -> Bool
 compProps bitenc fset pset = D.extractInput bitenc fset == pset
 
 
+-- generate a closure ( phi= input formula of makeOpa, otherProps = AP set of the language)
+-- why did we need more expressions than what stated in the paper??
 -- to be updated
 closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
   where
-    -- not clear why
-    chainBackExp pset g = 
-                          if Take `PS.member` pset
-                            then [ PrecBack  (PS.singleton Yield) g
-                                 , ChainBack (PS.singleton Yield) g
-                                 , Not $ PrecBack  (PS.singleton Yield) g
-                                 , Not $ ChainBack (PS.singleton Yield) g
-                                 ]
-                            else []
-
-    untilExp pset g h = [ PrecNext pset  (Until pset g h)
-                        , ChainNext pset (Until pset g h)
-                        , Not $ PrecNext  pset (Until pset g h)
-                        , Not $ ChainNext pset (Until pset g h)
-                        ] ++ chainNextExp pset (Until pset g h)
-    sinceExp pset g h = [ PrecBack pset  (Since pset g h)
-                        , ChainBack pset (Since pset g h)
-                        , Not $ PrecBack  pset (Since pset g h)
-                        , Not $ ChainBack pset (Since pset g h)
-                        ] ++ chainBackExp pset (Since pset g h)
-
-    
-    huyExp g h = [ T
-                 , ChainBack (PS.singleton Yield) T
-                 , HierNextYield (HierUntilYield g h)
-                 , Not $ T
-                 , Not $ ChainBack (PS.singleton Yield) T
-                 , Not $ HierNextYield (HierUntilYield g h)
-                 ]
-    hsyExp g h = [ T
-                 , ChainBack (PS.singleton Yield) T
-                 , HierBackYield (HierSinceYield g h)
-                 , Not $ T
-                 , Not $ ChainBack (PS.singleton Yield) T
-                 , Not $ HierBackYield (HierSinceYield g h)
-                 ]
-    hutExp g h = [ T
-                 , ChainNext (PS.singleton Take) T
-                 , HierNextTake (HierUntilTake g h)
-                 , Not $ T
-                 , Not $ ChainNext (PS.singleton Take) T
-                 , Not $ HierNextTake (HierUntilTake g h)
-                 ] ++ hntExp (HierUntilTake g h)
-    hstExp g h = [ T
-                 , ChainNext (PS.singleton Take) T
-                 , HierBackTake (HierSinceTake g h)
-                 , Not $ T
-                 , Not $ ChainNext (PS.singleton Take) T
-                 , Not $ HierBackTake (HierSinceTake g h)
-                 ] ++ hbtExp (HierSinceTake g h)
-    evExp g = [ PrecNext (PS.fromList [Yield, Equal, Take]) (Eventually' g)
-              , Not $ PrecNext (PS.fromList [Yield, Equal, Take]) (Eventually' g)
-              ]
+    xbuExpr g = AuXBack Down g ++ Not $ AuxBack Down g
+    hndExpr g = AuXBack Down g ++ Not (AuxBack Down g) ++ AuXBack Down (HNext Down g) ++ Not $ AuXBack Down (HNext Down g)
+    hbdExpr g = Auxback Down g ++ Not ()
     closList f = case f of
       T                  -> [f, Not f]
       Atomic _           -> [f, Not f]
@@ -202,25 +154,31 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       Iff g h            -> [f, Not f] ++ closList g ++ closList h
       PNext _ g          -> [f, Not f] ++ closList g
       PBack _ g          -> [f, Not f] ++ closList g 
-      XNext _ g          -> [f, Not f] ++ closList g -- until here it's correct
-      XBack _ g          -> [f, Not f] ++ closList g ++ chainBackExp pset g 
-      HNext _ g          -> [f, Not f] ++ closList g
-      HBack _ g          -> [f, Not f] ++ closList g
-      Until dir g h      -> [f, Not f] ++ closList g ++ closList h ++ untilExp pset g h
-      Since pset g h     -> [f, Not f] ++ closList g ++ closList h ++ sinceExp pset g h
+      XNext _ g          -> [f, Not f] ++ closList g 
 
-      HierUntilYield g h -> [f, Not f] ++ closList g ++ closList h ++ huyExp g h
-      HierSinceYield g h -> [f, Not f] ++ closList g ++ closList h ++ hsyExp g h
-      HierUntilTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hutExp g h
-      HierSinceTake  g h -> [f, Not f] ++ closList g ++ closList h ++ hstExp g h
-      HierTakeHelper g   -> [f, Not f] ++ closList g
-      Eventually' g      -> [f, Not f] ++ closList g ++ evExp g
+      XBack Down g       -> [f, Not f] ++ closList g 
+      XBack Up g         -> [f, Not f] ++ closList g ++ xbuExpr g
+
+      HNext Down g       -> [f, Not f] ++ closList g ++ hndExpr g
+      HNext Up g          -> [f, Not f] ++ closList g  
+
+      HBack Down g          -> [f, Not f] ++ closList g ++ hbdExpr g
+      HBack Up g         -> [f, Not f] ++ closList g 
+      Until _ g h        -> [f, Not f] ++ closList g ++ closList h 
+      Since _ g h        -> [f, Not f] ++ closList g ++ closList h 
+      HUntil _ g h       -> [f, Not f] ++ closList g ++ closList h 
+      HSince _ g h       -> [f, Not f] ++ closList g ++ closList h 
+      Eventually g       -> [f, Not f] ++ closList g ++ evExp g 
+      Always g           -> [f, Not f] ++ closList g ++ alwExp g
+      AuXBack Down g     -> [f, Not f] ++ closList g
 
 
-
+-- given a closure of phi, generate a bitEncoding
 makeBitEncoding :: FormulaSet -> BitEncoding
 makeBitEncoding clos =
-  let pclos = S.filter (not . negative) clos
+  let 
+      -- positive formulas
+      pclos = S.filter (not . negative) clos
 
       fetchVec vec i = vec V.! i
 
@@ -246,7 +204,7 @@ makeBitEncoding clos =
 
   in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
--- to be updated
+-- generate atoms from a bitEncoding, the closure of phi and the powerset of AP set, excluded not valid sets
 genAtoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
 genAtoms bitenc clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
@@ -1389,13 +1347,13 @@ check phi sprs ts =
           where fstates = delta rgroup atoms pcombs state
                                 Nothing (Just popped) Nothing
 
-checkGen :: (Checkable f, Ord a, Show a)
-         => f a
+checkGen :: (Ord a, Show a)
+         => Formula a
          -> [StructPrecRel a]
          -> [Set (Prop a)]
          -> Bool
 checkGen phi precr ts =
-  let (tphi, tprecr, tts) = convPropTokens (toReducedPotl phi) precr ts
+  let (tphi, tprecr, tts) = convPropTokens phi precr ts
   in check tphi tprecr tts
 
 
@@ -1467,18 +1425,18 @@ fastcheck phi sprs ts =
             fstates = delta rgroup atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
 
-fastcheckGen :: (Checkable f, Ord a, Show a)
-             => f a
+fastcheckGen :: ( Ord a, Show a)
+             => Formula a
              -> [StructPrecRel a]
              -> [Set (Prop a)]
              -> Bool
 fastcheckGen phi precr ts =
-  let (tphi, tprecr, tts) = convPropTokens (toReducedPotl phi) precr ts
+  let (tphi, tprecr, tts) = convPropTokens phi precr ts
   in fastcheck tphi tprecr tts
 
---- generate an automaton based on a POTLv2 formula
+--- generate an OPA based on a POTLv2 formula
 makeOpa ::  Formula APType -- the input formula
-        -> ([Prop APType], [Prop APType]) -- what's the purpose of this?
+        -> ([Prop APType], [Prop APType]) -- AP (the first list is for structural labels, the second one is for normal labels)
         -> [StructPrecRel APType]  ---precedence relation array which replaces the usual matrix M
         -> (BitEncoding --alphabet
            , EncPrecFunc -- operator precedence function??
@@ -1497,12 +1455,15 @@ makeOpa phi (sls, als) sprs = (bitenc
                               , deltaPop   as pcs popRules
                               )
   where nphi = normalize phi
+        --- all the atomic propositions which make up the language (L = powerset(AP))
         tsprops = sls ++ als
+        --generate the powerset of AP, excluding the sets which contain more than one structural label
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
-
+        -- generate the closure of phi
         cl = closure nphi tsprops
         bitenc = makeBitEncoding cl
         (prec, _) = fromStructEnc bitenc sprs
+        --- generate all consistent subsets of cl
         as = genAtoms bitenc cl inputSet
         pcs = pendCombs bitenc cl
         is = initials nphi cl (as, bitenc)

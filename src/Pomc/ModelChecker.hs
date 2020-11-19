@@ -33,7 +33,7 @@ import GHC.Generics (Generic)
 import Data.Hashable
 
 data ExplicitOpa s a = ExplicitOpa
-  { sigma :: ([Prop a], [Prop a]) -- the alphabet
+  { sigma :: ([Prop a], [Prop a]) -- the alphabet (the first list is for structural labels, the second one is for normal labels)
   , precRel :: [StructPrecRel a] --precedence relation between structural labels of the alphabet
   , initials   :: [s] -- initial states of the OPA
   , finals     :: [s] -- final states of the OPA
@@ -101,8 +101,7 @@ modelCheckGen :: ( Ord s, Hashable s, Show s, Ord a)
               -> Bool
 modelCheckGen phi opa =
   let (sls, als) = sigma opa
-      (tphi, tprec, trans) =
-        convAP phi (precRel opa) (sls ++ (getProps phi) ++ als)
+      (tphi, tprec, trans) = convAP phi (precRel opa) (sls ++ (getProps phi) ++ als)
       transProps props = fmap (fmap trans) props
       transDelta delta = map (\(q, b, p) -> (q, Set.map (fmap trans) b, p)) delta
       tOpa = ExplicitOpa
