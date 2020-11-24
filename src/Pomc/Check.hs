@@ -142,7 +142,11 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
   where
     xbuExpr g = AuXBack Down g ++ Not $ AuxBack Down g
     hndExpr g = AuXBack Down g ++ Not (AuxBack Down g) ++ AuXBack Down (HNext Down g) ++ Not $ AuXBack Down (HNext Down g)
-    hbdExpr g = Auxback Down g ++ Not ()
+    hbdExpr g = Auxback Down g ++ Not (AuxBack Down g) ++ AuXBack Down (HBack Down g) ++ Not $ AuXBack Down (HBack Down g)
+    huuExpr g h = XBack Down T ++ Not (XBack Down T) ++ T ++ Not T ++ HNext Up (HUntil Up g h) ++ Not $ HNext Up (HUntil Up g h)
+    hsuExpr g h = XBack Down T ++ Not (XBack Down T) ++ T ++ Not T ++ HBack Up (HSince Up g h) ++ Not $ HBack Up (HSince Up g h)
+    hudExpr g h = XNext Up T   ++ Not (XNext Up T)   ++ T ++ Not T ++ HNext Down (HUntil Down g h) ++ Not $ HNext Down (HUntil Down g h)
+    hsdExpr g h = XNext Up T   ++ Not (XNext Up T)   ++ T ++ Not T ++ HBack Down (HSince Down g h) ++ Not $ HBack Down (HSince Down g h)
     closList f = case f of
       T                  -> [f, Not f]
       Atomic _           -> [f, Not f]
@@ -155,19 +159,19 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       PNext _ g          -> [f, Not f] ++ closList g
       PBack _ g          -> [f, Not f] ++ closList g 
       XNext _ g          -> [f, Not f] ++ closList g 
-
       XBack Down g       -> [f, Not f] ++ closList g 
       XBack Up g         -> [f, Not f] ++ closList g ++ xbuExpr g
-
       HNext Down g       -> [f, Not f] ++ closList g ++ hndExpr g
-      HNext Up g          -> [f, Not f] ++ closList g  
-
-      HBack Down g          -> [f, Not f] ++ closList g ++ hbdExpr g
+      HNext Up g         -> [f, Not f] ++ closList g  
+      HBack Down g       -> [f, Not f] ++ closList g ++ hbdExpr g
       HBack Up g         -> [f, Not f] ++ closList g 
       Until _ g h        -> [f, Not f] ++ closList g ++ closList h 
       Since _ g h        -> [f, Not f] ++ closList g ++ closList h 
-      HUntil _ g h       -> [f, Not f] ++ closList g ++ closList h 
-      HSince _ g h       -> [f, Not f] ++ closList g ++ closList h 
+      HUntil Down g h    -> [f, Not f] ++ closList g ++ closList h
+      HUntil Up g h      -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
+      HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hudExpr g h
+      HSince Up g h      -> [f, Not f] ++ closList g ++ closList h + hsuExpr g h 
+      HSince Down g h    -> [f, Not f] ++ closList g ++ closList h + hsdExpr g h 
       Eventually g       -> [f, Not f] ++ closList g ++ evExp g 
       Always g           -> [f, Not f] ++ closList g ++ alwExp g
       AuXBack Down g     -> [f, Not f] ++ closList g
