@@ -66,39 +66,47 @@ newBitEncoding :: (Int -> Formula APType)
                -> BitEncoding
 newBitEncoding fetch_ index_ width_ propBits_ =
   BitEncoding fetch_ index_ width_ propBits_ maskProps_
+  --the vector is just a mask of ones of size propBits
   where maskProps_ = EncodedAtom $ BV.ones propBits_
 
+--an encoded atom is just a BitVector
 newtype EncodedAtom = EncodedAtom BitVector deriving (Eq, Ord, Show)
 
 instance Hashable EncodedAtom where
+  -- hash with salt the value represented by the bit vector
   hashWithSalt salt (EncodedAtom bv) = hashWithSalt salt $ BV.nat bv
 
-
+---decode a BitEncoding into a formulaSet
 decode :: BitEncoding -> EncodedAtom -> FormulaSet
 decode bitenc (EncodedAtom bv) =
-  let pos = map (fetch bitenc) (listBits bv)
-      neg = map (Not . (fetch bitenc)) (listBits . BV.complement $ bv)
+  let pos = map (fetch bitenc) (listBits bv) --all the positive formulas, according to the bitencoding
+      neg = map (Not . (fetch bitenc)) (listBits . BV.complement $ bv) -- all the negative formulas, according to the bitencoding
   in S.fromList pos `S.union` S.fromList neg
 
+--decode a BitEncoding into a formulaSet, keeping only positive formulas
 pdecode :: BitEncoding -> EncodedAtom -> FormulaSet
 pdecode bitenc (EncodedAtom bv) =
   S.fromList $ map (fetch bitenc) (listBits bv)
 {-# INLINABLE pdecode #-}
 
+--encode a set of formulas into a BitVector, given a BitEncoding which gives the order of formulas in the vector
 encode :: BitEncoding -> FormulaSet -> EncodedAtom
 encode bitenc set =
   EncodedAtom $ S.foldl BV.setBit (BV.zeros $ width bitenc) (S.map (index bitenc) set)
 {-# INLINABLE encode #-}
 
+--encode a single formula into a BitVector, given a BitEncoding which gives the order of formulas in the vector, and the size of the vector
 singleton :: BitEncoding -> Formula APType -> EncodedAtom
 singleton bitenc f =
   EncodedAtom $ BV.setBit (BV.zeros $ width bitenc) (index bitenc $ f)
 {-# INLINABLE singleton #-}
 
+--create a BitEncoding of only zeros
 empty :: BitEncoding -> EncodedAtom
 empty bitenc = EncodedAtom . BV.zeros $ width bitenc
 {-# INLINABLE empty #-}
 
+-- ???
 generateFormulas :: BitEncoding -> [EncodedAtom]
 generateFormulas bitenc =
   let len = width bitenc - propBits bitenc
@@ -107,10 +115,12 @@ generateFormulas bitenc =
      else map (EncodedAtom . BV.reverse) $ BV.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
 {-# INLINABLE generateFormulas #-}
 
+--test whether the BitEncoding represents the zero number
 null :: EncodedAtom -> Bool
 null (EncodedAtom bv) = bv == BV.nil
 {-# INLINE null #-}
 
+--
 member :: BitEncoding -> Formula APType -> EncodedAtom -> Bool
 member bitenc phi (EncodedAtom bv) | negative phi = not $ bv BV.@. (index bitenc $ negation phi)
                             | otherwise = bv BV.@. (index bitenc $ phi)
@@ -149,6 +159,7 @@ extractInput :: BitEncoding -> EncodedAtom -> EncodedAtom
 extractInput bitenc ea = intersect ea (maskProps bitenc)
 {-# INLINABLE extractInput #-}
 
+
 decodeInput :: BitEncoding -> EncodedAtom -> PropSet
 decodeInput bitenc (EncodedAtom bv) =
   S.fromList $ map (getProp . (fetch bitenc)) (listBits bv)
@@ -167,6 +178,6 @@ inputSuchThat bitenc predicate = EncodedAtom $ BV.fromBits bitList
         atomicPred (Atomic p) = predicate p
 {-# INLINABLE inputSuchThat #-}
 
-
+--a list of all the positions in BitVector where there a one
 listBits :: BitVector -> [Int]
 listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v

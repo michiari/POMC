@@ -1442,7 +1442,7 @@ fastcheckGen phi precr ts =
 makeOpa ::  Formula APType -- the input formula
         -> ([Prop APType], [Prop APType]) -- AP (the first list is for structural labels, the second one is for normal labels)
         -> [StructPrecRel APType]  ---precedence relation array which replaces the usual matrix M
-        -> (BitEncoding --alphabet
+        -> (BitEncoding --the guide for encoding and decoding
            , EncPrecFunc -- operator precedence function??
            , [State] --states 
            , State -> Bool -- isFinal
