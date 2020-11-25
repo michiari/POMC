@@ -165,6 +165,7 @@ instance Functor Formula where
 
 instance Hashable a => Hashable (Formula a)
 
+--get all the atomic propositions used by a formula, removing duplicates
 getProps :: (Eq a) => Formula a -> [Prop a]
 getProps formula = nub $ collectProps formula
   where collectProps f = case f of
@@ -220,11 +221,12 @@ negation :: Formula a -> Formula a
 negation (Not f) = f
 negation f = Not f
 
+--remove double negation
 normalize :: Formula a -> Formula a
 normalize f = case f of
                 T                  -> f
                 Atomic _           -> f
-                Not (Not g)        -> normalize g    -- remove double negation
+                Not (Not g)        -> normalize g   
                 Not g              -> Not (normalize g)
                 Or g h             -> Or  (normalize g) (normalize h)
                 And g h            -> And (normalize g) (normalize h)

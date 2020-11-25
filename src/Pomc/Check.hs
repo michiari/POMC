@@ -184,6 +184,7 @@ makeBitEncoding clos =
       -- positive formulas
       pclos = S.filter (not . negative) clos
 
+      --function which return element at position i in vector vec
       fetchVec vec i = vec V.! i
 
       -- Mapping between positive formulas and bits
@@ -203,6 +204,7 @@ makeBitEncoding clos =
 
       -- Mapping between positive closure and bits
       pClosVec = pAtomicVec V.++ pFormulaVec
+      --index function of BitEncoding
       pClosLookup phi = fromJust $ M.lookup phi pClosMap
         where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
 
@@ -1438,11 +1440,11 @@ fastcheckGen phi precr ts =
   let (tphi, tprecr, tts) = convPropTokens phi precr ts
   in fastcheck tphi tprecr tts
 
---- generate an OPA based on a POTLv2 formula
+--- generate an OPA corresponding to a POTLv2 formula
 makeOpa ::  Formula APType -- the input formula
-        -> ([Prop APType], [Prop APType]) -- AP (the first list is for structural labels, the second one is for normal labels)
+        -> ([Prop APType], [Prop APType]) -- AP (the first list is for structural labels, the second one is for all the propositions of phi)
         -> [StructPrecRel APType]  ---precedence relation array which replaces the usual matrix M
-        -> (BitEncoding --the guide for encoding and decoding
+        -> (BitEncoding --the guide for encoding and decoding between bits and formulas and props
            , EncPrecFunc -- operator precedence function??
            , [State] --states 
            , State -> Bool -- isFinal
@@ -1458,12 +1460,15 @@ makeOpa phi (sls, als) sprs = (bitenc
                               , deltaShift as pcs shiftRules
                               , deltaPop   as pcs popRules
                               )
-  where nphi = normalize phi
-        --- all the atomic propositions which make up the language (L = powerset(AP))
+  where 
+        --remove double negations
+        nphi = normalize phi
+        -- all the atomic propositions (AP) which make up the language (L = powerset(AP))
+        -- it contains duplicates
         tsprops = sls ++ als
-        --generate the powerset of AP, excluding the sets which contain more than one structural label
+        --generate the powerset of AP, ech time taking a prop from the structural list
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
-        -- generate the closure of phi
+        -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
         bitenc = makeBitEncoding cl
         (prec, _) = fromStructEnc bitenc sprs

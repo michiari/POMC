@@ -33,7 +33,7 @@ import GHC.Generics (Generic)
 import Data.Hashable
 
 data ExplicitOpa s a = ExplicitOpa
-  { sigma :: ([Prop a], [Prop a]) -- the alphabet (the first list is for structural labels, the second one is for normal labels)
+  { sigma :: ([Prop a], [Prop a]) -- the AP of the input alphabet (the first list is for structural labels, the second one is for normal labels)
   , precRel :: [StructPrecRel a] --precedence relation between structural labels of the alphabet
   , initials   :: [s] -- initial states of the OPA
   , finals     :: [s] -- final states of the OPA
@@ -64,6 +64,7 @@ modelCheck :: (Ord s, Hashable s, Show s)
 modelCheck phi opa =
   let essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
+      --generate the OPA associated to the negation of the input formula
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
         makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa)
 
@@ -115,6 +116,7 @@ modelCheckGen phi opa =
              }
   in modelCheck tphi tOpa
 
+--extract all the atomic propositions (AP) which form the language P(AP)
 extractALs :: Ord a => [(s, Set (Prop a), [s])] -> [Prop a]
 extractALs deltaRels = Set.toList $ foldl (\als (_, a, _) -> als `Set.union` a) Set.empty deltaRels
 
