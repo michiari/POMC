@@ -123,7 +123,7 @@ null (EncodedAtom bv) = bv == BV.nil
 
 --test whether a Formula is part of an EncodedAtom
 -- foreach phi foreach EA (not phi belongs to EA <=> phi not belongs to EA)
--- @ operator is for indexing
+-- @. operator is for indexing
 member :: BitEncoding -> Formula APType -> EncodedAtom -> Bool
 member bitenc phi (EncodedAtom bv) | negative phi = not $ bv BV.@. (index bitenc $ negation phi)
                             | otherwise = bv BV.@. (index bitenc $ phi)

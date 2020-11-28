@@ -262,4 +262,4 @@ fullOpa (Just opa) prs = Just $ ExplicitOpa
         als = S.toList $
               (S.fromList (extractALs $ deltaPush opa)
                `S.union` S.fromList (extractALs $ deltaShift opa))
-              `S.difference` (S.fromList sls)
+              `S.difference` (S.fromList sls) -- only normal labels, remove structural labels

@@ -68,14 +68,20 @@ instance Checkable (Formula) where
 
 
 type EncPrecFunc = EncodedSet -> EncodedSet -> Maybe Prec
-
+-- generate an EncPrecFunc from a StructPrecRel
 fromStructEnc :: BitEncoding -> [StructPrecRel APType] -> (EncPrecFunc, PropSet)
 fromStructEnc bitenc sprs = (\s1 s2 -> M.lookup (structLabel s1, structLabel s2) relMap, sl)
-  where sl = S.fromList $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) sprs
+  where 
+        --a set of all structural labels whose prec relation is defined at least once (fromList removes duplicates)
+        sl = S.fromList $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) sprs
+        -- an encoded Atom where all ones corresponds to members of previous set
         maskSL = D.inputSuchThat bitenc (flip S.member sl)
+        -- a function which makes a bitwise AND between a parameter Atom and the mask
         structLabel s = s `D.intersect` maskSL
+        --map the relation between props into a relation between EncodedAtoms
         relMap = M.fromList $ map (\(sl1, sl2, pr) ->
                                      ((encodeProp sl1, encodeProp sl2), pr)) sprs
+        --encode a single atomic proposition into an EncodedAtom
         encodeProp = D.encodeInput bitenc . S.singleton
 
 
@@ -133,8 +139,6 @@ compProps bitenc fset pset = D.extractInput bitenc fset == pset
 
 
 -- generate a closure ( phi= input formula of makeOpa, otherProps = AP set of the language)
--- why did we need more expressions than what stated in the paper??
--- to be updated
 closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
                              phiClos  = closList phi
@@ -143,10 +147,13 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
     xbuExpr g = AuXBack Down g ++ Not $ AuxBack Down g
     hndExpr g = AuXBack Down g ++ Not (AuxBack Down g) ++ AuXBack Down (HNext Down g) ++ Not $ AuXBack Down (HNext Down g)
     hbdExpr g = Auxback Down g ++ Not (AuxBack Down g) ++ AuXBack Down (HBack Down g) ++ Not $ AuXBack Down (HBack Down g)
+    untilExpr dir g h = 
+    sinceExpr g h =
     huuExpr g h = XBack Down T ++ Not (XBack Down T) ++ T ++ Not T ++ HNext Up (HUntil Up g h) ++ Not $ HNext Up (HUntil Up g h)
     hsuExpr g h = XBack Down T ++ Not (XBack Down T) ++ T ++ Not T ++ HBack Up (HSince Up g h) ++ Not $ HBack Up (HSince Up g h)
     hudExpr g h = XNext Up T   ++ Not (XNext Up T)   ++ T ++ Not T ++ HNext Down (HUntil Down g h) ++ Not $ HNext Down (HUntil Down g h)
     hsdExpr g h = XNext Up T   ++ Not (XNext Up T)   ++ T ++ Not T ++ HBack Down (HSince Down g h) ++ Not $ HBack Down (HSince Down g h)
+    evExpr g =
     closList f = case f of
       T                  -> [f, Not f]
       Atomic _           -> [f, Not f]
@@ -165,8 +172,8 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
       HNext Up g         -> [f, Not f] ++ closList g  
       HBack Down g       -> [f, Not f] ++ closList g ++ hbdExpr g
       HBack Up g         -> [f, Not f] ++ closList g 
-      Until _ g h        -> [f, Not f] ++ closList g ++ closList h 
-      Since _ g h        -> [f, Not f] ++ closList g ++ closList h 
+      Until dir g h        -> [f, Not f] ++ closList g ++ closList h ++ untilExpr dir g h
+      Since _ g h        -> [f, Not f] ++ closList g ++ closList h ++ sinceExpr g h 
       HUntil Down g h    -> [f, Not f] ++ closList g ++ closList h
       HUntil Up g h      -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
       HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hudExpr g h
@@ -210,34 +217,44 @@ makeBitEncoding clos =
 
   in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
--- generate atoms from a bitEncoding, the closure of phi and the powerset of AP set, excluded not valid sets
+-- generate atoms from a bitEncoding, the closure of phi and the powerset of APs, excluded not valid sets
 genAtoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
 genAtoms bitenc clos inputSet =
   let validPropSets = S.insert (S.singleton End) inputSet
 
-      -- Make power set of AP
+      -- Map the powerset of APs into a set of EncodedAtoms
       atomics = map (D.encodeInput bitenc) $ S.toList validPropSets
 
       -- Consistency checks
+      -- no checks needed for Atomic p
+      -- no checks needed for Not g
+      -- no checks needed for PNext dir g
+      -- no checks needed for PBack dir g
+      -- no checks needed for XNext dir g
+      -- no checks needed for XBack dir g
+      -- no checks needed for HNext dir g
+      -- no checks needed for HBack dir g
+
+
       checks =
         [ onlyif (T `S.member` clos) (trueCons bitenc)
-        , onlyif (not . null $ [f | f@(Or _ _)             <- cl]) (orCons bitenc clos)
-        , onlyif (not . null $ [f | f@(And _ _)            <- cl]) (andCons bitenc clos)
-        , onlyif (not . null $ [f | f@(Xor _ _)            <- cl]) (xorCons bitenc clos) 
-        , onlyif (not . null $ [f | f@(Implies _ _)        <- cl]) (impliesCons bitenc clos) 
-        , onlyif (not . null $ [f | f@(Iff _ _)            <- cl]) (iffCons bitenc clos) 
-        , onlyif (not . null $ [f | f@(XNext _ _)          <- cl]) (chainNextCons bitenc clos)
-        , onlyif (not . null $ [f | f@(ChainBack _ _)      <- cl]) (chainBackCons bitenc clos)
-        , onlyif (not . null $ [f | f@(Until _ _ _)        <- cl]) (untilCons bitenc clos)
-        , onlyif (not . null $ [f | f@(Since _ _ _)        <- cl]) (sinceCons bitenc clos)
-        , onlyif (not . null $ [f | f@(HierUntilYield _ _) <- cl]) (hierUntilYieldCons bitenc clos)
-        , onlyif (not . null $ [f | f@(HierSinceYield _ _) <- cl]) (hierSinceYieldCons bitenc clos)
-        , onlyif (not . null $ [f | f@(HierUntilTake _ _)  <- cl]) (hierUntilTakeCons bitenc clos)
-        , onlyif (not . null $ [f | f@(HierSinceTake _ _)  <- cl]) (hierSinceTakeCons bitenc clos)
-        , onlyif (not . null $ [f | f@(Eventually' _)      <- cl]) (evCons bitenc clos)
+        , onlyif (not . null $ [f | f@(And _ _)          <- cl]) (andCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Or _ _)           <- cl]) (orCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Xor _ _)          <- cl]) (xorCons bitenc clos) 
+        , onlyif (not . null $ [f | f@(Implies _ _)      <- cl]) (impliesCons bitenc clos) 
+        , onlyif (not . null $ [f | f@(Iff _ _)          <- cl]) (iffCons bitenc clos) 
+        , onlyif (not . null $ [f | f@(Until _ _ _)      <- cl]) (untilCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Since _ _ _)      <- cl]) (sinceCons bitenc clos)
+        , onlyif (not . null $ [f | f@(HUntil Up _ _)    <- cl]) (hierUntilUpCons bitenc clos)
+        , onlyif (not . null $ [f | f@(HSince Up _ _)    <- cl]) (hierSinceUpCons bitenc clos)
+        , onlyif (not . null $ [f | f@(HUntil Down  _ _) <- cl]) (hierUntilDownCons bitenc clos)
+        , onlyif (not . null $ [f | f@(HSince Down  _ _) <- cl]) (hierSinceDowneCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Eventually _)     <- cl]) (evCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Always _)         <- cl]) (alCons bitenc clos)
         ]
         where onlyif cond f = if cond then f else const True
               cl = S.toList clos
+      --for each check of the checks List, we apply the EncodedAtom to it
       consistent eset = all (\c -> c eset) checks
 
       -- Make all consistent atoms
@@ -252,165 +269,169 @@ genAtoms bitenc clos inputSet =
               then SQ.fromList atomics
               else foldl' prependCons SQ.empty (D.generateFormulas bitenc)
 
+--consistency Checks functions
+--consistency check for T AP
 trueCons :: BitEncoding -> EncodedSet -> Bool
 trueCons bitenc set = not $ D.member bitenc (Not T) set
 
-orCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-orCons bitenc clos set = not (D.any bitenc consSet set)
-                         &&
-                         null [f | f@(Or g h) <- S.toList clos,
-                                ((D.member bitenc g set) ||
-                                 (D.member bitenc h set)
-                                ) && not (D.member bitenc f set)]
-  where consSet (Or g h) = not $ D.member bitenc g set || D.member bitenc h set
-        consSet _ = False
-
+--consistency check for (And g h) Formula
 andCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
 andCons bitenc clos set = not (D.any bitenc consSet set)
                           &&
+                          -- if both g and h hold in current atom, then (And g h) must hold as well
                           null [f | f@(And g h) <- S.toList clos,
                                  (D.member bitenc g set) &&
                                  (D.member bitenc h set) &&
                                  not (D.member bitenc f set)]
-  where consSet (And g h) = not $ D.member bitenc g set && D.member bitenc h set
+
+  where -- if (And g h) holds in current atom, then g and h must both hold as well
+        consSet (And g h) = not $ D.member bitenc g set && D.member bitenc h set
         consSet _ = False
 
+--consistency check for (Or g h) Formula
+orCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+orCons bitenc clos set = not (D.any bitenc consSet set)
+                         &&
+                         -- if g or h holds in current atom, then (Or g h) must hold as well
+                         null [f | f@(Or g h) <- S.toList clos,
+                                ((D.member bitenc g set) ||
+                                 (D.member bitenc h set)
+                                ) && not (D.member bitenc f set)]
 
+  where -- if (Or g h) holds in current atom, then g or h must hold as well
+        consSet (Or g h) = not $ D.member bitenc g set || D.member bitenc h set
+        consSet _ = False
 
+-- consistency check for (Xor g h) Formula 
 xorCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
 xorCons bitenc clos set = not (D.any bitenc consSet set)
                          &&
+                         -- if g xor h holds in current atom, then (Xor g h) must hold as well
                          null [f | f@(Xor g h) <- S.toList clos,
                                 (xor (D.member bitenc g set) 
                                  (D.member bitenc h set)
-                                ) && not (D.member bitenc f set)]
-  where consSet (Xor g h) = not $ xor D.member bitenc g set  D.member bitenc h set
+                                ) && not (D.member bitenc f set)]                              
+  where -- if (Xor g h) holds in current atom, then g xor h must hold as well
+        consSet (Xor g h) = not $ xor D.member bitenc g set  D.member bitenc h set
         consSet _ = False
 
+-- consistency check for (Implies g h)
 impliesCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-xorCons bitenc clos set = not (D.any bitenc consSet set)
+impliesCons bitenc clos set = not (D.any bitenc consSet set)
                          &&
+                         -- if g implies h holds in current atom, then (Implies g h) must hold as well
                          null [f | f@(Implies g h) <- S.toList clos,
                                 (implies (D.member bitenc g set) 
                                  (D.member bitenc h set)
                                 ) && not (D.member bitenc f set)]
-  where consSet (Implies g h) = not $ implies D.member bitenc g set  D.member bitenc h set
+  where -- if (Implies g h) holds in current atom, then g implies h must hold as well
+        consSet (Implies g h) = not $ implies D.member bitenc g set  D.member bitenc h set
         consSet _ = False
 
+-- consistency check for (Iff g h)
 iffCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-xorCons bitenc clos set = not (D.any bitenc consSet set)
+iffCons bitenc clos set = not (D.any bitenc consSet set)
                          &&
+                         -- if g iff h holds in current atom, then (Iff g h) must hold as well
                          null [f | f@(Iff g h) <- S.toList clos,
                                 (iff (D.member bitenc g set) 
                                  (D.member bitenc h set)
                                 ) && not (D.member bitenc f set)]
-  where consSet (Iff g h) = not $ iff D.member bitenc g set  D.member bitenc h set
+  where -- if (Iff g h) holds in current atom, then g iff h must hold as well
+        consSet (Iff g h) = not $ iff D.member bitenc g set  D.member bitenc h set
         consSet _ = False
 
-
----
-XNextCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-XNextCons bitenc clos set = not (D.any bitenc consSet set)
-                                &&
-                                null [f | f@(XNext pset g) <- S.toList clos,
-                                                                  PS.size pset > 1 &&
-                                                                  present pset g &&
-                                                                  not (D.member bitenc f set)]
-  where present pset g = any (\p -> D.member bitenc (ChainNext (PS.singleton p) g) set)
-                             (PS.toList pset)
-        consSet (ChainNext pset g) = PS.size pset > 1 && not (present pset g)
-        consSet _ = False
-
-chainBackCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-chainBackCons bitenc clos set = not (D.any bitenc consSet set)
-                                &&
-                                null [f | f@(ChainBack pset g) <- S.toList clos,
-                                                                  PS.size pset > 1 &&
-                                                                  present pset g &&
-                                                                  not (D.member bitenc f set)]
-  where present pset g = any (\p -> D.member bitenc (ChainBack (PS.singleton p) g) set)
-                             (PS.toList pset)
-        consSet (ChainBack pset g) = PS.size pset > 1 && not (present pset g)
-        consSet _ = False
-------
+-- consistency check for (Until dir g h)
 untilCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
 untilCons bitenc clos set = not (D.any bitenc consSet set)
                             &&
+                            -- if h holds or (Until dir g h) still holds in the next (chain) position, then (Until dir g h) must hold in the current atom
                             null [f | f@(Until pset g h) <- S.toList clos,
                                                             present f pset g h &&
                                                             not (D.member bitenc f set)]
-  where present u pset g h = D.member bitenc h set
+  where  -- if (Until dir g h) holds, then it must be that h holds or (Until dir g h) still holds in the next (chain) position
+        present u dir g h = D.member bitenc h set
                              || (D.member bitenc g set
-                                 && (D.member bitenc (PrecNext  pset u) set
-                                     || D.member bitenc (ChainNext pset u) set))
-        consSet f@(Until pset g h) = not $ present f pset g h
+                                 && (D.member bitenc (PNext  dir u) set
+                                     || D.member bitenc (XNext dir u) set))
+        consSet f@(Until dir g h) = not $ present f dir g h
         consSet _ = False
 
+-- consistency check for (Since dir g h)
 sinceCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
 sinceCons bitenc clos set = not (D.any bitenc consSet set)
                             &&
+                            -- if h holds or (Since dir g h) still holds in the previous (chain) position, then (Since dir g h) must hold in the current atom
                             null [f | f@(Since pset g h) <- S.toList clos,
                                                             present f pset g h &&
                                                             not (D.member bitenc f set)]
-  where present s pset g h = D.member bitenc h set
+  where -- if (Since dir g h) holds, then it must be that h holds or (Since dir g h)  holds in the previous (chain) position
+        present s dir g h = D.member bitenc h set
                              || (D.member bitenc g set
-                                 && (D.member bitenc (PrecBack pset s) set
-                                     || D.member bitenc (ChainBack pset s) set))
-        consSet f@(Since pset g h) = not $ present f pset g h
+                                 && (D.member bitenc (PBack dir s) set
+                                     || D.member bitenc (XBack dir s) set))
+        consSet f@(Since dir g h) = not $ present f dir g h
         consSet _ = False
 
-hierUntilYieldCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-hierUntilYieldCons bitenc clos set = not (D.any bitenc consSet set)
+--TODO update this with POTLv2
+-- consistency check for HUntil Up g h
+hierUntilUpCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+hierUntilUpCons bitenc clos set = not (D.any bitenc consSet set)
                                      &&
-                                     null [f | f@(HierUntilYield g h) <- S.toList clos,
+                                     null [f | f@(HUntil Up g h) <- S.toList clos,
                                                                          present f g h &&
                                                                          not (D.member bitenc f set)]
-  where present huy g h =
-          (D.member bitenc h set && D.member bitenc (ChainBack (PS.singleton Yield) T) set)
+  where -- if (HUntil Up g h) holds, then or (...) (...) holds
+        present huu g h =
+          (D.member bitenc h set && D.member bitenc (XBack Down T) set)
           ||
-          (D.member bitenc g set && D.member bitenc (HierNextYield huy) set)
-        consSet f@(HierUntilYield g h) = not $ present f g h
+          (D.member bitenc g set && D.member bitenc (HNext Up huu) set)
+        consSet f@(HUntil Up g h) = not $ present f g h
         consSet _ = False
 
-hierSinceYieldCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-hierSinceYieldCons bitenc clos set = not (D.any bitenc consSet set)
+-- consistency check for HSince Up g h
+hierSinceUpCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+hierSinceUpCons bitenc clos set = not (D.any bitenc consSet set)
                                      &&
-                                     null [f | f@(HierSinceYield g h) <- S.toList clos,
+                                     null [f | f@(HSince Up g h) <- S.toList clos,
                                                                          present f g h &&
                                                                          not (D.member bitenc f set)]
-  where present hsy g h =
-          (D.member bitenc h set && D.member bitenc (ChainBack (PS.singleton Yield) T) set)
+  where present hsu g h =
+          (D.member bitenc h set && D.member bitenc (XBack Down T) set)
           ||
-          (D.member bitenc g set && D.member bitenc (HierBackYield hsy) set)
-        consSet f@(HierSinceYield g h) = not $ present f g h
+          (D.member bitenc g set && D.member bitenc (HBack Up hsu) set)
+        consSet f@(HSince Up g h) = not $ present f g h
         consSet _ = False
 
-hierUntilTakeCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-hierUntilTakeCons bitenc clos set = not (D.any bitenc consSet set)
+-- consistency check for HUntil Down g h
+hierUntilDownCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+hierUntilDownCons bitenc clos set = not (D.any bitenc consSet set)
                                     &&
-                                    null [f | f@(HierUntilTake g h) <- S.toList clos,
+                                    null [f | f@(HUntil Down g h) <- S.toList clos,
                                                                        present f g h &&
                                                                        not (D.member bitenc f set)]
-  where present hut g h =
-          (D.member bitenc h set && D.member bitenc (ChainNext (PS.singleton Take) T) set)
+  where present hud g h =
+          (D.member bitenc h set && D.member bitenc (XNext Up T) set)
           ||
-          (D.member bitenc g set && D.member bitenc (HierNextTake hut) set)
-        consSet f@(HierUntilTake g h) = not $ present f g h
+          (D.member bitenc g set && D.member bitenc (HNext Down hud) set)
+        consSet f@(HUntil Down g h) = not $ present f g h
         consSet _ = False
 
-hierSinceTakeCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-hierSinceTakeCons bitenc clos set = not (D.any bitenc consSet set)
+-- consistency check for HSince Down g h
+hierSinceDownCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
+hierSinceDownCons bitenc clos set = not (D.any bitenc consSet set)
                                     &&
-                                    null [f | f@(HierSinceTake g h) <- S.toList clos,
+                                    null [f | f@(HSince Down g h) <- S.toList clos,
                                                                        present f g h &&
                                                                        not (D.member bitenc f set)]
-  where present hst g h =
-          (D.member bitenc h set && D.member bitenc (ChainNext (PS.singleton Take) T) set)
+  where present hsd g h =
+          (D.member bitenc h set && D.member bitenc (XNext Up T) set)
           ||
-          (D.member bitenc g set && D.member bitenc (HierBackTake hst) set)
-        consSet f@(HierSinceTake g h) = not $ present f g h
+          (D.member bitenc g set && D.member bitenc (HBack Down hsd) set)
+        consSet f@(HSince Down g h) = not $ present f g h
         consSet _ = False
 
+-- consistency check for Eventually g
 evCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
 evCons bitenc clos set = not (D.any bitenc consSet set)
                          &&
@@ -419,9 +440,13 @@ evCons bitenc clos set = not (D.any bitenc consSet set)
                                                         not (D.member bitenc f set)]
   where present ev g =
           (D.member bitenc g set) ||
-          (D.member bitenc (PrecNext (PS.fromList [Yield, Equal, Take]) ev) set)
-        consSet f@(Eventually' g) = not $ present f g
+          (D.member bitenc (PNext Up ev) set) ||
+          (D.member bitenc (PNext Down ev) set)
+        consSet f@(Eventually g) = not $ present f g
         consSet _ = False
+
+-- consistency check for
+alCons
 
 pendCombs :: BitEncoding -> FormulaSet -> Set (EncodedSet, Bool, Bool, Bool)
 pendCombs bitenc clos =
@@ -1470,7 +1495,9 @@ makeOpa phi (sls, als) sprs = (bitenc
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
         -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
+        -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
+        -- generate an EncPrecFunc from a StructPrecRel
         (prec, _) = fromStructEnc bitenc sprs
         --- generate all consistent subsets of cl
         as = genAtoms bitenc cl inputSet
@@ -1489,3 +1516,8 @@ makeOpa phi (sls, als) sprs = (bitenc
         deltaPop atoms pcombs rgroup state popped = fstates
           where fstates = delta rgroup atoms pcombs state
                                 Nothing (Just popped) Nothing
+
+
+
+
+

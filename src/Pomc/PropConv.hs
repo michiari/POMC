@@ -40,6 +40,7 @@ convPropLabels phi (sls, als) precr =
   let (tphi, tprec, trans) = convAP phi precr (sls ++ als)
   in (tphi, (map (fmap trans) sls, map (fmap trans) als), tprec)
 
+
 convAP :: (Ord a)
        => Formula a
        -> [StructPrecRel a]

@@ -49,15 +49,15 @@ data Formula a = T
                | PBack  Dir (Formula a)
                | XNext  Dir (Formula a)
                | XBack  Dir (Formula a)
-               | HNext  Dir (Formula a)
-               | HBack  Dir (Formula a)
+               | HNext  Dir (Formula a) 
+               | HBack  Dir (Formula a) 
                | Until  Dir (Formula a) (Formula a)
                | Since  Dir (Formula a) (Formula a)
-               | HUntil Dir (Formula a) (Formula a)
-               | HSince Dir (Formula a) (Formula a)
-               | Eventually (Formula a)
-               | Always     (Formula a)
-               | AuXBack Dir  (Formula a)
+               | HUntil Dir (Formula a) (Formula a) 
+               | HSince Dir (Formula a) (Formula a) 
+               | Eventually (Formula a) -- TODO
+               | Always     (Formula a) -- TODO
+               | AuXBack Dir(Formula a) -- TODO
                deriving (Eq, Ord)
 
 instance Checkable (Formula) where

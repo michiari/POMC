@@ -62,7 +62,9 @@ modelCheck :: (Ord s, Hashable s, Show s)
            -> ExplicitOpa s APType
            -> Bool
 modelCheck phi opa =
-  let essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
+  let 
+      --fromList removes duplicates
+      essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
       --generate the OPA associated to the negation of the input formula
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
