@@ -55,7 +55,7 @@ data Formula a = T
                | Since  Dir (Formula a) (Formula a)
                | HUntil Dir (Formula a) (Formula a) 
                | HSince Dir (Formula a) (Formula a) 
-               | Eventually (Formula a) -- TODO
+               | Eventually (Formula a) 
                | Always     (Formula a) -- TODO
                | AuXBack Dir(Formula a) -- TODO
                deriving (Eq, Ord)
