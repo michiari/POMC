@@ -258,7 +258,7 @@ fullOpa (Just opa) prs = Just $ ExplicitOpa
                          , deltaShift = deltaShift opa
                          , deltaPop = deltaPop opa
                          }
-  where sls = extractSLs prs
+  where sls = extractSLs prs  -- structural labels
         als = S.toList $
               (S.fromList (extractALs $ deltaPush opa)
                `S.union` S.fromList (extractALs $ deltaShift opa))

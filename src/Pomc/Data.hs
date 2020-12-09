@@ -52,12 +52,13 @@ type FormulaSet = Set (Formula APType)
 type PropSet = Set (Prop APType)
 
 -- a BitEncoding is just the "guide" to translate from a FormulaSet to a BitVector and viceversa
+-- TODO: where are the AP bits? at the beginning or at the end?
 data BitEncoding = BitEncoding
   { fetch :: (Int -> Formula APType)
   , index :: (Formula APType -> Int)
   , width :: Int
   , propBits :: Int
-  , maskProps :: EncodedAtom
+  , maskProps :: EncodedAtom -- tells us which bits represent AP ( zero = not an AP, i.e. a formula)
   }
 
 newBitEncoding :: (Int -> Formula APType)
@@ -107,7 +108,7 @@ empty :: BitEncoding -> EncodedAtom
 empty bitenc = EncodedAtom . BV.zeros $ width bitenc
 {-# INLINABLE empty #-}
 
--- generate a list of EncodedAtom where each atom has a different set of formulas
+-- generate a list of EncodedAtom where each atom has a different set of formulas (basically a powerset)
 generateFormulas :: BitEncoding -> [EncodedAtom]
 generateFormulas bitenc =
   let len = width bitenc - propBits bitenc
@@ -159,12 +160,13 @@ union :: EncodedAtom -> EncodedAtom -> EncodedAtom
 union (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v1 .|. v2
 {-# INLINE union #-}
 
---concatenation of two BitVectors
+--returns the concatenation of two BitVectors 
 joinInputFormulas :: EncodedAtom -> EncodedAtom -> EncodedAtom
 joinInputFormulas (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v2 BV.# v1
 {-# INLINABLE joinInputFormulas #-}
 
 --INPUT = AP = finite set of atomic propositions
+-- sets a zero all the bits which represent formulas, does not modify the bits which represent AP
 extractInput :: BitEncoding -> EncodedAtom -> EncodedAtom
 extractInput bitenc ea = intersect ea (maskProps bitenc)
 {-# INLINABLE extractInput #-}

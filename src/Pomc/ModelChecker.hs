@@ -58,17 +58,18 @@ cartesian :: [a] -> [State] -> [MCState a]
 cartesian xs ys = [MCState x y | x <- xs, y <- ys]
 
 modelCheck :: (Ord s, Hashable s, Show s)
-           => Formula APType
-           -> ExplicitOpa s APType
-           -> Bool
+           => Formula APType -- input formula to check
+           -> ExplicitOpa s APType -- input OPA
+           -> Bool -- does the OPA satisfy the formula?
 modelCheck phi opa =
   let 
       --fromList removes duplicates
+      -- all the structural labels + all the labels which appear in phi
       essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
       --generate the OPA associated to the negation of the input formula
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
-        makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa)
+        makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa) --TODO: is it correct to use getProps?
 
       cInitials = cartesian (initials opa) phiInitials
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal p

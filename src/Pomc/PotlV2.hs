@@ -56,8 +56,8 @@ data Formula a = T
                | HUntil Dir (Formula a) (Formula a) 
                | HSince Dir (Formula a) (Formula a) 
                | Eventually (Formula a) 
-               | Always     (Formula a) -- TODO
-               | AuXBack Dir(Formula a) -- TODO
+               | Always     (Formula a) 
+               | AuXBack Dir(Formula a) 
                deriving (Eq, Ord)
 
 instance Checkable (Formula) where
@@ -202,7 +202,7 @@ future (HNext      {}) = True
 future (Until      {}) = True
 future (HUntil     {}) = True
 future (Eventually {}) = True
-future (Always     {}) = True
+future (Always     {}) = True -- TODO: is this correct?
 future _ = False
 
 negative :: Formula a -> Bool
