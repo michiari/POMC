@@ -28,7 +28,7 @@ import Data.List (nub)
 
 import GHC.Generics (Generic)
 
-import Data.Hashable
+
 
 
 data Formula a = T
@@ -81,7 +81,6 @@ instance (Show a) => Show (Formula a) where
           showp (Atomic (Prop p)) = show p
           showp (Atomic End)      = "#"
           showp g = concat ["(", show g, ")"]
-
 
 
 instance Functor Formula where

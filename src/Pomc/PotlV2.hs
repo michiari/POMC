@@ -22,7 +22,6 @@ module Pomc.PotlV2 ( -- * POTL V2 types
                   , normalize
                    ) where
 
-import Pomc.Check (Checkable(..))
 import Pomc.Prec (Prec(..))
 import qualified Pomc.Prec as PS (fromList)
 import Pomc.Prop (Prop(..))
@@ -34,8 +33,14 @@ import GHC.Generics (Generic)
 
 import Data.Hashable
 
+class Checkable c where
+  toReducedPotl :: c a -> RP.Formula a
 
-data Dir = Up | Down deriving (Eq, Ord, Show)
+instance Checkable (RP.Formula) where
+  toReducedPotl = id
+
+
+data Dir = Up | Down deriving (Eq, Ord, Show, Generic)
 
 data Formula a = T
                | Atomic (Prop a)
@@ -57,8 +62,8 @@ data Formula a = T
                | HSince Dir (Formula a) (Formula a) 
                | Eventually (Formula a) 
                | Always     (Formula a) 
-               | AuXBack Dir(Formula a) 
-               deriving (Eq, Ord)
+               | AuxBack Dir(Formula a) 
+               deriving (Eq, Ord, Generic)
 
 instance Checkable (Formula) where
   toReducedPotl f =
@@ -94,7 +99,7 @@ instance Checkable (Formula) where
       HSince Up   g h -> RP.HierSinceYield (trp g) (trp h)
       Eventually g    -> RP.Eventually' (RP.And (RP.Not . RP.Atomic $ End) (trp g))
       Always g        -> trp . Not . Eventually . Not $ g
-      AuXBack d g    -> RP.Or ( trp (XBack d g )) (trp (PBack d g))
+      AuxBack d g    -> RP.Or ( trp (XBack d g )) (trp (PBack d g))
     where trp = toReducedPotl
 
 instance (Show a) => Show (Formula a) where
@@ -129,13 +134,15 @@ instance (Show a) => Show (Formula a) where
              HSince Up   g h -> concat [showp g, " HSu ", showp h]
              Eventually g    -> concat ["F ", showp g]
              Always g        -> concat ["G ", showp g]
-             AuXBack Down g  -> concat ["AuXBd " showp g]
-             AuXBack Up g  -> concat ["AuXBu " showp g]
+             AuxBack Down g  -> concat ["AuxBd ", showp g]
+             AuxBack Up g  -> concat ["AuxBu ", showp g]
     where showp T = "T"
           showp (Atomic (Prop p)) = show p
           showp (Atomic End) = "#"
           showp g = concat ["(", show g, ")"]
 
+instance Hashable Dir
+instance Hashable a => Hashable (Formula a)
 
 instance Functor Formula where
   fmap func f = case f of
@@ -159,11 +166,11 @@ instance Functor Formula where
                   HSince dir g h -> HSince dir (fmap func g) (fmap func h)
                   Eventually g    -> Eventually (fmap func g)
                   Always g        -> Always (fmap func g)
-                  AuXBack dir g  -> AuXBack dir (fmap func g)
+                  AuxBack dir g  -> AuxBack dir (fmap func g)
 
 
 
-instance Hashable a => Hashable (Formula a)
+
 
 --get all the atomic propositions used by a formula, removing duplicates
 getProps :: (Eq a) => Formula a -> [Prop a]
@@ -189,7 +196,7 @@ getProps formula = nub $ collectProps formula
           HSince _ g h       -> getProps g ++ getProps h
           Eventually g       -> getProps g
           Always g           -> getProps g
-          AuXBack _ g        -> getProps g
+          AuxBack _ g        -> getProps g
  
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
@@ -245,7 +252,7 @@ normalize f = case f of
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)            
                 Eventually g       -> Eventually (normalize g)
                 Always g           -> Always (normalize g)
-                AuXBack dir g      -> AuXBack dir (normalize g)
+                AuxBack dir g      -> AuxBack dir (normalize g)
 
 
 

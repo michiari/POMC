@@ -12,8 +12,6 @@ module Pomc.Check ( -- * Checking functions
                   , checkGen
                   , fastcheck
                   , fastcheckGen
-                    -- * Checking typeclass
-                  , Checkable(..)
                     -- * Checking helpers
                   , closure
                     -- * Printing
@@ -30,7 +28,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import qualified Pomc.Prec as PS (singleton, size, member, notMember, fromList, toList)
 import Pomc.Opa (run, augRun)
-import Pomc.RPotl (Formula(..), negative, negation, atomic, normalize, future)
+import Pomc.PotlV2 (Formula(..), Dir(..), negative, negation, atomic, normalize, future)
 import Pomc.Util (safeHead, xor, implies, iff)
 import Pomc.Data (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
 import qualified Pomc.Data as D
@@ -49,8 +47,6 @@ import qualified Data.HashMap.Strict as M
 
 import Control.Monad (guard, filterM)
 
-import GHC.Generics (Generic)
-import Data.Hashable
 
 import qualified Data.Sequence as SQ
 
@@ -59,12 +55,12 @@ import Data.Foldable (toList)
 -- TODO: remove
 import qualified Debug.Trace as DT
 
+import GHC.Generics (Generic)
 
-class Checkable c where
-  toReducedPotl :: c a -> Formula a
+import Data.Hashable
 
-instance Checkable (Formula) where
-  toReducedPotl = id
+
+
 
 
 type EncPrecFunc = EncodedSet -> EncodedSet -> Maybe Prec
@@ -150,9 +146,9 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
   where
-    xbuExpr g = [AuXBack Down g , Not $ AuxBack Down g]
-    hndExpr g = [AuXBack Down g , Not (AuxBack Down g) , AuXBack Down (HNext Down g) , Not $ AuXBack Down (HNext Down g)]
-    hbdExpr g = [Auxback Down g , Not (AuxBack Down g) , AuXBack Down (HBack Down g) , Not $ AuXBack Down (HBack Down g)]
+    xbuExpr g = [AuxBack Down g , Not $ AuxBack Down g]
+    hndExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HNext Down g) , Not $ AuxBack Down (HNext Down g)]
+    hbdExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HBack Down g) , Not $ AuxBack Down (HBack Down g)]
     untilExpr dir g h     = [PNext dir (Until dir g h) , XNext dir (Until dir g h) , Not $ PNext dir (Until dir g h) , Not $ XNext dir (Until dir g h)]
     sinceDownExpr g h = [PBack Down (Since Down g h) , XBack Down (Since Down g h) , Not $ PBack Down (Since Down g h) , Not $ XBack Down (Until Down g h)]
     sinceUpExpr g h   = [PBack Up (Since Up g h) , XBack Up (Since Up g h) , Not $ PBack Up (Since Up g h) , Not $ XBack Up (Until Up g h)] ++ xbuExpr (Since Up g h)
@@ -163,36 +159,35 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
     evExpr    g = [PNext Up (Eventually g), Not $ PNext Up (Eventually g), PNext Down (Eventually g), Not $ PNext Down (Eventually g)]
     alwExpr   g = [PNext Up (Always g), Not $ PNext Up (Always g), PNext Down (Always g), Not $ PNext Down (Always g)] ++
                   [PBack Up (Always g), Not $ PBack Up (Always g), PBack Down (Always g), Not $ PBack Down (Always g)] -- TODO: check this
-    closList f = case f of
-      T                  -> [f, Not f]
-      Atomic _           -> [f, Not f]
-      Not g              -> closList g -- TODO: do we really need ++ [f] here?
-      Or g h             -> [f, Not f] ++ closList g ++ closList h
-      And g h            -> [f, Not f] ++ closList g ++ closList h
-      Xor g h            -> [f, Not f] ++ closList g ++ closList h
-      Implies g h        -> [f, Not f] ++ closList g ++ closList h
-      Iff g h            -> [f, Not f] ++ closList g ++ closList h
-      PNext _ g          -> [f, Not f] ++ closList g
-      PBack _ g          -> [f, Not f] ++ closList g 
-      XNext _ g          -> [f, Not f] ++ closList g 
-      XBack Down g       -> [f, Not f] ++ closList g 
-      XBack Up g         -> [f, Not f] ++ closList g ++ xbuExpr g 
-      ------------------------------------------------------
-      HNext Down g       -> [f, Not f] ++ closList g ++ hndExpr g 
-      HNext Up g         -> [f, Not f] ++ closList g  
-      HBack Down g       -> [f, Not f] ++ closList g ++ hbdExpr g
-      HBack Up g         -> [f, Not f] ++ closList g 
-      Until dir g h      -> [f, Not f] ++ closList g ++ closList h ++ untilExpr dir g h
-      Since Down g h     -> [f, Not f] ++ closList g ++ closList h ++ sinceDownExpr g h 
-      Since Up g h       -> [f, Not f] ++ closList g ++ closList h ++ sinceUpExpr g h 
-      --------------------------------------------------------------------------------
-      HUntil Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hudExpr g h
-      HUntil Up g h      -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
-      HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
-      HSince Up g h      -> [f, Not f] ++ closList g ++ closList h + hsuExpr g h 
-      Eventually g       -> [f, Not f] ++ closList g ++ evExp g 
-      Always g           -> [f, Not f] ++ closList g ++ alwExp g
-      AuXBack Down g     -> [f, Not f] ++ closList g
+    closList f = 
+      case f of
+        T                  -> [f, Not f]
+        Atomic _           -> [f, Not f]
+        Not g              -> [f] ++ closList g -- TODO: do we really need ++ [f] here?
+        Or g h             -> [f, Not f] ++ closList g ++ closList h
+        And g h            -> [f, Not f] ++ closList g ++ closList h
+        Xor g h            -> [f, Not f] ++ closList g ++ closList h
+        Implies g h        -> [f, Not f] ++ closList g ++ closList h
+        Iff g h            -> [f, Not f] ++ closList g ++ closList h
+        PNext _ g          -> [f, Not f] ++ closList g
+        PBack _ g          -> [f, Not f] ++ closList g 
+        XNext _ g          -> [f, Not f] ++ closList g 
+        XBack Down g       -> [f, Not f] ++ closList g 
+        XBack Up g         -> [f, Not f] ++ closList g ++ xbuExpr g 
+        HNext Down g       -> [f, Not f] ++ closList g ++ hndExpr g 
+        HNext Up g         -> [f, Not f] ++ closList g  
+        HBack Down g       -> [f, Not f] ++ closList g ++ hbdExpr g
+        HBack Up g         -> [f, Not f] ++ closList g 
+        Until dir g h      -> [f, Not f] ++ closList g ++ closList h ++ untilExpr dir g h
+        Since Down g h     -> [f, Not f] ++ closList g ++ closList h ++ sinceDownExpr g h 
+        Since Up g h       -> [f, Not f] ++ closList g ++ closList h ++ sinceUpExpr g h 
+        HUntil Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hudExpr g h
+        HUntil Up g h      -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
+        HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
+        HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h 
+        Eventually g       -> [f, Not f] ++ closList g ++ evExpr g 
+        Always g           -> [f, Not f] ++ closList g ++ alwExpr g
+        AuxBack Down g     -> [f, Not f] ++ closList g
 
 
 -- given a closure of phi, generate a bitEncoding
@@ -322,7 +317,7 @@ xorCons bitenc clos set = not (D.any bitenc consSet set)
                                  (D.member bitenc h set)
                                 ) && not (D.member bitenc f set)]                              
   where -- if (Xor g h) holds in current atom, then g xor h must hold as well
-        consSet (Xor g h) = not $ xor D.member bitenc g set  D.member bitenc h set
+        consSet (Xor g h) = not $ xor (D.member bitenc g set)  (D.member bitenc h set)
         consSet _ = False
 
 -- consistency check for (Implies g h)
@@ -335,7 +330,7 @@ impliesCons bitenc clos set = not (D.any bitenc consSet set)
                                  (D.member bitenc h set)
                                 ) && not (D.member bitenc f set)]
   where -- if (Implies g h) holds in current atom, then g implies h must hold as well
-        consSet (Implies g h) = not $ implies D.member bitenc g set  D.member bitenc h set
+        consSet (Implies g h) = not $ implies (D.member bitenc g set)  (D.member bitenc h set)
         consSet _ = False
 
 -- consistency check for (Iff g h)
@@ -348,7 +343,7 @@ iffCons bitenc clos set = not (D.any bitenc consSet set)
                                  (D.member bitenc h set)
                                 ) && not (D.member bitenc f set)]
   where -- if (Iff g h) holds in current atom, then g iff h must hold as well
-        consSet (Iff g h) = not $ iff D.member bitenc g set  D.member bitenc h set
+        consSet (Iff g h) = not $ iff (D.member bitenc g set) ( D.member bitenc h set)
         consSet _ = False
 
 -- consistency check for (Until dir g h)
@@ -728,7 +723,7 @@ deltaRules bitenc cl precFunc =
           maskPbp Take  = D.suchThat bitenc (checkPbp Take)
           checkPbp Yield (PBack Down _) = True -- Yield corresponds to Down
           checkPbp Equal (PBack _ _   ) = True -- Equal is satisfied by both Down and Up
-          chekPbp Take   (PBack Up _  ) = True -- Take corresponds to Up
+          checkPbp Take   (PBack Up _  ) = True -- Take corresponds to Up
           checkPbp _ _ = False
 
           maskPbnp Yield = D.suchThat bitenc (checkPbnp Yield)
@@ -804,9 +799,9 @@ deltaRules bitenc cl precFunc =
 
     -- xndPopPr:: FprInfo -> Bool
     xndPopPr info = 
-      let pPend = pending $ fprState info -- current pending obligations
+      let pPend = pending $ prState info -- current pending obligations
           pPendXndfs = D.intersect pPend maskXnd --current pending XNext Down obligations
-      in  D.null pPendXnedfs -- no pending XNext Down is allowed in current state when popping
+      in  D.null pPendXndfs -- no pending XNext Down is allowed in current state when popping
 
     --xndShiftPr:: PrInfo -> Bool
     xndShiftPr info =
@@ -829,7 +824,7 @@ deltaRules bitenc cl precFunc =
 
     --check whether we have some XNext Up in the closure
     -- xndCond:: FormulaSet -> Bool
-    XnuCond clos = not (null [f | f@(XNext Up _) <- S.toList clos])
+    xnuCond clos = not (null [f | f@(XNext Up _) <- S.toList clos])
 
     xnuPushFpr info =
       let pCurr = current $ fprState info -- current holding formulas
@@ -838,7 +833,7 @@ deltaRules bitenc cl precFunc =
           pCurrXnufs = D.intersect pCurr maskXnu -- current holding XNext Up formulas
       in if fXl -- if next state must push
            then pCurrXnufs == fPendXnufs 
-           else D.null pCurrXndfs -- if not mustPush, then here mustn't be XNext Down formulas
+           else D.null pCurrXnufs -- if not mustPush, then here mustn't be XNext Down formulas
 
     xnuShiftFpr = xnuPushFpr
     
@@ -879,7 +874,7 @@ deltaRules bitenc cl precFunc =
           pPend = pending $ prState info -- current pending obligations
           pXr = afterPop (prState info) -- was the previous transition a pop?
           pCurrXbdfs = D.intersect pCurr maskXbd -- current holding XBack Down formulas
-          pPendCbyfs = D.intersect pPend maskXbd -- current pending XBack Down formulas
+          pPendXbdfs = D.intersect pPend maskXbd -- current pending XBack Down formulas
       in if pXr
            then pCurrXbdfs == pPendXbdfs
            else D.null pCurrXbdfs
@@ -901,7 +896,7 @@ deltaRules bitenc cl precFunc =
           (fPend, _, _, _) = fprFuturePendComb info -- future pending formulas
           fPendXbdfs = D.intersect fPend maskXbd -- future pending XBack Down formulas
 
-          XbdClos = S.filter checkXbd cl -- all XBack Down formulas in the closure
+          xbdClos = S.filter checkXbd cl -- all XBack Down formulas in the closure
           pCheckSet = D.encode bitenc $
                       S.filter (\(XBack _ g) -> D.member bitenc g pCurr) xbdClos -- all (XBack Down g) such that g currently holds
 
@@ -922,7 +917,7 @@ deltaRules bitenc cl precFunc =
     -- xbuPushFpr:: FprInfo -> Bool
     xbuPushFpr info =
       let (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
-          fPendXbufs = D.intersect fPend maskXBu
+          fPendXbufs = D.intersect fPend maskXbu
       in D.null fPendXbufs
 
     --xbuShiftFpr:: FprInfo -> Bool
@@ -934,7 +929,7 @@ deltaRules bitenc cl precFunc =
           pPend = pending $ prState info -- current pending formulas
           pXr = afterPop $ prState info  -- was the previous transition a pop?
           pCurrXbufs = D.intersect pCurr maskXbu -- current holding XBack Up formulas 
-          pPendCbtfs = D.intersect pPend maskXbu -- current pending XBack Up formulas
+          pPendXbufs = D.intersect pPend maskXbu -- current pending XBack Up formulas
       in if pXr
            then pCurrXbufs == pPendXbufs
            else D.null pCurrXbufs
@@ -973,7 +968,7 @@ deltaRules bitenc cl precFunc =
           pCurrAbdfs = D.intersect pCurr maskAbd -- currently holding AuxBack Down formulas
           pPendAbdfs = D.intersect pPend maskAbd -- currently pending AuxBack Down formulas
       in 
-        pCurrCbyfs == pPendCbyfs
+        pCurrAbdfs == pPendAbdfs
            
     -- abdShiftPr:: PrInfo -> Bool
     abdShiftPr info =
@@ -986,7 +981,7 @@ deltaRules bitenc cl precFunc =
           (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
           ppPendAbdfs = D.intersect ppPend maskAbd -- pending AuxBack Down formulas of state to pop
           fPendAbdfs = D.intersect fPend maskAbd -- future pending AuxBack Down formulas
-      in ppPendABdfs == fPendAbdfs
+      in ppPendAbdfs == fPendAbdfs
 
     -- abdPushFpr:: FprInfo -> Bool
     abdPushFpr info =
@@ -1174,7 +1169,7 @@ deltaRules bitenc cl precFunc =
     checkHbd _ = False
     hbdClos = S.filter checkHbd cl -- all HBack Down formulas in the closure
 
-    hbdCond clos = not (null [f | f@(Hback Down _) <- S.toList clos])
+    hbdCond clos = not (null [f | f@(HBack Down _) <- S.toList clos])
 
     -- hdbPopFpr1:: FprInfo -> Bool
     hbdPopFpr1 info =
@@ -1185,7 +1180,7 @@ deltaRules bitenc cl precFunc =
           pPendHbdfs = D.intersect pPend maskHbd -- current pending HBack Down formulas
 
           checkSet = D.encode bitenc $
-                     S.filter (\(Hback _ g) -> D.member bitenc (AuxBack Down g) ppCurr) hbdClos -- all (HBack Down g) formulas such that (AuxBack Down g) holds in state to pop
+                     S.filter (\(HBack _ g) -> D.member bitenc (AuxBack Down g) ppCurr) hbdClos -- all (HBack Down g) formulas such that (AuxBack Down g) holds in state to pop
 
       in if not fXl && not fXe
            then pPendHbdfs == checkSet
@@ -1207,7 +1202,7 @@ deltaRules bitenc cl precFunc =
            else True
 
     -- hbdPopFpr3:: FprInfo -> Bool
-    hbtPopFpr3 info =
+    hbdPopFpr3 info =
       let pPend = pending (fprState info) -- current pending formulas
           (_, fXl, fXe, _) = fprFuturePendComb info -- future pending obligations
           pPendHbdfs = D.intersect pPend maskHbd -- current pending HBack Down formulas

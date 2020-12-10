@@ -35,7 +35,7 @@ import qualified Data.HashTable.Class as H
 
 import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
-import qualified Data.Vector as 
+import qualified Data.Vector as V
 
 --import Debug.Trace (trace)
 
