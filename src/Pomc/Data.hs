@@ -52,9 +52,8 @@ type FormulaSet = Set (Formula APType)
 type PropSet = Set (Prop APType)
 
 -- a BitEncoding is just the "guide" to translate from a FormulaSet to a BitVector and viceversa
--- TODO: where are the AP bits? at the beginning or at the end?
 data BitEncoding = BitEncoding
-  { fetch :: (Int -> Formula APType)
+  { fetch :: (Int -> Formula APType) -- APTYpe is just a Word to where each input formula is mapped
   , index :: (Formula APType -> Int)
   , width :: Int
   , propBits :: Int

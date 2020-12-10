@@ -48,7 +48,7 @@ convPropLabels phi (sls, als) precr =
 convAP :: (Ord a)
        => Formula a -- input formula phi
        -> [StructPrecRel a] --precedence relation which replaces the usual matrix M
-       -> [Prop a] -- AP set of the language (?) TODO: further explore this
+       -> [Prop a] -- input string
        -> (Formula APType, [StructPrecRel APType], a -> APType)
 convAP phi precr other =
   let phiAP = getProps phi

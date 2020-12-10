@@ -467,8 +467,8 @@ alwCons bitenc clos set = not (D.any bitenc consSet set)
                                                         not (D.member bitenc f set)]
   where present alw g =
           (D.member bitenc g set) ||
-          (D.member bitenc (PNext Up ev) set) ||
-          (D.member bitenc (PNext Down ev) set)
+          (D.member bitenc (PNext Up alw) set) ||
+          (D.member bitenc (PNext Down alw) set)
         consSet f@(Always g) = not $ present f g
         consSet _ = False
 
@@ -482,7 +482,7 @@ pendCombs bitenc clos =
       hbs = [f | f@(HBack _ _)   <- S.toList clos]
       abs = [f | f@(AuxBack _ _) <- S.toList clos]
   in S.foldl' S.union S.empty . -- here dot operator does not concatenate S.empty and S.map, but foldl and S.map
-     S.map (S.fromList . combs . (D.encode bitenc)) $ -- TODO: write what this does
+     S.map (S.fromList . combs . (D.encode bitenc)) $ 
      S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ abs)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
@@ -518,32 +518,30 @@ deltaRules bitenc cl precFunc =
       shiftGroup = RuleGroup
         { 
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True, xlShiftPr) --
-                                     , (const True, xeShiftPr) --
-                                     , (const True, propShiftPr) --
-                                     , (xndCond,    xndShiftPr) --
-                                     , (xnuCond,    xnuShiftPr) --
-                                     , (cbyCond,    cbyShiftPr)
-                                     , (cbeCond,    cbeShiftPr)
-                                     , (cbtCond,    cbtShiftPr)
-                                     , (hnyCond,    hnyShiftPr)
-                                     , (hbyCond,    hbyShiftPr)
-                                     , (hbtCond,    hbtShiftPr)
-                                     , (hthCond,    hthShiftPr)
+          ruleGroupPrs  = resolve cl [ (const True, xlShiftPr) 
+                                     , (const True, xeShiftPr) 
+                                     , (const True, propShiftPr)
+                                     , (xndCond,    xndShiftPr) 
+                                     , (xnuCond,    xnuShiftPr) 
+                                     , (xbdCond,    xbdShiftPr) 
+                                     , (xbuCond,    xbuShiftPr) 
+                                     , (abdCond,    abdShiftPr) 
+                                     , (hnuCond,    hnuShiftPr) 
+                                     , (hbuCond,    hbuShiftPr) 
+                                     , (hbdCond,    hbdShiftPr) 
                                      ]
-        , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr) --
-                                     , (pbCond, pbShiftFcr) --
+        , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr) 
+                                     , (pbCond, pbShiftFcr) 
                                      ]
-        , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr) --
-                                     , (xndCond,    xndShiftFpr) --
-                                     , (xnuCond,    xnuShiftFpr) -- 
-                                     , (cbyCond,    cbyShiftFpr)
-                                     , (cbeCond,    cbeShiftFpr)
-                                     , (cbtCond,    cbtShiftFpr)
-                                     , (hntCond,    hntShiftFpr1)
-                                     , (hntCond,    hntShiftFpr2)
-                                     , (hbtCond,    hbtShiftFpr)
-                                     , (hthCond,    hthShiftFpr)
+        , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
+                                     , (xndCond,    xndShiftFpr)
+                                     , (xnuCond,    xnuShiftFpr) 
+                                     , (xbdCond,    xbdShiftFpr)
+                                     , (xbuCond,    xbuShiftFpr)
+                                     , (abdCond,    abdShiftFpr)
+                                     , (hndCond,    hndShiftFpr1)
+                                     , (hndCond,    hndShiftFpr2)
+                                     , (hbdCond,    hbdShiftFpr) 
                                      ]
         , ruleGroupFrs  = resolve cl []
         }
@@ -551,31 +549,29 @@ deltaRules bitenc cl precFunc =
       pushGroup = RuleGroup
         { 
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True, xlPushPr) --
-                                     , (const True, xePushPr) --
-                                     , (const True, propPushPr) --
-                                     , (cbyCond,    cbyPushPr)
-                                     , (cbeCond,    cbePushPr)
-                                     , (cbtCond,    cbtPushPr)
-                                     , (hnyCond,    hnyPushPr1)
-                                     , (hnyCond,    hnyPushPr2)
-                                     , (hbyCond,    hbyPushPr)
-                                     , (hbtCond,    hbtPushPr)
-                                     , (hthCond,    hthPushPr)
+          ruleGroupPrs  = resolve cl [ (const True, xlPushPr) 
+                                     , (const True, xePushPr) 
+                                     , (const True, propPushPr)
+                                     , (xbdCond,    xbdPushPr) 
+                                     , (xbuCond,    xbuPushPr) 
+                                     , (abdCond,    abdPushPr) 
+                                     , (hnuCond,    hnuPushPr1)
+                                     , (hnuCond,    hnuPushPr2)
+                                     , (hbuCond,    hbuPushPr) 
+                                     , (hbdCond,    hbdPushPr) 
                                      ]
-        , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr) --
-                                     , (pbCond, pbPushFcr) --
+        , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr) 
+                                     , (pbCond, pbPushFcr) 
                                      ]
-        , ruleGroupFprs = resolve cl [ (const True, xrPushFpr) --
-                                     , (xndCond,    xndPushFpr) -- 
-                                     , (xnuCond,    xnuPushFpr) --
-                                     , (cbyCond,    cbyPushFpr)
-                                     , (cbeCond,    cbePushFpr)
-                                     , (cbtCond,    cbtPushFpr)
-                                     , (hntCond,    hntPushFpr1)
-                                     , (hntCond,    hntPushFpr2)
-                                     , (hbtCond,    hbtPushFpr)
-                                     , (hthCond,    hthPushFpr)
+        , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
+                                     , (xndCond,    xndPushFpr)  
+                                     , (xnuCond,    xnuPushFpr) 
+                                     , (xbdCond,    xbdPushFpr) 
+                                     , (xbuCond,    xbuPushFpr) 
+                                     , (abdCond,    abdPushFpr) 
+                                     , (hndCond,    hndPushFpr1)
+                                     , (hndCond,    hndPushFpr2)
+                                     , (hbdCond,    hbdPushFpr) 
                                      ]
         , ruleGroupFrs  = resolve cl []
         }
@@ -583,31 +579,30 @@ deltaRules bitenc cl precFunc =
       popGroup = RuleGroup
         { 
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True, xlPopPr) --
-                                     , (const True, xePopPr) --
-                                     , (xndCond,    xndPopPr) -- 
-                                     , (xnuCond,    xnuPopPr) --
-                                     , (hnyCond,    hnyPopPr)
+          ruleGroupPrs  = resolve cl [ (const True, xlPopPr) 
+                                     , (const True, xePopPr) 
+                                     , (xndCond,    xndPopPr) 
+                                     , (xnuCond,    xnuPopPr) 
+                                     , (hnuCond,    hnuPopPr) 
                                      ]
         , 
           -- future current rules
           ruleGroupFcrs = resolve cl []
-        , ruleGroupFprs = resolve cl [ (const True, xrPopFpr) --
-                                     , (xndCond,    xndPopFpr) -- 
-                                     , (xnuCond,    xnuPopFpr) -- 
-                                     , (cbyCond,    cbyPopFpr)
-                                     , (cbeCond,    cbePopFpr)
-                                     , (cbtCond,    cbtPopFpr)
-                                     , (hnyCond,    hnyPopFpr)
-                                     , (hntCond,    hntPopFpr1)
-                                     , (hntCond,    hntPopFpr2)
-                                     , (hntCond,    hntPopFpr3)
-                                     , (hbtCond,    hbtPopFpr1)
-                                     , (hbtCond,    hbtPopFpr2)
-                                     , (hbtCond,    hbtPopFpr3)
-                                     , (hthCond,    hthPopFpr)
+        , ruleGroupFprs = resolve cl [ (const True, xrPopFpr) 
+                                     , (xndCond,    xndPopFpr) 
+                                     , (xnuCond,    xnuPopFpr) 
+                                     , (xbdCond,    xbdPopFpr)
+                                     , (xbuCond,    xbuPopFpr)
+                                     , (abdCond,    abdPopFpr)
+                                     , (hnuCond,    hnuPopFpr)
+                                     , (hndCond,    hndPopFpr1) 
+                                     , (hndCond,    hndPopFpr2) 
+                                     , (hndCond,    hndPopFpr3) 
+                                     , (hbdCond,    hbdPopFpr1) 
+                                     , (hbdCond,    hbdPopFpr2)  
+                                     , (hbdCond,    hbdPopFpr3) 
                                      ]
-        , ruleGroupFrs  = resolve cl [(hbyCond, hbyPopFr)]
+        , ruleGroupFrs  = resolve cl [(hbuCond, hbuPopFr)] 
         }
   in (shiftGroup, pushGroup, popGroup)
   where
@@ -686,7 +681,7 @@ deltaRules bitenc cl precFunc =
 
           -- check that there is no obligation that can't be satisfied due to Up/Down
           -- e.g. a PNext Up when the relation with the next symbol is Yield
-          precComp prec = D.null $ D.intersect pCurr (maskPnnp prec) -- TODO: do we need this?
+          precComp prec = D.null $ D.intersect pCurr (maskPnnp prec) 
 
           --
           fsComp prec = (pCurrPnfs == checkSet) -- if PNext g holds in the current state, then g must hold in the next state, and viceversa
@@ -765,9 +760,8 @@ deltaRules bitenc cl precFunc =
 
     pbShiftFcr = pbPushFcr
  
-    ----------------------------------------------------------------------------------------------
-    --XND: Xnext Down
-    --get a mask with all XNext Down formulas set to one
+    -- XND: Xnext Down --
+    -- get a mask with all XNext Down formulas set to one
     maskXnd = D.suchThat bitenc checkXnd
     checkXnd (XNext Down _) = True
     checkXnd _ = False
@@ -826,9 +820,8 @@ deltaRules bitenc cl precFunc =
 
       in pCheckList == pPendXndfs -- XNext Down g is a current pending obligation iff g holds in the current state
 
-    ------------------------------------------------------------------------
-    -----------------------------------------------------------------------
-    -- XNU: XNext Up 
+
+    -- XNU: XNext Up --
     -- get a mask with all XNext Up formulas set to one
     maskXnu = D.suchThat bitenc checkXnu
     checkXnu (XNext Up _) = True
@@ -871,405 +864,384 @@ deltaRules bitenc cl precFunc =
 
     -- xnuShiftPr:: PrInfo -> Bool
     xnuShiftPr = xnuPopPr
-    ------------------------------------------------------------------------
-    ------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+    -- XBD: XBack Down
+    -- get a mask with all XBack Down set to one
+    maskXbd = D.suchThat bitenc checkXbd
+    checkXbd (XBack Down _) = True
+    checkXbd _ = False
 
-    -- CBY
-    maskCby = D.suchThat bitenc checkCby
-    checkCby (ChainBack pset _) = pset == PS.singleton Yield
-    checkCby _ = False
+    xbdCond clos = not (null [f | f@(XBack Down _) <- S.toList clos])
 
-    cbyCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
-                                                          pset == PS.singleton Yield])
-
-    cbyPushPr info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
-          pXr = afterPop (prState info)
-          pCurrCbyfs = D.intersect pCurr maskCby
-          pPendCbyfs = D.intersect pPend maskCby
+    -- xbdPushPr:: PrInfo -> Bool
+    xbdPushPr info =
+      let pCurr = current $ prState info -- current holding formulas
+          pPend = pending $ prState info -- current pending obligations
+          pXr = afterPop (prState info) -- was the previous transition a pop?
+          pCurrXbdfs = D.intersect pCurr maskXbd -- current holding XBack Down formulas
+          pPendCbyfs = D.intersect pPend maskXbd -- current pending XBack Down formulas
       in if pXr
-           then pCurrCbyfs == pPendCbyfs
-           else D.null pCurrCbyfs
+           then pCurrXbdfs == pPendXbdfs
+           else D.null pCurrXbdfs
 
-    cbyShiftPr info =
-      let pCurr = current $ prState info
-      in D.null $ D.intersect pCurr maskCby
+    -- xbdShiftPr:: PrInfo -> Bool
+    xbdShiftPr = xbdShiftPr
+  
+    -- xbdPopFpr:: FprInfo -> Bool
+    xbdPopFpr info =
+      let ppPend = pending $ fromJust (fprPopped info) -- pending obligations of state to pop
+          (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
+          ppPendXbdfs = D.intersect ppPend maskXbd -- XBack Down pending obligations of state to pop
+          fPendXbdfs = D.intersect fPend maskXbd -- XBack Down future pending obligations
+      in ppPendXbdfs == fPendXbdfs
 
-    cbyPopFpr info =
-      let ppPend = pending $ fromJust (fprPopped info)
-          (fPend, _, _, _) = fprFuturePendComb info
-          ppPendCbyfs = D.intersect ppPend maskCby
-          fPendCbyfs = D.intersect fPend maskCby
-      in ppPendCbyfs == fPendCbyfs
+    -- xbdPushFpr:: FprInfo -> Bool
+    xbdPushFpr info =
+      let pCurr = current $ fprState info --current holding formulas
+          (fPend, _, _, _) = fprFuturePendComb info -- future pending formulas
+          fPendXbdfs = D.intersect fPend maskXbd -- future pending XBack Down formulas
 
-    cbyPushFpr info =
-      let pCurr = current $ fprState info
-          (fPend, _, _, _) = fprFuturePendComb info
-          fPendCbyfs = D.intersect fPend maskCby
-
-          cbyClos = S.filter checkCby cl
+          XbdClos = S.filter checkXbd cl -- all XBack Down formulas in the closure
           pCheckSet = D.encode bitenc $
-                      S.filter (\(ChainBack _ g) -> D.member bitenc g pCurr) cbyClos
+                      S.filter (\(XBack _ g) -> D.member bitenc g pCurr) xbdClos -- all (XBack Down g) such that g currently holds
 
-      in fPendCbyfs == pCheckSet
+      in fPendXbdfs == pCheckSet
 
-    cbyShiftFpr = cbyPushFpr
-    --
+    -- xbdShiftFpr:: FprInfo -> Bool
+    xbdShiftFpr = xbdPushFpr
+    
+    -- XBU: XBack Up
+    -- a mask with all XBack Up formulas set to one
+    maskXbu = D.suchThat bitenc checkXbu
+    checkXbu (XBack Up _) = True
+    checkXbu _ = False
 
-    -- CBE
-    maskCbe = D.suchThat bitenc checkCbe
-    checkCbe (ChainBack pset _) = pset == PS.singleton Equal
-    checkCbe _ = False
+    -- checking whether there are XBack Up formulas in the closure
+    xbuCond clos = not (null [f | f@(XBack Up _) <- S.toList clos])
 
-    cbeCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
-                                                          pset == PS.singleton Equal])
+    -- xbuPushFpr:: FprInfo -> Bool
+    xbuPushFpr info =
+      let (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
+          fPendXbufs = D.intersect fPend maskXBu
+      in D.null fPendXbufs
 
-    cbeShiftPr info =
-      let pCurr = current $ prState info
-          pPend = pending (prState info)
-          pXr = afterPop (prState info)
-          pCurrCbefs = D.intersect pCurr maskCbe
-          pPendCbefs = D.intersect pPend maskCbe
+    --xbuShiftFpr:: FprInfo -> Bool
+    xbuShiftFpr = xbuPushFpr
+
+    -- xbuPushPr:: PrInfo -> Boll
+    xbuPushPr info =
+      let pCurr = current $ prState info -- current holding formulas
+          pPend = pending $ prState info -- current pending formulas
+          pXr = afterPop $ prState info  -- was the previous transition a pop?
+          pCurrXbufs = D.intersect pCurr maskXbu -- current holding XBack Up formulas 
+          pPendCbtfs = D.intersect pPend maskXbu -- current pending XBack Up formulas
       in if pXr
-           then pCurrCbefs == pPendCbefs
-           else D.null pCurrCbefs
+           then pCurrXbufs == pPendXbufs
+           else D.null pCurrXbufs
 
-    cbePushPr info =
-      let pCurr = current $ prState info
-      in D.null $ D.intersect pCurr maskCbe
+    -- xbuShiftPr:: PrInfo -> Bool
+    xbuShiftPr = xbuPushPr
 
-    cbePopFpr info =
-      let ppPend = pending $ fromJust (fprPopped info)
-          (fPend, _, _, _) = fprFuturePendComb info
-          ppPendCbefs = D.intersect ppPend maskCbe
-          fPendCbefs = D.intersect fPend maskCbe
-      in ppPendCbefs == fPendCbefs
+    -- xbuPopFpr:: FprInfo -> Bool
+    xbuPopFpr info =
+      let pPend = pending (fprState info) -- current pending obligations
+          (fPend, fXl, _, _) = fprFuturePendComb info -- future pending obligations
+          ppCurr = current $ fromJust (fprPopped info) -- holding formulas in the state to pop
+          pPendXbufs = D.intersect pPend maskXbu -- current XBack Up pending obligations
+          fPendXbufs = D.intersect fPend maskXbu -- future XBack Up pending obligations
 
-    cbePushFpr info =
-      let pCurr = current $ fprState info
-          (fPend, _, _, _) = fprFuturePendComb info
+          ppCurrAbdfs = D.intersect ppCurr maskAbd -- AuxBack Down formulas holding in the state to pop
+          
+          checkSet = D.union ppCurrAbdfs  pPendXbufs
 
-          fPendCbefs = D.intersect fPend maskCbe
+      in if fXl 
+           then  fPendXbufs == pPendXbufs 
+           else fPendXbufs == checkSet
+    
+    ------------------------------------------------------------------------------------------------
+    -- ABD: AuxBack Down
+    maskAbd = D.suchThat bitenc checkAbd
+    checkAbd (AuxBack Down _) = True
+    checkAbd _ = False
 
-          cbeClos = S.filter checkCbe cl
+    abdCond clos = not (null [f | f@(AuxBack Down _) <- S.toList clos])
+
+    -- abdPushPr:: PrInfo -> Bool
+    abdPushPr info =
+      let pCurr = current $ prState info -- current holding formulas
+          pPend = pending $ prState info -- current pending formulas
+          pCurrAbdfs = D.intersect pCurr maskAbd -- currently holding AuxBack Down formulas
+          pPendAbdfs = D.intersect pPend maskAbd -- currently pending AuxBack Down formulas
+      in 
+        pCurrCbyfs == pPendCbyfs
+           
+    -- abdShiftPr:: PrInfo -> Bool
+    abdShiftPr info =
+      let pCurr = current $ prState info --current holding formulas
+      in D.null $ D.intersect pCurr maskAbd -- no AuxBack Down formulas are allowed  when shifting
+
+    -- abdPopFpr:: FprInfo -> Bool
+    abdPopFpr info =
+      let ppPend = pending $ fromJust (fprPopped info) -- pending formulas of state to pop
+          (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
+          ppPendAbdfs = D.intersect ppPend maskAbd -- pending AuxBack Down formulas of state to pop
+          fPendAbdfs = D.intersect fPend maskAbd -- future pending AuxBack Down formulas
+      in ppPendABdfs == fPendAbdfs
+
+    -- abdPushFpr:: FprInfo -> Bool
+    abdPushFpr info =
+      let pCurr = current $ fprState info -- current holding formulas
+          (fPend, _, _, _) = fprFuturePendComb info -- future pending formulas
+          fPendAbdfs = D.intersect fPend maskAbd -- future pending AuxBack Down formulas
+
+          abdClos = S.filter checkAbd cl -- get all AuxBack Down formulas of the closure
           pCheckSet = D.encode bitenc $
-                      S.filter (\(ChainBack _ g) -> D.member bitenc g pCurr) cbeClos
+                      S.filter (\(AuxBack _ g) -> D.member bitenc g pCurr) abdClos -- get all (AuxBack Down g) such that g currently holds
 
-      in fPendCbefs == pCheckSet
+      in fPendAbdfs == pCheckSet
 
-    cbeShiftFpr = cbePushFpr
-    --
+    -- abdShiftFpr:: FprInfo -> Bool
+    abdShiftFpr = abdPushFpr
 
-    -- CBT
-    maskCbt = D.suchThat bitenc checkCbt
-    checkCbt (ChainBack pset _) = pset == PS.singleton Take
-    checkCbt _ = False
+    ------------------------------------------------------------------------------------------------------------------------
+    -- HNU: HNext Up
+    -- a mask with all HNext Up formulas set to one
+    maskHnu = D.suchThat bitenc checkHnu
+    checkHnu (HNext Up _) = True
+    checkHnu _ = False
 
-    cbtCond clos = not (null [f | f@(ChainBack pset _) <- S.toList clos,
-                                                          pset == PS.singleton Take])
+    hnuCond clos = not (null [f | f@(HNext Up _) <- S.toList clos])
 
-    cbtPushFpr info =
-      let (fPend, _, _, _) = fprFuturePendComb info
-          fPendCbtfs = D.intersect fPend maskCbt
-      in D.null fPendCbtfs
-
-    cbtShiftFpr = cbtPushFpr
-
-    cbtPushPr info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
-          pXr = afterPop $ prState info
-          pCurrCbtfs = D.intersect pCurr maskCbt
-          pPendCbtfs = D.intersect pPend maskCbt
-      in if pXr
-           then pCurrCbtfs == pPendCbtfs
-           else D.null pCurrCbtfs
-
-    cbtShiftPr = cbtPushPr
-
-    cbtPopFpr info =
-      let pPend = pending (fprState info)
-          (fPend, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
-          pPendCbtfs = D.intersect pPend maskCbt
-          fPendCbtfs = D.intersect fPend maskCbt
-
-          ppCurrCbyfs = D.intersect ppCurr maskCby
-          ppCurrPbyfs = D.intersect ppCurr maskPby
-          cby f = ChainBack (PS.singleton Yield) f
-          pby f = PrecBack (PS.singleton Yield) f
-          yieldCheckSet = D.filter
-            bitenc
-            (\(ChainBack _ f) -> D.member bitenc (cby f) ppCurrCbyfs
-                                 || D.member bitenc (pby f) ppCurrPbyfs)
-            maskCbt
-          takeCheckSet = pPendCbtfs
-          checkSet = yieldCheckSet `D.union` takeCheckSet
-
-          maskPby = D.suchThat bitenc checkPby
-          checkPby (PrecBack pset _) = pset == PS.singleton Yield
-          checkPby _ = False
-      in if fXl || fXe
-           then pPendCbtfs == fPendCbtfs
-           else checkSet == fPendCbtfs
-    --
-
-    -------------------------------------------------------------------------------------------------
-    -------------------------------------------------------------------------------------------------
-
-    -- HNY
-    maskHny = D.suchThat bitenc checkHny
-    checkHny (HierNextYield _) = True
-    checkHny _ = False
-
-    hnyCond clos = not (null [f | f@(HierNextYield _) <- S.toList clos])
-
-    hnyPushPr1 info =
-      let pCurr = current $ prState info
-          pXr = afterPop (prState info)
-      in if not $ D.null $ D.intersect pCurr maskHny
+    -- hnyPushPr1:: PrInfo -> Bool
+    hnuPushPr1 info =
+      let pCurr = current $ prState info -- current holding formulas
+          pXr = afterPop (prState info) -- was the last transition a pop?
+      in if not $ D.null $ D.intersect pCurr maskHnu 
            then pXr
            else True
 
-    hnyPushPr2 info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
-          pXr = afterPop $ prState info
-          pPendHnyfs = D.intersect pPend maskHny
+    -- hnuPushPr2:: PrInfo -> Bool
+    hnuPushPr2 info =
+      let pCurr = current $ prState info -- current holding formulas
+          pPend = pending $ prState info -- current pending formulas
+          pXr = afterPop $ prState info -- was the last transition a pop?
+          pPendHnufs = D.intersect pPend maskHnu -- current pending HNext Uo formulas
 
-          hnyClos = S.filter checkHny cl
+          hnuClos = S.filter checkHnu cl -- all HNext Up formulas in the closure
           checkSet = D.encode bitenc $
-                     S.filter (\(HierNextYield g) -> D.member bitenc g pCurr) hnyClos
+                     S.filter (\(HNext _ g) -> D.member bitenc g pCurr) hnuClos -- all (HNext Up g) such that g currently hodls
       in if pXr
-           then checkSet == pPendHnyfs
-           else D.null pPendHnyfs
+           then checkSet == pPendHnufs
+           else D.null pPendHnufs
 
-    hnyPopFpr info =
-      let (fPend, _, _, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
-          ppXr = afterPop $ fromJust (fprPopped info)
-          fPendHnyfs = D.intersect fPend maskHny
-          ppCurrHnyfs = D.intersect ppCurr maskHny
+    -- hnuPopFpr:: FprInfo -> Bool
+    hnuPopFpr info =
+      let (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
+          ppCurr = current $ fromJust (fprPopped info) -- formulas currently holding in state to pop
+          ppXr = afterPop $ fromJust (fprPopped info) -- did the state to pop came from a pop transition?
+          fPendHnufs = D.intersect fPend maskHnu -- all future pending HNext Up formulas
+          ppCurrHnufs = D.intersect ppCurr maskHnu -- HNext Up formulas holding in state to pop
       in if ppXr
-           then ppCurrHnyfs == fPendHnyfs
+           then ppCurrHnufs == fPendHnufs
            else True
 
-    hnyPopPr info =
-      let pPend = pending (prState info)
-          pPendHnyfs = D.intersect pPend maskHny
-      in D.null pPendHnyfs
+    -- hnuPopPr:: PrInfo -> Bool
+    hnuPopPr info =
+      let pPend = pending (prState info) -- current pending obligations
+          pPendHnufs = D.intersect pPend maskHnu -- current HNext Up pending obligations
+      in D.null pPendHnufs -- no HNext Up obligations are allowed when popping
 
-    hnyShiftPr info =
-      let pCurr = current $ prState info
-          pPend = pending $ prState info
-          pCurrHnyfs = D.intersect pCurr maskHny
-          pPendHnyfs = D.intersect pPend maskHny
-      in D.null pCurrHnyfs && D.null pPendHnyfs
-    --
+    -- hnuShiftPr -> Bool
+    hnuShiftPr info =
+      let pCurr = current $ prState info -- current holding formulas
+          pPend = pending $ prState info -- current pending formuals
+          pCurrHnufs = D.intersect pCurr maskHnu -- current HNext Up holding formulas
+          pPendHnufs = D.intersect pPend maskHnu -- current HNext Up pending formuals
+      in D.null pCurrHnufs && D.null pPendHnufs -- no pending or holding HNext Up formulas are allowed when shifting
+    
+    -- HBU: HBack Up
+    -- a mask with all XBack Up formulas set to one
+    maskHbu = D.suchThat bitenc checkHbu
+    checkHbu (HBack Up _) = True
+    checkHbu _ = False
 
-    -- HBY
-    maskHby = D.suchThat bitenc checkHby
-    checkHby (HierBackYield _) = True
-    checkHby _ = False
+    -- check whether there are XBack Up formulas in the closure
+    hbuCond clos = not (null [f | f@(HBack Up _) <- S.toList clos])
 
-    hbyCond clos = not (null [f | f@(HierBackYield _) <- S.toList clos])
-
-    hbyPushPr info =
-      let pCurr = current $ prState info
-          pXl = mustPush $ prState info
-          pXr = afterPop $ prState info
-      in if not $ D.null $ D.intersect pCurr maskHby
+    -- hbuPushPr:: PrInfo -> Bool
+    hbuPushPr info =
+      let pCurr = current $ prState info --current holding formulas
+          pXl = mustPush $ prState info -- mustPush?
+          pXr = afterPop $ prState info -- was the last transition a pop?
+      in if not $ D.null $ D.intersect pCurr maskHbu
          then pXl && pXr
          else True
 
-    hbyShiftPr info =
-      let pCurr = current $ prState info
-      in D.null $ D.intersect pCurr maskHby
+    -- hbuShiftPr:: PrInfo -> Bool
+    hbuShiftPr info =
+      let pCurr = current $ prState info --current holding states
+      in D.null $ D.intersect pCurr maskHbu -- no holding HBack Up is allowed when shifting
 
-    hbyPopFr info =
-      let (_, fXl, _, _) = frFuturePendComb info
-          fCurr = frFutureCurr info
-          ppCurr = current $ fromJust (frPopped info)
-          ppXr = afterPop $ fromJust (frPopped info)
-          fCurrHbyfs = D.intersect fCurr maskHby
+    -- hbuPopFr::  FrInfo -> Bool
+    hbuPopFr info =
+      let (_, fXl, _, _) = frFuturePendComb info -- future pending obligations
+          fCurr = frFutureCurr info -- future current holding formulas
+          ppCurr = current $ fromJust (frPopped info) -- holding formulas in state to pop
+          ppXr = afterPop $ fromJust (frPopped info) -- did the state to pop come from a pop?
+          fCurrHbufs = D.intersect fCurr maskHbu -- future current holding XBack Up formulas
 
-          hbyClos = S.filter checkHby cl
+          hbuClos = S.filter checkHbu cl -- XBack Up formulas in the closure
           checkSet = D.encode bitenc $
-                     S.filter (\(HierBackYield g) -> D.member bitenc g ppCurr) hbyClos
+                     S.filter (\(HBack _ g) -> D.member bitenc g ppCurr) hbuClos -- all (HBack Up g) such that g holds in state to pop
       in if fXl
          then if ppXr
-              then fCurrHbyfs == checkSet
-              else D.null fCurrHbyfs
+              then fCurrHbufs == checkSet
+              else D.null fCurrHbufs
          else True
     --
+    -- HND: HNext Down
+    -- a mask with all HNext Down formulas set to one
+    maskHnd = D.suchThat bitenc checkHnd
+    checkHnd (HNext Down _) = True
+    checkHnd _ = False
+    hndClos = S.filter checkHnd cl -- all HNext Down formulas in the closure
 
-    -- HNT
-    maskHnt = D.suchThat bitenc checkHnt
-    checkHnt (HierNextTake _) = True
-    checkHnt _ = False
-    hntClos = S.filter checkHnt cl
+    hndCond clos = not (null [f | f@(HNext Down _) <- S.toList clos])
 
-    hntCond clos = not (null [f | f@(HierNextTake _) <- S.toList clos])
+    -- hndPopFpr1:: FprInfo -> Bool
+    hndPopFpr1 info =
+      let (fPend, fXl, fXe, _) = fprFuturePendComb info -- future pending obligations
+          ppCurr = current $ fromJust (fprPopped info) -- holding formulas in state to pop
 
-    hntPopFpr1 info =
-      let (fPend, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+          fPendHndfs = D.intersect fPend maskHnd -- future pending HNext Down obligations
 
-          fPendHntfs = D.intersect fPend maskHnt
-
-          hth = HierTakeHelper
           checkSet = D.encode bitenc $
-                     S.filter (\(HierNextTake g) -> D.member bitenc (hth g) ppCurr) hntClos
+                     S.filter (\(HNext _ g) -> D.member bitenc (AuxBack Down g) ppCurr) hndClos -- all (HNext Down g) formulas such that AuxBack Down g holds in state to pop
 
       in if not fXl && not fXe
-           then fPendHntfs == checkSet
+           then fPendHndfs == checkSet
            else True
 
-    hntPopFpr2 info =
-      let pPend = pending (fprState info)
-          (_, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+    -- hndPopFpr2:: FprInfo -> Bool
+    hndPopFpr2 info =
+      let pPend = pending (fprState info) -- current pending obligations
+          (_, fXl, fXe, _) = fprFuturePendComb info -- future pending obligations
+          ppCurr = current $ fromJust (fprPopped info) -- current holding formulas in state to pop
 
-          pPendHntfs = D.intersect pPend maskHnt
+          pPendHndfs = D.intersect pPend maskHnd  -- current pending HNext Down formulas
 
-          hth = HierTakeHelper
-          checkSet = D.encode bitenc $
-                     S.filter (\f -> D.member bitenc (hth f) ppCurr) hntClos
+          checkSet = D.encode bitenc $ 
+                     S.filter (\f -> D.member bitenc (AuxBack Down f) ppCurr) hndClos -- all HNext Down g such that AuxBack Down HNext Down g holds in state to pop
 
       in if not fXl && not fXe
-           then pPendHntfs == checkSet
+           then pPendHndfs == checkSet
            else True
 
-    hntPopFpr3 info =
-      let (_, _, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
-
-          hth = HierTakeHelper
-          checkSet = S.filter (\f -> D.member bitenc (hth f) ppCurr) hntClos
+    -- hndPopFpr3:: FprInfo -> Bool
+    hndPopFpr3 info =
+      let (_, _, fXe, _) = fprFuturePendComb info -- future pending obligations
+          ppCurr = current $ fromJust (fprPopped info) -- current holding formulas in state to pop
+          checkSet = S.filter (\f -> D.member bitenc (AuxBack Down f) ppCurr) hndClos -- all HNext Down g formulas such that AuxBack Down HNext Down  g holds in state to pop
 
       in if not (null checkSet)
            then not fXe
            else True
 
-    hntPushFpr1 info =
-      let pCurr = current $ fprState info
-          (_, fXl, _, _) = fprFuturePendComb info
-      in if not $ D.null $ D.intersect pCurr maskHnt
+    -- hndPushFpr1:: PrInfo -> Bool
+    hndPushFpr1 info =
+      let pCurr = current $ fprState info -- current holding formulas
+          (_, fXl, _, _) = fprFuturePendComb info -- future pending obligations
+      in if not $ D.null $ D.intersect pCurr maskHnd
          then fXl
          else True
 
-    hntShiftFpr1 = hntPushFpr1
+    -- hndShiftFpr1:: FprInfo -> Bool
+    hndShiftFpr1 = hndPushFpr1
 
-    hntPushFpr2 info =
-      let (fPend, _, _, _) = fprFuturePendComb info
-          fPendHntfs = D.intersect fPend maskHnt
-      in D.null fPendHntfs
+    --hndPushFpr2:: FprInfo -> Boll
+    hndPushFpr2 info =
+      let (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
+          fPendHndfs = D.intersect fPend maskHnd -- future pending HNext Down obligations
+      in D.null fPendHndfs
 
-    hntShiftFpr2 = hntPushFpr2
+    hndShiftFpr2 = hndPushFpr2
     --
 
-    -- HBT
-    maskHbt = D.suchThat bitenc checkHbt
-    checkHbt (HierBackTake _) = True
-    checkHbt _ = False
-    hbtClos = S.filter checkHbt cl
+    -- HBD: HBack Down 
+    -- a mask with all HBack Down formulas set to one
+    maskHbd = D.suchThat bitenc checkHbd
+    checkHbd (HBack Down _) = True
+    checkHbd _ = False
+    hbdClos = S.filter checkHbd cl -- all HBack Down formulas in the closure
 
-    hbtCond clos = not (null [f | f@(HierBackTake _) <- S.toList clos])
+    hbdCond clos = not (null [f | f@(Hback Down _) <- S.toList clos])
 
-    hbtPopFpr1 info =
-      let pPend = pending (fprState info)
-          (_, fXl, fXe, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+    -- hdbPopFpr1:: FprInfo -> Bool
+    hbdPopFpr1 info =
+      let pPend = pending (fprState info) -- current pending formulas
+          (_, fXl, fXe, _) = fprFuturePendComb info -- future pending obligations
+          ppCurr = current $ fromJust (fprPopped info) -- holding formulas in state to pop
 
-          pPendHbtfs = D.intersect pPend maskHbt
+          pPendHbdfs = D.intersect pPend maskHbd -- current pending HBack Down formulas
 
-          hth = HierTakeHelper
           checkSet = D.encode bitenc $
-                     S.filter (\(HierBackTake g) -> D.member bitenc (hth g) ppCurr) hbtClos
+                     S.filter (\(Hback _ g) -> D.member bitenc (AuxBack Down g) ppCurr) hbdClos -- all (HBack Down g) formulas such that (AuxBack Down g) holds in state to pop
 
       in if not fXl && not fXe
-           then pPendHbtfs == checkSet
+           then pPendHbdfs == checkSet
            else True
 
-    hbtPopFpr2 info =
-      let (fPend, fXl, _, _) = fprFuturePendComb info
-          ppCurr = current $ fromJust (fprPopped info)
+    -- hbdPopFpr2:: FprInfo -> Bool
+    hbdPopFpr2 info =
+      let (fPend, fXl, _, _) = fprFuturePendComb info -- future pending obligations
+          ppCurr = current $ fromJust (fprPopped info) -- holding formulas in state to pop
 
-          fPendHbtfs = D.intersect fPend maskHbt
+          fPendHbdfs = D.intersect fPend maskHbd -- future pending HBack Down formulas
 
-          hth = HierTakeHelper
+
           checkSet = D.encode bitenc $
-                     S.filter (\f -> D.member bitenc (hth f) ppCurr) hbtClos
+                     S.filter (\f -> D.member bitenc (AuxBack Down f) ppCurr) hbdClos -- all (HBack Down g) formulas such that (AuxBack Down (HBack Down g)) holds in state to pop
 
       in if not fXl
-           then fPendHbtfs == checkSet
+           then fPendHbdfs == checkSet
            else True
 
+    -- hbdPopFpr3:: FprInfo -> Bool
     hbtPopFpr3 info =
-      let pPend = pending (fprState info)
-          (_, fXl, fXe, _) = fprFuturePendComb info
-          pPendHbtfs = D.intersect pPend maskHbt
-      in if not (D.null pPendHbtfs)
+      let pPend = pending (fprState info) -- current pending formulas
+          (_, fXl, fXe, _) = fprFuturePendComb info -- future pending obligations
+          pPendHbdfs = D.intersect pPend maskHbd -- current pending HBack Down formulas
+      in if not (D.null pPendHbdfs)
            then not fXl && not fXe
            else True
 
-    hbtPushFpr info =
-      let pCurr = current $ fprState info
-          (_, fXl, _, _) = fprFuturePendComb info
-      in if not $ D.null $ D.intersect pCurr maskHbt
+    -- hbdPushFpr:: FprInfo -> Bool
+    hbdPushFpr info =
+      let pCurr = current $ fprState info -- current holding formulas
+          (_, fXl, _, _) = fprFuturePendComb info -- future pending obligations
+      in if not $ D.null $ D.intersect pCurr maskHbd
          then fXl
          else True
 
-    hbtShiftFpr = hbtPushFpr
+    -- hbdShiftFpr:: FprInfo -> Bool
+    hbdShiftFpr = hbdPushFpr
 
-    hbtPushPr info =
-      let pPend = pending (prState info)
-          pPendHbtfs = D.intersect pPend maskHbt
-      in D.null pPendHbtfs
+    -- hbdPushPr:: PrInfo -> Bool
+    hbdPushPr info =
+      let pPend = pending (prState info) -- current pending formulas
+          pPendHbdfs = D.intersect pPend maskHbd -- current pending HBack Down formulas
+      in D.null pPendHbdfs 
 
-    hbtShiftPr = hbtPushPr
+    -- hbdShiftPr:: PrInfo -> Bool
+    hbdShiftPr = hbdPushPr
     --
 
-    -- HTH
-    maskHth = D.suchThat bitenc checkHth
-    checkHth (HierTakeHelper _) = True
-    checkHth _ = False
+   
 
-    hthCond clos = not (null [f | f@(HierTakeHelper _) <- S.toList clos])
 
-    hthPushPr info =
-      let pCurr = current $ prState info
-          pPend = pending (prState info)
-          pCurrHthfs = D.intersect pCurr maskHth
-          pPendHthfs = D.intersect pPend maskHth
-      in pCurrHthfs == pPendHthfs
-
-    hthShiftPr info =
-      let pCurr = current $ prState info
-      in D.null $ D.intersect pCurr maskHth
-
-    hthPopFpr info =
-      let ppPend = pending $ fromJust (fprPopped info)
-          (fPend, _, _, _) = fprFuturePendComb info
-          ppPendHthfs = D.intersect ppPend maskHth
-          fPendHthfs = D.intersect fPend maskHth
-      in ppPendHthfs == fPendHthfs
-
-    hthPushFpr info =
-      let pCurr = current $ fprState info
-          (fPend, _, _, _) = fprFuturePendComb info
-          fPendHthfs = D.intersect fPend maskHth
-
-          hthClos = S.filter checkHth cl
-          pCheckSet = D.encode bitenc $
-                      S.filter (\(HierTakeHelper g) -> D.member bitenc g pCurr) hthClos
-
-      in fPendHthfs == pCheckSet
-
-    hthShiftFpr = hthPushFpr
-    
-
+-----------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------   
 -- present
 data PrInfo = PrInfo
   { prState     :: State -- current state
@@ -1305,8 +1277,7 @@ data FrInfo = FrInfo
   , frNextProps      :: Maybe (Input) -- next input
   }
 
--- TODO: what are rules and why should they return a Bool?
--- are rules what's defined constraint in the notes?
+-- rules are what's defined constraint in the notes
 type PresentRule       = (PrInfo  -> Bool)
 type FutureCurrentRule = (FcrInfo -> Bool)
 type FuturePendingRule = (FprInfo -> Bool)
@@ -1318,7 +1289,7 @@ data RuleGroup = RuleGroup { ruleGroupPrs  :: [PresentRule      ]
                            , ruleGroupFrs  :: [FutureRule       ]
                            }
 
--- TODO: understand this
+
 augDeltaRules :: BitEncoding -> FormulaSet -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
 augDeltaRules bitenc cl prec =
   let (shiftrg, pushrg, poprg) = deltaRules bitenc cl prec
@@ -1462,8 +1433,7 @@ checkGen phi precr ts =
   let (tphi, tprecr, tts) = convPropTokens phi precr ts
   in check tphi tprecr tts
 
------------ TODO: check and checkGen are never called anywhere: shall we delete them?
--- TODO: understand this: why do they use a string instead of an opa?
+
 
 fastcheck :: Formula APType -- the input formula phi
           -> [StructPrecRel APType] -- precedence relation which replaces the usual matrix M

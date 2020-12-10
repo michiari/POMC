@@ -6,7 +6,7 @@
    Maintainer  : Davide Bergamaschi
 -}
 
--- TODO: add formulaAt
+-- TODO: add formulaAt if needed
 
 module Pomc.PotlV2 ( -- * POTL V2 types
                      Dir(..)
