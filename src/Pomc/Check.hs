@@ -156,7 +156,9 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
     hsdExpr g h = [XNext Up T   , Not (XNext Up T)   , T , Not T , HBack Down (HSince Down g h) , Not $ HBack Down (HSince Down g h)] ++ hbdExpr (HSince Down g h)
     hsuExpr g h = [XBack Down T , Not (XBack Down T) , T , Not T , HBack Up (HSince Up g h) , Not $ HBack Up (HSince Up g h)]
     evExpr    g = [PNext Up (Eventually g), Not $ PNext Up (Eventually g), PNext Down (Eventually g), Not $ PNext Down (Eventually g)]
-    alwExpr   g = [PNext Up (Always g), Not $ PNext Up (Always g), PNext Down (Always g), Not $ PNext Down (Always g)] 
+    alwExpr   g = [PNext Up (Always g), Not $ PNext Up (Always g), PNext Down (Always g), Not $ PNext Down (Always g) 
+                  , PBack Up (Always g), Not $ PBack Up (Always g), PBack Down (Always g), Not $ PBack Down (Always g) ] 
+    
     
     closList f = 
       case f of
@@ -458,8 +460,10 @@ alwCons bitenc clos set = not (D.any bitenc consSet set)
                                                         not (D.member bitenc f set)]
   where present alw g =
           (D.member bitenc g set) &&
-          ((D.member bitenc (PNext Up alw) set) ||
-          (D.member bitenc (PNext Down alw) set))
+           ((D.member bitenc (PNext Up alw) set) ||
+            (D.member bitenc (PNext Down alw) set) ||
+            (D.member bitenc (PBack Up alw) set) ||
+            (D.member bitenc (PBack Down alw) set))
         consSet f@(Always g) = not $ present f g
         consSet _ = False
 
