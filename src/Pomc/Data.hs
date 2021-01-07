@@ -108,6 +108,7 @@ empty bitenc = EncodedAtom . BV.zeros $ width bitenc
 {-# INLINABLE empty #-}
 
 -- generate a list of EncodedAtom where each atom has a different set of formulas (basically a powerset)
+-- exclude Atomic Propositions, they are always set to zero
 generateFormulas :: BitEncoding -> [EncodedAtom]
 generateFormulas bitenc =
   let len = width bitenc - propBits bitenc
@@ -177,7 +178,7 @@ decodeInput bitenc (EncodedAtom bv) =
   where getProp (Atomic p) = p
 {-# INLINABLE decodeInput #-}
 
---encode a set of atomic Propositions into an EncodedAtom
+-- given a BitEncoding, encode a set of atomic Propositions into an EncodedAtom
 encodeInput :: BitEncoding -> PropSet -> EncodedAtom
 encodeInput bitenc set =
   EncodedAtom $ S.foldl BV.setBit (BV.zeros $ propBits bitenc) (S.map (index bitenc . Atomic) set)

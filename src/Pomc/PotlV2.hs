@@ -6,7 +6,6 @@
    Maintainer  : Davide Bergamaschi
 -}
 
--- TODO: add formulaAt if needed
 
 module Pomc.PotlV2 ( -- * POTL V2 types
                      Dir(..)
@@ -20,6 +19,10 @@ module Pomc.PotlV2 ( -- * POTL V2 types
                     -- * Operations on formulas
                   , negation
                   , normalize
+                  , formulaAt
+                  , formulaAfter
+                  , formulaAtDown
+                  , formulaAtUp
                    ) where
 
 import Pomc.Prec (Prec(..))
@@ -32,13 +35,6 @@ import Data.List (nub)
 import GHC.Generics (Generic)
 
 import Data.Hashable
-
-class Checkable c where
-  toReducedPotl :: c a -> RP.Formula a
-
-instance Checkable (RP.Formula) where
-  toReducedPotl = id
-
 
 data Dir = Up | Down deriving (Eq, Ord, Show, Generic)
 
@@ -62,8 +58,14 @@ data Formula a = T
                | HSince Dir (Formula a) (Formula a) 
                | Eventually (Formula a) 
                | Always     (Formula a) 
-               | AuxBack Dir(Formula a) 
+               | AuxBack Dir(Formula a)  -- AuxBack Up is NEVER used
                deriving (Eq, Ord, Generic)
+
+class Checkable c where
+  toReducedPotl :: c a -> RP.Formula a
+
+instance Checkable (RP.Formula) where
+  toReducedPotl = id
 
 instance Checkable (Formula) where
   toReducedPotl f =
@@ -209,19 +211,30 @@ future (HNext      {}) = True
 future (Until      {}) = True
 future (HUntil     {}) = True
 future (Eventually {}) = True
-future (Always     {}) = True -- TODO: is this correct?
 future _ = False
 
 negative :: Formula a -> Bool
 negative (Not _) = True
 negative _ = False
 
+formulaAt :: Int -> Formula a -> Formula a
+formulaAt n f
+  | n <= 1    = f
+  | otherwise = formulaAt (n-1) (Or (PNext Up f) (PNext Down f))
 
---- TO DO: fix this
---formulaAt :: Int -> Formula a -> Formula a
---formulaAt n f
-  -- | n <= 1    = f
-  -- | otherwise = formulaAt (n-1) (RP.PrecNext (PS.fromList [Yield, Equal, Take]) f)
+formulaAfter ::  [Dir] -> Formula a ->  Formula a
+formulaAfter  [] f = f
+formulaAfter  (dir:dirs) f = formulaAfter dirs (PNext dir f)
+
+formulaAtDown :: Int -> Formula a -> Formula a
+formulaAtDown n f
+  | n <= 1         = f
+  | otherwise = formulaAtDown (n-1) (PNext Down f)
+
+formulaAtUp :: Int -> Formula a -> Formula a
+formulaAtUp n f
+  | n <= 1         = f
+  | otherwise = formulaAtDown (n-1) (PNext Up f)
 
 
 negation :: Formula a -> Formula a
