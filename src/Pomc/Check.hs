@@ -145,10 +145,9 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
   where
-    abExpr    g = [PBack Down g, Not $ PBack Down g] ++ [XBack Down g, Not $ XBack Down g]
-    xbuExpr g = [AuxBack Down g , Not $ AuxBack Down g] ++ abExpr g
-    hndExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HNext Down g) , Not $ AuxBack Down (HNext Down g)] ++ abExpr g ++ abExpr (HNext Down g)
-    hbdExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HBack Down g) , Not $ AuxBack Down (HBack Down g)] ++ abExpr g ++ abExpr (HBack Down g)
+    xbuExpr g = [AuxBack Down g , Not $ AuxBack Down g]
+    hndExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HNext Down g) , Not $ AuxBack Down (HNext Down g)] 
+    hbdExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HBack Down g) , Not $ AuxBack Down (HBack Down g)] 
     untilExpr dir g h     = [PNext dir (Until dir g h) , XNext dir (Until dir g h) , Not $ PNext dir (Until dir g h) , Not $ XNext dir (Until dir g h)]
     sinceDownExpr g h = [PBack Down (Since Down g h) , XBack Down (Since Down g h) , Not $ PBack Down (Since Down g h) , Not $ XBack Down (Until Down g h)]
     sinceUpExpr g h   = [PBack Up (Since Up g h) , XBack Up (Since Up g h) , Not $ PBack Up (Since Up g h) , Not $ XBack Up (Until Up g h)] ++ xbuExpr (Since Up g h)
@@ -187,7 +186,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
         HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h 
         Eventually g       -> [f, Not f] ++ closList g ++ evExpr  g 
         Always g           -> [f, Not f] ++ closList g ++ alwExpr g
-        AuxBack _ g     -> [f, Not f] ++ closList g ++ abExpr g
+        AuxBack _ g     -> [f, Not f] ++ closList g 
 
 
 -- given a closure of phi, generate a bitEncoding
@@ -248,7 +247,7 @@ genAtoms bitenc clos inputSet =
         , onlyif (not . null $ [f | f@(HSince Up _ _)    <- cl]) (hierSinceUpCons bitenc clos)
         , onlyif (not . null $ [f | f@(Eventually _)     <- cl]) (evCons bitenc clos)
         , onlyif (not . null $ [f | f@(Always _)         <- cl]) (alwCons bitenc clos)
-        , onlyif (not . null $ [f | f@(AuxBack _ _)      <- cl]) (auxBackCons bitenc clos)
+        --, onlyif (not . null $ [f | f@(AuxBack _ _)      <- cl]) (auxBackCons bitenc clos)
         ]
         where onlyif cond f = if cond then f else const True
               cl = S.toList clos
@@ -642,7 +641,7 @@ deltaRules bitenc cl precFunc =
     propShiftPr = propPushPr
     -- we don't need a propPop cause Pop does not consume any input
 
-    --- A RANDOM COMMENT
+
 
     -- PN rules ---------------------------
     -- pnCond :: FormulaSet -> Bool
@@ -735,19 +734,19 @@ deltaRules bitenc cl precFunc =
           maskPbp Yield = D.suchThat bitenc (checkPbpy)
           maskPbp Equal = D.suchThat bitenc (checkPbpe)
           maskPbp Take  = D.suchThat bitenc (checkPbpt)
-          checkPbpy  (PNext Down _) = True -- Yield corresponds to a Down
+          checkPbpy  (PBack Down _) = True -- Yield corresponds to a Down
           checkPbpy _ = False 
-          checkPbpe (PNext _ _   ) = True -- Equal is satisfied by both Down and Up
+          checkPbpe (PBack _ _   ) = True -- Equal is satisfied by both Down and Up
           checkPbpe _    = False
-          checkPbpt (PNext Up  _ ) = True -- Take corresponds to a Up
+          checkPbpt (PBack Up  _ ) = True -- Take corresponds to a Up
           checkPbpt _  = False -- all the rest is false
 
           maskPbnp Yield = D.suchThat bitenc (checkPbnpy)
           maskPbnp Equal = D.suchThat bitenc (checkPbnpe)
           maskPbnp Take  = D.suchThat bitenc (checkPbnpt)
-          checkPbnpy (PNext Up _)   = True -- the other way around with respect to MaskPnp
+          checkPbnpy (PBack Up _)   = True -- the other way around with respect to MaskPnp
           checkPbnpy _ = False
-          checkPbnpt  (PNext Down _) = True 
+          checkPbnpt  (PBack Down _) = True 
           checkPbnpt _ = False
           checkPbnpe _ = False -- equal is satisfied by both Down and Up: always false
 
@@ -1397,8 +1396,8 @@ isFinal bitenc s =
         checkAlw(Always _) = True
         checkAlw _ = False
 
-        --debug = id
-        debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
+        debug = id
+        --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
         currFset = current s
         currPend = pending s
@@ -1490,15 +1489,15 @@ fastcheck phi sprs ts =
         compInitial s = fromMaybe True $
                           (compProps bitenc) <$> (Just . current) s <*> safeHead encTs
 
-        --debug = id
-        debug = DT.trace ("\nRun with:"         ++
-                          "\nNorm. phi:    "    ++ show nphi         ++
-                          "\nTokens:       "    ++ show ts           ++
-                          "\nToken props:\n"    ++ show tsprops      ++
-                          "\nClosure:\n"        ++ showFormulaSet cl ++
-                          "\nAtoms:\n"          ++ showAtoms bitenc as      ++
-                          "\nPending atoms:\n"  ++ showPendCombs pcs ++
-                          "\nInitial states:\n" ++ showStates is)
+        debug = id
+        --debug = DT.trace ("\nRun with:"         ++
+          --                "\nNorm. phi:    "    ++ show nphi         ++
+            --              "\nTokens:       "    ++ show ts           ++
+              --            "\nToken props:\n"    ++ show tsprops      ++
+                --          "\nClosure:\n"        ++ showFormulaSet cl ++
+                  --        "\nAtoms:\n"          ++ showAtoms bitenc as      ++
+                    --      "\nPending atoms:\n"  ++ showPendCombs pcs ++
+                      --    "\nInitial states:\n" ++ showStates is)
 
         laProps lookahead = case lookahead of
                               Just npset -> npset
@@ -1506,25 +1505,25 @@ fastcheck phi sprs ts =
 
         augDeltaShift atoms pcombs rgroup lookahead state props = debug fstates
           where
-            --debug = id
-            debug = DT.trace ("\nShift with: " ++ show ( props) ++
-                           "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+            debug = id
+            --debug = DT.trace ("\nShift with: " ++ show ( props) ++
+                          -- "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
             fstates = delta rgroup atoms pcombs state
                             (Just props) Nothing (Just . laProps $ lookahead)
 
         augDeltaPush atoms pcombs rgroup lookahead state props = debug fstates
           where
-            --debug = id
-            debug = DT.trace ("\nPush with: " ++ show ( props) ++
-                              "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+            debug = id
+            --debug = DT.trace ("\nPush with: " ++ show ( props) ++
+                             -- "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
             fstates = delta rgroup atoms pcombs state
                             (Just props) Nothing (Just . laProps $ lookahead)
 
         augDeltaPop atoms pcombs rgroup lookahead state popped = debug fstates
           where
-            --debug = id
-            debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-                              "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+            debug = id
+            --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
+              --                "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
             fstates = delta rgroup atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
 

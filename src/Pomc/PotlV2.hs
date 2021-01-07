@@ -223,8 +223,12 @@ formulaAt n f
   | otherwise = formulaAt (n-1) (Or (PNext Up f) (PNext Down f))
 
 formulaAfter ::  [Dir] -> Formula a ->  Formula a
-formulaAfter  [] f = f
-formulaAfter  (dir:dirs) f = formulaAfter dirs (PNext dir f)
+formulaAfter  l f = formulaAfterImpl (Prelude.reverse l) f
+
+
+formulaAfterImpl ::  [Dir] -> Formula a ->  Formula a
+formulaAfterImpl  [] f = f
+formulaAfterImpl  (dir:dirs) f = formulaAfter dirs (PNext dir f)
 
 formulaAtDown :: Int -> Formula a -> Formula a
 formulaAtDown n f
