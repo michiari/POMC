@@ -575,13 +575,13 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         )
       , ( "Accepting XBack Up through inner XBack Down" 
         , True
-        , formulaAfter [Down, Up, Up , Up] $ XBack Up (Atomic $ Prop "han")
+        , formulaAfter [Down, Up, Up ,Up] $ XBack Up (Atomic $ Prop "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )
       , ( "Rejecting XBack Up with inner XBack Down"
         , False
-        , formulaAfter [Down, Up , Up, Up] $ XBack Up (Atomic $ Prop "call")
+        , formulaAfter [Down, Up, Up, Up] $ XBack Up (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )

@@ -149,8 +149,8 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
     hndExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HNext Down g) , Not $ AuxBack Down (HNext Down g)] 
     hbdExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HBack Down g) , Not $ AuxBack Down (HBack Down g)] 
     untilExpr dir g h     = [PNext dir (Until dir g h) , XNext dir (Until dir g h) , Not $ PNext dir (Until dir g h) , Not $ XNext dir (Until dir g h)]
-    sinceDownExpr g h = [PBack Down (Since Down g h) , XBack Down (Since Down g h) , Not $ PBack Down (Since Down g h) , Not $ XBack Down (Until Down g h)]
-    sinceUpExpr g h   = [PBack Up (Since Up g h) , XBack Up (Since Up g h) , Not $ PBack Up (Since Up g h) , Not $ XBack Up (Until Up g h)] ++ xbuExpr (Since Up g h)
+    sinceDownExpr g h = [PBack Down (Since Down g h) , XBack Down (Since Down g h) , Not $ PBack Down (Since Down g h) , Not $ XBack Down (Since Down g h)]
+    sinceUpExpr g h   = [PBack Up (Since Up g h) , XBack Up (Since Up g h) , Not $ PBack Up (Since Up g h) , Not $ XBack Up (Since Up g h)] ++ xbuExpr (Since Up g h)
     hudExpr g h = [XNext Up T   , Not (XNext Up T)   , T , Not T , HNext Down (HUntil Down g h) , Not $ HNext Down (HUntil Down g h)] ++ hndExpr (HUntil Down g h)
     huuExpr g h = [XBack Down T , Not (XBack Down T) , T , Not T , HNext Up (HUntil Up g h) , Not $ HNext Up (HUntil Up g h)]
     hsdExpr g h = [XNext Up T   , Not (XNext Up T)   , T , Not T , HBack Down (HSince Down g h) , Not $ HBack Down (HSince Down g h)] ++ hbdExpr (HSince Down g h)
@@ -502,8 +502,14 @@ initials phi clos (atoms, bitenc) =
   let compatible atom = let set = atom
                             checkPb (PBack {}) = True -- check that any PBack is satisfied
                             checkPb _ = False         -- if the current atom has some obligations toward the past, it can't be an initial state
+                            checkAuxB (AuxBack Down _) = True
+                            checkAuxB _ = False
+                            checkxb (XBack _ _) = True
+                            checkxb _ = False
                         in D.member bitenc phi set && -- phi must be satisfied in the initial state
-                           (not $ D.any bitenc checkPb set) -- the initial state must have no PBack
+                           (not $ D.any bitenc checkPb set) && -- the initial state must have no PBack
+                           (not $ D.any bitenc checkAuxB set) && -- the initial state must have no AuxBack
+                           (not $ D.any bitenc checkxb set)  -- the initial state must have no XBack
       compAtoms = filter compatible atoms
       --set of 
       xndfSet = S.fromList [f | f@(XNext Down _) <- S.toList clos]
@@ -959,18 +965,18 @@ deltaRules bitenc cl precFunc =
     -- xbuPopFpr:: FprInfo -> Bool
     xbuPopFpr info =
       let pPend = pending (fprState info) -- current pending obligations
-          (fPend, fXl, _, _) = fprFuturePendComb info -- future pending obligations
-          ppCurr = current $ fromJust (fprPopped info) -- holding formulas in the state to pop
           pPendXbufs = D.intersect pPend maskXbu -- current XBack Up pending obligations
+          (fPend, fXl, _, _) = fprFuturePendComb info -- future pending obligations
           fPendXbufs = D.intersect fPend maskXbu -- future XBack Up pending obligations
 
-          ppCurrAbdfs = D.intersect ppCurr maskAbd -- AuxBack Down formulas holding in the state to pop
-          
-          checkSet = D.union ppCurrAbdfs  pPendXbufs
-
+          ppCurr = current $ fromJust (fprPopped info) -- holding formulas in the state to pop
+          xbuClos = S.filter checkXbu cl -- get all XBack Up formulas of the closure
+          ppCheckSet = D.encode bitenc $
+                      S.filter (\(XBack Up g) -> D.member bitenc (AuxBack Down g) ppCurr) xbuClos -- get all (XBack Up g) such that (AuxBack Down g) currently holds in state to pop 
+          checkSet = D.union ppCheckSet  pPendXbufs
       in if fXl 
-           then  fPendXbufs == pPendXbufs 
-           else fPendXbufs == checkSet
+         then  pPendXbufs == fPendXbufs
+         else  fPendXbufs == checkSet
     
     ------------------------------------------------------------------------------------------------
     -- ABD: AuxBack Down
@@ -1103,9 +1109,9 @@ deltaRules bitenc cl precFunc =
           ppXr = afterPop $ fromJust (frPopped info) -- did the state to pop come from a pop?
           fCurrHbufs = D.intersect fCurr maskHbu -- future current holding XBack Up formulas
 
-          hbuClos = S.filter checkHbu cl -- XBack Up formulas in the closure
+          hbuClos = S.filter checkHbu cl -- HBack Up formulas in the closure
           checkSet = D.encode bitenc $
-                     S.filter (\(HBack _ g) -> D.member bitenc g ppCurr) hbuClos -- all (HBack Up g) such that g holds in state to pop
+                     S.filter (\(HBack Up g) -> D.member bitenc g ppCurr) hbuClos -- all (HBack Up g) such that g holds in state to pop
       in if fXl
          then (if ppXr
               then fCurrHbufs == checkSet
