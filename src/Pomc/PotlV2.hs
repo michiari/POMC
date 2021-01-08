@@ -30,7 +30,7 @@ import qualified Pomc.Prec as PS (fromList)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.RPotl as RP (Formula(..))
 
-import Data.List (nub)
+import Data.List (nub,uncons)
 
 import GHC.Generics (Generic)
 
@@ -223,12 +223,9 @@ formulaAt n f
   | otherwise = formulaAt (n-1) (Or (PNext Up f) (PNext Down f))
 
 formulaAfter ::  [Dir] -> Formula a ->  Formula a
-formulaAfter  l f = formulaAfterImpl (Prelude.reverse l) f
-
-
-formulaAfterImpl ::  [Dir] -> Formula a ->  Formula a
-formulaAfterImpl  [] f = f
-formulaAfterImpl  (dir:dirs) f = formulaAfter dirs (PNext dir f)
+formulaAfter  l f = case uncons l of
+    Nothing -> f
+    Just (dir, dirs) -> PNext dir (formulaAfter dirs f)
 
 formulaAtDown :: Int -> Formula a -> Formula a
 formulaAtDown n f
