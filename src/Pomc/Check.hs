@@ -452,6 +452,7 @@ evCons bitenc clos set = not (D.any bitenc consSet set)
 
 -- consistency check for Always g 
 -- if g holds and PNext Whatever g holds, this does not imply that Always g must hold
+-- TODO: check this
 alwCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
 alwCons bitenc clos set = not (D.any bitenc consSet set)
                           && 

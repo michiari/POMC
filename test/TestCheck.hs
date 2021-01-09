@@ -798,6 +798,24 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["cbeg", "cexc", "c", "call", "thr"])
         )
+      , ( "Accepting HSince Up"
+        , True
+        , formulaAfter [Down, Up, Up, Up, Up] $ HSince Up (Atomic . Prop $ "t") (Atomic . Prop $ "tbeg")
+        , stlPrecRelV1
+        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "t", "t", "ret"])
+        )
+      , ( "Rejecting Not HSince Up"
+        , False
+        , formulaAfter [Down, Up, Up, Up, Up] $ Not ( HSince Up (Atomic . Prop $ "t") (Atomic . Prop $ "tbeg"))
+        , stlPrecRelV1
+        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "t", "t", "ret"])
+        )
+      , ( "Rejecting HSince Up"
+        , False
+        , formulaAfter [Down, Up, Up, Up, Up, Up] $ HSince Up (Not . Atomic . Prop $ "texc") (Atomic . Prop $ "tbeg")
+        , stlPrecRelV1
+        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "texc", "t", "ret"])
+        )
       , ( "Accepting Eventually"
         , True
         , Eventually (Atomic . Prop $ "thr")
