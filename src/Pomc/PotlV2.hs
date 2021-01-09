@@ -205,12 +205,12 @@ atomic (Atomic _) = True
 atomic _ = False
 
 future :: Formula a -> Bool
-future (PNext      {}) = True
-future (XNext      {}) = True
-future (HNext      {}) = True
-future (Until      {}) = True
-future (HUntil     {}) = True
-future (Eventually {}) = True
+future (PNext      {})      = True
+future (XNext      {})      = True
+future (HNext      {})      = True
+future (Until      {})      = True
+future (HUntil     {})      = True
+future (Eventually {})      = True
 future _ = False
 
 negative :: Formula a -> Bool

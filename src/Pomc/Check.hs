@@ -187,7 +187,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
         HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
         HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h 
         Eventually g       -> [f, Not f] ++ closList g ++ evExpr  g 
-        Always g           -> [f, Not f] ++ closList g ++ alwExpr g
+        Always g           -> [f, Not f] ++ closList g  -- ++ alwExpr g
         AuxBack _ g     -> [f, Not f] ++ closList g 
 
 
@@ -248,7 +248,7 @@ genAtoms bitenc clos inputSet =
         , onlyif (not . null $ [f | f@(HSince Down  _ _) <- cl]) (hierSinceDownCons bitenc clos)
         , onlyif (not . null $ [f | f@(HSince Up _ _)    <- cl]) (hierSinceUpCons bitenc clos)
         , onlyif (not . null $ [f | f@(Eventually _)     <- cl]) (evCons bitenc clos)
-        , onlyif (not . null $ [f | f@(Always _)         <- cl]) (alwCons bitenc clos)
+        --, onlyif (not . null $ [f | f@(Always _)         <- cl]) (alwCons bitenc clos)
         --, onlyif (not . null $ [f | f@(AuxBack _ _)      <- cl]) (auxBackCons bitenc clos)
         ]
         where onlyif cond f = if cond then f else const True
@@ -461,10 +461,10 @@ alwCons bitenc clos set = not (D.any bitenc consSet set)
                                                         not (D.member bitenc f set)]
   where present alw g =
           (D.member bitenc g set) &&
-           ((D.member bitenc (PNext Up alw) set) ||
-            (D.member bitenc (PNext Down alw) set) ||
-            (D.member bitenc (PBack Up alw) set) ||
-            (D.member bitenc (PBack Down alw) set))
+          ((D.member bitenc (PNext Up alw) set) ||
+          (D.member bitenc (PNext Down alw) set) ||
+          (D.member bitenc (PBack Up alw) set) ||
+          (D.member bitenc (PBack Down alw) set))
         consSet f@(Always g) = not $ present f g
         consSet _ = False
 
@@ -488,6 +488,7 @@ pendCombs bitenc clos =
       hns = [f | f@(HNext _ _)   <- S.toList clos]
       hbs = [f | f@(HBack _ _)   <- S.toList clos]
       abs = [f | f@(AuxBack _ _) <- S.toList clos]
+      alw = [f | f@(Always _   ) <- S.toList clos]
   in S.foldl' S.union S.empty . -- here dot operator does not concatenate S.empty and S.map, but foldl and S.map
      S.map (S.fromList . combs . (D.encode bitenc)) $ 
      S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ abs)
@@ -545,6 +546,8 @@ deltaRules bitenc cl precFunc =
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr) 
                                      , (pbCond, pbShiftFcr) 
+                                     , (alwCond, alwShift1Fcr)
+                                     , (alwCond, alwShift2Fcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
                                      , (xndCond,    xndShiftFpr)
@@ -575,6 +578,8 @@ deltaRules bitenc cl precFunc =
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr) 
                                      , (pbCond, pbPushFcr) 
+                                     , (alwCond, alwPush1Fcr)
+                                     , (alwCond, alwPush2Fcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
                                      , (xndCond,    xndPushFpr)  
@@ -600,7 +605,10 @@ deltaRules bitenc cl precFunc =
                                      ]
         , 
           -- future current rules
-          ruleGroupFcrs = resolve cl []
+          ruleGroupFcrs = resolve cl [ (alwCond, alwPop1Fcr)
+                                     , (alwCond, alwPop2Fcr)
+                                     ]
+
         , ruleGroupFprs = resolve cl [ (const True, xrPopFpr) 
                                      , (xndCond,    xndPopFpr) 
                                      , (xnuCond,    xnuPopFpr) 
@@ -1264,7 +1272,45 @@ deltaRules bitenc cl precFunc =
     hbdShiftPr = hbdPushPr
     --
 
-   
+    --- Alw: Always g
+    -- TODO: for final states
+    maskAlw = D.suchThat bitenc checkAlw
+    checkAlw (Always _) = True
+    checkAlw _ = False
+    alwClos = S.filter checkAlw cl -- all Always g formulas in the closure
+
+    alwCond clos = not (null [f | f@(Always _) <- S.toList clos])
+
+    -- alwPushFcr:: FcrInfo -> Bool
+    alwPush1Fcr info =
+      let pCurr = current $ fcrState info --current holding formulas 
+          pCurrAlwfs = D.intersect pCurr maskAlw
+          fCurr = fcrFutureCurr info -- future holding formulas
+          checkSet = D.encode bitenc $
+                     S.filter (\(Always g) ->   (D.member bitenc g pCurr) && 
+                                                 (D.member bitenc g fCurr) &&
+                                                 (D.member bitenc (Always g) fCurr)) alwClos 
+      in pCurrAlwfs == checkSet
+
+
+    alwShift1Fcr = alwPush1Fcr 
+    alwPop1Fcr = alwPush1Fcr 
+
+      -- alwPushFcr:: FcrInfo -> Bool
+    alwPush2Fcr info =
+      let pCurr = current $ fcrState info --current holding formulas
+          fCurr = fcrFutureCurr info -- future holding formulas 
+          fCurrAlwfs = D.intersect fCurr maskAlw
+
+          checkSet = D.encode bitenc $
+                     S.filter (\(Always g) ->   (D.member bitenc g pCurr) && 
+                                                 (D.member bitenc g fCurr) &&
+                                                 (D.member bitenc (Always g) pCurr)) alwClos 
+      in fCurrAlwfs == checkSet
+
+
+    alwShift2Fcr = alwPush2Fcr 
+    alwPop2Fcr = alwPush2Fcr 
 
 
 -----------------------------------------------------------------------------------------------------------------------------------------

@@ -459,12 +459,6 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting Always"
-        , True
-        , Always . Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call"]
-        )
       , ( "Rejecting Not XBack Down through the Yield relation"
         , False
         , formulaAfter [Down, Up] $ Not (XBack Down (Atomic $ Prop "han"))
@@ -834,6 +828,60 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
+      , ( "Accepting Always -- v0"
+        , True
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call"]
+        )
+      ,( "Accepting Always"
+        , True
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Accepting Always -- v2"
+        , True
+        , Always $ Or (Atomic . Prop $ "call") (Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
+        )
+      , ( "Accepting Always -- v3"
+        , True
+        , Always $ Or (Atomic . Prop $ "call") (PNext Down $ Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "ret"]
+        )
+      , ( "Accepting Always -- v4"
+        , True
+        , Always $ Or (Atomic . Prop $ "call") (PNext Up $ Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "ret"]
+        )
+      , ( "Accepting Always --v5"
+        , False
+        , Always $ Or (Atomic . Prop $ "ret") (PBack Down $ Atomic . Prop $ "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret", "ret"]
+        )
+      , ( "Accepting Always --v6"
+        , False
+        , Always $ Or (Atomic . Prop $ "ret") (PBack Up $ Atomic . Prop $ "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret", "ret"]
+        )
+      , ( "Rejecting Always"
+        , False
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "call"]
+        )
+      , ( "Rejecting Always --v2"
+        , False
+        , Always $ Or (Atomic . Prop $ "call") (PNext Down $ Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
+        )
       , ( "Testing boundaries with XNext"
         , True
         , XNext Up T
@@ -896,12 +944,6 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , Eventually . Atomic . Prop $ "ret"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc"]
-        )
-      , ( "Rejecting Always"
-        , False
-        , Always . Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "call"]
         )
       , ( "Accepting HUntil Down"
         , True
