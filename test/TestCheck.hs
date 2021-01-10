@@ -846,18 +846,6 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
         )
-      , ( "Accepting Always -- v3"
-        , True
-        , Always $ Or (Atomic . Prop $ "call") (PNext Down $ Atomic . Prop $ "ret")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call", "ret"]
-        )
-      , ( "Accepting Always -- v4"
-        , True
-        , Always $ Or (Atomic . Prop $ "call") (PNext Up $ Atomic . Prop $ "ret")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call", "ret"]
-        )
       , ( "Accepting Always --v5"
         , False
         , Always $ Or (Atomic . Prop $ "ret") (PBack Down $ Atomic . Prop $ "call")
