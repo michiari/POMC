@@ -156,8 +156,6 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
     hsdExpr g h = [XNext Up T   , Not (XNext Up T)   , T , Not T , HBack Down (HSince Down g h) , Not $ HBack Down (HSince Down g h)] ++ hbdExpr (HSince Down g h)
     hsuExpr g h = [XBack Down T , Not (XBack Down T) , T , Not T , HBack Up (HSince Up g h) , Not $ HBack Up (HSince Up g h)]
     evExpr    g = [PNext Up (Eventually g), Not $ PNext Up (Eventually g), PNext Down (Eventually g), Not $ PNext Down (Eventually g)]
-    alwExpr   g = [PNext Up (Always g), Not $ PNext Up (Always g), PNext Down (Always g), Not $ PNext Down (Always g) 
-                  , PBack Up (Always g), Not $ PBack Up (Always g), PBack Down (Always g), Not $ PBack Down (Always g) ] 
     
     
     closList f = 
@@ -187,7 +185,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
         HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
         HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h 
         Eventually g       -> [f, Not f] ++ closList g ++ evExpr  g 
-        Always g           -> [f, Not f] ++ closList g  -- ++ alwExpr g
+        Always g           -> [f, Not f] ++ closList g  
         AuxBack _ g     -> [f, Not f] ++ closList g 
 
 
@@ -491,7 +489,7 @@ pendCombs bitenc clos =
       alw = [f | f@(Always _   ) <- S.toList clos]
   in S.foldl' S.union S.empty . -- here dot operator does not concatenate S.empty and S.map, but foldl and S.map
      S.map (S.fromList . combs . (D.encode bitenc)) $ 
-     S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ abs)
+     S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ abs ++ alw)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],
@@ -543,11 +541,11 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuShiftPr) 
                                      , (hbuCond,    hbuShiftPr) 
                                      , (hbdCond,    hbdShiftPr) 
+                                     , (alwCond,    alwShiftPr1)
+                                     , (alwCond,    alwShiftPr2)
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr) 
                                      , (pbCond, pbShiftFcr) 
-                                     , (alwCond, alwShift1Fcr)
-                                     , (alwCond, alwShift2Fcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
                                      , (xndCond,    xndShiftFpr)
@@ -558,6 +556,7 @@ deltaRules bitenc cl precFunc =
                                      , (hndCond,    hndShiftFpr1)
                                      , (hndCond,    hndShiftFpr2)
                                      , (hbdCond,    hbdShiftFpr) 
+                                     , (alwCond,    alwShiftFpr)
                                      ]
         , ruleGroupFrs  = resolve cl []
         }
@@ -575,11 +574,11 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuPushPr2)
                                      , (hbuCond,    hbuPushPr) 
                                      , (hbdCond,    hbdPushPr) 
+                                     , (alwCond,    alwPushPr1)
+                                     , (alwCond,    alwPushPr2)
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr) 
                                      , (pbCond, pbPushFcr) 
-                                     , (alwCond, alwPush1Fcr)
-                                     , (alwCond, alwPush2Fcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
                                      , (xndCond,    xndPushFpr)  
@@ -590,6 +589,7 @@ deltaRules bitenc cl precFunc =
                                      , (hndCond,    hndPushFpr1)
                                      , (hndCond,    hndPushFpr2)
                                      , (hbdCond,    hbdPushFpr) 
+                                     , (alwCond,    alwPushFpr)                                    
                                      ]
         , ruleGroupFrs  = resolve cl []
         }
@@ -605,9 +605,7 @@ deltaRules bitenc cl precFunc =
                                      ]
         , 
           -- future current rules
-          ruleGroupFcrs = resolve cl [ (alwCond, alwPop1Fcr)
-                                     , (alwCond, alwPop2Fcr)
-                                     ]
+          ruleGroupFcrs = resolve cl []
 
         , ruleGroupFprs = resolve cl [ (const True, xrPopFpr) 
                                      , (xndCond,    xndPopFpr) 
@@ -622,6 +620,7 @@ deltaRules bitenc cl precFunc =
                                      , (hbdCond,    hbdPopFpr1) 
                                      , (hbdCond,    hbdPopFpr2)  
                                      , (hbdCond,    hbdPopFpr3) 
+                                     , (alwCond,    alwPopFpr)
                                      ]
         , ruleGroupFrs  = resolve cl [(hbuCond, hbuPopFr)] 
         }
@@ -1281,36 +1280,47 @@ deltaRules bitenc cl precFunc =
 
     alwCond clos = not (null [f | f@(Always _) <- S.toList clos])
 
-    -- alwPushFcr:: FcrInfo -> Bool
-    alwPush1Fcr info =
-      let pCurr = current $ fcrState info --current holding formulas 
+    -- alwPushPr:: PrInfo -> Bool
+    alwPushPr1 info =
+      let pCurr = current $ prState info -- current holding formulas  
+          alwArgfs = D.encode bitenc $
+                     S.map (\(Always g) -> g)  $ S.filter (\g -> D.member bitenc g pCurr) alwClos
+      in alwArgfs == D.intersect  pCurr alwArgfs
+
+    -- alwShiftPr:: PrInfo -> Bool
+    alwShiftPr1 = alwPushPr1
+
+    -- alwPushPr:: PrInfo -> Bool
+    alwPushPr2 info =
+      let pCurr = current $ prState info -- current holding formulas 
+          pPend = pending $ prState info -- current pending formulas 
           pCurrAlwfs = D.intersect pCurr maskAlw
-          fCurr = fcrFutureCurr info -- future holding formulas
-          checkSet = D.encode bitenc $
-                     S.filter (\(Always g) ->   (D.member bitenc g pCurr) && 
-                                                 (D.member bitenc g fCurr) &&
-                                                 (D.member bitenc (Always g) fCurr)) alwClos 
-      in pCurrAlwfs == checkSet
+          pPendAlwfs = D.intersect pPend maskAlw      
+      in  pCurrAlwfs == pPendAlwfs
+
+    -- alwShiftPr:: PrInfo -> Bool
+    alwShiftPr2 = alwPushPr2
+
+    -- alwPushFpr:: FprInfo -> Bool
+    alwPushFpr info = 
+      let pCurr = current $ fprState info -- current holding formulas 
+          (fPend, _, _, _)  = fprFuturePendComb $ info -- future pending formulas 
+          pCurrAlwfs = D.intersect pCurr maskAlw
+          fPendAlwfs = D.intersect fPend maskAlw 
+      in pCurrAlwfs == fPendAlwfs
+
+    alwShiftFpr = alwPushFpr
+
+    -- alwPopFpr:: FprInfo -> Bool
+    alwPopFpr info =
+      let pPend = pending $ fprState info -- current pending formulas 
+          (fPend, _, _, _)  = fprFuturePendComb $ info -- future pending formulas 
+          pPendAlwfs = D.intersect pPend maskAlw
+          fPendAlwfs = D.intersect fPend maskAlw 
+      in pPendAlwfs == fPendAlwfs
 
 
-    alwShift1Fcr = alwPush1Fcr 
-    alwPop1Fcr = alwPush1Fcr 
 
-      -- alwPushFcr:: FcrInfo -> Bool
-    alwPush2Fcr info =
-      let pCurr = current $ fcrState info --current holding formulas
-          fCurr = fcrFutureCurr info -- future holding formulas 
-          fCurrAlwfs = D.intersect fCurr maskAlw
-
-          checkSet = D.encode bitenc $
-                     S.filter (\(Always g) ->   (D.member bitenc g pCurr) && 
-                                                 (D.member bitenc g fCurr) &&
-                                                 (D.member bitenc (Always g) pCurr)) alwClos 
-      in fCurrAlwfs == checkSet
-
-
-    alwShift2Fcr = alwPush2Fcr 
-    alwPop2Fcr = alwPush2Fcr 
 
 
 -----------------------------------------------------------------------------------------------------------------------------------------
