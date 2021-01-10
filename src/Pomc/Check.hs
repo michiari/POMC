@@ -512,7 +512,7 @@ initials phi clos (atoms, bitenc) =
                            (not $ D.any bitenc checkxb set)  -- the initial state must have no XBack
       compAtoms = filter compatible atoms
       --set of 
-      xndfSet = S.fromList [f | f@(XNext Down _) <- S.toList clos]
+      xndfSet = S.fromList $ [f | f@(XNext Down _) <- S.toList clos] ++ [f | f@(Always _) <- S.toList clos]
   -- list comprehension with all the states that are compatible and the powerset of all possible future obligations
   in [State phia (D.encode bitenc phip) True False False | phia <- compAtoms,
                                                            phip <- S.toList (S.powerSet xndfSet)]
