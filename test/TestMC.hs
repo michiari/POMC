@@ -20,20 +20,20 @@ tests = testGroup "ModelChecking.hs Tests" [sasBaseTests, sasEvalTests,
                                             stackExcTests, stackExcSwapTests]
 
 sasBaseTests :: TestTree
-sasBaseTests = testGroup "SAS OPA: MC Base Tests" $
+sasBaseTests = testGroup "SAS OPA MC Base Tests" $
   map (makeTestCase simpleExc) (zip TestSat.cases expectedSasBase)
 
 sasEvalTests :: TestTree
-sasEvalTests = testGroup "SAS OPA: MC Eval Tests" $
+sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
   map (makeTestCase simpleExc) (zip EvalFormulas.formulas expectedSasEval)
 
 
 lRBaseTests :: TestTree
-lRBaseTests = testGroup "LargerRec OPA: MC Base Tests" $
+lRBaseTests = testGroup "LargerRec OPA MC Base Tests" $
   map (makeTestCase largerRec) (zip TestSat.cases expectedLargerRecBase)
 
 lREvalTests :: TestTree
-lREvalTests = testGroup "LargerRec OPA: MC Eval Tests" $
+lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
   map (makeTestCase largerRec) (zip EvalFormulas.formulas expectedLargerRecEval)
 
 
