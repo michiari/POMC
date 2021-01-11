@@ -248,7 +248,7 @@ normalize f = case f of
                 T                  -> f
                 Atomic _           -> f
                 Not (Not g)        -> normalize g
-                --Not (Always g)     -> Eventually . normalize . Not $ g
+                Not (Always g)     -> Eventually . normalize . Not $ g
                 Not g              -> Not (normalize g)
                 Or g h             -> Or  (normalize g) (normalize h)
                 And g h            -> And (normalize g) (normalize h)
