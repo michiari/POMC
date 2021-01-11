@@ -486,10 +486,9 @@ pendCombs bitenc clos =
       hns = [f | f@(HNext _ _)   <- S.toList clos]
       hbs = [f | f@(HBack _ _)   <- S.toList clos]
       abs = [f | f@(AuxBack _ _) <- S.toList clos]
-      alw = [f | f@(Always _   ) <- S.toList clos]
   in S.foldl' S.union S.empty . -- here dot operator does not concatenate S.empty and S.map, but foldl and S.map
      S.map (S.fromList . combs . (D.encode bitenc)) $ 
-     S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ abs ++ alw)
+     S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ abs)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],
@@ -512,7 +511,7 @@ initials phi clos (atoms, bitenc) =
                            (not $ D.any bitenc checkxb set)  -- the initial state must have no XBack
       compAtoms = filter compatible atoms
       --set of 
-      xndfSet = S.fromList $ [f | f@(XNext Down _) <- S.toList clos] ++ [f | f@(Always _) <- S.toList clos]
+      xndfSet = S.fromList  [f | f@(XNext Down _) <- S.toList clos] 
   -- list comprehension with all the states that are compatible and the powerset of all possible future obligations
   in [State phia (D.encode bitenc phip) True False False | phia <- compAtoms,
                                                            phip <- S.toList (S.powerSet xndfSet)]
@@ -541,11 +540,11 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuShiftPr) 
                                      , (hbuCond,    hbuShiftPr) 
                                      , (hbdCond,    hbdShiftPr) 
-                                     , (alwCond,    alwShiftPr1)
-                                     , (alwCond,    alwShiftPr2)
+                                     , (alwCond,    alwShiftPr)
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr) 
                                      , (pbCond, pbShiftFcr) 
+                                     , (alwCond, alwShiftFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
                                      , (xndCond,    xndShiftFpr)
@@ -556,7 +555,6 @@ deltaRules bitenc cl precFunc =
                                      , (hndCond,    hndShiftFpr1)
                                      , (hndCond,    hndShiftFpr2)
                                      , (hbdCond,    hbdShiftFpr) 
-                                     , (alwCond,    alwShiftFpr)
                                      ]
         , ruleGroupFrs  = resolve cl []
         }
@@ -574,11 +572,11 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuPushPr2)
                                      , (hbuCond,    hbuPushPr) 
                                      , (hbdCond,    hbdPushPr) 
-                                     , (alwCond,    alwPushPr1)
-                                     , (alwCond,    alwPushPr2)
+                                     , (alwCond,    alwPushPr)
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr) 
                                      , (pbCond, pbPushFcr) 
+                                     , (alwCond, alwPushFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
                                      , (xndCond,    xndPushFpr)  
@@ -588,8 +586,7 @@ deltaRules bitenc cl precFunc =
                                      , (abdCond,    abdPushFpr) 
                                      , (hndCond,    hndPushFpr1)
                                      , (hndCond,    hndPushFpr2)
-                                     , (hbdCond,    hbdPushFpr) 
-                                     , (alwCond,    alwPushFpr)                                    
+                                     , (hbdCond,    hbdPushFpr)                              
                                      ]
         , ruleGroupFrs  = resolve cl []
         }
@@ -605,7 +602,8 @@ deltaRules bitenc cl precFunc =
                                      ]
         , 
           -- future current rules
-          ruleGroupFcrs = resolve cl []
+          ruleGroupFcrs = resolve cl [(alwCond, alwPopFcr)
+                                     ]
 
         , ruleGroupFprs = resolve cl [ (const True, xrPopFpr) 
                                      , (xndCond,    xndPopFpr) 
@@ -620,7 +618,6 @@ deltaRules bitenc cl precFunc =
                                      , (hbdCond,    hbdPopFpr1) 
                                      , (hbdCond,    hbdPopFpr2)  
                                      , (hbdCond,    hbdPopFpr3) 
-                                     , (alwCond,    alwPopFpr)
                                      ]
         , ruleGroupFrs  = resolve cl [(hbuCond, hbuPopFr)] 
         }
@@ -1281,47 +1278,26 @@ deltaRules bitenc cl precFunc =
     alwCond clos = not (null [f | f@(Always _) <- S.toList clos])
 
     -- alwPushPr:: PrInfo -> Bool
-    alwPushPr1 info =
-      let pCurr = current $ prState info -- current holding formulas  
-          alwArgfs = D.encode bitenc $
-                     S.map (\(Always g) -> g)  $ S.filter (\g -> D.member bitenc g pCurr) alwClos
-      in alwArgfs == D.intersect  pCurr alwArgfs
-
-    -- alwShiftPr:: PrInfo -> Bool
-    alwShiftPr1 = alwPushPr1
-
-    -- alwPushPr:: PrInfo -> Bool
-    alwPushPr2 info =
+    alwPushPr info =
       let pCurr = current $ prState info -- current holding formulas 
-          pPend = pending $ prState info -- current pending formulas 
-          pCurrAlwfs = D.intersect pCurr maskAlw
-          pPendAlwfs = D.intersect pPend maskAlw      
-      in  pCurrAlwfs == pPendAlwfs
+          pCurrAlwHoldingfs =  S.filter (\g -> D.member bitenc g pCurr) alwClos
+          alwArgfs = D.encode bitenc $
+                     S.map (\(Always g) -> g)  pCurrAlwHoldingfs
+
+          checkSet = D.intersect  pCurr alwArgfs
+      in alwArgfs == checkSet 
 
     -- alwShiftPr:: PrInfo -> Bool
-    alwShiftPr2 = alwPushPr2
+    alwShiftPr = alwPushPr
 
-    -- alwPushFpr:: FprInfo -> Bool
-    alwPushFpr info = 
-      let pCurr = current $ fprState info -- current holding formulas 
-          (fPend, _, _, _)  = fprFuturePendComb $ info -- future pending formulas 
+    alwPushFcr info = 
+      let pCurr = current $ fcrState info
+          fCurr = fcrFutureCurr info
           pCurrAlwfs = D.intersect pCurr maskAlw
-          fPendAlwfs = D.intersect fPend maskAlw 
-      in pCurrAlwfs == fPendAlwfs
-
-    alwShiftFpr = alwPushFpr
-
-    -- alwPopFpr:: FprInfo -> Bool
-    alwPopFpr info =
-      let pPend = pending $ fprState info -- current pending formulas 
-          (fPend, _, _, _)  = fprFuturePendComb $ info -- future pending formulas 
-          pPendAlwfs = D.intersect pPend maskAlw
-          fPendAlwfs = D.intersect fPend maskAlw 
-      in pPendAlwfs == fPendAlwfs
-
-
-
-
+          fCurrAlwfs = D.intersect fCurr maskAlw
+      in pCurrAlwfs == fCurrAlwfs
+    alwShiftFcr = alwPushFcr
+    alwPopFcr = alwPushFcr
 
 -----------------------------------------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1558,13 +1534,13 @@ fastcheck phi sprs ts =
 
         debug = id
         --debug = DT.trace ("\nRun with:"         ++
-          --                "\nNorm. phi:    "    ++ show nphi         ++
-            --              "\nTokens:       "    ++ show ts           ++
-              --            "\nToken props:\n"    ++ show tsprops      ++
-                --          "\nClosure:\n"        ++ showFormulaSet cl ++
-                  --        "\nAtoms:\n"          ++ showAtoms bitenc as      ++
-                    --      "\nPending atoms:\n"  ++ showPendCombs pcs ++
-                      --    "\nInitial states:\n" ++ showStates is)
+             --          "\nNorm. phi:    "    ++ show nphi         ++
+               --     "\nTokens:       "    ++ show ts           ++
+                 --       "\nToken props:\n"    ++ show tsprops      ++
+                   --      "\nClosure:\n"        ++ showFormulaSet cl ++
+                     --    "\nAtoms:\n"          ++ showAtoms bitenc as      ++
+                       --  "\nPending atoms:\n"  ++ showPendCombs pcs ++
+                         --"\nInitial states:\n" ++ showStates is)
 
         laProps lookahead = case lookahead of
                               Just npset -> npset
@@ -1574,7 +1550,7 @@ fastcheck phi sprs ts =
           where
             debug = id
             --debug = DT.trace ("\nShift with: " ++ show ( props) ++
-                          -- "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+                        --   "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
             fstates = delta rgroup atoms pcombs state
                             (Just props) Nothing (Just . laProps $ lookahead)
 
@@ -1582,7 +1558,7 @@ fastcheck phi sprs ts =
           where
             debug = id
             --debug = DT.trace ("\nPush with: " ++ show ( props) ++
-                             -- "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+              --                "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
             fstates = delta rgroup atoms pcombs state
                             (Just props) Nothing (Just . laProps $ lookahead)
 
@@ -1590,7 +1566,7 @@ fastcheck phi sprs ts =
           where
             debug = id
             --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-              --                "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
+                         --   "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
             fstates = delta rgroup atoms pcombs state
                             Nothing (Just popped) (Just . laProps $ lookahead)
 
