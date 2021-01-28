@@ -135,7 +135,7 @@ compProps :: BitEncoding -> EncodedSet -> Input -> Bool
 compProps bitenc fset pset = D.extractInput bitenc fset == pset
 
 
--- generate a closure ( phi= input formula of makeOpa, otherProps = AP set of the language)
+-- generate a closure (phi = input formula of makeOpa, otherProps = AP set of the language)
 -- fromList removes duplicates
 closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
@@ -182,7 +182,7 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
         HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
         Eventually g       -> [f, Not f] ++ closList g ++ evExpr  g
         Always g           -> [f, Not f] ++ closList g
-        AuxBack _ g     -> [f, Not f] ++ closList g
+        AuxBack _ g        -> [f, Not f] ++ closList g
 
 
 -- given a formula closure, generate a bitEncoding
@@ -242,8 +242,6 @@ genAtoms bitenc clos inputSet =
         , onlyif (not . null $ [f | f@(HSince Down  _ _) <- cl]) (hierSinceDownCons bitenc clos)
         , onlyif (not . null $ [f | f@(HSince Up _ _)    <- cl]) (hierSinceUpCons bitenc clos)
         , onlyif (not . null $ [f | f@(Eventually _)     <- cl]) (evCons bitenc clos)
-        --, onlyif (not . null $ [f | f@(Always _)         <- cl]) (alwCons bitenc clos)
-        --, onlyif (not . null $ [f | f@(AuxBack _ _)      <- cl]) (auxBackCons bitenc clos)
         ]
         where onlyif cond f = if cond then f else const True
               cl = S.toList clos
@@ -447,36 +445,6 @@ evCons bitenc clos set = not (D.any bitenc consSet set)
         consSet f@(Eventually g) = not $ present f g
         consSet _ = False
 
--- consistency check for Always g
--- if g holds and PNext Whatever g holds, this does not imply that Always g must hold
-alwCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-alwCons bitenc clos set = not (D.any bitenc consSet set)
-                          &&
-                          null [f | f@(Always g) <- S.toList clos,
-                                 present f g &&
-                                 not (D.member bitenc f set)]
-  where present alw g =
-          (D.member bitenc g set) &&
-          ((D.member bitenc (PNext Up alw) set) ||
-          (D.member bitenc (PNext Down alw) set) ||
-          (D.member bitenc (PBack Up alw) set) ||
-          (D.member bitenc (PBack Down alw) set))
-        consSet f@(Always g) = not $ present f g
-        consSet _ = False
-
---consistency checks for AuxBack Down g
-auxBackCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-auxBackCons bitenc clos set = not (D.any bitenc consSet set)
-                          &&
-                          null [f | f@(AuxBack Down g) <- S.toList clos,
-                                 present f g &&
-                                 not (D.member bitenc f set)]
-  where present f g =
-          (D.member bitenc (XBack Down g) set) ||
-          (D.member bitenc (PBack Down g) set)
-        consSet f@(AuxBack Down g) = not $ present f g
-        consSet _ = False
-
 -- given the BitEncoding and the closure of phi,
 -- generate all possible combinations of pending obligations + (mustPush, mustShift, mustPop)
 pendCombs :: BitEncoding -> FormulaSet -> Set (EncodedSet, Bool, Bool, Bool)
@@ -485,10 +453,10 @@ pendCombs bitenc clos =
       xbs = [f | f@(XBack _ _)   <- S.toList clos]
       hns = [f | f@(HNext _ _)   <- S.toList clos]
       hbs = [f | f@(HBack _ _)   <- S.toList clos]
-      abs = [f | f@(AuxBack _ _) <- S.toList clos]
+      axbs = [f | f@(AuxBack _ _) <- S.toList clos]
   in S.foldl' S.union S.empty . -- here dot operator does not concatenate S.empty and S.map, but foldl and S.map
      S.map (S.fromList . combs . (D.encode bitenc)) $
-     S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ abs)
+     S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ axbs)
   where
     combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
                                        xe <- [False, True],

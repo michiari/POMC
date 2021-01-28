@@ -1,9 +1,7 @@
 module TestCheck (tests) where
 
-import Pomc.Check (fastcheckGen, fastcheck)
+import Pomc.Check (fastcheckGen)
 import Pomc.Example (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
-import Pomc.Prec (Prec(..))
-import qualified Pomc.Prec as PS (singleton, fromList)
 import Pomc.Prop (Prop(..))
 import Pomc.PotlV2(Dir(..), Formula(..), formulaAt, formulaAfter)
 

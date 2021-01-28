@@ -32,7 +32,6 @@ module Pomc.Data ( EncodedSet
                  , inputSuchThat
                  ) where
 
-import Pomc.Prop (Prop)
 import Pomc.PotlV2
 import Pomc.PropConv (APType)
 

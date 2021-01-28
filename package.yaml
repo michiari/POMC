@@ -28,7 +28,6 @@ library:
   - Pomc.PotlV2
   - Pomc.Prec
   - Pomc.Prop
-  - Pomc.RPotl
   - Pomc.Satisfiability
   - Pomc.ModelChecker
   - Pomc.OpaGen

@@ -1,11 +1,10 @@
 {-# LANGUAGE DeriveGeneric #-}
 {- |
    Module      : Pomc.PotlV2
-   Copyright   : 2020 Davide Bergamaschi
+   Copyright   : 2020 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
-
 
 module Pomc.PotlV2 ( -- * POTL V2 types
                      Dir(..)
@@ -13,25 +12,20 @@ module Pomc.PotlV2 ( -- * POTL V2 types
                    , Formula(..)
                    , getProps
                     -- * Predicates on formulas
-                  , atomic
-                  , future
-                  , negative
-                    -- * Operations on formulas
-                  , negation
-                  , normalize
-                  , formulaAt
-                  , formulaAfter
-                  , formulaAtDown
-                  , formulaAtUp
+                   , atomic
+                   , future
+                   , negative
+                     -- * Operations on formulas
+                   , negation
+                   , normalize
+                   , formulaAt
+                   , formulaAfter
+                   , formulaAtDown
+                   , formulaAtUp
                    ) where
 
-import Pomc.Prec (Prec(..))
-import qualified Pomc.Prec as PS (fromList)
 import Pomc.Prop (Prop(..))
-import qualified Pomc.RPotl as RP (Formula(..))
-
 import Data.List (nub,uncons)
-
 import GHC.Generics (Generic)
 
 import Data.Hashable
@@ -50,59 +44,16 @@ data Formula a = T
                | PBack  Dir (Formula a)
                | XNext  Dir (Formula a)
                | XBack  Dir (Formula a)
-               | HNext  Dir (Formula a) 
-               | HBack  Dir (Formula a) 
+               | HNext  Dir (Formula a)
+               | HBack  Dir (Formula a)
                | Until  Dir (Formula a) (Formula a)
                | Since  Dir (Formula a) (Formula a)
-               | HUntil Dir (Formula a) (Formula a) 
-               | HSince Dir (Formula a) (Formula a) 
-               | Eventually (Formula a) 
-               | Always     (Formula a) 
-               | AuxBack Dir(Formula a)  -- AuxBack Up is NEVER used
+               | HUntil Dir (Formula a) (Formula a)
+               | HSince Dir (Formula a) (Formula a)
+               | Eventually (Formula a)
+               | Always     (Formula a)
+               | AuxBack Dir (Formula a)  -- AuxBack Up is NEVER used
                deriving (Eq, Ord, Generic)
-
-class Checkable c where
-  toReducedPotl :: c a -> RP.Formula a
-
-instance Checkable (RP.Formula) where
-  toReducedPotl = id
-
-instance Checkable (Formula) where
-  toReducedPotl f =
-    case f of
-      T               -> RP.T
-      Atomic End      -> RP.Atomic End
-      Atomic (Prop p) -> RP.Atomic (Prop p)
-      Not g           -> RP.Not (trp g)
-      And g h         -> RP.And (trp g) (trp h)
-      Or g h          -> RP.Or (trp g) (trp h)
-      Xor g h         -> trp $ (g `And` Not h) `Or` (h `And` Not g)
-      Implies g h     -> trp $ (Not g) `Or` h
-      Iff g h         -> trp $ (g `Implies` h) `And` (h `Implies` g)
-      PNext Down g    -> RP.PrecNext  (PS.fromList [Yield, Equal]) (trp g)
-      PNext Up   g    -> RP.PrecNext  (PS.fromList [Equal, Take])  (trp g)
-      PBack Down g    -> RP.PrecBack  (PS.fromList [Yield, Equal]) (trp g)
-      PBack Up   g    -> RP.PrecBack  (PS.fromList [Equal, Take])  (trp g)
-      XNext Down g    -> RP.ChainNext (PS.fromList [Yield, Equal]) (trp g)
-      XNext Up   g    -> RP.ChainNext (PS.fromList [Equal, Take])  (trp g)
-      XBack Down g    -> RP.ChainBack (PS.fromList [Yield, Equal]) (trp g)
-      XBack Up   g    -> RP.ChainBack (PS.fromList [Equal, Take])  (trp g)
-      HNext Down g    -> RP.HierNextTake  (trp g)
-      HNext Up   g    -> RP.HierNextYield (trp g)
-      HBack Down g    -> RP.HierBackTake  (trp g)
-      HBack Up   g    -> RP.HierBackYield (trp g)
-      Until Down g h  -> RP.Until (PS.fromList [Yield, Equal]) (trp g) (trp h)
-      Until Up   g h  -> RP.Until (PS.fromList [Equal, Take])  (trp g) (trp h)
-      Since Down g h  -> RP.Since (PS.fromList [Yield, Equal]) (trp g) (trp h)
-      Since Up   g h  -> RP.Since (PS.fromList [Equal, Take])  (trp g) (trp h)
-      HUntil Down g h -> RP.HierUntilTake  (trp g) (trp h)
-      HUntil Up   g h -> RP.HierUntilYield (trp g) (trp h)
-      HSince Down g h -> RP.HierSinceTake  (trp g) (trp h)
-      HSince Up   g h -> RP.HierSinceYield (trp g) (trp h)
-      Eventually g    -> RP.Eventually' (RP.And (RP.Not . RP.Atomic $ End) (trp g))
-      Always g        -> trp . Not . Eventually . Not $ g
-      AuxBack d g    -> RP.Or ( trp (XBack d g )) (trp (PBack d g))
-    where trp = toReducedPotl
 
 instance (Show a) => Show (Formula a) where
   show f = case f of
@@ -199,7 +150,7 @@ getProps formula = nub $ collectProps formula
           Eventually g       -> getProps g
           Always g           -> getProps g
           AuxBack _ g        -> getProps g
- 
+
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
 atomic _ = False
@@ -264,10 +215,7 @@ normalize f = case f of
                 Until dir g h      -> Until dir (normalize g) (normalize h)
                 Since dir g h      -> Since dir (normalize g) (normalize h)
                 HUntil dir g h     -> HUntil dir  (normalize g) (normalize h)
-                HSince dir g h     -> HSince dir  (normalize g) (normalize h)            
+                HSince dir g h     -> HSince dir  (normalize g) (normalize h)
                 Eventually g       -> Eventually (normalize g)
-                Always g           -> Always (normalize g)--Not . Eventually . normalize . Not $ g-- -- 
+                Always g           -> Always (normalize g)--Not . Eventually . normalize . Not $ g-- --
                 AuxBack dir g      -> AuxBack dir (normalize g)
-
-
-
