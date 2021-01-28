@@ -20,6 +20,10 @@ def exec_bench(fname):
     raw_stderr = raw_res.stderr.decode('utf-8')
     print(raw_stdout)
     print(raw_stderr)
+
+    if raw_res.returncode != 0:
+        return (-1, -1, -1024, 'Error')
+
     time_match = time_pattern.search(raw_stdout)
     mem_match = mem_pattern.search(raw_stderr)
     result_match = result_pattern.search(raw_stdout)
@@ -57,16 +61,23 @@ def expand_files(arglist):
                                  filter(pomc_pattern.match, filenames)))
     return sorted(files)
 
-def pretty_print(results):
-    header = ["Name", "# states", "Time (s)", "Max memory (MiB)", "Result"]
+def pretty_print(results, ms):
+    timeh = "Time (ms)" if ms else "Time (s)"
+    header = ["Name", "# states", timeh, "Max memory (MiB)", "Result"]
+
+    if ms:
+        for r in results:
+            r[2] *= 1000
+
     print(tabulate(results, headers=header))
 
 if len(sys.argv) < 2:
-    print("Usage: ", sys.argv[0], " [-iter <#iters>] [-jobs <#jobs>] [file.pomc [...]]\n")
+    print("Usage: ", sys.argv[0], " [-iter <#iters>] [-jobs <#jobs>] [-ms] [file.pomc [...]]\n")
     exit(0)
 
 iters = 1
 jobs = 1
+ms = False
 files = []
 i = 1
 while i < len(sys.argv):
@@ -76,9 +87,12 @@ while i < len(sys.argv):
     elif sys.argv[i] == "-jobs":
         jobs = int(sys.argv[i+1])
         i = i + 2
+    elif sys.argv[i] == "-ms":
+        ms = True
+        i = i + 1
     else:
         files.append(sys.argv[i])
         i = i + 1
 
 results = exec_all(expand_files(files), iters, jobs)
-pretty_print(results)
+pretty_print(results, ms)
