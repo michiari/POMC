@@ -12,6 +12,7 @@ time_pattern = re.compile(r"Total elapsed time: .+ \(([0-9]+\.[0-9]+e[\+\-0-9]+)
 mem_pattern = re.compile(r"Max memory used \(KB\): ([0-9]+)")
 result_pattern = re.compile(r"Result:  ((True)|(False))")
 states_pattern = re.compile(r"Input OPA state count: ([0-9]+)")
+memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
 
 def exec_bench(fname):
@@ -19,17 +20,19 @@ def exec_bench(fname):
     raw_stdout = raw_res.stdout.decode('utf-8')
     raw_stderr = raw_res.stderr.decode('utf-8')
     print(raw_stdout)
-    print(raw_stderr)
+#    print(raw_stderr)
 
     if raw_res.returncode != 0:
-        return (-1, -1, -1024, 'Error')
+        return (-1, -1, -1, -2**10, 'Error')
 
     time_match = time_pattern.search(raw_stdout)
     mem_match = mem_pattern.search(raw_stderr)
     result_match = result_pattern.search(raw_stdout)
     states_match = states_pattern.search(raw_stdout)
+    memgc_match = memgc_pattern.search(raw_stderr)
     return (int(states_match.group(1)), float(time_match.group(1)),
-            int(mem_match.group(1)), result_match.group(1))
+            int(mem_match.group(1)), int(memgc_match.group(1)),
+            result_match.group(1))
 
 def iter_bench(fname, iters):
     get_column = lambda rows, i: [r[i] for r in rows]
@@ -37,12 +40,14 @@ def iter_bench(fname, iters):
     states = get_column(results, 0)
     times = get_column(results, 1)
     mems = get_column(results, 2)
-    res = get_column(results, 3)
+    memgcs = get_column(results, 3)
+    res = get_column(results, 4)
     return (fname, states[0], statistics.mean(times),
-            statistics.mean(mems)/1024, res[0])
+            statistics.mean(mems), statistics.mean(memgcs)/(2**10),
+            res[0])
 
 def exec_all(fnames, iters, jobs):
-    make_row = lambda fname, states, time, mem, res: [fname, states, time, mem, res]
+    make_row = lambda fname, states, time, mem, memgc, res: [fname, states, time, mem, memgc, res]
     if jobs <= 1:
         return [make_row(*iter_bench(fname, iters)) for fname in fnames]
     else:
@@ -63,7 +68,7 @@ def expand_files(arglist):
 
 def pretty_print(results, ms):
     timeh = "Time (ms)" if ms else "Time (s)"
-    header = ["Name", "# states", timeh, "Max memory (MiB)", "Result"]
+    header = ["Name", "# states", timeh, "Total memory (KiB)", "GC Memory (KiB)", "Result"]
 
     if ms:
         for r in results:
