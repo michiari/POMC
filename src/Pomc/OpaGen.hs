@@ -130,7 +130,6 @@ skeletonsToOpa sks = ExplicitOpa
           fiEntry . fromJust $ M.lookup fname (lsFinfo lowerState)
         resolveTarget (States s) = s
 
-
 data DeltaTarget = EntryStates Text | States [Word]
 
 data FunctionInfo = FunctionInfo { fiName :: Text
@@ -146,6 +145,17 @@ data LowerState = LowerState { lsDPush :: Map (Word, Set (Prop Text)) DeltaTarge
                              , lsSid :: Word
                              }
 
+-- Thunk that links a list of states as the successors of the previous statement(s)
+type PredLinker = LowerState -> [Word] -> LowerState
+
+dInsert :: (Ord k) => k -> [Word] -> Map k DeltaTarget -> Map k DeltaTarget
+dInsert _ [] delta = delta
+dInsert key states delta =
+  case M.lookup key delta of
+    Nothing            -> M.insert key (States states) delta
+    Just (States olds) -> M.insert key (States $ olds ++ states) delta
+    _                  -> error "DeltaTarget mismatch."
+
 lowerFunction :: Map Text FunctionSkeleton
               -> LowerState
               -> FunctionSkeleton
@@ -153,26 +163,29 @@ lowerFunction :: Map Text FunctionSkeleton
 lowerFunction sks lowerState0 fsk =
   let sidRet = lsSid lowerState0
       thisFinfo = FunctionInfo (skName fsk) [] (sidRet + 1) (sidRet + 2) (sidRet + 3)
-      finfo' = M.insert (skName fsk) thisFinfo (lsFinfo lowerState0)
-      lowerState1 = lowerState0 { lsFinfo = finfo', lsSid = sidRet + 4 }
-      (lowerState2, linkPred, entryStates) =
-        lowerBlock sks lowerState1 thisFinfo (\ls _ -> ls) (skStmts fsk)
-      entryStates' = if null entryStates
-                     then [sidRet]
-                     else entryStates
+      lowerState1 = lowerState0 {
+        lsFinfo = M.insert (skName fsk) thisFinfo (lsFinfo lowerState0)
+        , lsSid = sidRet + 4
+        }
+      addEntry ls es =
+        let tfinfo = fromJust $ M.lookup (skName fsk) (lsFinfo ls)
+            finfo1 = M.insert (skName fsk) (tfinfo { fiEntry = (fiEntry tfinfo) ++ es }) (lsFinfo ls)
+        in ls { lsFinfo = finfo1 }
+
+      (lowerState2, linkPred) = lowerBlock sks lowerState1 thisFinfo addEntry (skStmts fsk)
+
       dShift' = M.insert (sidRet, makeInputSet [T.pack "ret", skName fsk])
                  (States [fiRetPad thisFinfo]) (lsDShift lowerState2)
       dShift'' = M.insert (fiThrow thisFinfo, makeInputSet [T.pack "exc"])
                  (States [fiExcPad thisFinfo]) dShift'
-      finfo'' = M.insert (skName fsk) (thisFinfo { fiEntry = entryStates' }) (lsFinfo lowerState2)
-  in linkPred (lowerState2 { lsDShift = dShift'', lsFinfo = finfo'' }) [sidRet]
+  in linkPred (lowerState2 { lsDShift = dShift'' }) [sidRet]
 
 lowerStatement :: Map Text FunctionSkeleton
                -> LowerState
                -> FunctionInfo
-               -> (LowerState -> [Word] -> LowerState)
+               -> PredLinker
                -> Statement
-               -> (LowerState, LowerState -> [Word] -> LowerState, [Word])
+               -> (LowerState, PredLinker)
 lowerStatement sks lowerState0 thisFinfo linkPred (Call fname) =
   let callSid = lsSid lowerState0
       calleeFinfo0 = M.lookup fname $ lsFinfo lowerState0
@@ -187,70 +200,72 @@ lowerStatement sks lowerState0 thisFinfo linkPred (Call fname) =
                (States [fiThrow thisFinfo]) (lsDPop lowerState2)
 
       linkCall lowerState successorStates =
-          let dPop' = M.insert (fiRetPad calleeFinfo1, callSid)
-                      (States successorStates) (lsDPop lowerState)
+          let dPop' = dInsert (fiRetPad calleeFinfo1, callSid) successorStates (lsDPop lowerState)
           in lowerState { lsDPop = dPop' }
 
   in ( linkPred (lowerState2 { lsDPush = dPush'', lsDPop = dPop'', lsSid = lsSid lowerState2 + 1}) [callSid]
-     , linkCall
-     , [callSid] )
+     , linkCall )
 
 lowerStatement sks ls0 thisFinfo linkPred0 (TryCatch try catch) =
   let hanSid = lsSid ls0
-      ls1 = linkPred0 (ls0 { lsSid = hanSid + 1 }) [hanSid]
+      dummySid0 = hanSid + 1
+      dummySid1 = dummySid0 + 1
+      ls1 = linkPred0 (ls0 { lsSid = dummySid1 + 1 }) [hanSid]
 
       linkHandler lowerState successorStates =
-        let dPushH = M.insert (hanSid, makeInputSet [T.pack "han"])
-                     (States successorStates) (lsDPush lowerState)
+        let dPushH = dInsert (hanSid, makeInputSet [T.pack "han"])
+                     successorStates (lsDPush lowerState)
         in lowerState { lsDPush = dPushH }
 
+      (ls2, linkPredTry) = lowerBlock sks ls1 thisFinfo linkHandler try
+      -- add dummy exc to exit try block
+      ls3 = linkPredTry ls2 [dummySid0]
+      dShift' = M.insert (dummySid0, makeInputSet [T.pack "exc"])
+                (States [dummySid1]) (lsDShift ls3)
+      ls4 = ls3 { lsDShift = dShift' }
+
+      linkTry lowerState successorStates =
+        let dPopD = dInsert (dummySid1, hanSid) successorStates (lsDPop lowerState)
+        in lowerState { lsDPop = dPopD }
+
       linkCatch lowerState successorStates =
-        let dPopC = M.insert (fiExcPad thisFinfo, hanSid)
-                    (States successorStates) (lsDPop lowerState)
+        let dPopC = dInsert (fiExcPad thisFinfo, hanSid) successorStates (lsDPop lowerState)
         in lowerState { lsDPop = dPopC }
 
-      (ls2, linkPred1, _) = lowerBlock sks ls1 thisFinfo linkHandler try
-      (ls3, linkPred2, _) = lowerBlock sks ls2 thisFinfo linkCatch catch
-      linkTryCatch ls succStates = linkPred2 (linkPred1 ls succStates) succStates
+      (ls5, linkPredCatch) = lowerBlock sks ls4 thisFinfo linkCatch catch
 
-  in (ls3, linkTryCatch, [hanSid])
+      linkTryCatch ls succStates = linkPredCatch (linkTry ls succStates) succStates
+  in (ls5, linkTryCatch)
 
 lowerStatement sks ls0 thisFinfo linkPred0 (IfThenElse thenBlock elseBlock) =
-  let (ls1, linkPred1, entryThen) = lowerBlock sks ls0 thisFinfo (\ls _ -> ls) thenBlock
-      (ls2, linkPred2, entryElse) = lowerBlock sks ls1 thisFinfo (\ls _ -> ls) elseBlock
-      entryITE = entryThen ++ entryElse
+  let (ls1, linkPred1) = lowerBlock sks ls0 thisFinfo linkPred0 thenBlock
+      (ls2, linkPred2) = lowerBlock sks ls1 thisFinfo linkPred0 elseBlock
       linkPredITE lowerState succStates = linkPred2 (linkPred1 lowerState succStates) succStates
-      (ls3, linkPred3) = if null entryITE
-                         then (ls2, linkPred0)
-                         else (linkPred0 ls2 entryITE, linkPredITE)
-  in (ls3, linkPred3, entryITE)
+  in (ls2, linkPredITE)
 
 lowerStatement _ lowerState thisFinfo linkPred Throw =
-  ( linkPred lowerState [fiThrow thisFinfo]
-  , (\ls _ -> ls)
-  , [fiThrow thisFinfo]
-  )
+  (linkPred lowerState [fiThrow thisFinfo], (\ls _ -> ls))
 
 lowerBlock :: Map Text FunctionSkeleton
            -> LowerState
            -> FunctionInfo
-           -> (LowerState -> [Word] -> LowerState)
+           -> PredLinker
            -> [Statement]
-           -> (LowerState, LowerState -> [Word] -> LowerState, [Word])
-lowerBlock _ lowerState _ linkPred [] = (lowerState, linkPred, [])
+           -> (LowerState, PredLinker)
+lowerBlock _ lowerState _ linkPred [] = (lowerState, linkPred)
 lowerBlock sks lowerState thisFinfo linkPred block =
-  foldBlock lowerState linkPred [] block
-  where foldBlock lowerState1 linkPred1 entryStates1 [] = (lowerState1, linkPred1, entryStates1)
+  foldBlock lowerState linkPred block
+  where foldBlock lowerState1 linkPred1 [] = (lowerState1, linkPred1)
 
-        foldBlock lowerState1 linkPred1 entryStates1 (Throw : _) =
-          let (lowerState2, linkPred2, entryStates2) =
+        foldBlock lowerState1 linkPred1 (Throw : _) =
+          let (lowerState2, linkPred2) =
                 lowerStatement sks lowerState1 thisFinfo linkPred1 Throw
-          in (lowerState2, linkPred2, if null entryStates1 then entryStates2 else entryStates1)
+          in (lowerState2, linkPred2)
 
-        foldBlock lowerState1 linkPred1 entryStates1 (stmt : stmts) =
-          let (lowerState2, linkPred2, entryStates2) =
+        foldBlock lowerState1 linkPred1 (stmt : stmts) =
+          let (lowerState2, linkPred2) =
                 lowerStatement sks lowerState1 thisFinfo linkPred1 stmt
-          in foldBlock lowerState2 linkPred2 (if null entryStates1 then entryStates2 else entryStates1) stmts
+          in foldBlock lowerState2 linkPred2 stmts
 
 
 insertAll :: Ord k => [(k, v)] -> Map k v -> Map k v
