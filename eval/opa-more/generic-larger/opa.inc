@@ -1,7 +1,3 @@
-include = "../Mcall.inc";
-
-formulas = G ((call And pb And (T Sd (call And pa))) --> (PNu exc Or XNu exc));
-
 opa:
   initials = 0;
   finals = 5;

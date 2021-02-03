@@ -1,4 +1,4 @@
-prec = Mcall;
+include = "../Mcall.inc";
 
 formulas =
   G (exc --> ~ ((PBu modified Or XBu modified) And XBu ("Stack::push(const T&)" Or "Stack::pop()")));

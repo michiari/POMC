@@ -9,7 +9,7 @@ module Pomc.App (go) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckGen, countStates)
-import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..))
+import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 import Pomc.Util (safeHead, timeAction, timeToString)
@@ -19,9 +19,11 @@ import Numeric (showEFloat)
 
 import System.Environment
 import System.Exit
+import System.FilePath
 
 import Text.Megaparsec
 import Data.Text.IO (readFile)
+import qualified Data.Text as T
 
 import Data.List (intersperse)
 
@@ -36,8 +38,9 @@ go = do args <- getArgs
                    (Just fname)    -> return fname
                    Nothing         -> exitHelp
         fcontent <- readFile fname
+        prepcontent <- preprocess fname fcontent
 
-        creq <- case parse (spaceP *> checkRequestP <* eof) fname fcontent of
+        creq <- case parse (spaceP *> checkRequestP <* eof) fname prepcontent of
                   Left  errBundle -> die (errorBundlePretty errBundle)
                   Right creq      -> return creq
 
@@ -91,3 +94,16 @@ go = do args <- getArgs
 exitHelp :: IO a
 exitHelp = do progName <- getProgName
               die ("USAGE:    " ++ progName ++ " FILE")
+
+
+preprocess :: String -> T.Text -> IO T.Text
+preprocess fname content = do
+  processed <- mapM (include fname) (T.lines content)
+  return $ T.unlines processed
+
+include :: String -> T.Text -> IO T.Text
+include fname line =
+  case parse (spaceP *> includeP) fname line of
+    Left  _    -> return line
+    Right path -> readFile (takeDirectory fname </> path)
+

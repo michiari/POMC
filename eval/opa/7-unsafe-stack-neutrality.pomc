@@ -1,4 +1,4 @@
-prec = Mcall;
+include = "../Mcall.inc";
 
 formulas = G (exc And (PBu "T") And (XBd ("han" And XBd "Stack")) --> XBd (XBd (XNu exc)));
 
