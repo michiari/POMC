@@ -174,7 +174,7 @@ expectedSimpleThenEval = [False, False, False, False, -- chain_next
                           True, False,                -- contains_exc
                           True,                       -- data_access
                           False, False, True,         -- empty_frame
-                          False,                      -- exception_safety
+                          True,                       -- exception_safety
                           False, False, False, False, -- hier_down
                           False,                      -- hier_insp
                           True,                       -- hier_insp_exc
@@ -222,7 +222,7 @@ expectedSimpleElseEval = [False, False, False, False, -- chain_next
                           True, False,                -- contains_exc
                           True,                       -- data_access
                           False, False, False,        -- empty_frame
-                          False,                      -- exception_safety
+                          True,                       -- exception_safety
                           False, False, False, False, -- hier_down
                           False,                      -- hier_insp
                           True,                       -- hier_insp_exc
