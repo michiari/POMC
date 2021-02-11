@@ -3,7 +3,7 @@
 module TestMP (tests) where
 
 import Pomc.MiniProcParse (programP)
-import Pomc.OpaGen (skeletonsToOpa)
+import Pomc.MiniProc (programToOpa)
 import Pomc.PotlV2 (Formula)
 import Pomc.ModelChecker (modelCheckGen)
 import qualified TestSat (cases)
@@ -18,6 +18,8 @@ import qualified Data.Text as T
 tests :: TestTree
 tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
                                    , noHanBaseTests, noHanEvalTests
+                                   , simpleThenBaseTests, simpleThenEvalTests
+                                   , simpleElseBaseTests, simpleElseEvalTests
                                    ]
 
 sasBaseTests :: TestTree
@@ -36,16 +38,32 @@ noHanEvalTests :: TestTree
 noHanEvalTests = testGroup "NoHan MiniProc MC Eval Tests" $
   map (makeTestCase noHanSource) (zip EvalFormulas.formulas expectedNoHanEval)
 
+simpleThenBaseTests :: TestTree
+simpleThenBaseTests = testGroup "SimpleThen MiniProc MC Base Tests" $
+  map (makeTestCase simpleThenSource) (zip TestSat.cases expectedSimpleThenBase)
+
+simpleThenEvalTests :: TestTree
+simpleThenEvalTests = testGroup "SimpleThen MiniProc MC Eval Tests" $
+  map (makeTestCase simpleThenSource) (zip EvalFormulas.formulas expectedSimpleThenEval)
+
+simpleElseBaseTests :: TestTree
+simpleElseBaseTests = testGroup "SimpleElse MiniProc MC Base Tests" $
+  map (makeTestCase simpleElseSource) (zip TestSat.cases expectedSimpleElseBase)
+
+simpleElseEvalTests :: TestTree
+simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
+  map (makeTestCase simpleElseSource) (zip EvalFormulas.formulas expectedSimpleElseEval)
+
 makeTestCase :: T.Text
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
 makeTestCase filecont ((name, phi, _, _), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") assertion
   where assertion = do
-          prog <- case parse programP "" filecont of
+          prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          modelCheckGen (fmap T.pack phi) (skeletonsToOpa prog) @?= expected
+          modelCheckGen (fmap T.pack phi) (programToOpa prog) @?= expected
 
 
 expectedSasBase :: [Bool]
@@ -89,7 +107,7 @@ pb() {
 }
 
 pc() {
-  if {
+  if (*) {
     throw;
   } else {
     pc();
@@ -135,10 +153,106 @@ pb() {
 }
 
 pc() {
-  if {
+  if (*) {
     throw;
   } else {
     pc();
   }
 }
+|]
+
+
+expectedSimpleThenBase :: [Bool]
+expectedSimpleThenBase = [True, False, False, False, False, False,
+                          False, False, False, True, True, False,
+                          True, False, True, False, False, False,
+                          False, False, False, False
+                         ]
+
+expectedSimpleThenEval :: [Bool]
+expectedSimpleThenEval = [False, False, False, False, -- chain_next
+                          True, False,                -- contains_exc
+                          True,                       -- data_access
+                          False, False, True,         -- empty_frame
+                          False,                      -- exception_safety
+                          False, False, False, False, -- hier_down
+                          False,                      -- hier_insp
+                          True,                       -- hier_insp_exc
+                          False, False, False, False, -- hier_up
+                          False, False,               -- normal_ret
+                          True, True,                 -- no_throw
+                          True, True,                 -- stack_inspection
+                          False,                      -- uninstall_han
+                          False, False, False,        -- until_exc
+                          False, True, False          -- until_misc
+                         ]
+
+simpleThenSource :: T.Text
+simpleThenSource = T.pack [r|
+var foo;
+
+pa() {
+  foo = true;
+  try {
+    pb();
+  } catch {
+    pc();
+  }
+}
+
+pb() {
+  if (foo) {
+    throw;
+  } else {}
+}
+
+pc() { }
+|]
+
+
+expectedSimpleElseBase :: [Bool]
+expectedSimpleElseBase = [True, False, False, False, False, False,
+                          False, False, False, True, True, False,
+                          False, False, True, False, False, False,
+                          False, False, False, False
+                         ]
+
+expectedSimpleElseEval :: [Bool]
+expectedSimpleElseEval = [False, False, False, False, -- chain_next
+                          True, False,                -- contains_exc
+                          True,                       -- data_access
+                          False, False, False,        -- empty_frame
+                          False,                      -- exception_safety
+                          False, False, False, False, -- hier_down
+                          False,                      -- hier_insp
+                          True,                       -- hier_insp_exc
+                          False, False, False, False, -- hier_up
+                          False, True,                -- normal_ret
+                          True, True,                 -- no_throw
+                          True, True,                 -- stack_inspection
+                          False,                      -- uninstall_han
+                          False, False, True,         -- until_exc
+                          False, False, False         -- until_misc
+                         ]
+
+simpleElseSource :: T.Text
+simpleElseSource = T.pack [r|
+var foo;
+
+pa() {
+  foo = false;
+  try {
+    pb();
+  } catch {
+    pc();
+  }
+}
+
+pb() {
+  if (foo) {
+    throw;
+  } else {}
+}
+
+pc() { }
 |]

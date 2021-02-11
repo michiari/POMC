@@ -1,7 +1,7 @@
 import Prelude hiding (readFile)
 
 import Pomc.MiniProcParse (programP)
-import Pomc.OpaGen (skeletonsToOpa)
+import Pomc.MiniProc (programToOpa)
 import Pomc.Util (safeHead)
 
 import Text.Megaparsec
@@ -19,4 +19,4 @@ main = do args <- getArgs
                   Left  errBundle -> die (errorBundlePretty errBundle)
                   Right fsks      -> return fsks
           putStrLn . show $ prog
-          putStrLn . show . skeletonsToOpa $ prog
+          putStrLn . show . programToOpa $ prog

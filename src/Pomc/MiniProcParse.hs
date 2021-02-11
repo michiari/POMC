@@ -9,10 +9,13 @@
 
 module Pomc.MiniProcParse ( programP ) where
 
-import Pomc.OpaGen
+import Pomc.MiniProc
 
 import Data.Void (Void)
-import Data.Text as T
+import Data.Text (Text)
+import qualified Data.Text as T
+import Data.Set (Set)
+import qualified Data.Set as S
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -27,10 +30,28 @@ symbolP :: Text -> Parser Text
 symbolP = L.symbol spaceP
 
 identifierP :: Parser Text
-identifierP = label "identifier" $ try $ L.lexeme spaceP $ do
+identifierP = (label "identifier") . L.lexeme spaceP $ do
   first <- letterChar
-  rest <- some alphaNumChar
+  rest <- many alphaNumChar
   return $ T.pack (first:rest)
+
+boolLiteralP :: Parser Bool
+boolLiteralP = (True <$ symbolP "true") <|> (False <$ symbolP "false")
+
+declsP :: Parser (Set Identifier)
+declsP = do
+  _ <- symbolP "var"
+  ids <- sepBy1 identifierP (symbolP ",")
+  _ <- symbolP ";"
+  return $ S.fromList ids
+
+assP :: Parser Statement
+assP = try $ do
+  lhs <- identifierP
+  _ <- symbolP "="
+  rhs <- boolLiteralP
+  _ <- symbolP ";"
+  return $ Assignment lhs rhs
 
 callP :: Parser Statement
 callP = try $ do
@@ -50,16 +71,20 @@ tryCatchP = do
 iteP :: Parser Statement
 iteP = do
   _ <- symbolP "if"
+  _ <- symbolP "("
+  guard <- ((Nothing <$ symbolP "*") <|> fmap Just identifierP)
+  _ <- symbolP ")"
   thenBlock <- blockP
   _ <- symbolP "else"
   elseBlock <- blockP
-  return $ IfThenElse thenBlock elseBlock
+  return $ IfThenElse guard thenBlock elseBlock
 
 throwP :: Parser Statement
 throwP = symbolP "throw" >> symbolP ";" >> return Throw
 
 stmtP :: Parser Statement
-stmtP = choice [ callP
+stmtP = choice [ assP
+               , callP
                , tryCatchP
                , iteP
                , throwP
@@ -79,5 +104,35 @@ functionP = do
   stmts <- blockP
   return $ FunctionSkeleton fname stmts
 
-programP :: Parser [FunctionSkeleton]
-programP = spaceP *> (some functionP) <* eof
+programP :: Parser Program
+programP = do
+  spaceP
+  decls <- optional . try $ declsP
+  sks <- some functionP
+  eof
+  let declSet = case decls of
+                  Just s -> s
+                  Nothing -> S.empty
+      p = Program declSet sks
+      undeclVars = undeclared p
+  if S.null undeclVars
+    then return p
+    else fail $ "Undeclared variable identifier(s): " ++ show (S.toList undeclVars)
+
+undeclared :: Program -> Set Identifier
+undeclared p = S.difference actualVars (pVars p)
+  where gatherVars :: Statement -> Set Identifier
+        gatherVars (Assignment v _) = S.singleton v
+        gatherVars (TryCatch tryb catchb) = gatherBlockVars tryb `S.union` gatherBlockVars catchb
+        gatherVars (IfThenElse (Just v) thenb elseb) =
+          S.insert v (gatherBlockVars thenb `S.union` gatherBlockVars elseb)
+        gatherVars (IfThenElse Nothing thenb elseb) =
+          gatherBlockVars thenb `S.union` gatherBlockVars elseb
+        gatherVars _ = S.empty
+
+        gatherBlockVars stmts =
+          foldl (\gathered stmt -> gathered `S.union` gatherVars stmt) S.empty stmts
+
+        actualVars =
+          foldl (\gathered sk ->
+                   gathered `S.union` (gatherBlockVars . skStmts $ sk)) S.empty (pSks p)

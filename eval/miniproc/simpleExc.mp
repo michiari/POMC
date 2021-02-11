@@ -12,7 +12,7 @@ pB() {
 }
 
 pC() {
-  if {
+  if (*) {
     throw;
   } else {
     pC();
