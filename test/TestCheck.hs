@@ -20,7 +20,7 @@ unitTests :: TestTree
 unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
   where
     -- Takes a list of tuples like:
-    --   (name, expected check result, checkable phi, prec func, input)
+    --   (name, expected check result, phi, prec func, input)
     makeTestCase (name, expected, phi, prec, ts) =
       case expected of
         False -> testCase name $ not (fastcheckGen phi prec ts) @? rejectFail

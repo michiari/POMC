@@ -49,7 +49,7 @@ lexemeP :: Parser a -> Parser a
 lexemeP = L.lexeme spaceP
 
 symbolP :: Text -> Parser Text
-symbolP = L.symbol spaceP
+FsymbolP = L.symbol spaceP
 
 parensP :: Parser a -> Parser a
 parensP = between (symbolP "(") (symbolP ")")

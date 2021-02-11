@@ -9,4 +9,4 @@ main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [TestOpa.tests, TestCheck.tests, TestSat.tests, TestMC.tests]
+tests = testGroup "Tests" [ TestMC.tests]

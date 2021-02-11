@@ -90,7 +90,7 @@ stlAnnotateV1 = map annotate
           | "t" `isPrefixOf` t = [t,  "thr"]
           | otherwise = error ("Invalid token: " ++ t)
 
--- Precedence function for the Stack Trace Language Version 2
+-- Precedence function for the Stack Trace Language Version 2 (alias MCall)
 stlPrecedenceV2 :: Set (Prop String) -> Set (Prop String) -> Maybe Prec
 stlPrecedenceV2 s1 s2
   | isCallSet s1 = callPrec s2

@@ -217,5 +217,5 @@ normalize f = case f of
                 HUntil dir g h     -> HUntil dir  (normalize g) (normalize h)
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)
                 Eventually g       -> Eventually (normalize g)
-                Always g           -> Always (normalize g)--Not . Eventually . normalize . Not $ g-- --
+                Always g           -> Always (normalize g)
                 AuxBack dir g      -> AuxBack dir (normalize g)

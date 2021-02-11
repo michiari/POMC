@@ -21,11 +21,11 @@ import qualified Data.Map as Map
 type APType = Word
 
 
-
+-- convert generic Token inputs into APType token inputs
 convPropTokens :: (Ord a)
                => Formula a -- input formula phi
                -> [StructPrecRel a] --precedence relation which replaces the usual matrix M
-               -> [Set (Prop a)] -- input tokens
+               -> [Set (Prop a)] -- input tokens (each token is a set of strings, propositions)
                -> (Formula APType, [StructPrecRel APType], [Set (Prop APType)])
 convPropTokens phi precr tokens =
   let tsAP = Set.toList $ foldl Set.union Set.empty tokens -- get a unique list of all input AP
@@ -34,7 +34,7 @@ convPropTokens phi precr tokens =
       ttokens = map (\t -> Set.map (\p -> fmap trans p) t) tokens -- for each set t, apply trans to each property stored in t
   in (tphi, tprec, ttokens)
 
--- convert generic props into APType props
+-- convert generic props of a language into APType props
 convPropLabels :: (Ord a)
               => Formula a -- input formula phi
               -> ([Prop a], [Prop a]) -- the AP of the input alphabet (the first list is for structural labels, the second one is for normal labels)
@@ -44,11 +44,11 @@ convPropLabels phi (sls, als) precr =
   let (tphi, tprec, trans) = convAP phi precr (sls ++ als)
   in (tphi, (map (fmap trans) sls, map (fmap trans) als), tprec) 
 
--- convert generic props into APType props
+-- convert generic props into APType props, and return a function which maps a generic prop into the correspondant APType
 convAP :: (Ord a)
        => Formula a -- input formula phi
-       -> [StructPrecRel a] --precedence relation which replaces the usual matrix M
-       -> [Prop a] -- input string
+       -> [StructPrecRel a] --precedence relation which re,places the usual matrix M
+       -> [Prop a] -- input strings
        -> (Formula APType, [StructPrecRel APType], a -> APType)
 convAP phi precr other =
   let phiAP = getProps phi

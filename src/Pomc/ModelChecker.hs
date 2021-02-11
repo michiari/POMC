@@ -57,6 +57,7 @@ instance SatState (MCState s) where
 cartesian :: [a] -> [State] -> [MCState a]
 cartesian xs ys = [MCState x y | x <- xs, y <- ys]
 
+-- check a formula phi against an opa opa
 modelCheck :: (Ord s, Hashable s, Show s)
            => Formula APType -- input formula to check
            -> ExplicitOpa s APType -- input OPA
@@ -69,7 +70,7 @@ modelCheck phi opa =
 
       --generate the OPA associated to the negation of the input formula
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
-        makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa) --TODO: is it correct to use getProps?
+        makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa) 
 
       cInitials = cartesian (initials opa) phiInitials
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal p
@@ -99,6 +100,7 @@ modelCheck phi opa =
 
   in isEmpty cDelta cInitials cIsFinal
 
+-- check a formula phi against a 
 modelCheckGen :: ( Ord s, Hashable s, Show s, Ord a)
               => Formula a
               -> ExplicitOpa s a
