@@ -510,10 +510,7 @@ deltaRules bitenc cl precFunc =
                                      , (hbdCond,    hbdShiftPr)
                                      , (alwCond,    alwShiftPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr)
-                                     , (pbCond, pbShiftFcr)
-                                     , (alwCond, alwShiftFcr)
-                                     ]
+        , ruleGroupFcrs = resolve cl [ (alwCond, alwShiftFcr) ]
         , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
                                      , (xndCond,    xndShiftFpr)
                                      , (xnuCond,    xnuShiftFpr)
@@ -524,7 +521,10 @@ deltaRules bitenc cl precFunc =
                                      , (hndCond,    hndShiftFpr2)
                                      , (hbdCond,    hbdShiftFpr)
                                      ]
-        , ruleGroupFrs  = resolve cl []
+        , ruleGroupFrs  = resolve cl [ (const True, xlXeShiftFr)
+                                     , (pnCond,     pnShiftFr)
+                                     , (pbCond,     pbShiftFr)
+                                     ]
         }
       -- PUSH RULES
       pushGroup = RuleGroup
@@ -542,10 +542,7 @@ deltaRules bitenc cl precFunc =
                                      , (hbdCond,    hbdPushPr)
                                      , (alwCond,    alwPushPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr)
-                                     , (pbCond, pbPushFcr)
-                                     , (alwCond, alwPushFcr)
-                                     ]
+        , ruleGroupFcrs = resolve cl [ (alwCond, alwPushFcr) ]
         , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
                                      , (xndCond,    xndPushFpr)
                                      , (xnuCond,    xnuPushFpr)
@@ -556,7 +553,10 @@ deltaRules bitenc cl precFunc =
                                      , (hndCond,    hndPushFpr2)
                                      , (hbdCond,    hbdPushFpr)
                                      ]
-        , ruleGroupFrs  = resolve cl []
+        , ruleGroupFrs  = resolve cl [ (const True, xlXePushFr)
+                                     , (pnCond,     pnPushFr)
+                                     , (pbCond,     pbPushFr)
+                                     ]
         }
       -- POP RULES
       popGroup = RuleGroup
@@ -570,8 +570,7 @@ deltaRules bitenc cl precFunc =
                                      ]
         ,
           -- future current rules
-          ruleGroupFcrs = resolve cl [(alwCond, alwPopFcr)
-                                     ]
+          ruleGroupFcrs = resolve cl [ (alwCond, alwPopFcr) ]
 
         , ruleGroupFprs = resolve cl [ (const True, xrPopFpr)
                                      , (xndCond,    xndPopFpr)
@@ -587,7 +586,7 @@ deltaRules bitenc cl precFunc =
                                      , (hbdCond,    hbdPopFpr2)
                                      , (hbdCond,    hbdPopFpr3)
                                      ]
-        , ruleGroupFrs  = resolve cl [(hbuCond, hbuPopFr)]
+        , ruleGroupFrs  = resolve cl [ (hbuCond, hbuPopFr) ]
         }
   in (shiftGroup, pushGroup, popGroup)
   where
@@ -606,9 +605,25 @@ deltaRules bitenc cl precFunc =
     xePopPr   info = let pXe = mustShift (prState info) in not pXe
     --
 
+    -- XL and XE rules :: FcrInfo -> Bool
+    xlXePushFr info =
+      let pProps = fromJust (frProps info) -- current input (set of AP)
+          fCurr = frFutureCurr info -- future current holding formulas
+          fProps = D.extractInput bitenc fCurr -- future input (set of AP)
+          (_, fXl, fXe, _) = frFuturePendComb info
+          -- since the symbol read by a push or a shift gets on top of the stack,
+          -- the next move is determined by the precedence relation between it and the next input
+      in case precFunc pProps fProps of
+        Just Yield -> fXl
+        Just Equal -> fXe
+        Just Take -> not (fXe || fXl)
+        Nothing -> False
+
+    xlXeShiftFr = xlXePushFr
+
     -- XR rules ::  FprInfo -> Bool
     -- Fpr contains a filed fprFuturePendComb
-    -- mustPop?
+    -- afterPop?
     xrShiftFpr info = let (_, _, _, fXr) = fprFuturePendComb info in not fXr
     xrPushFpr  info = let (_, _, _, fXr) = fprFuturePendComb info in not fXr
     xrPopFpr   info = let (_, _, _, fXr) = fprFuturePendComb info in fXr
@@ -617,7 +632,7 @@ deltaRules bitenc cl precFunc =
     -- Prop rules:: PrInfo -> Bool
     propPushPr info =
       let pCurr = current $ prState info -- BitVector of formulas holdingformulas that hold in the current position
-          props = fromJust (prProps info) -- input of the current state ( alias the set of AP holding in the current states)
+          props = fromJust (prProps info) -- input of the current state (alias the set of AP holding in the current states)
       in compProps bitenc pCurr props -- is the input satisfied by the formulas holding in the current state?
 
     -- propRule:: PrInfo -> Bool
@@ -630,11 +645,12 @@ deltaRules bitenc cl precFunc =
     -- pnCond :: FormulaSet -> Bool
     pnCond clos = not (null [f | f@(PNext _ _) <- S.toList clos])
 
-    -- pnPushFcr:: FcrInfo -> Bool
-    pnPushFcr info =
-      let pCurr = current $ fcrState info -- set of formulas that hold in current position
-          props = fromJust (fcrProps info) -- current input (set of AP)
-          fCurr = fcrFutureCurr info -- future current holding formulas
+    -- pnPushFr:: FrInfo -> Bool
+    pnPushFr info =
+      let pCurr = current $ frState info -- set of formulas that hold in current position
+          props = fromJust (frProps info) -- current input (set of AP)
+          fCurr = frFutureCurr info -- future current holding formulas
+          (_, fXl, fXe, _) = frFuturePendComb info
 
           -- BitVector where all ones correspond to PNext operators
           maskPn = D.suchThat bitenc checkPn
@@ -642,63 +658,45 @@ deltaRules bitenc cl precFunc =
           checkPn _ = False
 
           -- a tuple made of all arguments of PNext formulas in the closure
-          pnArgs = V.fromList $ map getPnArg $ filter checkPn (S.toList cl) -- get all the arguments of PNext operators
-          getPnArg f@(PNext _ g)
-            | negative g = (True, D.singleton bitenc f, D.singleton bitenc (negation g)) -- negative arguments are put in positive
-            | otherwise  = (False, D.singleton bitenc f, D.singleton bitenc g)
+          pndArgs = V.fromList $ foldl' (getPnDirArg Down) [] (S.toList cl) -- get all the arguments of PNext Down operators
+          pnuArgs = V.fromList $ foldl' (getPnDirArg Up) [] (S.toList cl) -- get all the arguments of PNext Up operators
+          pnArgs = pndArgs V.++ pnuArgs -- get all the arguments of PNext operators
 
-          -- some masks that match precedences with Prec symbols
-          maskPnp Yield = D.suchThat bitenc (checkPnpy)
-          maskPnp Equal = D.suchThat bitenc (checkPnpe)
-          maskPnp Take  = D.suchThat bitenc (checkPnpt)
-          checkPnpy  (PNext Down _) = True -- Yield corresponds to a Down
-          checkPnpy _ = False
-          checkPnpe (PNext _ _   ) = True -- Equal is satisfied by both Down and Up
-          checkPnpe _    = False
-          checkPnpt (PNext Up  _ ) = True -- Take corresponds to a Up
-          checkPnpt _  = False -- all the rest is false
+          getPnDirArg dir rest f@(PNext thisDir g)
+            | dir /= thisDir = rest
+            | negative g = (True, D.singleton bitenc f, D.singleton bitenc (negation g)) : rest -- negative arguments are put in positive form
+            | otherwise  = (False, D.singleton bitenc f, D.singleton bitenc g) : rest
+          getPnDirArg _ rest _ = rest
 
-          maskPnnp Yield = D.suchThat bitenc (checkPnnpy)
-          maskPnnp Equal = D.suchThat bitenc (checkPnnpe)
-          maskPnnp Take  = D.suchThat bitenc (checkPnnpt)
-          checkPnnpy (PNext Up _)   = True -- the other way around with respect to MaskPnp
-          checkPnnpy _ = False
-          checkPnnpt  (PNext Down _) = True
-          checkPnnpt _ = False
-          checkPnnpe _ = False -- equal is satisfied by both Down and Up: always false
+          -- choosePnArgs fXl fXe
+          choosePnArgs _ True = pnArgs -- if next move is a shift, any PNext can hold
+          choosePnArgs True _ = pndArgs -- if next move is a push, only PNext Down can hold
+          choosePnArgs _ _ = pnuArgs -- if next move is a pop, only PNext Up can hold
 
-          -- check that there is no obligation that can't be satisfied due to Up/Down
-          -- e.g. a PNext Up when the relation with the next symbol is Yield
-          precComp prec = D.null $ D.intersect pCurr (maskPnnp prec)
+          pCurrPnfs = D.intersect pCurr maskPn -- current holding PNext formulas
+          checkSet = V.foldl' checkSetFold (D.empty bitenc) (choosePnArgs fXl fXe) -- PNext formulas that should currently hold according to future formulas
+          checkSetFold acc (negf, fMask, gMask)
+            | ((not negf && (not . D.null $ D.intersect gMask fCurr)) -- a positive PNext and the formula g holds in the next state
+                || (negf && (D.null $ D.intersect gMask fCurr))) -- or a negative PNext and the formula g does not hold in the next state
+            = D.union acc fMask
+            | otherwise = acc
 
-          --
-          fsComp prec = (pCurrPnfs == checkSet) -- if PNext g holds in the current state, then g must hold in the next state, and viceversa
-            where pCurrPnfs = D.intersect pCurr maskPn -- current holding PNext formulas
-                  checkSet = V.foldl' checkSetFold (D.empty bitenc) pnArgs
-                  checkSetFold acc (negf, fMask, gMask)
-                    | (not . D.null $ D.intersect fMask (maskPnp prec)) -- exclude the arguments that cannot  be satisfied due to current input relation (Yield/Equal/Take)
-                      && ((not negf && (not . D.null $ D.intersect gMask fCurr)) -- a positive PNext and the formula g holds in the next state
-                         || (negf && (D.null $ D.intersect gMask fCurr)))       -- or a negative PNext and the formula g does not hold in the next state
-                    = D.union acc fMask
-                    | otherwise = acc
+      in pCurrPnfs == checkSet -- if PNext g holds in the current state, then g must hold in the next state, and viceversa
 
-      in case precFunc props (D.extractInput bitenc fCurr) of
-           Nothing   -> False                        -- if the relation is not defined, this rule is not satisfied
-           Just prec -> precComp prec && fsComp prec -- else perform 2 checks
-
-    -- pnShiftFcr:: FcrInfo -> Bool
-    pnShiftFcr = pnPushFcr
+    -- pnShiftFr:: FrInfo -> Bool
+    pnShiftFr = pnPushFr
     --
 
     -- PB rules ------------
     -- pbCond :: FormulaSet -> Bool
     pbCond clos = not (null [f | f@(PBack _ _) <- S.toList clos])
 
-    -- pbPushFcr:: FcrInfo -> Bool
-    pbPushFcr info =
-      let pCurr = current $ fcrState info -- BitVector of formulas holding in current position
-          props = fromJust (fcrProps info) -- current input (a BitVector of a set of AP) (note: L(opa) = powerset(AP))
-          fCurr = fcrFutureCurr info -- future current holding formulas
+    -- pbPushFr:: FrInfo -> Bool
+    pbPushFr info =
+      let pCurr = current $ frState info -- BitVector of formulas holding in current position
+          props = fromJust (frProps info) -- current input (a BitVector of a set of AP)
+          fCurr = frFutureCurr info -- future current holding formulas
+          (_, fXl, fXe, _) = frFuturePendComb info
 
           -- a BitVector where all ones correspond to PBack operators
           maskPb = D.suchThat bitenc checkPb
@@ -706,51 +704,32 @@ deltaRules bitenc cl precFunc =
           checkPb _ = False
 
           -- a tuple made of all arguments of PBack formulas in the closure
-          pbArgs = V.fromList $ map getPbArg $ filter checkPb (S.toList cl) -- get all PBack formulas in the closure of phi
-          getPbArg f@(PBack _ g)
-            | negative g = (True, D.singleton bitenc f, D.singleton bitenc (negation g))
-            | otherwise  = (False, D.singleton bitenc f, D.singleton bitenc g)
+          pbdArgs = V.fromList $ foldl' (getPbDirArg Down) [] (S.toList cl) -- get all the arguments of PBack Down operators
+          pbuArgs = V.fromList $ foldl' (getPbDirArg Up) [] (S.toList cl) -- get all the arguments of PBack Up operators
+          pbArgs = pbdArgs V.++ pbuArgs -- get all the arguments of PBack operators
 
-           -- some masks that match precedences with Prec symbols
-          maskPbp Yield = D.suchThat bitenc (checkPbpy)
-          maskPbp Equal = D.suchThat bitenc (checkPbpe)
-          maskPbp Take  = D.suchThat bitenc (checkPbpt)
-          checkPbpy  (PBack Down _) = True -- Yield corresponds to a Down
-          checkPbpy _ = False
-          checkPbpe (PBack _ _   ) = True -- Equal is satisfied by both Down and Up
-          checkPbpe _    = False
-          checkPbpt (PBack Up  _ ) = True -- Take corresponds to a Up
-          checkPbpt _  = False -- all the rest is false
+          getPbDirArg dir rest f@(PBack thisDir g)
+            | dir /= thisDir = rest
+            | negative g = (True, D.singleton bitenc f, D.singleton bitenc (negation g)) : rest -- negative arguments are put in positive form
+            | otherwise  = (False, D.singleton bitenc f, D.singleton bitenc g) : rest
+          getPbDirArg _ rest _ = rest
 
-          maskPbnp Yield = D.suchThat bitenc (checkPbnpy)
-          maskPbnp Equal = D.suchThat bitenc (checkPbnpe)
-          maskPbnp Take  = D.suchThat bitenc (checkPbnpt)
-          checkPbnpy (PBack Up _)   = True -- the other way around with respect to MaskPnp
-          checkPbnpy _ = False
-          checkPbnpt  (PBack Down _) = True
-          checkPbnpt _ = False
-          checkPbnpe _ = False -- equal is satisfied by both Down and Up: always false
+          -- choosePbArgs fXl fXe
+          choosePbArgs _ True = pbArgs -- if next move is a shift, any PBack can hold
+          choosePbArgs True _ = pbdArgs -- if next move is a push, only PBack Down can hold
+          choosePbArgs _ _ = pbuArgs -- if next move is a pop, only PBack Up can hold
 
-          -- check that there is no obligation that can't be satisfied due to Up/Down
-          -- e.g. a PBack Up holding in the next state when the relation with the next symbol is Yield
-          -- this check is done on the next state
-          precComp prec = D.null $ D.intersect fCurr (maskPbnp prec)
+          fCurrPbfs = D.intersect fCurr maskPb -- PBack formulas holding in the next state
+          checkSet = V.foldl' checkSetFold (D.empty bitenc) (choosePbArgs fXl fXe) -- future PBack formulas according to present formulas
+          checkSetFold acc (negf, fMask, gMask)
+            | ((not negf && (not . D.null $ D.intersect gMask pCurr)) -- a positive PBack and the formula g holds in the next state
+                || (negf && (D.null $ D.intersect gMask pCurr))) -- or a negative PBack and the formula g does not hold in the next state
+            = D.union acc fMask
+            | otherwise = acc
 
-          fsComp prec = (fCurrPbfs == checkSet) -- if PBack g holds in the next state, then g must hold in the current state, and viceversa
-            where fCurrPbfs = D.intersect fCurr maskPb -- PBack formulas holding in the next state
-                  checkSet = V.foldl' checkSetFold (D.empty bitenc) pbArgs
-                  checkSetFold acc (negf, fMask, gMask)
-                    | (not . D.null $ D.intersect fMask (maskPbp prec)) -- delete the arguments that cannot  be satisfied due to current input/next input relation (Yield/Equal/Take)
-                      && ((not negf && (not . D.null $ D.intersect gMask pCurr)) -- a positive PBack and the formula g holds in the current state
-                         || (negf && (D.null $ D.intersect gMask pCurr))) -- or a negative PBack and the formula g does not hold in the current state
-                    = D.union acc fMask
-                    | otherwise = acc
+      in fCurrPbfs == checkSet -- if PBack g holds in the current state, then g must hold in the next state, and viceversa
 
-      in case precFunc props (D.extractInput bitenc fCurr) of
-           Nothing   -> False
-           Just prec -> precComp prec && fsComp prec
-
-    pbShiftFcr = pbPushFcr
+    pbShiftFr = pbPushFr
 
     -- XND: Xnext Down --
     -- get a mask with all XNext Down formulas set to one
