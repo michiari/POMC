@@ -57,26 +57,25 @@ import GHC.Generics (Generic)
 
 import Data.Hashable
 
-
+-- Function that, given two atoms or input symbols,
+-- returns the precedence relation between them
 type EncPrecFunc = EncodedSet -> EncodedSet -> Maybe Prec
+
 -- generate an EncPrecFunc from a StructPrecRel
--- an EncPrecFunc is a function which given two structural labels returns their precedence relation
--- the prec rel must be defined between all struct labels, so using this is always fine
 fromStructEnc :: BitEncoding -> [StructPrecRel APType] -> (EncPrecFunc, PropSet)
 fromStructEnc bitenc sprs = (\s1 s2 -> M.lookup (structLabel s1, structLabel s2) relMap, sl)
   where
-        -- a set of all structural labels whose prec relation is defined at least once (fromList removes duplicates)
-        -- note that structural labels are AP
+        -- a set of all structural labels
         sl = S.fromList $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) sprs
         -- an encoded Atom where all ones corresponds to members of previous set
         maskSL = D.inputSuchThat bitenc (flip S.member sl)
         -- a function which makes a bitwise AND between a parameter Atom and the mask
         -- to get only the structural labels out of the parameter Atom
         structLabel s = s `D.intersect` maskSL
-        --map the relation between props into a relation between EncodedAtoms
+        -- map the relation between props into a relation between EncodedAtoms
         relMap = M.fromList $ map (\(sl1, sl2, pr) ->
                                      ((encodeProp sl1, encodeProp sl2), pr)) sprs
-        --encode a single atomic proposition into an EncodedAtom
+        -- encode a single atomic proposition into an EncodedAtom
         encodeProp = D.encodeInput bitenc . S.singleton
 
 
@@ -609,11 +608,10 @@ deltaRules bitenc cl precFunc =
     xlXePushFr info =
       let pProps = fromJust (frProps info) -- current input (set of AP)
           fCurr = frFutureCurr info -- future current holding formulas
-          fProps = D.extractInput bitenc fCurr -- future input (set of AP)
           (_, fXl, fXe, _) = frFuturePendComb info
           -- since the symbol read by a push or a shift gets on top of the stack,
           -- the next move is determined by the precedence relation between it and the next input
-      in case precFunc pProps fProps of
+      in case precFunc pProps fCurr of
         Just Yield -> fXl
         Just Equal -> fXe
         Just Take -> not (fXe || fXl)
@@ -631,7 +629,7 @@ deltaRules bitenc cl precFunc =
 
     -- Prop rules:: PrInfo -> Bool
     propPushPr info =
-      let pCurr = current $ prState info -- BitVector of formulas holdingformulas that hold in the current position
+      let pCurr = current $ prState info -- BitVector of formulas formulas that hold in the current position
           props = fromJust (prProps info) -- input of the current state (alias the set of AP holding in the current states)
       in compProps bitenc pCurr props -- is the input satisfied by the formulas holding in the current state?
 
@@ -648,7 +646,6 @@ deltaRules bitenc cl precFunc =
     -- pnPushFr:: FrInfo -> Bool
     pnPushFr info =
       let pCurr = current $ frState info -- set of formulas that hold in current position
-          props = fromJust (frProps info) -- current input (set of AP)
           fCurr = frFutureCurr info -- future current holding formulas
           (_, fXl, fXe, _) = frFuturePendComb info
 
@@ -694,7 +691,6 @@ deltaRules bitenc cl precFunc =
     -- pbPushFr:: FrInfo -> Bool
     pbPushFr info =
       let pCurr = current $ frState info -- BitVector of formulas holding in current position
-          props = fromJust (frProps info) -- current input (a BitVector of a set of AP)
           fCurr = frFutureCurr info -- future current holding formulas
           (_, fXl, fXe, _) = frFuturePendComb info
 

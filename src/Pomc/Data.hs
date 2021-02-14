@@ -27,6 +27,7 @@ module Pomc.Data ( EncodedSet
                  , union
                  , joinInputFormulas
                  , extractInput
+                 , sliceInput
                  , decodeInput
                  , encodeInput
                  , inputSuchThat
@@ -149,28 +150,31 @@ suchThat bitenc predicate = EncodedAtom $ BV.fromBits bitList
         bitList = map (predicate . (fetch bitenc)) [(len-1), (len-2)..0]
 {-# INLINABLE suchThat #-}
 
---bitwise AND between two BitVectors
+-- bitwise AND between two BitVectors
 intersect :: EncodedAtom -> EncodedAtom -> EncodedAtom
 intersect (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v1 .&. v2
 {-# INLINE intersect #-}
 
---bitwise OR between two BitVectors
+-- bitwise OR between two BitVectors
 union :: EncodedAtom -> EncodedAtom -> EncodedAtom
 union (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v1 .|. v2
 {-# INLINE union #-}
 
---returns the concatenation of two BitVectors 
+-- returns the concatenation of two BitVectors
 joinInputFormulas :: EncodedAtom -> EncodedAtom -> EncodedAtom
 joinInputFormulas (EncodedAtom v1) (EncodedAtom v2) = EncodedAtom $ v2 BV.# v1
 {-# INLINABLE joinInputFormulas #-}
 
---INPUT = AP = finite set of atomic propositions
--- sets a zero all the bits which represent formulas, does not modify the bits which represent AP
+-- sets to zero all the bits which represent formulas, does not modify the bits which represent AP
 extractInput :: BitEncoding -> EncodedAtom -> EncodedAtom
 extractInput bitenc ea = intersect ea (maskProps bitenc)
 {-# INLINABLE extractInput #-}
 
---get the set of atomic proposition from an EncodedAtom
+sliceInput :: BitEncoding -> EncodedAtom -> EncodedAtom
+sliceInput bitenc (EncodedAtom v) = EncodedAtom $ BV.least (propBits bitenc) v
+{-# INLINABLE sliceInput #-}
+
+-- get the set of atomic proposition from an EncodedAtom
 decodeInput :: BitEncoding -> EncodedAtom -> PropSet
 decodeInput bitenc (EncodedAtom bv) =
   S.fromList $ map (getProp . (fetch bitenc)) (listBits bv)
@@ -182,7 +186,6 @@ encodeInput :: BitEncoding -> PropSet -> EncodedAtom
 encodeInput bitenc set =
   EncodedAtom $ S.foldl BV.setBit (BV.zeros $ propBits bitenc) (S.map (index bitenc . Atomic) set)
 {-# INLINABLE encodeInput #-}
-
 
 --get an EncodedAtom where all ones correspond to atomic predicates which satisfy the predicate, and zeros to formulas which do not
 --the same as suchThat, but we are discarding the formulas defined by BitEncoding
