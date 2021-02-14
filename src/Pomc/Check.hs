@@ -606,12 +606,12 @@ deltaRules bitenc cl precFunc =
 
     -- XL and XE rules :: FcrInfo -> Bool
     xlXePushFr info =
-      let pProps = fromJust (frProps info) -- current input (set of AP)
+      let pCurr = current $ frState info -- set of formulas that hold in current position
           fCurr = frFutureCurr info -- future current holding formulas
           (_, fXl, fXe, _) = frFuturePendComb info
           -- since the symbol read by a push or a shift gets on top of the stack,
           -- the next move is determined by the precedence relation between it and the next input
-      in case precFunc pProps fCurr of
+      in case precFunc pCurr fCurr of
         Just Yield -> fXl
         Just Equal -> fXe
         Just Take -> not (fXe || fXl)
@@ -629,14 +629,13 @@ deltaRules bitenc cl precFunc =
 
     -- Prop rules:: PrInfo -> Bool
     propPushPr info =
-      let pCurr = current $ prState info -- BitVector of formulas formulas that hold in the current position
-          props = fromJust (prProps info) -- input of the current state (alias the set of AP holding in the current states)
-      in compProps bitenc pCurr props -- is the input satisfied by the formulas holding in the current state?
+      case prProps info of
+        Nothing -> True -- we trust that we have been given the right input symbol
+        Just props -> compProps bitenc (current . prState $ info) props
+        -- otherwise we check that the input AP are the same as in the current state
 
     -- propRule:: PrInfo -> Bool
     propShiftPr = propPushPr
-    -- we don't need a propPop cause Pop does not consume any input
-
 
 
     -- PN rules ---------------------------
@@ -1531,8 +1530,8 @@ makeOpa ::  Formula APType -- the input formula
            , EncPrecFunc -- operator precedence function??
            , [State] --states
            , State -> Bool -- isFinal
-           , State -> Input -> [State] -- deltaPush
-           , State -> Input -> [State] -- deltaShift
+           , State -> Maybe Input -> [State] -- deltaPush
+           , State -> Maybe Input -> [State] -- deltaShift
            , State -> State -> [State] -- deltaPop
            )
 makeOpa phi (sls, als) sprs = (bitenc
@@ -1568,11 +1567,11 @@ makeOpa phi (sls, als) sprs = (bitenc
         -- generate the deltaPush relation ( state and props are the parameters of the function)
         deltaPush atoms pcombs rgroup state props = fstates
           where fstates = delta rgroup atoms pcombs state
-                                (Just props) Nothing Nothing
+                                props Nothing Nothing
         -- generate the deltaShift relation ( state and props are the parameters of the function)
         deltaShift atoms pcombs rgroup state props = fstates
           where fstates = delta rgroup atoms pcombs state
-                                (Just props) Nothing Nothing
+                                props Nothing Nothing
         -- generate the deltaPop relation ( state and popped are the parameters of the function)
         deltaPop atoms pcombs rgroup state popped = fstates
           where fstates = delta rgroup atoms pcombs state

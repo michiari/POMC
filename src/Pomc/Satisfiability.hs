@@ -323,8 +323,8 @@ isSatisfiable phi ap sprs =
       delta = Delta
         { bitenc = be
         , prec = precf
-        , deltaPush = dPush
-        , deltaShift = dShift
+        , deltaPush = (\q b -> dPush q Nothing)
+        , deltaShift = (\q b -> dShift q Nothing)
         , deltaPop = dPop
         }
   in not $ isEmpty delta initials isFinal

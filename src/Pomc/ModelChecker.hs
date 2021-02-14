@@ -85,8 +85,8 @@ modelCheck phi opa =
       opaDeltaShift q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaShift opa)
       opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (deltaPop opa)
 
-      cDeltaPush (MCState q p) b = cartesian (opaDeltaPush q b) (phiDeltaPush p b)
-      cDeltaShift (MCState q p) b = cartesian (opaDeltaShift q b) (phiDeltaShift p b)
+      cDeltaPush (MCState q p) b = cartesian (opaDeltaPush q b) (phiDeltaPush p Nothing)
+      cDeltaShift (MCState q p) b = cartesian (opaDeltaShift q b) (phiDeltaShift p Nothing)
       cDeltaPop (MCState q p) (MCState q' p') = cartesian (opaDeltaPop q q') (phiDeltaPop p p')
 
       cDelta = Sat.Delta
@@ -99,7 +99,7 @@ modelCheck phi opa =
 
   in isEmpty cDelta cInitials cIsFinal
 
-modelCheckGen :: ( Ord s, Hashable s, Show s, Ord a)
+modelCheckGen :: (Ord s, Hashable s, Show s, Ord a)
               => Formula a
               -> ExplicitOpa s a
               -> Bool
