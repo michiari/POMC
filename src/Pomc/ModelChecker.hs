@@ -27,7 +27,7 @@ import qualified Pomc.Data as D (encodeInput)
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import qualified Data.Map as Map
+import qualified Data.HashMap.Strict as Map
 
 import GHC.Generics (Generic)
 import Data.Hashable
