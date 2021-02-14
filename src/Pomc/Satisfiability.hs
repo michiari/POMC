@@ -16,7 +16,7 @@ module Pomc.Satisfiability (
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.PotlV2(Formula)
-import Pomc.Check ( Input, EncPrecFunc, State(..), makeOpa)
+import Pomc.Check (Input, EncPrecFunc, State(..), makeOpa)
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
 
@@ -276,7 +276,7 @@ reachPop isDestState isDestStack globals delta q g qState =
             closeSupports True _ = return True
             closeSupports False g'
               | isNothing g' ||
-                ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
+                ((prec delta) (fst . fromJust $ g') (current . getSatState . getState $ r)) == Just Yield
               = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
                 reach isDestState isDestStack globals delta p g'
               | otherwise = return False
