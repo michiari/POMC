@@ -33,11 +33,11 @@ import GHC.Generics (Generic)
 import Data.Hashable
 
 data ExplicitOpa s a = ExplicitOpa
-  { sigma :: ([Prop a], [Prop a]) -- the AP of the input alphabet (the first list is for structural labels, the second one is for normal labels)
-  , precRel :: [StructPrecRel a] --precedence relation between structural labels of the alphabet
+  { sigma :: ([Prop a], [Prop a]) -- the AP of the input alphabet (structural labels, all other props)
+  , precRel :: [StructPrecRel a] -- OPM
   , initials   :: [s] -- initial states of the OPA
   , finals     :: [s] -- final states of the OPA
-  , deltaPush  :: [(s, Set (Prop a), [s])] --push transition relation
+  , deltaPush  :: [(s, Set (Prop a), [s])] -- push transition relation
   , deltaShift :: [(s, Set (Prop a), [s])] -- shift transition relation
   , deltaPop   :: [(s, s, [s])] -- pop transition relation
   } deriving (Show)
@@ -69,7 +69,7 @@ modelCheck phi opa =
 
       -- generate the OPA associated to the negation of the input formula
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
-        makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa) --TODO: is it correct to use getProps?
+        makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa)
 
       cInitials = cartesian (initials opa) phiInitials
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal p
@@ -119,7 +119,7 @@ modelCheckGen phi opa =
              }
   in modelCheck tphi tOpa
 
---extract all the atomic propositions (AP) which form the language P(AP)
+-- extract all atomic propositions from the delta relation
 extractALs :: Ord a => [(s, Set (Prop a), [s])] -> [Prop a]
 extractALs deltaRels = Set.toList $ foldl (\als (_, a, _) -> als `Set.union` a) Set.empty deltaRels
 

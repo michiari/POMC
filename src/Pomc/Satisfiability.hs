@@ -169,9 +169,6 @@ data Delta state = Delta
   , deltaPop :: state -> state -> [state]
   }
 
-getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
-getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
-
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool)
@@ -187,8 +184,7 @@ reach isDestState isDestStack globals delta q g = do
     then return False
     else do
     insertSM (visited globals) q g
-    let be = bitenc delta
-        qState = getState q
+    let qState = getState q
         precRel = (prec delta) (fst . fromJust $ g) (current . getSatState $ qState)
         cases
           | (isDestState q) && (isDestStack g) =
