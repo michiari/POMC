@@ -44,7 +44,7 @@ import Data.List (foldl', sortOn)
 
 import qualified Data.HashMap.Strict as M
 
-import Control.Monad (guard, filterM)
+import Control.Monad (guard, filterM, foldM)
 
 
 import qualified Data.Sequence as SQ
@@ -446,19 +446,18 @@ evCons bitenc clos set = not (D.any bitenc consSet set)
 -- generate all possible combinations of pending obligations + (mustPush, mustShift, afterPop)
 pendCombs :: BitEncoding -> FormulaSet -> Set (EncodedSet, Bool, Bool, Bool)
 pendCombs bitenc clos =
-  let xns = [f | f@(XNext _ _)   <- S.toList clos]
-      xbs = [f | f@(XBack _ _)   <- S.toList clos]
-      hns = [f | f@(HNext _ _)   <- S.toList clos]
-      hbs = [f | f@(HBack _ _)   <- S.toList clos]
-      axbs = [f | f@(AuxBack _ _) <- S.toList clos]
-  in S.foldl' S.union S.empty .
-     S.map (S.fromList . combs . (D.encode bitenc)) $
-     S.powerSet (S.fromList $ xns ++ xbs ++ hns ++ hbs ++ axbs)
-  where
-    combs atom = [(atom, xl, xe, xr) | xl <- [False, True],
-                                       xe <- [False, True],
-                                       xr <- [False, True],
-                                       not (xl && xe)]
+  let xnMasks = [D.singleton bitenc f | f@(XNext _ _)   <- S.toList clos]
+      xbMasks = [D.singleton bitenc f | f@(XBack _ _)   <- S.toList clos]
+      hnMasks = [D.singleton bitenc f | f@(HNext _ _)   <- S.toList clos]
+      hbMasks = [D.singleton bitenc f | f@(HBack _ _)   <- S.toList clos]
+      axbMasks = [D.singleton bitenc f | f@(AuxBack _ _) <- S.toList clos]
+      pendSets = foldM (\set mask -> [set, set `D.union` mask]) (D.empty bitenc)
+                 (xnMasks ++ xbMasks ++ hnMasks ++ hbMasks ++ axbMasks)
+      combs pset = S.fromList [(pset, xl, xe, xr) | xl <- [False, True]
+                                                  , xe <- [False, True]
+                                                  , xr <- [False, True]
+                                                  , not (xl && xe)]
+  in foldl' S.union S.empty $ map combs pendSets
 
 -- given phi, the closure of phi, the set of consistent atoms and the bitencoding, generate all the initial states
 initials :: Formula APType -> FormulaSet -> ([Atom], BitEncoding) -> [State]
