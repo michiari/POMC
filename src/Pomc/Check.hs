@@ -1369,26 +1369,26 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
 -- given a BitEncoding and a state, determine whether it's final
 isFinal :: BitEncoding -> State -> Bool
 isFinal bitenc s =
-  debug $ not (mustPush s) -- xe can be instead accepted, as if # = #
-  && D.member bitenc (Atomic End) currFset
-  && (not $ D.any bitenc future currFset) -- TODO: mask this
+  not (mustPush s) -- xe can be instead accepted, as if # = #
+  && (not . D.null $ D.intersect currFset maskEnd)
+  && (D.null $ D.intersect currFset maskFuture)
   && currPend == (D.intersect currPend mask)
   where
-        maskXbu = D.suchThat bitenc checkXbu
-        checkXbu (XBack Up _) = True
-        checkXbu _ = False
+    maskEnd = D.singleton bitenc (Atomic End)
+    maskFuture = D.suchThat bitenc future
 
-        maskAlw = D.suchThat bitenc checkAlw
-        checkAlw(Always _) = True
-        checkAlw _ = False
+    maskXbu = D.suchThat bitenc checkXbu
+    checkXbu (XBack Up _) = True
+    checkXbu _ = False
 
-        debug = id
-        --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
+    maskAlw = D.suchThat bitenc checkAlw
+    checkAlw (Always _) = True
+    checkAlw _ = False
 
-        currFset = current s
-        currPend = pending s
-        mask = D.union maskXbu maskAlw
-        -- only XBack Up and Always formulas are allowed
+    currFset = current s
+    currPend = pending s
+    mask = D.union maskXbu maskAlw
+    -- only XBack Up and Always formulas are allowed
 
 
 ---------------------------------------------------------------------------------
