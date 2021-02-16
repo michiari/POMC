@@ -15,10 +15,13 @@ module Pomc.Util ( unsafeLookup
                  , safeTail
                  , timeAction
                  , timeToString
+                 , parMap
                  ) where
 
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', concatMap)
 import Criterion.Measurement (initializeTime, getTime, secs)
+import Control.Parallel.Strategies(using, parList, rdeepseq, rseq)
+import Control.DeepSeq(NFData(..))
 
 unsafeLookup :: Eq a => a -> [(a, b)] -> b
 unsafeLookup k al = case lookup k al of
@@ -59,3 +62,7 @@ timeAction action = do initializeTime
 
 timeToString :: Double -> String
 timeToString = secs
+
+
+parMap :: (NFData a, NFData b) => (a -> b) -> [a] -> [b]
+parMap f xs = map f xs `using` parList rseq

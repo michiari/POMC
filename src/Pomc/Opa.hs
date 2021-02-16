@@ -34,6 +34,7 @@ data Opa s t = Opa
     , deltaPop   :: s -> s -> [s]
     }
 
+-- a configuration of a opa
 data Config s t = Config
     { confState :: s
     , confStack :: [(t, s)]
@@ -44,14 +45,15 @@ runOpa :: (Eq s) => Opa s t -> [t] -> Bool
 runOpa (Opa _ prec _ initials finals dshift dpush dpop) tokens =
   run prec initials (`elem` finals) dshift dpush dpop tokens
 
-run :: (t -> t -> Maybe Prec)
-    -> [s]
-    -> (s -> Bool)
-    -> (s -> t -> [s])
-    -> (s -> t -> [s])
-    -> (s -> s -> [s])
-    -> [t]
-    -> Bool
+-- run some tokens over an OPA and check acceptance
+run :: (t -> t -> Maybe Prec) -- precedence relation
+    -> [s] -- list of initial states
+    -> (s -> Bool) -- is a state final?
+    -> (s -> t -> [s]) -- deltaShift (non deterministic)
+    -> (s -> t -> [s]) -- deltaPush
+    -> (s -> s -> [s]) -- deltaPop
+    -> [t] -- input tokens
+    -> Bool --is the string accepted?
 run prec initials isFinal deltaShift deltaPush deltaPop tokens =
   any'
     (run' prec deltaShift deltaPush deltaPop isFinal)

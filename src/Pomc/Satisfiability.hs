@@ -16,7 +16,8 @@ module Pomc.Satisfiability (
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.PotlV2(Formula)
-import Pomc.Check ( Input, EncPrecFunc, State(..), makeOpa)
+import Pomc.Check ( EncPrecFunc, makeOpa)
+import Pomc.State(Input, State(..))
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
 
@@ -90,7 +91,7 @@ emptySM = do
 
 -- State class for satisfiability
 class SatState state where
-  getSatState :: state -> State
+  getSatState ::  state -> State
   getStateProps :: BitEncoding -> state -> Input
 
 instance SatState State where
@@ -289,7 +290,7 @@ reachPop isDestState isDestStack globals delta q g qState =
                  (deltaPop delta) qState (getState . snd . fromJust $ g)
     V.foldM' doPop False newStates
 
-
+-- check the emptiness of the Language expressed by an automaton
 isEmpty :: (SatState state, Eq state, Hashable state, Show state)
         => Delta state
         -> [state]
@@ -319,7 +320,7 @@ isSatisfiable :: Formula APType
               -> [StructPrecRel APType]
               -> Bool
 isSatisfiable phi ap sprs =
-  let (be, precf, initials, isFinal, dPush, dShift, dPop) = makeOpa phi ap sprs
+  let (be, precf, initials, isFinal, dPush, dShift, dPop) = makeOpa phi False ap sprs
       delta = Delta
         { bitenc = be
         , prec = precf

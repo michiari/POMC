@@ -18,7 +18,8 @@ module Pomc.ModelChecker (
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
 import Pomc.PotlV2 (Formula(..), getProps)
-import Pomc.Check (State, makeOpa)
+import Pomc.Check ( makeOpa)
+import Pomc.State(State(..))
 import Pomc.Satisfiability (SatState(..), isEmpty)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
@@ -53,7 +54,7 @@ instance SatState (MCState s) where
   getStateProps bitenc (MCState _ p) = getStateProps bitenc p
   {-# INLINABLE getStateProps #-}
 
-
+-- generate the cartesian product between two automata
 cartesian :: [a] -> [State] -> [MCState a]
 cartesian xs ys = [MCState x y | x <- xs, y <- ys]
 
@@ -70,7 +71,7 @@ modelCheck phi opa =
 
       --generate the OPA associated to the negation of the input formula
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
-        makeOpa (Not phi) (fst $ sigma opa, getProps phi) (precRel opa) 
+        makeOpa (Not phi) False (fst $ sigma opa, getProps phi) (precRel opa) 
 
       cInitials = cartesian (initials opa) phiInitials
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal p
@@ -100,7 +101,7 @@ modelCheck phi opa =
 
   in isEmpty cDelta cInitials cIsFinal
 
--- check a formula phi against a 
+-- check a formula phi against an Opa
 modelCheckGen :: ( Ord s, Hashable s, Show s, Ord a)
               => Formula a
               -> ExplicitOpa s a

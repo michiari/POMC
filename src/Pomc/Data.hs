@@ -11,6 +11,7 @@ module Pomc.Data ( EncodedSet
                  , FormulaSet
                  , PropSet
                  , BitEncoding(..)
+                 , EncodedAtom(..)
                  , newBitEncoding
                  , decode
                  , pdecode
@@ -44,6 +45,7 @@ import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 
 import Data.Hashable
+import Control.DeepSeq(NFData(..))
 
 
 type EncodedSet = EncodedAtom
@@ -71,6 +73,9 @@ newBitEncoding fetch_ index_ width_ propBits_ =
 
 --an encoded atom is just a BitVector
 newtype EncodedAtom = EncodedAtom BitVector deriving (Eq, Ord, Show)
+
+instance NFData EncodedAtom where
+  rnf (EncodedAtom vect) = vect `seq` ()
 
 instance Hashable EncodedAtom where
   -- hash with salt the value represented by the bit vector
