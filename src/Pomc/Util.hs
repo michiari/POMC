@@ -65,4 +65,4 @@ timeToString = secs
 
 
 parMap :: (NFData a, NFData b) => (a -> b) -> [a] -> [b]
-parMap f xs = map f xs `using` parList rseq
+parMap f xs = map f xs `using` parList rdeepseq

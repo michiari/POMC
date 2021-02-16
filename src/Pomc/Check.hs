@@ -1356,9 +1356,9 @@ delta :: RuleGroup -- rules (shiftRules if we are building deltaShift, ...)
       -> Maybe Input -- future input ( for fast functions)
       -> [State] -- transition outputs from the current state: nondeterministic OPA
 delta rgroup atoms pcombs scombs state mprops mpopped mnextprops   
-  | (FState {}) <- state = deltaF pvalid vas vpcs frInfoBuilder frs 
-  | (WState {}) <- state = [] -- todo: update this
-  where 
+  | (FState {}) <- state = fstates
+  | (WState {}) <- state = wfstates 
+  where
     prs  = ruleGroupPrs  rgroup -- present rules
     fcrs = ruleGroupFcrs rgroup -- future current rules
     fprs = ruleGroupFprs rgroup -- future pending rules
@@ -1372,76 +1372,71 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                             prPopped    = mpopped,
                             prNextProps = mnextprops
                           }
-    -- info builder for the next rules                      
-    frInfoBuilder curr pendComb = FrInfo    { frState          = state,
+    -- all future current rules must be satisfied by (candidate) future states
+    vas = nextAtoms
+      where makeFcrInfo curr = FcrInfo { fcrState      = state,
+                                      fcrProps      = mprops,
+                                      fcrPopped     = mpopped,
+                                      fcrFutureCurr = curr,
+                                      fcrNextProps  = mnextprops
+                                    }
+            nextAtoms = if isNothing mpopped
+                        then catMaybes $ parMap (\atom -> if (validAtom atom) then Just atom else Nothing) atoms
+                        else filter validAtom [current state] -- TODO: If I pop next state is??
+            validAtom atom = null [r | r <- fcrs, not (r $ makeFcrInfo atom)]
+         
+
+    -- all future pending rules must be satisfied
+    vpcs =  catMaybes $ parMap (\pcomb -> if (valid pcomb) then Just pcomb else Nothing) $ S.toList pcombs    --S.toList . S.filter valid $ pcombs
+      where makeFprInfo pendComb = FprInfo { fprState          = state,
+                                          fprProps          = mprops,
+                                          fprPopped         = mpopped,
+                                          fprFuturePendComb = pendComb,
+                                          fprNextProps      = mnextprops
+                                        }
+            valid pcomb = null [r | r <- fprs, not (r $ makeFprInfo pcomb)]
+    fstates = if (pvalid)
+                then [FState curr pend xl xe xr | curr <- vas,
+                                                 pc@(pend, xl, xe, xr) <- vpcs,
+                                                 valid curr pc]
+                else []
+      -- all future rules must be satisfied
+      where makeInfo curr pendComb = FrInfo { frState          = state,
                                               frProps          = mprops,
                                               frPopped         = mpopped,
                                               frFutureCurr     = curr,
                                               frFuturePendComb = pendComb,
                                               frNextProps      = mnextprops
                                             }
-    fcrInfoBuilder curr       =  FcrInfo { fcrState      = state,
-                                      fcrProps      = mprops,
-                                      fcrPopped     = mpopped,
-                                      fcrFutureCurr = curr,
-                                      fcrNextProps  = mnextprops
-                                    }
-    fprInfoBuilder pendComb   = FprInfo { fprState          = state,
-                                          fprProps          = mprops,
-                                          fprPopped         = mpopped,
-                                          fprFuturePendComb = pendComb,
-                                          fprNextProps      = mnextprops
+            valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
+
+    --omega case 
+    -- all future pending rules must be satisfied
+    vscs = S.toList . S.filter valid $ scombs
+      where makeInfo stackComb = FsrInfo {fsrState           = state,
+                                          fsrProps           = mprops,
+                                          fsrPopped          = mpopped,
+                                          fsrFutureStack     = stackComb,
+                                          fsrNextProps       = mnextprops
                                         }
-    (vas, vpcs)  = let validAtom atom = null [r | r <- fcrs, not (r $ fcrInfoBuilder atom)]
-                       valid pcomb    = null [r | r <- fprs, not (r $ fprInfoBuilder pcomb)]
-                   in if isNothing mpopped
-                      then  runEval $ do 
-                        vas'  <- rparWith rdeepseq $ filter validAtom atoms --catMaybes $ parMap (\atom -> if (validAtom atom) then Just atom else Nothing) atoms
-                        vpcs' <- rparWith rdeepseq $  S.toList . S.filter valid $ pcombs
-                        rseq vas'
-                        rseq vpcs'
-                        return (vas', vpcs')
-                      else (filter validAtom [current state], runEval $ do 
-                                                                        vpcs' <- rparWith rdeepseq $  S.toList . S.filter valid $ pcombs
-                                                                        rseq vpcs'
-                                                                        return vpcs'
-                                                                        )
+            valid scomb = null [r | r <- fsrs, not (r $ makeInfo scomb)]
 
 
-
-type FrInfoBuilder  = (EncodedSet -> (EncodedSet, Bool, Bool, Bool) -> FrInfo)
-
-deltaF :: Bool   -- is the state valid?
-          -> [Atom] -- valid states 
-          -> [(EncodedSet, Bool, Bool, Bool)] -- valid future obligations
-          -> FrInfoBuilder
-          -> [FutureRule]
-          -> [State]
-deltaF False _ _ _ _= []
-deltaF True  vas vpcs builder frs = [FState curr pend xl xe xr | curr <- vas,
-                                                 pc@(pend, xl, xe, xr) <- vpcs,
-                                                 valid curr pc]
-  where
-    valid curr pcomb = null [r | r <- frs, not (r $ builder curr pcomb)]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    wfstates = if (pvalid)
+                then [WState curr pend stack xl xe xr | curr <- vas,
+                                                        pc@(pend, xl, xe, xr) <- vpcs,
+                                                        stack <- vscs,
+                                                        valid curr pc]
+                else []
+      -- all future rules must be satisfied
+      where makeInfo curr pendComb = FrInfo { frState          = state,
+                                              frProps          = mprops,
+                                              frPopped         = mpopped,
+                                              frFutureCurr     = curr,
+                                              frFuturePendComb = pendComb,
+                                              frNextProps      = mnextprops
+                                            }
+            valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)] 
 
 
 
@@ -1680,6 +1675,8 @@ makeOpa phi isOmega (sls, als) sprs = (bitenc
         scs = stackCombs bitenc cl 
         -- generate initial states
         is = initials isOmega nphi cl (as, bitenc)
+
+
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
         -- generate the deltaPush relation ( state and props are the parameters of the function)
