@@ -17,9 +17,9 @@ module Pomc.Opa ( -- * Run functions
                 ) where
 
 import Pomc.Prec (Prec(..))
-import Pomc.Util (any', safeHead, safeTail)
+import Pomc.Util (any', safeHead, safeTail, parMap)
 
-import Control.Parallel.Strategies
+import Control.Parallel.Strategies (rpar, runEval, NFData(..))
 import GHC.Generics (Generic)
 import qualified Data.Vector as V
 
@@ -147,11 +147,8 @@ parAugRun :: (NFData s, NFData t)
           -> Bool
 parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
   let ics = (map (\i -> Config i [] tokens) initials)
-      nchunks = min 128 (length ics)
-      chunks = V.toList $ interChunks nchunks ics
-      process = runEval . rdeepseq .
-                  any' (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal)
-  in parAny process chunks
+      results = parMap (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal) ics              
+  in not $ null $ filter (== True) results
   where
     run' prec adshift adpush adpop isFinal conf@(Config s stack tokens)
       -- No more input and empty stack: accept / reject
@@ -179,7 +176,7 @@ parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             dpop   = adpop   lookahead
             top = head stack  --
             t   = head tokens -- safe due to laziness
-            recurse = any' (run' prec adshift adpush adpop isFinal)
+            recurse xs = not $ null $ filter (== True) $ parMap (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal) xs
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]

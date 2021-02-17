@@ -27,6 +27,7 @@ module Pomc.PotlV2 ( -- * POTL V2 types
 import Pomc.Prop (Prop(..))
 import Data.List (nub,uncons)
 import GHC.Generics (Generic)
+import Control.DeepSeq(NFData(..), force)
 
 import Data.Hashable
 
@@ -219,3 +220,7 @@ normalize f = case f of
                 Eventually g       -> Eventually (normalize g)
                 Always g           -> Always (normalize g)
                 AuxBack dir g      -> AuxBack dir (normalize g)
+
+instance NFData (Formula a) where 
+  rnf formula = formula `seq` ()
+    

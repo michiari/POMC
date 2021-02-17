@@ -26,7 +26,7 @@ module Pomc.Check ( -- * Checking functions
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.Opa (run, augRun)
+import Pomc.Opa (run, augRun, parAugRun)
 import Pomc.PotlV2 (Formula(..), Dir(..), negative, negation, atomic, normalize, future)
 import Pomc.Util (safeHead, xor, implies, iff, parMap)
 import Pomc.Data (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
@@ -1381,14 +1381,14 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                                       fcrNextProps  = mnextprops
                                     }
             nextAtoms = if isNothing mpopped
-                        then catMaybes $ parMap (\atom -> if (validAtom atom) then Just atom else Nothing) atoms
+                        then filter validAtom atoms --catMaybes $ parMap (\atom -> if (validAtom atom) then Just atom else Nothing) atoms
                         else filter validAtom [current state] -- TODO: If I pop next state is??
             validAtom atom = null [r | r <- fcrs, not (r $ makeFcrInfo atom)]
          
 
     -- all future pending rules must be satisfied
-    vpcs =  catMaybes $ parMap (\pcomb -> if (valid pcomb) then Just pcomb else Nothing) $ S.toList pcombs    --S.toList . S.filter valid $ pcombs
-      where makeFprInfo pendComb = FprInfo { fprState          = state,
+    vpcs =  S.toList . S.filter valid $ pcombs --catMaybes $ parMap (\pcomb -> if (valid pcomb) then Just pcomb else Nothing) $ S.toList pcombs    --
+      where makeFprInfo pendComb = FprInfo { fprState       = state,
                                           fprProps          = mprops,
                                           fprPopped         = mpopped,
                                           fprFuturePendComb = pendComb,
@@ -1408,7 +1408,7 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                                               frFuturePendComb = pendComb,
                                               frNextProps      = mnextprops
                                             }
-            valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
+            valid curr pcomb =  null [r | r <- frs, not (r $ makeInfo curr pcomb)] 
 
     --omega case 
     -- all future pending rules must be satisfied
@@ -1546,7 +1546,7 @@ fastcheck :: Formula APType -- the input formula phi
           -> [PropSet] -- input tokens (each set represent an input token)
           -> Bool
 fastcheck phi sprs ts =
-  debug $ augRun
+  debug $ parAugRun
             prec
             is
             (isFinal bitenc)
@@ -1662,20 +1662,21 @@ makeOpa phi isOmega (sls, als) sprs = (bitenc
         -- S.fromlist removes duplicates
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
         -- generate the closure of the normalized input formulas
-        cl = closure isOmega nphi tsprops
+        cl =  runEval $ do 
+              cl' <- rparWith rdeepseq $ closure isOmega nphi tsprops
+              return cl'
         -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
         -- generate an EncPrecFunc from a StructPrecRel
         (prec, _) = fromStructEnc bitenc sprs
         -- generate all consistent subsets of cl
-        as = genAtoms isOmega bitenc cl inputSet
+        as = genAtoms isOmega bitenc cl inputSet  `using` (rparWith rdeepseq)
         -- generate all possible pending obligations
-        pcs = pendCombs bitenc cl
+        pcs = pendCombs bitenc cl 
         -- generate all possible stack obligations for the omega case
         scs = stackCombs bitenc cl 
         -- generate initial states
-        is = initials isOmega nphi cl (as, bitenc)
-
+        is = initials isOmega nphi cl (as, bitenc) `using`(rparWith rdeepseq)
 
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
