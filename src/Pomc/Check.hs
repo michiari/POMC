@@ -34,28 +34,19 @@ import qualified Pomc.Data as D
 import Pomc.PropConv (APType, convPropTokens)
 
 import Data.Maybe (fromJust, fromMaybe, isNothing)
-
 import Data.Set (Set)
 import qualified Data.Set as S
-
 import qualified Data.Vector as V
-
 import Data.List (foldl', sortOn)
-
 import qualified Data.HashMap.Strict as M
-
 import Control.Monad (guard, filterM, foldM)
-
-
 import qualified Data.Sequence as SQ
-
 import Data.Foldable (toList)
 
--- import qualified Debug.Trace as DT
-
 import GHC.Generics (Generic)
-
 import Data.Hashable
+
+-- import qualified Debug.Trace as DT
 
 -- Function that, given two atoms or input symbols,
 -- returns the precedence relation between them
@@ -1323,7 +1314,7 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
     frs  = ruleGroupFrs  rgroup -- future rules
 
     -- all present rules must be satisfied by the current state
-    pvalid = null [r | r <- prs, not (r info)]
+    pvalid = all ($ info) prs
       where info = PrInfo { prState     = state,
                             prProps     = mprops,
                             prPopped    = mpopped,
@@ -1337,7 +1328,8 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
                                       fcrFutureCurr = curr,
                                       fcrNextProps  = mnextprops
                                     }
-            valid atom = null [r | r <- fcrs, not (r $ makeInfo atom)]
+            valid atom = let info = makeInfo atom
+                         in all ($ info) fcrs
             nextAtoms = if isNothing mpopped
                         then atoms
                         else [current state] -- during pops, the current set cannot change
@@ -1349,13 +1341,14 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
                                           fprFuturePendComb = pendComb,
                                           fprNextProps      = mnextprops
                                         }
-            valid pcomb = null [r | r <- fprs, not (r $ makeInfo pcomb)]
+            valid pcomb = let info = makeInfo pcomb
+                          in all ($ info) fprs
 
     fstates = if (pvalid)
-                then [State curr pend xl xe xr | curr <- vas,
-                                                 pc@(pend, xl, xe, xr) <- vpcs,
-                                                 valid curr pc]
-                else []
+              then [State curr pend xl xe xr | curr <- vas
+                                             , pc@(pend, xl, xe, xr) <- vpcs
+                                             , valid curr pc]
+              else []
       -- all future rules must be satisfied
       where makeInfo curr pendComb = FrInfo { frState          = state,
                                               frProps          = mprops,
@@ -1364,7 +1357,8 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
                                               frFuturePendComb = pendComb,
                                               frNextProps      = mnextprops
                                             }
-            valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
+            valid curr pcomb = let info = makeInfo curr pcomb
+                               in all ($ info) frs
 
 -- given a BitEncoding and a state, determine whether it's final
 isFinal :: BitEncoding -> State -> Bool
