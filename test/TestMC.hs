@@ -746,6 +746,7 @@ stackExcSwap = ExplicitOpa
                                     , "StackImpl::Swap(StackImpl<T>&)"
                                     , "StackImpl::~StackImpl()"
                                     , "T"
+                                    , "T::T()"
                                     , "T::T(const T&)"
                                     , "T::~T()"
                                     , "::operator new()"
@@ -811,7 +812,7 @@ stackExcSwap = ExplicitOpa
       , (56, makeInputSet ["exc"], [57])
       , (59, makeInputSet ["ret", "Stack", "Stack::Pop()", "tainted"], [60])
       , (62, makeInputSet ["ret", "std::destroy<T>()"], [63])
-      , (64, makeInputSet ["ret", "T", "T::()"], [66])
+      , (64, makeInputSet ["ret", "T", "T::T()"], [66])
       , (65, makeInputSet ["exc"], [67])
       , (69, makeInputSet ["exc"], [69])
       , (70, makeInputSet ["ret", "T", "T::T(const T&)"], [71])
