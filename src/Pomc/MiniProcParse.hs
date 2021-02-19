@@ -31,8 +31,8 @@ symbolP = L.symbol spaceP
 
 identifierP :: Parser Text
 identifierP = (label "identifier") . L.lexeme spaceP $ do
-  first <- letterChar
-  rest <- many alphaNumChar
+  first <- choice [letterChar, char '_']
+  rest <- many $ choice [alphaNumChar, char '_', char '.']
   return $ T.pack (first:rest)
 
 boolLiteralP :: Parser Bool
