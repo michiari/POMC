@@ -21,11 +21,11 @@ tests = testGroup "ModelChecking.hs Tests" [sasBaseTests, sasEvalTests,
                                             synthBaseTests, synthEvalTests]
 
 sasBaseTests :: TestTree
-sasBaseTests = testGroup "SAS OPA: MC Base Tests" $
+sasBaseTests = testGroup "SAS OPA MC Base Tests" $
   map (makeTestCase simpleExc) (zip TestSat.cases expectedSasBase)
 
 sasEvalTests :: TestTree
-sasEvalTests = testGroup "SAS OPA: MC Eval Tests" $
+sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
   map (makeTestCase simpleExc) (zip EvalFormulas.formulas expectedSasEval)
 
 synthBaseTests :: TestTree
@@ -37,11 +37,11 @@ synthEvalTests = testGroup "SYNTH OPA MC Eval Tests" $
   map (makeTestCase synth) (zip EvalFormulas.formulas expectedSasEval)
 
 lRBaseTests :: TestTree
-lRBaseTests = testGroup "LargerRec OPA: MC Base Tests" $
+lRBaseTests = testGroup "LargerRec OPA MC Base Tests" $
   map (makeTestCase largerRec) (zip TestSat.cases expectedLargerRecBase)
 
 lREvalTests :: TestTree
-lREvalTests = testGroup "LargerRec OPA: MC Eval Tests" $
+lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
   map (makeTestCase largerRec) (zip EvalFormulas.formulas expectedLargerRecEval)
 
 
@@ -754,6 +754,7 @@ stackExcSwap = ExplicitOpa
                                     , "StackImpl::Swap(StackImpl<T>&)"
                                     , "StackImpl::~StackImpl()"
                                     , "T"
+                                    , "T::T()"
                                     , "T::T(const T&)"
                                     , "T::~T()"
                                     , "::operator new()"
@@ -819,7 +820,7 @@ stackExcSwap = ExplicitOpa
       , (56, makeInputSet ["exc"], [57])
       , (59, makeInputSet ["ret", "Stack", "Stack::Pop()", "tainted"], [60])
       , (62, makeInputSet ["ret", "std::destroy<T>()"], [63])
-      , (64, makeInputSet ["ret", "T", "T::()"], [66])
+      , (64, makeInputSet ["ret", "T", "T::T()"], [66])
       , (65, makeInputSet ["exc"], [67])
       , (69, makeInputSet ["exc"], [69])
       , (70, makeInputSet ["ret", "T", "T::T(const T&)"], [71])

@@ -15,7 +15,8 @@ module Pomc.Satisfiability (
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.Check (Checkable(..), Input, EncPrecFunc, State(..), makeOpa)
+import Pomc.PotlV2(Formula)
+import Pomc.Check (Input, EncPrecFunc, State(..), makeOpa)
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
 
@@ -168,9 +169,6 @@ data Delta state = Delta
   , deltaPop :: state -> state -> [state]
   }
 
-getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
-getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
-
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool)
@@ -186,20 +184,19 @@ reach isDestState isDestStack globals delta q g = do
     then return False
     else do
     insertSM (visited globals) q g
-    let be = bitenc delta
-        qProps = getSidProps be q
-        qState = getState q
+    let qState = getState q
+        precRel = (prec delta) (fst . fromJust $ g) (current . getSatState $ qState)
         cases
           | (isDestState q) && (isDestStack g) =
             debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
 
-          | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) =
-            reachPush isDestState isDestStack globals delta q g qState qProps
+          | (isNothing g) || precRel == Just Yield =
+            reachPush isDestState isDestStack globals delta q g qState
 
-          | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) =
-            reachShift isDestState isDestStack globals delta q g qState qProps
+          | precRel == Just Equal =
+            reachShift isDestState isDestStack globals delta q g qState
 
-          | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
+          | precRel == Just Take =
             reachPop isDestState isDestStack globals delta q g qState
 
           | otherwise = return False
@@ -214,14 +211,14 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
           -> StateId state
           -> Stack state
           -> state
-          -> Input
           -> ST s Bool
-reachPush isDestState isDestStack globals delta q g qState qProps =
-  let doPush True _ = return True
+reachPush isDestState isDestStack globals delta q g qState =
+  let qProps = getStateProps (bitenc delta) qState
+      doPush True _ = return True
       doPush False p = do
         insertSM (suppStarts globals) q g
         debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-          reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
+          reach isDestState isDestStack globals delta p (Just (qProps, q))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
     pushReached <- V.foldM' doPush False newStates
@@ -247,10 +244,10 @@ reachShift :: (SatState state, Eq state, Hashable state, Show state)
            -> StateId state
            -> Stack state
            -> state
-           -> Input
            -> ST s Bool
-reachShift isDestState isDestStack globals delta q g qState qProps =
-  let doShift True _ = return True
+reachShift isDestState isDestStack globals delta q g qState =
+  let qProps = getStateProps (bitenc delta) qState
+      doShift True _ = return True
       doShift False p =
         debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
         reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
@@ -275,7 +272,7 @@ reachPop isDestState isDestStack globals delta q g qState =
             closeSupports True _ = return True
             closeSupports False g'
               | isNothing g' ||
-                ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
+                ((prec delta) (fst . fromJust $ g') (current . getSatState . getState $ r)) == Just Yield
               = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
                 reach isDestState isDestStack globals delta p g'
               | otherwise = return False
@@ -313,8 +310,7 @@ isEmpty delta initials isFinal = not $
                    False
                    initialsId)
 
-isSatisfiable :: (Checkable f)
-              => f APType
+isSatisfiable :: Formula APType
               -> ([Prop APType], [Prop APType])
               -> [StructPrecRel APType]
               -> Bool
@@ -323,18 +319,18 @@ isSatisfiable phi ap sprs =
       delta = Delta
         { bitenc = be
         , prec = precf
-        , deltaPush = dPush
-        , deltaShift = dShift
+        , deltaPush = (\q _ -> dPush q Nothing)
+        , deltaShift = (\q _ -> dShift q Nothing)
         , deltaPop = dPop
         }
   in not $ isEmpty delta initials isFinal
 
-isSatisfiableGen :: (Checkable f, Ord a)
-                 => f a
+isSatisfiableGen :: ( Ord a)
+                 => Formula a
                  -> ([Prop a], [Prop a])
                  -> [StructPrecRel a]
                  -> Bool
 isSatisfiableGen phi ap precf =
-  let (tphi, tap, tprecr) = convPropLabels (toReducedPotl phi) ap precf
+  let (tphi, tap, tprecr) = convPropLabels phi ap precf
   in isSatisfiable tphi tap tprecr
 

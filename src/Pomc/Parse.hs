@@ -11,18 +11,17 @@ module Pomc.Parse ( potlv2P
                   , checkRequestP
                   , spaceP
                   , CheckRequest(..)
+                  , includeP
                   ) where
 
-import Pomc.Prec (Prec(..), StructPrecRel, extractSLs)
+import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.PotlV2 as P2
 import Pomc.Example (stlPrecRelV2Text)
 import Pomc.ModelChecker (ExplicitOpa(..), extractALs)
 
 import Data.Void (Void)
-
-import Data.Text as T
-
+import Data.Text
 import Data.Set (Set)
 import qualified Data.Set as S
 
@@ -69,8 +68,8 @@ allPropChars = choice [ alphaNumChar
 
 propP :: Parser (Prop Text)
 propP = choice [ End           <$  symbolP "#"
-               , Prop . T.pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
-               , Prop . T.pack <$> quotesP (some allPropChars <?> "atomic proposition")
+               , Prop . pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
+               , Prop . pack <$> quotesP (some allPropChars <?> "atomic proposition")
                ]
 
 propSetP :: Parser (Set (Prop Text))
@@ -209,7 +208,7 @@ precSectionP = do _ <- symbolP "prec"
                   precRels <- (stlPrecRelV2Text <$ symbolP "Mcall") <|> precRelsP
                   _ <- symbolP ";"
                   return precRels
-  where precRelsP = precRelP `sepBy1` symbolP ","
+  where precRelsP = precRelP `sepBy1` symbolP "," >>= return . addEnd
 
 opaSectionP :: Parser (ExplicitOpa Word Text)
 opaSectionP = do
@@ -258,8 +257,17 @@ fullOpa (Just opa) prs = Just $ ExplicitOpa
                          , deltaShift = deltaShift opa
                          , deltaPop = deltaPop opa
                          }
-  where sls = extractSLs prs
+  where sls = extractSLs prs  -- structural labels
         als = S.toList $
               (S.fromList (extractALs $ deltaPush opa)
                `S.union` S.fromList (extractALs $ deltaShift opa))
-              `S.difference` (S.fromList sls)
+              `S.difference` (S.fromList sls) -- only normal labels, remove structural labels
+
+
+includeP :: Parser String
+includeP = do
+  _ <- symbolP "include"
+  _ <- symbolP "="
+  path <- quotesP . some $ anySingleBut '"'
+  _ <- symbolP ";"
+  return path

@@ -27,9 +27,10 @@ module Pomc.Prec ( -- * Main precedence type
                  , fromRelations
                  , fromStructPR
                  , extractSLs
+                 , addEnd
                  ) where
 
-import Pomc.Prop (Prop)
+import Pomc.Prop (Prop(..))
 
 import GHC.Generics (Generic)
 import Data.Hashable
@@ -120,3 +121,6 @@ fromStructPR sprs = \s1 s2 -> M.lookup (structLabel s1, structLabel s2) relMap
 
 extractSLs :: Ord a => [StructPrecRel a] -> [Prop a]
 extractSLs sprs = nubOrd $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) sprs
+
+addEnd :: Ord a => [StructPrecRel a] -> [StructPrecRel a]
+addEnd sprs = sprs ++ map (\p -> (p, End, Take)) (extractSLs sprs)

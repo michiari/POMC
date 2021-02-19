@@ -1,6 +1,6 @@
-prec = Mcall;
+include = "../Mcall.inc";
 
-formulas = G (exc And (PBu "T") And (XBd "han") --> XBd (XBd (XNu exc)));
+formulas = G (exc And (PBu "T") And (XBd ("han" And XBd "Stack")) --> XBd (XBd (XNu exc)));
 
 opa:
   initials = 0;

@@ -12,6 +12,7 @@ module Pomc.Prop ( -- * Atomic proposition type
                  ) where
 
 import GHC.Generics (Generic)
+
 import Data.Hashable
 
 data Prop a = Prop !a | End deriving (Eq, Ord, Show, Generic)

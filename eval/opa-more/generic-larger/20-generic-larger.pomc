@@ -1,0 +1,4 @@
+include = "../../Mcall.inc";
+
+formulas = XNd (PNd (PBu call));
+include = "opa.inc";

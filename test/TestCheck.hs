@@ -2,11 +2,8 @@ module TestCheck (tests) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.Example (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
-import Pomc.Prec (Prec(..))
-import qualified Pomc.Prec as PS (singleton, fromList)
 import Pomc.Prop (Prop(..))
-import Pomc.RPotl (Formula(..), formulaAt)
-import qualified Pomc.PotlV2 as P2 (Dir(..), Formula(..))
+import Pomc.PotlV2(Dir(..), Formula(..), formulaAt, formulaAfter)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -20,18 +17,18 @@ tests :: TestTree
 tests = testGroup "Check.hs tests" [unitTests, propTests]
 
 unitTests :: TestTree
-unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
+unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
   where
     -- Takes a list of tuples like:
     --   (name, expected check result, checkable phi, prec func, input)
     makeTestCase (name, expected, phi, prec, ts) =
       case expected of
         False -> testCase name $ not (fastcheckGen phi prec ts) @? rejectFail
-        True  -> testCase name $       fastcheckGen phi prec ts @? acceptFail
+        True  -> testCase name $      fastcheckGen phi prec ts  @? acceptFail
       where acceptFail = "Formula should hold for given word!"
             rejectFail = "Formula should not hold for given word!"
 
-    rpotlTests = testGroup "RPotl, Stack Trace Lang V1" $ map makeTestCase
+    potlv2Tests1 = testGroup "POTL, Stack Trace Lang V1, first group test" $ map makeTestCase
       [ ( "Accepting predicate on first word position"
         , True
         , Atomic . Prop  $ "call"
@@ -98,585 +95,631 @@ unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Accepting PrecNext"
+      , ( "Rejecting Not PNext Up"
+        , False
+        , Not $ PNext Up (Atomic $ Prop "ret") 
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting PNext Up"
+        , False
+        , PNext Up (Atomic $ Prop "call") 
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Accepting PNext Down"
         , True
-        , PrecNext (PS.singleton Equal) (Atomic $ Prop "ret")
+        , PNext Down (Atomic $ Prop "ret") 
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Rejecting Not PrecNext"
+      , ( "Rejecting Not PNext Down"
         , False
-        , Not $ PrecNext (PS.singleton Equal) (Atomic $ Prop "ret")
+        , Not $ PNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Rejecting PrecNext"
+      , ( "Rejecting PNext Down"
         , False
-        , PrecNext (PS.singleton Equal) (Atomic $ Prop "call")
+        , PNext Down (Atomic $ Prop "call") 
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Rejecting OOB PrecNext"
+      , ( "Rejecting OOB PNext [Up]"
         , False
-        , PrecNext (PS.singleton Equal) (PrecNext (PS.singleton Take) (Atomic $ Prop "call"))
+        , PNext Up (PNext Up (Atomic $ Prop "call")) 
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Accepting PrecBack"
+      ,  ( "Rejecting OOB PNext [Down]"
+        , False
+        , PNext Down (PNext Up (Atomic $ Prop "call")) 
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Accepting PBack Up [Up]"
         , True
-        , PrecNext (PS.singleton Equal) (PrecBack (PS.singleton Equal) (Atomic $ Prop "call"))
+        , PNext Up (PBack Up (Atomic $ Prop "call"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Rejecting Not PrecBack"
-        , False
-        , PrecNext (PS.singleton Equal) $ Not (PrecBack (PS.singleton Equal) (Atomic $ Prop "call"))
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "ret"]
-        )
-      , ( "Rejecting PrecBack"
-        , False
-        , PrecNext (PS.singleton Equal) (PrecBack (PS.fromList [Yield, Take]) (Atomic $ Prop "call"))
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "ret"]
-        )
-      , ( "Rejecting OOB PrecBack"
-        , False
-        , PrecBack (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "ret"]
-        )
-      , ( "Rejecting OOB PrecBack"
-        , False
-        , PrecBack (PS.fromList [Yield, Equal, Take]) $ PrecBack (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "ret"]
-        )
-      , ( "Accepting ChainNext Yield"
+      , ( "Accepting PBack Up [Down]"
         , True
-        , ChainNext (PS.singleton Yield) (Atomic $ Prop "thr")
+        , PNext Down (PBack Up (Atomic $ Prop "call"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Accepting PBack Down [Up]"
+        , True
+        , PNext Up (PBack Down (Atomic $ Prop "call"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting Not PBack Up [Up]"
+        , False
+        , PNext Up $ Not (PBack Up (Atomic $ Prop "call"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting Not PBack Up [Down]"
+        , False
+        , PNext Down $ Not (PBack Up (Atomic $ Prop "call"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting Not PBack Down [Up]"
+        , False
+        , PNext Up $ Not (PBack Down (Atomic $ Prop "call"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting Not PBack Down [Down]"
+        , False
+        , PNext Down $ Not (PBack Down (Atomic $ Prop "call"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting OOB PBack Up"
+        , False
+        , PBack Up (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting OOB PBack Down"
+        , False
+        , PBack Down (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting OOB PBack Up [Up]"
+        , False
+        , PBack Up $ PBack Up (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting OOB PBack Up [Down]"
+        , False
+        , PBack Down $ PBack Up (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting OOB PBack Down [Up]"
+        , False
+        , PBack Up $ PBack Down (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting OOB PBack Down [Down]"
+        , False
+        , PBack Down $ PBack Down (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Accepting XNext Down" 
+        , True
+        , XNext Down (Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Rejecting Not ChainNext Yield"
+      , ( "Rejecting Not XNext Down"
         , False
-        , Not $ ChainNext (PS.singleton Yield) (Atomic $ Prop "thr")
+        , Not $ XNext Down (Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Rejecting ChainNext Yield"
+      , ( "Rejecting XNext Down"
         , False
-        , ChainNext (PS.singleton Yield) (Atomic $ Prop "ret")
+        , XNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
+        , map (S.singleton . Prop) ["call", "call", "thr"]
         )
-      , ( "Accepting inner ChainNext Yield"
+      , ( "Accepting inner XNext Down"
         , True
-        , PrecNext (PS.fromList [Yield, Equal, Take]) $ ChainNext (PS.singleton Yield) (Atomic $ Prop "thr")
+        ,  PNext Down $ XNext Down (Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "call", "thr", "ret"]
         )
-      , ( "Rejecting inner ChainNext Yield"
+      , ( "Rejecting inner XNext Down"
         , False
-        , PrecNext (PS.fromList [Yield, Equal, Take]) $ ChainNext (PS.singleton Yield) (Atomic $ Prop "ret")
+        , PNext Down $ XNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "call", "thr", "ret"]
         )
-      , ( "Push after pop with ChainNext Yield in closure"
+      , ( "Push after pop with XNext Down in closure"
         , True
-        , Or (ChainNext (PS.singleton Yield) (Atomic $ Prop "call")) (Atomic $ Prop "call")
+        , Or (XNext Down (Atomic $ Prop "call")) (Atomic $ Prop "call") -- here (Atomic $ Prop "call") holds, this is checked in the next test
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret", "call", "ret"]
         )
-      , ( "Accepting ChainNext Equal"
+      , ( "Check first element"
         , True
-        , ChainNext (PS.singleton Equal) (Atomic $ Prop "ret")
+        , (Atomic $ Prop "call") 
         , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
+        , map (S.singleton . Prop) ["call", "ret", "call", "ret"]
         )
-      , ( "Rejecting Not ChainNext Equal"
-        , False
-        , Not $ ChainNext (PS.singleton Equal) (Atomic $ Prop "ret")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Rejecting ChainNext Equal"
-        , False
-        , ChainNext (PS.singleton Equal) (Atomic $ Prop "ret")
+      ,( "Accepting XNext Up"
+        , True
+        , XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Accepting inner ChainNext Equal"
-        , True
-        , PrecNext (PS.fromList [Yield, Equal, Take]) $ ChainNext (PS.singleton Equal) (Atomic $ Prop "ret")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
-        )
-      , ( "Rejecting inner ChainNext Equal"
+      , ( "Rejecting Not XNext Up" 
         , False
-        , PrecNext (PS.fromList [Yield, Equal, Take]) $ ChainNext (PS.singleton Equal) (Atomic $ Prop "ret")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "thr", "ret", "ret"]
-        )
-      , ( "Accepting ChainNext Take"
-        , True
-        , ChainNext (PS.singleton Take) (Atomic $ Prop "ret")
+        , Not $ XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting Not ChainNext Take"
-        , False
-        , Not $ ChainNext (PS.singleton Take) (Atomic $ Prop "ret")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "thr", "ret"]
-        )
-      , ( "Rejecting ChainNext Take"
-        , False
-        , ChainNext (PS.singleton Take) (Atomic $ Prop "ret")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Accepting inner ChainNext Take"
+      , ( "Accepting inner XNext Up"
         , True
-        , PrecNext (PS.fromList [Yield, Equal, Take]) $ ChainNext (PS.singleton Take) (Atomic $ Prop "ret")
+        , PNext Down $ XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting inner ChainNext Take"
+      , ( "Rejecting inner XNext Up" 
         , False
-        , PrecNext (PS.fromList [Yield, Equal, Take]) $ ChainNext (PS.singleton Take) (Atomic $ Prop "ret")
+        , PNext Up $ XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
+        , map (S.singleton . Prop) ["call", "call", "thr", "han", "ret"]
         )
-      , ( "Accepting ChainNext YET through ChainNext Equal"
+      , ( "Accepting XNext Down through Equal relation"  
         , True
-        , ChainNext (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "ret")
+        , XNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting ChainNext YET through ChainNext Yield"
+      , ( "Accepting XNext Up through Equal relation" 
         , True
-        , ChainNext (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "thr")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "call", "thr"]
-        )
-      , ( "Accepting ChainNext YET through ChainNext Take"
-        , True
-        , ChainNext (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "ret")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "thr", "ret"]
-        )
-      , ( "Rejecting Not ChainNext YET through ChainNext Equal"
-        , False
-        , Not $ ChainNext (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "ret")
+        , XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Not ChainNext YET through ChainNext Yield"
-        , False
-        , Not $ ChainNext (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "thr")
+      , ( "Accepting XNext Down through Yield relation" 
+        , True
+        , XNext Down(Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Rejecting Not ChainNext YET through ChainNext Take"
-        , False
-        , Not $ ChainNext (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "ret")
+      , ( "Accepting XNext Up through Take relation" 
+        , True
+        , XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting Not Or of ChainNext forumulas through ChainNext Take"
+      , ( "Rejecting Not XNext Down through Equal relation" 
         , False
-        , Not $ (Or (ChainNext (PS.singleton Yield) (Atomic $ Prop "ret")) (Or (ChainNext (PS.singleton Equal) (Atomic $ Prop "ret")) (ChainNext (PS.singleton Take) (Atomic $ Prop "ret"))))
+        , Not $ XNext Down (Atomic $ Prop "ret")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"] 
+        )
+      , ( "Rejecting Not XNext Up through Equal relation"
+        , False
+        , Not $ XNext Up (Atomic $ Prop "ret")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"] 
+        )
+      , ( "Rejecting Not XNext Down through Yield relation" 
+        , False
+        , Not $ XNext Down (Atomic $ Prop "thr")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "call", "thr"]
+        )
+      , ( "Rejecting Not XNext Up through Take relation" 
+        , False
+        , Not $ XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting ChainNext YET"
+      , ( "Rejecting Not Or of XNext formulas through Take relation" 
         , False
-        , ChainNext (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "ret")
+        , Not $ (Or (XNext Up (Atomic $ Prop "ret")) (Or (XNext Up (Atomic $ Prop "ret")) (XNext Down (Atomic $ Prop "ret"))))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "thr", "ret"]
+        )
+      , ( "Rejecting XNext Down due to no inner chain"
+        , False
+        , XNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"] -- there is no inner chain ;)
         )
-      , ( "Rejecting ChainNext YT"
+      , ( "Rejecting XNext Up due to no inner chain"
         , False
-        , ChainNext (PS.fromList [Yield, Take]) (Atomic $ Prop "ret")
+        , XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
+        , map (S.singleton . Prop) ["call", "ret"] -- there is no inner chain ;)
         )
-      , ( "Rejecting ChainNext ET"
+      , ( "Rejecting XNext Up" 
         , False
-        , ChainNext (PS.fromList [Equal, Take]) (Atomic $ Prop "ret")
+        , XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Rejecting ChainNext YE"
+      , ( "Rejecting XNext Down"
         , False
-        , ChainNext (PS.fromList [Yield, Equal]) (Atomic $ Prop "ret")
+        , XNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Accepting Until Y through ChainNext Yield"
+        ------------ Until operators --------------------------------
+      , ( "Accepting Until Down through XNext with Yield relation" 
         , True
-        , Until (PS.singleton Yield) (Not . Atomic . Prop $ "call") (Atomic $ Prop "thr")
+        , Until Down (Not . Atomic . Prop $ "call") (Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Rejecting Until Y"
+      , ( "Rejecting Until Down"
         , False
-        , Until (PS.singleton Yield) (Not . Atomic . Prop $ "han") (Atomic $ Prop "thr")
+        , Until Down (Not . Atomic . Prop $ "han") (Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Accepting Until E through ChainNext Equal"
+      , ( "Accepting Until Down through XNext with Equal relation"
         , True
-        , Until (PS.singleton Equal) (Not . Atomic . Prop $ "han") (Atomic $ Prop "ret")
+        , Until Down (Not . Atomic . Prop $ "han") (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Until E"
-        , False
-        , Until (PS.singleton Equal) (Not . Atomic . Prop $ "call") (Atomic $ Prop "ret")
+      , ( "Accepting Until Up through XNext with Equal relation"
+        , True
+        , Until Up (Not . Atomic . Prop $ "han") (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting Until T through ChainNext Take"
+      , ( "Accepting Until Up through XNext with Take relation"
         , True
-        , Until (PS.singleton Take) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret")
+        , Until Up (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting Until T"
+      , ( "Rejecting Until Up"
         , False
-        , Until (PS.singleton Take) (Not . Atomic . Prop $ "han") (Atomic $ Prop "ret")
+        , Until Up (Not . Atomic . Prop $ "han") (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Accepting Until YET"
-        , True
-        , Until (PS.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "ret") (Atomic $ Prop "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-        )
-      , ( "Rejecting Not Until YET"
-        , False
-        , Not (Until (PS.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "ret") (Atomic $ Prop "han"))
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-        )
-      , ( "Accepting Until YET" -- this fails if the Until conditions for an atom
+      , ( "Accepting Until Down - XOR check" -- this fails if the Until conditions for an atom
         , True                         -- are implemented with XOR instead of OR
-        , Until (PS.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret")
+        , Until Down (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting Not Until YET"
+      , ( "Rejecting Not Until Down - XOR check"
         , False
-        , Not (Until (PS.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret"))
+        , Not (Until Down (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Accepting ChainBack Yield"
+      , ( "Accepting Until Up - XOR check" -- this fails if the Until conditions for an atom
+        , True                         -- are implemented with XOR instead of OR
+        , Until Up (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Rejecting Not Until Up - XOR check"
+        , False
+        , Not (Until Up (Not . Atomic . Prop $ "thr") (Atomic $ Prop "ret"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      ---------------------- XBack operator -------------------------------------------------------------------------
+      ,( "Accepting PBack Down [Down]"
         , True
-        , formulaAt 3 $ ChainBack (PS.singleton Yield) (Atomic $ Prop "han")
+        , PNext Down (PBack Down (Atomic $ Prop "call"))
         , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "call", "thr"]
+        , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Rejecting Not ChainBack Yield"
-        , False
-        , formulaAt 3 $ Not (ChainBack (PS.singleton Yield) (Atomic $ Prop "han"))
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "call", "thr"]
-        )
-      , ( "Rejecting ChainBack Yield"
-        , False
-        , formulaAt 3 $ ChainBack (PS.singleton Yield) (Atomic $ Prop "call")
+      , ( "Accepting PNext chain"
+        , True
+        , PNext Down (PNext Up $ Atomic $ Prop "ret") 
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting inner ChainBack Yield"
+      , ( "Accepting PBack in PNext"
         , True
-        , formulaAt 4 $ ChainBack (PS.singleton Yield) (Atomic $ Prop "han")
+        , PNext Down (PBack Down $ Atomic $ Prop "call") 
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Accepting PBack in PNext in PNext"
+        , True
+        , PNext Down $ PNext Up $ PBack Up $ Atomic $ Prop "han"
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      ,( "Accepting PNext Up"
+        , True
+        , PNext Up (Atomic $ Prop "ret") 
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Accepting XNext Down" 
+        , True
+        , XNext Down (Atomic $ Prop "ret")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Rejecting Not XBack Down through the Yield relation"
+        , False
+        , formulaAfter [Down, Up] $ Not (XBack Down (Atomic $ Prop "han"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "call", "thr"]
+        )
+      , ( "Accepting inner XBack Down"
+        , True
+        , formulaAfter [Down, Down, Up] $ XBack Down (Atomic $ Prop "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "call", "thr", "ret"]
         )
-      , ( "Rejecting inner ChainBack Yield"
+      , ( "Rejecting XBack Down"
         , False
-        , formulaAt 4 $ ChainBack (PS.singleton Yield) (Atomic $ Prop "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
-        )
-      , ( "Accepting ChainBack Equal"
-        , True
-        , formulaAt 3 $ ChainBack (PS.singleton Equal) (Atomic $ Prop "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Rejecting Not ChainBack Equal"
-        , False
-        , formulaAt 3 $ Not (ChainBack (PS.singleton Equal) (Atomic $ Prop "call"))
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Rejecting ChainBack Equal"
-        , False
-        , formulaAt 3 $ ChainBack (PS.singleton Equal) (Atomic $ Prop "han")
+        , formulaAfter [Down, Up] $ XBack Down (Atomic $ Prop "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Accepting inner ChainBack Equal"
-        , True
-        , formulaAt 4 $ ChainBack (PS.singleton Equal) (Atomic $ Prop "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
-        )
-      , ( "Rejecting inner ChainBack Equal"
+      , ( "Rejecting inner XBack Down"  
         , False
-        , formulaAt 4 $ ChainBack (PS.singleton Equal) (Atomic $ Prop "han")
+        , formulaAfter  [Down, Up, Up] $ XBack Down (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
+        )
+      , ( "Rejecting inner XBack Down -- v2" 
+        , False
+        , formulaAfter [Down, Down, Up] $ XBack Down (Atomic $ Prop "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret", "ret"]
         )
-      , ( "Accepting ChainBack Take"
+      , ( "Accepting XBack Down through the Equal relation" 
         , True
-        , formulaAt 3 $ ChainBack (PS.singleton Take) (Atomic $ Prop "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "thr", "ret"]
-        )
-      , ( "Rejecting Not ChainBack Take"
-        , False
-        , formulaAt 3 $ Not (ChainBack (PS.singleton Take) (Atomic $ Prop "han"))
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "thr", "ret"]
-        )
-      , ( "Rejecting ChainBack Take"
-        , False
-        , formulaAt 3 $ ChainBack (PS.singleton Take) (Atomic $ Prop "call")
+        , formulaAfter [Down, Up] $ XBack Down (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting inner ChainBack Take"
-        , True
-        , formulaAt 4 $ ChainBack (PS.singleton Take) (Atomic $ Prop "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-        )
-      , ( "Rejecting inner ChainBack Take"
+      , ( "Rejecting Not XBack Down through the Equal relation" 
         , False
-        , formulaAt 4 $ ChainBack (PS.singleton Take) (Atomic $ Prop "call")
+        , formulaAfter [Down, Up] $ Not (XBack Down (Atomic $ Prop "call"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Accepting inner XBack Down through Equal relation" 
+        , True
+        , formulaAfter [Down, Down, Up] $ XBack Down (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
+        )
+      ,  ( "Rejecting Not XBack Up"
+        , False
+        , formulaAfter [Down, Up] $ Not (XBack Up (Atomic $ Prop "han"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "thr", "ret"]
+        )
+      , ( "Rejecting XBack Up"
+        , False
+        , formulaAfter [Down, Up] $ XBack Up (Atomic $ Prop "han")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "call", "thr"]
+        )
+      , ( "Accepting inner XBack Up"
+        , True
+        , formulaAfter [Down, Down , Up] $ XBack Up (Atomic $ Prop "han")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret", "ret"]
+        )
+      ,( "Accepting XBack Down through the Yield relation" 
+        , True
+        , formulaAfter [Down, Up] $ XBack Down (Atomic $ Prop "han")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "call", "thr"]
+        )
+      , ( "Accepting XBack Up" 
+        , True
+        , formulaAfter [Down , Up] $ XBack Up (Atomic $ Prop "han")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "thr", "ret"]
+        )
+      ,  ( "Rejecting inner XBack Up"
+        , False
+        , formulaAfter [Down, Down, Down] $ XBack Up (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
         )
-      , ( "Accepting ChainBack Take through inner ChainBack Yield"
-        , True
-        , formulaAt 5 $ ChainBack (PS.singleton Take) (Atomic $ Prop "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
-        )
-      , ( "Rejecting ChainBack Take with inner ChainBack Yield"
+      , ( "Rejecting inner XBack Up -- v2"  
         , False
-        , formulaAt 5 $ ChainBack (PS.singleton Take) (Atomic $ Prop "call")
+        , formulaAfter [Down, Up, Up] $ XBack Up (Atomic $ Prop "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )
-      , ( "Accepting ChainBack Take through union of Yield and Take checksets"
+      , ( "Accepting XBack Up through the Equal relation" 
         , True
-        , formulaAt 4 $ ChainBack (PS.singleton Take) (Atomic $ Prop "call")
+        , formulaAfter [Down, Up] $ XBack Up (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Rejecting Not XBack Up through the Equal relation" 
+        , False
+        , formulaAfter [Down, Up] $ Not (XBack Up (Atomic $ Prop "call"))
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Accepting inner XBack Up through Equal relation" 
+        , True
+        , formulaAfter [Down, Down, Up] $ XBack Up (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
+        )
+      , ( "Accepting XBack Up through inner XBack Down" 
+        , True
+        , formulaAfter [Down, Up, Up ,Up] $ XBack Up (Atomic $ Prop "han")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
+        )
+      , ( "Rejecting XBack Up with inner XBack Down"
+        , False
+        , formulaAfter [Down, Up, Up, Up] $ XBack Up (Atomic $ Prop "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
+        )
+      , ( "Accepting XBack Up through union of Yield and Take checksets"
+        , True
+        , formulaAfter [Down, Down, Up] $ XBack Up (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "call", "thr"]
         )
-      , ( "Accepting ChainBack YE through ChainBack Yield"
+       ------------ Since operator ---------------------------------------------------------
+      , ( "Accepting Since Down through Yield relation"
         , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Yield, Equal]) (Atomic $ Prop "han")
+        , formulaAfter [Down, Up] $ Since Down (Not . Atomic . Prop $ "call") (Atomic . Prop $ "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Accepting ChainBack YT through ChainBack Yield"
-        , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Yield, Take]) (Atomic $ Prop "han")
+      , ( "Rejecting Not Since Down through Yield relation"
+        , False
+        , formulaAfter [Down, Up] $ Not $ Since Down (Not . Atomic . Prop $ "call") (Atomic . Prop $ "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Accepting ChainBack YE through ChainBack Equal"
-        , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Equal, Yield]) (Atomic $ Prop "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Accepting ChainBack ET through ChainBack Equal"
-        , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Equal, Take]) (Atomic $ Prop "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Accepting ChainBack ET through ChainBack Take"
-        , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Take, Equal]) (Atomic $ Prop "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "thr", "ret"]
-        )
-      , ( "Accepting ChainBack YT through ChainBack Take"
-        , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Take, Yield]) (Atomic $ Prop "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "thr", "ret"]
-        )
-      , ( "Accepting ChainBack YET through ChainBack Yield"
-        , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "han")
+      , ( "Rejecting Since Down through Yield relation"
+        , False
+        , formulaAfter [Down, Up] $ Since Down (Not . Atomic . Prop $ "thr") (Atomic . Prop $ "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Accepting ChainBack YET through ChainBack Equal"
+      , ( "Accepting Since Down through Equal relation"
         , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "call")
+        , formulaAfter [Down, Up] $ Since Down (Not . Atomic . Prop $ "han") (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting ChainBack YET through ChainBack Take"
+      , ( "Rejecting Since Down through Equal relation" 
+        , False
+        , formulaAfter [Down, Up] $ Since Down (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Accepting Since Up through Take relation"
         , True
-        , formulaAt 3 $ ChainBack (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "han")
+        , formulaAfter [Down, Up] $ Since Up (Not . Atomic . Prop $ "thr") (Atomic . Prop $ "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting Not ChainBack YET through ChainBack Yield"
+      , ( "Rejecting Not Since Up through Take relation"
         , False
-        , formulaAt 3 $ Not (ChainBack (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "han"))
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "call", "thr"]
-        )
-      , ( "Rejecting Not ChainBack YET through ChainBack Equal"
-        , False
-        , formulaAt 3 $ Not (ChainBack (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "call"))
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Rejecting Not ChainBack YET through ChainBack Take"
-        , False
-        , formulaAt 3 $ Not (ChainBack (PS.fromList [Yield, Equal, Take]) (Atomic $ Prop "han"))
+        , formulaAfter [Down, Up] $ Not $ Since Up (Not . Atomic . Prop $ "thr") (Atomic . Prop $ "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Accepting Since Y through ChainBack Yield"
-        , True
-        , formulaAt 3 $ Since (PS.singleton Yield) (Not . Atomic . Prop $ "call") (Atomic . Prop $ "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "call", "thr"]
-        )
-      , ( "Rejecting Since Y"
+      , ( "Rejecting Since Up through Take relation"
         , False
-        , formulaAt 3 $ Since (PS.singleton Yield) (Not . Atomic . Prop $ "thr") (Atomic . Prop $ "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "call", "thr"]
-        )
-      , ( "Accepting Since E through ChainBack Equal"
-        , True
-        , formulaAt 3 $ Since (PS.singleton Equal) (Not . Atomic . Prop $ "han") (Atomic . Prop $ "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Rejecting Since E"
-        , False
-        , formulaAt 3 $ Since (PS.singleton Equal) (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Accepting Since T through ChainBack Take"
-        , True
-        , formulaAt 3 $ Since (PS.singleton Take) (Not . Atomic . Prop $ "thr") (Atomic . Prop $ "han")
+        , formulaAfter [Down, Up] $ Since Up (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting Since T"
-        , False
-        , formulaAt 3 $ Since (PS.singleton Take) (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "han")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["han", "thr", "ret"]
-        )
-      , ( "Accepting Since YET"
+      , ( "Accepting Since Up through Equal relation"
         , True
-        , formulaAt 3 $ Since (PS.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "call") (Atomic . Prop $ "call")
+        , formulaAfter [Down, Up] $ Since Up (Not . Atomic . Prop $ "han") (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Not Since YET"
+      , ( "Rejecting Since Up through Equal relation" 
         , False
-        , formulaAt 4 $ Not (Since (PS.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "call") (Atomic . Prop $ "call"))
+        , formulaAfter [Down, Up] $ Since Up (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Since YET"
-        , False
-        , formulaAt 3 $ Since (PS.fromList [Yield, Equal, Take]) (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
-      , ( "Accepting HierNextYield"
+      --------------------- HNext and HBack operators --------------------------------------
+      , ( "Accepting HNext Up"
         , True
-        , formulaAt 3 $ HierNextYield (Atomic . Prop $ "thr")
+        , formulaAfter [Down, Up] $ HNext Up (Atomic . Prop $ "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )
-      , ( "Rejecting Not HierNextYield"
+      , ( "Rejecting Not HNext Up"
         , False
-        , formulaAt 3 $ Not (HierNextYield (Atomic . Prop $ "thr"))
+        , formulaAfter [Down, Up] $ Not (HNext Up (Atomic . Prop $ "thr"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )
-      , ( "Rejecting HierNextYield"
+      , ( "Rejecting HNext Up"
         , False
-        , formulaAt 3 $ HierNextYield (Atomic . Prop $ "thr")
+        , formulaAfter [Down, Up] $ HNext Up (Atomic . Prop $ "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "ret"]
         )
-      , ( "Accepting HierBackYield"
+      , ( "Accepting HBack Up"
         , True
-        , formulaAt 4 $ HierBackYield (Atomic . Prop $ "thr")
+        , formulaAfter [Down, Up ,Up] $ HBack Up (Atomic . Prop $ "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )
-      , ( "Rejecting Not HierBackYield"
+      , ( "Rejecting Not HBack Up"
         , False
-        , formulaAt 4 $ Not (HierBackYield (Atomic . Prop $ "thr"))
+        , formulaAfter [Down, Up, Up] $ Not (HBack Up (Atomic . Prop $ "thr"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )
-      , ( "Rejecting HierBackYield"
+      , ( "Rejecting HBack Up"
         , False
-        , formulaAt 3 $ HierBackYield (Atomic . Prop $ "call")
+        , formulaAfter [Down, Up] $ HBack Up (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "ret"]
         )
-      , ( "Accepting HierNextTake"
+      , ( "Accepting HNext Down"
         , True
-        , HierNextTake (Atomic . Prop $ "call")
+        , HNext Down (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "call", "thr"]
         )
-      , ( "Rejecting Not HierNextTake"
+      , ( "Rejecting Not HNext Down"
         , False
-        , Not (HierNextTake (Atomic . Prop $ "call"))
+        , Not (HNext Down (Atomic . Prop $ "call"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "call", "thr"]
         )
-      , ( "Rejecting HierNextTake"
+      , ( "Rejecting HNext Down"
         , False
-        , formulaAt 2 $ HierNextTake (Atomic . Prop $ "call")
+        , formulaAfter [Down] $ HNext Down (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "call", "thr"]
         )
-      , ( "Accepting HierBackTake"
+      , ( "Accepting HBack Down"
         , True
-        , formulaAt 2 $ HierBackTake (Atomic . Prop $ "call")
+        , formulaAfter [Down] $ HBack Down (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "call", "thr"]
         )
-      , ( "Rejecting Not HierBackTake"
+      , ( "Rejecting Not HBack Down"
         , False
-        , formulaAt 2 $ Not (HierBackTake (Atomic . Prop $ "call"))
+        , formulaAfter [Down] $ Not (HBack Down (Atomic . Prop $ "call"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "call", "thr"]
         )
-      , ( "Rejecting HierBackTake"
+      , ( "Rejecting HBack Down"
         , False
-        , formulaAt 3 $ HierBackTake (Atomic . Prop $ "call")
+        , formulaAfter [Down, Down] $ HBack Down (Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "call", "call", "thr"]
+        )
+      , ( "Rejecting HBack Down -- v2"
+        , False
+        , HBack Down (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "call", "thr"]
         )
@@ -692,185 +735,214 @@ unitTests = testGroup "Unit tests" [rpotlTests, potlv2Tests]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting Not T"
-        , False
-        , Not T
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-        )
-      , ( "Accepting HierUntilYield"
+      -------------- HUntil and HSince operators ---------------------------------------------
+      , ( "Accepting HUntil Up"
         , True
-        , formulaAt 3 $ (Atomic . Prop $ "t") `HierUntilYield` (Atomic . Prop $ "tend")
+        , formulaAt 3 $ HUntil Up (Atomic . Prop $ "t") (Atomic . Prop $ "tend")
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "t", "t", "t", "tend", "ret"])
         )
-      , ( "Rejecting Not HierUntilYield"
+      , ( "Rejecting Not HUntil Up"
         , False
-        , formulaAt 3 $ Not ((Atomic . Prop $ "t") `HierUntilYield` (Atomic . Prop $ "tend"))
+        , formulaAt 3 $ Not ( HUntil Up (Atomic . Prop $ "t")  (Atomic . Prop $ "tend"))
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "t", "t", "t", "tend", "ret"])
         )
-      , ( "Rejecting HierUntilYield"
+      , ( "Rejecting HUntil Up"
         , False
-        , formulaAt 3 $ (Not . Atomic . Prop $ "texc") `HierUntilYield` (Atomic . Prop $ "tend")
+        , formulaAt 3 $ HUntil Up (Not . Atomic . Prop $ "texc") (Atomic . Prop $ "tend")
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "t", "texc", "t", "tend", "ret"])
         )
-      , ( "Accepting HierSinceYield"
+      , ( "Accepting HUntil Down"
         , True
-        , formulaAt 6 $ (Atomic . Prop $ "t") `HierSinceYield` (Atomic . Prop $ "tbeg")
-        , stlPrecRelV1
-        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "t", "t", "ret"])
-        )
-      , ( "Rejecting Not HierSinceYield"
-        , False
-        , formulaAt 6 $ Not ((Atomic . Prop $ "t") `HierSinceYield` (Atomic . Prop $ "tbeg"))
-        , stlPrecRelV1
-        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "t", "t", "ret"])
-        )
-      , ( "Rejecting HierSinceYield"
-        , False
-        , formulaAt 6 $ (Not . Atomic . Prop $ "texc") `HierSinceYield` (Atomic . Prop $ "tbeg")
-        , stlPrecRelV1
-        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "texc", "t", "ret"])
-        )
-      , ( "Accepting HierUntilTake"
-        , True
-        , (Atomic . Prop $ "c") `HierUntilTake` (Atomic . Prop $ "cend")
+        , HUntil Down (Atomic . Prop $ "c") (Atomic . Prop $ "cend")
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["c", "c", "cend", "call", "thr"])
         )
-      , ( "Rejecting Not HierUntilTake"
+      , ( "Rejecting Not HUntil Down"
         , False
-        , Not ((Atomic . Prop $ "c") `HierUntilTake` (Atomic . Prop $ "cend"))
+        , Not ( HUntil Down (Atomic . Prop $ "c") (Atomic . Prop $ "cend"))
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["c", "c", "cend", "call", "thr"])
         )
-      , ( "Rejecting HierUntilTake"
+      , ( "Rejecting HUntil Down"
         , False
-        , (Not . Atomic . Prop $ "cexc") `HierUntilTake` (Atomic . Prop $ "cend")
+        , HUntil Down (Not . Atomic . Prop $ "cexc") (Atomic . Prop $ "cend")
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["c", "cexc", "cend", "call", "thr"])
         )
-      , ( "Accepting HierSinceTake"
+      , ( "Accepting HSince Down"
         , True
-        , formulaAt 3 $ (Atomic . Prop $ "c") `HierSinceTake` (Atomic . Prop $ "cbeg")
+        , formulaAt 3 $ HSince Down (Atomic . Prop $ "c") (Atomic . Prop $ "cbeg")
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["cbeg", "c", "c", "call", "thr"])
         )
-      , ( "Rejecting Not HierSinceTake"
+      , ( "Rejecting Not HSince Down"
         , False
-        , formulaAt 3 $ Not ((Atomic . Prop $ "c") `HierSinceTake` (Atomic . Prop $ "cbeg"))
+        , formulaAt 3 $ Not ( HSince Down (Atomic . Prop $ "c") (Atomic . Prop $ "cbeg"))
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["cbeg", "c", "c", "call", "thr"])
         )
-      , ( "Rejecting HierSinceTake"
+      , ( "Rejecting HSince Down"
         , False
-        , formulaAt 3 $ (Not . Atomic . Prop $ "cexc") `HierSinceTake` (Atomic . Prop $ "cbeg")
+        , formulaAt 3 $ HSince Down (Not . Atomic . Prop $ "cexc") (Atomic . Prop $ "cbeg")
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["cbeg", "cexc", "c", "call", "thr"])
         )
-      , ( "Accepting Eventually'"
+      , ( "Accepting HSince Up"
         , True
-        , Eventually' (Atomic . Prop $ "thr")
+        , formulaAfter [Down, Up, Up, Up, Up] $ HSince Up (Atomic . Prop $ "t") (Atomic . Prop $ "tbeg")
+        , stlPrecRelV1
+        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "t", "t", "ret"])
+        )
+      , ( "Rejecting Not HSince Up"
+        , False
+        , formulaAfter [Down, Up, Up, Up, Up] $ Not ( HSince Up (Atomic . Prop $ "t") (Atomic . Prop $ "tbeg"))
+        , stlPrecRelV1
+        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "t", "t", "ret"])
+        )
+      , ( "Rejecting HSince Up"
+        , False
+        , formulaAfter [Down, Up, Up, Up, Up, Up] $ HSince Up (Not . Atomic . Prop $ "texc") (Atomic . Prop $ "tbeg")
+        , stlPrecRelV1
+        , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "texc", "t", "ret"])
+        )
+      , ( "Accepting Eventually"
+        , True
+        , Eventually (Atomic . Prop $ "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting Not Eventually'"
+      , ( "Rejecting Not Eventually"
         , False
-        , Not $ Eventually' (Atomic . Prop $ "thr")
+        , Not $ Eventually (Atomic . Prop $ "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting Eventually'"
+      , ( "Rejecting Eventually"
         , False
-        , Eventually' (Atomic . Prop $ "thr")
+        , Eventually (Atomic . Prop $ "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Testing boundaries with ChainNext"
+      , ( "Accepting Always -- v0"
         , True
-        , ChainNext (PS.singleton Take) T
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call"]
+        )
+      ,( "Accepting Always"
+        , True
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Accepting Always -- v2"
+        , True
+        , Always $ Or (Atomic . Prop $ "call") (Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
+        )
+      , ( "Rejecting Always"
+        , False
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "call"]
+        )
+      , ( "Rejecting Always --v2"
+        , False
+        , Always $ Or (Atomic . Prop $ "call") (PNext Down $ Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
+        )
+      , ( "Rejecting Always --v3"
+        , False
+        , Always $ Or (Atomic . Prop $ "ret") (PBack Down $ Atomic . Prop $ "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret", "ret"]
+        )
+      , ( "Rejecting Always --v4"
+        , False
+        , Always $ Or (Atomic . Prop $ "ret") (PBack Up $ Atomic . Prop $ "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret", "ret"]
+        )
+      , ( "Testing boundaries with XNext"
+        , True
+        , XNext Up T
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call"]
         )
-      , ( "Testing boundaries with HierUntilTake"
+      , ( "Testing boundaries with HUntil Down"
         , True
-        , HierUntilTake T (Atomic . Prop $ "call")
+        , HUntil Down T (Atomic . Prop $ "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call"]
         )
       ]
 
-    potlv2Tests = testGroup "PotlV2, Stack Trace Lang V2" $ map makeTestCase
+    potlv2Tests2 = testGroup "PotlV2, Stack Trace Lang V2, second test group" $ map makeTestCase
       [ ( "Accepting Xor"
         , True
-        , (P2.Atomic . Prop $ "call") `P2.Xor` (P2.PNext P2.Down . P2.Atomic . Prop $ "exc")
+        , (Atomic . Prop $ "call") `Xor` (PNext Down . Atomic . Prop $ "exc")
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Rejecting Xor"
         , False
-        , (P2.Atomic . Prop $ "call") `P2.Xor` (P2.PNext P2.Down . P2.Atomic . Prop $ "han")
+        , (Atomic . Prop $ "call") `Xor` (PNext Down . Atomic . Prop $ "han")
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Accepting Implies" -- Ex falso quodlibet ;)
         , True
-        , (P2.Atomic . Prop $ "ret") `P2.Implies` (P2.HNext P2.Up . P2.Atomic . Prop $ "han")
+        , (Atomic . Prop $ "ret") `Implies` (HNext Up . Atomic . Prop $ "han")
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Rejecting Implies"
         , False
-        , (P2.Atomic . Prop $ "call") `P2.Implies` (P2.PNext P2.Down . P2.Atomic . Prop $ "ret")
+        , (Atomic . Prop $ "call") `Implies` (PNext Down . Atomic . Prop $ "ret")
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Accepting Iff"
         , True
-        , (P2.Atomic . Prop $ "call") `P2.Iff` (P2.XNext P2.Up . P2.Atomic . Prop $ "ret")
+        , (Atomic . Prop $ "call") `Iff` (XNext Up . Atomic . Prop $ "ret")
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Rejecting Iff"
         , False
-        , (P2.Atomic . Prop $ "call") `P2.Iff` (P2.XNext P2.Up . P2.Atomic . Prop $ "ret")
+        , (Atomic . Prop $ "call") `Iff` (XNext Up . Atomic . Prop $ "ret")
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc"]
         )
       , ( "Accepting Eventually"
         , True
-        , P2.Eventually . P2.Atomic . Prop $ "ret"
+        , Eventually . Atomic . Prop $ "ret"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
         )
       , ( "Rejecting Eventually"
         , False
-        , P2.Eventually . P2.Atomic . Prop $ "ret"
+        , Eventually . Atomic . Prop $ "ret"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc"]
         )
-      , ( "Accepting Always"
-        , True
-        , P2.Always . P2.Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call"]
-        )
-      , ( "Rejecting Always"
-        , False
-        , P2.Always . P2.Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "call"]
-        )
       , ( "Accepting HUntil Down"
         , True
-        , P2.PNext P2.Down (P2.HUntil P2.Down P2.T (P2.Atomic . Prop $ "call"))
+        , PNext Down (HUntil Down T (Atomic . Prop $ "call"))
         , stlPrecRelV2
         , map (S.singleton . Prop) ["han", "call", "call", "call", "exc", "ret"]
         )
       ]
 
+
+
+
+    
 propTests :: TestTree
 propTests = testGroup "QuickCheck tests" (map makePropTest propTuples)
   where makePropTest (name, expected, phi, _, gen) =
@@ -882,13 +954,13 @@ propTests = testGroup "QuickCheck tests" (map makePropTest propTuples)
         propTuples =
           [ ( "Well formed stack traces, all calls return"
             , True
-            , P2.Always $ (P2.Atomic . Prop $ "call") `P2.Implies` ((P2.PNext P2.Down . P2.Atomic . Prop $ "ret") `P2.Or` (P2.XNext P2.Down . P2.Atomic . Prop $ "ret"))
+            , Always $ (Atomic . Prop $ "call") `Implies` ((PNext Down . Atomic . Prop $ "ret") `Or` (XNext Down . Atomic . Prop $ "ret"))
             , stlPrecRelV1
             , \m -> map (S.singleton . Prop) <$> wellFormedTrace m
             )
           , ( "Well formed stack traces, all exceptions are handled"
             , True
-            , P2.Always $ (P2.Atomic . Prop $ "thr") `P2.Implies` ((P2.PBack P2.Down . P2.Atomic . Prop $ "han") `P2.Or` (P2.XBack P2.Down . P2.Atomic . Prop $ "han"))
+            , Always $ (Atomic . Prop $ "thr") `Implies` ((PBack Down . Atomic . Prop $ "han") `Or` (XBack Down . Atomic . Prop $ "han"))
             , stlPrecRelV1
             , \m -> map (S.singleton . Prop) <$> wellFormedTrace m
             )

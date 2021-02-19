@@ -1,0 +1,4 @@
+include = "../../Mcall.inc";
+
+formulas = G ((pc And (XNu exc)) --> ((~ pa) HSd pb));
+include = "opa.inc";

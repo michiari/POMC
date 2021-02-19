@@ -1,13 +1,13 @@
 name:               pomc
-version:            0.1.0.0
+version:            0.2.0.0
 synopsis:           A model-checking tool for POTL
 description:        A model-checking tool for POTL
 category:           Formal methods
 
-author:             Davide Bergamaschi, Michele Chiari
+author:             Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
 maintainer:         michele.chiari@polimi.it
 
-copyright:          2020 Davide Bergamaschi and Michele Chiari
+copyright:          2020 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
 license:            MIT
 license-file:       COPYING.md
 
@@ -28,7 +28,6 @@ library:
   - Pomc.PotlV2
   - Pomc.Prec
   - Pomc.Prop
-  - Pomc.RPotl
   - Pomc.Satisfiability
   - Pomc.ModelChecker
   - Pomc.OpaGen
@@ -101,17 +100,3 @@ tests:
     - raw-strings-qq
     - megaparsec
     - text
-
-benchmarks:
-  bench-pomc:
-    main:           Bench.hs
-    source-dirs:    bench
-    ghc-options:
-    - -rtsopts
-    - -with-rtsopts=-H
-    - -Wall
-    - -O2
-    dependencies:
-    - pomc
-    - containers
-    - criterion-measurement
