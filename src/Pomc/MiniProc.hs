@@ -28,7 +28,6 @@ import Data.Maybe (isNothing, fromJust)
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as B
 
-
 -- Intermediate representation for MiniProc programs
 type FunctionName = Text
 type Identifier = Text
@@ -55,13 +54,13 @@ data FunctionInfo = FunctionInfo { fiEntry :: [(Label, Word)]
                                  , fiRetPad :: Word
                                  , fiThrow :: Word
                                  , fiExcPad :: Word
-                                 }
+                                 } deriving Show
 data LowerState = LowerState { lsDPush :: Map (Word, Set (Prop Text)) DeltaTarget
                              , lsDShift :: Map (Word, Set (Prop Text)) DeltaTarget
                              , lsDPop :: Map (Word, Word) DeltaTarget
                              , lsFinfo :: Map Text FunctionInfo
                              , lsSid :: Word
-                             }
+                             } deriving Show
 
 sksToExtendedOpa :: [FunctionSkeleton] -> (LowerState, [Word], [Word])
 sksToExtendedOpa sks =
@@ -246,7 +245,7 @@ data ExpandData = ExpandData { edDPush :: Map (VarState, Set (Prop Text)) [VarSt
                              , edDShift :: Map (VarState, Set (Prop Text)) [VarState]
                              , edDPop :: Map (VarState, VarState) [VarState]
                              , edVisited :: Set VarState
-                             }
+                             } deriving Show
 type VarLookup = Identifier -> Int
 
 edInsert :: (Ord k) => k -> [v] -> Map k [v] -> Map k [v]
@@ -366,7 +365,10 @@ visitEdges vars updateDelta ls vidx expandData ((src, lbl), (States dsts)) =
           where newDst = (dst, vars)
         caseDst ed (Assign lhs rhs, dst) =
           let index = vidx lhs
-              newVars = if rhs then B.setBit vars index else B.clearBit vars index
+              newVars = if rhs
+                        then B.setBit vars index
+                        else vars B..&. (B.complement $ B.zeros (B.size vars) B..|. B.bit index)
+                             -- B.clearBit is buggy
               newDst = (dst, newVars)
           in (updateDelta ed ((src, vars), lbl) newDst, Just newDst)
         caseDst ed (Guard g dir, dst)
