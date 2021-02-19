@@ -4,10 +4,10 @@ module TestMP (tests) where
 
 import Pomc.MiniProcParse (programP)
 import Pomc.MiniProc (programToOpa)
-import Pomc.PotlV2 (Formula)
+import Pomc.PotlV2 (Formula(..), Dir(..))
 import Pomc.ModelChecker (modelCheckGen)
 import qualified TestSat (cases)
-import EvalFormulas (formulas)
+import EvalFormulas (ap, formulas)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -20,6 +20,7 @@ tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
                                    , noHanBaseTests, noHanEvalTests
                                    , simpleThenBaseTests, simpleThenEvalTests
                                    , simpleElseBaseTests, simpleElseEvalTests
+                                   , jensenTests
                                    ]
 
 sasBaseTests :: TestTree
@@ -255,4 +256,145 @@ pb() {
 }
 
 pc() { }
+|]
+
+
+jensenTests :: TestTree
+jensenTests = testGroup "Jensen Privileges Tests" [ jensenRd, jensenWr
+                                                  , jensenRdCp, jensenWrDb]
+
+jensenRd :: TestTree
+jensenRd = makeTestCase jensen
+  (("Only privileged reads."
+   , Always $ ((ap "call" `And` ap "raw_read")
+                `Implies`
+                (Not $ Since Down T
+                  (ap "call"
+                   `And` (Not $ ap "P_rd")
+                   `And` (Not $ ap "raw_read")
+                   `And` (Not $ ap "main"))))
+   , []
+   , True)
+  , True)
+
+jensenWr :: TestTree
+jensenWr = makeTestCase jensen
+  (("Only privileged writes."
+   , Always $ ((ap "call" `And` ap "raw_write")
+                `Implies`
+                (Not $ Since Down T
+                  (ap "call"
+                   `And` (Not $ ap "P_wr")
+                   `And` (Not $ ap "raw_write")
+                   `And` (Not $ ap "main"))))
+   , []
+   , True)
+  , True)
+
+jensenRdCp :: TestTree
+jensenRdCp = makeTestCase jensen
+  (("Only reads with canpay privilege."
+   , Always $ ((ap "call" `And` ap "raw_read")
+                `Implies`
+                (Not $ Since Down T
+                  (ap "call"
+                   `And` (Not $ ap "P_cp")
+                   `And` (Not $ ap "raw_read")
+                   `And` (Not $ ap "main"))))
+   , []
+   , True)
+  , True)
+
+jensenWrDb :: TestTree
+jensenWrDb = makeTestCase jensen
+  (("Only writes with debit privilege."
+   , Always $ ((ap "call" `And` ap "raw_write")
+                `Implies`
+                (Not $ Since Down T
+                  (ap "call"
+                   `And` (Not $ ap "P_db")
+                   `And` (Not $ ap "raw_write")
+                   `And` (Not $ ap "main"))))
+   , []
+   , True)
+  , True)
+
+jensen :: T.Text
+jensen = T.pack [r|
+var P_cp, P_db, P_rd, P_wr, CP;
+
+main() {
+  P_cp = true;
+  P_db = true;
+  P_rd = true;
+  P_wr = true;
+  CP = false;
+  spender();
+
+  P_cp = false;
+  P_db = false;
+  P_rd = false;
+  P_wr = false;
+  clyde();
+}
+
+spender() {
+  account.canpay();
+  if (P_cp) {
+    account.debit();
+  } else {}
+
+  if (*) {
+    spender();
+  } else {}
+}
+
+clyde() {
+  account.debit();
+  if (*) {
+    clyde();
+  } else {}
+}
+
+account.canpay() {
+  if (P_cp) {
+    read();
+    CP = true;
+  } else {
+    throw;
+  }
+}
+
+account.debit() {
+  if (P_db) {
+    account.canpay();
+    if (CP) {
+      write();
+      CP = false;
+    } else {
+      throw;
+    }
+  } else {
+    throw;
+  }
+}
+
+read() {
+  if (P_rd) {
+    raw_read();
+  } else {
+    throw;
+  }
+}
+
+write() {
+  if (P_wr) {
+    raw_write();
+  } else {
+    throw;
+  }
+}
+
+raw_read() {}
+raw_write() {}
 |]
