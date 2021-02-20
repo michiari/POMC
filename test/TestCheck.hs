@@ -937,6 +937,20 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV2
         , map (S.singleton . Prop) ["han", "call", "call", "call", "exc", "ret"]
         )
+      , ( "Accepting Always -- performance check"
+        , True
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "call", "call" , "call", "call", "call"]
+        )
+      , ( "performance check"
+        , True
+        , formulaAfter [Down, Down, Down, Down, Down, Down] $  Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "call", "call" , "call", "call", "call", "call"]
+        )
+      
+
       ]
 
 

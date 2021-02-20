@@ -43,6 +43,7 @@ data ExplicitOpa s a = ExplicitOpa
   , deltaPop   :: [(s, s, [s])] -- pop transition relation
   } deriving (Show)
 
+-- a specific type for the model checker state: the parametric s is for the input OPA, the second field is for the generated opa from the input formula
 data MCState s = MCState s State deriving (Generic, Eq, Show)
 
 instance Hashable s => Hashable (MCState s)
@@ -54,7 +55,7 @@ instance SatState (MCState s) where
   getStateProps bitenc (MCState _ p) = getStateProps bitenc p
   {-# INLINABLE getStateProps #-}
 
--- generate the cartesian product between two automata
+-- generate the cartesian product between two lists of states (the first list has a generic type)
 cartesian :: [a] -> [State] -> [MCState a]
 cartesian xs ys = [MCState x y | x <- xs, y <- ys]
 
@@ -73,12 +74,15 @@ modelCheck phi opa =
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
         makeOpa (Not phi) False (fst $ sigma opa, getProps phi) (precRel opa) 
 
+      -- compute the cartesian product between the initials of the two opas
       cInitials = cartesian (initials opa) phiInitials
-      cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal p
+      -- new isFinal function for the cartesian product: both underlying opas must be in an acceptance state
+      cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal T p
 
       maybeList Nothing = []
       maybeList (Just l) = l
 
+      -- generate the delta relation of the input opa
       makeDeltaMapI delta = Map.fromListWith (++) $
         map (\(q', b', ps) -> ((q', D.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
             delta
@@ -87,10 +91,10 @@ modelCheck phi opa =
       opaDeltaShift q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaShift opa)
       opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (deltaPop opa)
 
+      -- the delta relation of the cartesian product
       cDeltaPush (MCState q p) b = cartesian (opaDeltaPush q b) (phiDeltaPush p b)
       cDeltaShift (MCState q p) b = cartesian (opaDeltaShift q b) (phiDeltaShift p b)
       cDeltaPop (MCState q p) (MCState q' p') = cartesian (opaDeltaPop q q') (phiDeltaPop p p')
-
       cDelta = Sat.Delta
                { Sat.bitenc = bitenc
                , Sat.prec = precFunc
@@ -99,9 +103,11 @@ modelCheck phi opa =
                , Sat.deltaPop = cDeltaPop
                }
 
+     -- check the emptiness of the language of the cartesian product
   in isEmpty cDelta cInitials cIsFinal
 
 -- check a formula phi against an Opa
+-- this function is parametric with respect to the type of propositions
 modelCheckGen :: ( Ord s, Hashable s, Show s, Ord a)
               => Formula a
               -> ExplicitOpa s a

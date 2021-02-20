@@ -183,9 +183,8 @@ genAtoms True  bitenc clos inputSet = genAtoms' bitenc clos   inputSet
 genAtoms False bitenc clos inputSet = genAtoms' bitenc clos $ S.insert (S.singleton End) inputSet
 
 genAtoms' :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
-genAtoms' bitenc clos inputSet =
-  let validPropSets = inputSet
-
+genAtoms' bitenc clos validPropSets =
+  let 
       -- Map the powerset of APs into a set of EncodedAtoms
       atomics = map (D.encodeInput bitenc) $ S.toList validPropSets
 
@@ -1445,19 +1444,23 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
 
 
 
--- given a BitEncoding and a state, determine whether it's final
-isFinal :: BitEncoding -> State -> Bool
-isFinal bitenc  s@(FState {}) = isFinalFinite bitenc s
-isFinal bitenc  s@(WState {}) = True -- TODO: update this
-  
+-- given a BitEncoding, a state formula, determine whether the state is final
+isFinal :: BitEncoding ->  Formula APType -> State  -> Bool
+isFinal bitenc _   s@(FState {}) = isFinalF bitenc s
+isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
 
-isFinalFinite :: BitEncoding -> State -> Bool
-isFinalFinite bitenc s =
+-- determine whether a state is final for a formula, for the omega case
+isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
+isFinalW bitenc phi s = True -- TODO: update this
+-- determine whether a state is final, for the finite case
+isFinalF :: BitEncoding -> State -> Bool
+isFinalF bitenc s =
   debug $ not (mustPush s) -- xe can be instead accepted, as if # = #
   && D.member bitenc (Atomic End) currFset
-  && (not $ D.any bitenc future currFset) -- TODO: mask this
-  && currPend == (D.intersect currPend mask)
+  && (D.intersect currFset maskFuture) == D.empty bitenc
+  && currPend == (D.intersect currPend maskPast)
   where
+        maskFuture = D.suchThat bitenc future -- future is defined in Potlv2
         maskXbu = D.suchThat bitenc checkXbu
         checkXbu (XBack Up _) = True
         checkXbu _ = False
@@ -1471,7 +1474,7 @@ isFinalFinite bitenc s =
 
         currFset = current s
         currPend = pending s
-        mask = D.union maskXbu maskAlw
+        maskPast = D.union maskXbu maskAlw
         -- only XBack Up and Always formulas are allowed
 
 
@@ -1489,7 +1492,7 @@ check phi sprs ts =
   debug $ run
             prec
             is
-            (isFinal bitenc)
+            (isFinalF bitenc) -- here T is just a placeholder, as a formula is not needed for the finite case
             (deltaShift as pcs scs shiftRules)
             (deltaPush  as pcs scs pushRules)
             (deltaPop   as pcs scs popRules)
@@ -1549,7 +1552,7 @@ fastcheck phi sprs ts =
   debug $ parAugRun
             prec
             is
-            (isFinal bitenc)
+            (isFinalF bitenc) -- here T is just a placeholder, as a formula is not needed for the finite case
             (augDeltaShift as pcs scs shiftRules)
             (augDeltaPush  as pcs scs pushRules)
             (augDeltaPop   as pcs scs popRules)
@@ -1640,7 +1643,7 @@ makeOpa :: Formula APType -- the input formula
         -> (BitEncoding --the guide for encoding and decoding between bits and formulas and props
            , EncPrecFunc -- operator precedence function??
            , [State] 
-           , State -> Bool -- isFinal 
+           , Formula APType -> State -> Bool -- isFinal?
            , State -> Input -> [State] -- deltaPush
            , State -> Input -> [State] -- deltaShift
            , State -> State -> [State] -- deltaPop
@@ -1648,7 +1651,7 @@ makeOpa :: Formula APType -- the input formula
 makeOpa phi isOmega (sls, als) sprs = (bitenc
                               , prec
                               , is
-                              , isFinal bitenc
+                              , isFinal bitenc 
                               , deltaPush  as pcs scs pushRules      -- apply PushRules
                               , deltaShift as pcs scs shiftRules     -- apply ShiftRules
                               , deltaPop   as pcs scs popRules       -- apply PopRules

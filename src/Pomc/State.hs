@@ -71,8 +71,6 @@ instance NFData State where
   rnf (FState current pending _ _ _) = current `seq` pending `seq` ()
   rnf (WState current pending stack _ _ _) = current `seq` pending `seq` stack `seq` ()
 
-
- 
 showStates :: [State] -> String
 showStates = unlines . map show
 

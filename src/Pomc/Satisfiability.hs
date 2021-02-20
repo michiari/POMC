@@ -33,6 +33,7 @@ import qualified Data.Set as Set
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
+import Pomc.PotlV2 (Formula(..))
 
 import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
@@ -162,12 +163,13 @@ data Globals s state = Globals
   , suppEnds :: STRef s (SetMap s (StateId state))
   }
 
+-- a type for the delta relation, parametric with respect to the type of the state
 data Delta state = Delta
   { bitenc :: BitEncoding
-  , prec :: EncPrecFunc
-  , deltaPush :: state -> Input -> [state]
-  , deltaShift :: state -> Input -> [state]
-  , deltaPop :: state -> state -> [state]
+  , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
+  , deltaPush :: state -> Input -> [state] -- deltaPush relation
+  , deltaShift :: state -> Input -> [state] -- deltaShift relation
+  , deltaPop :: state -> state -> [state] -- deltapop relation
   }
 
 getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
@@ -292,9 +294,9 @@ reachPop isDestState isDestStack globals delta q g qState =
 
 -- check the emptiness of the Language expressed by an automaton
 isEmpty :: (SatState state, Eq state, Hashable state, Show state)
-        => Delta state
-        -> [state]
-        -> (state -> Bool)
+        => Delta state -- delta relation of an opa
+        -> [state] -- list of initial states of the opa
+        -> (state -> Bool) -- determine whether a state is final
         -> Bool
 isEmpty delta initials isFinal = not $
   ST.runST (do
@@ -315,6 +317,7 @@ isEmpty delta initials isFinal = not $
                    False
                    initialsId)
 
+-- given a formula, build the opa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
 isSatisfiable :: Formula APType
               -> ([Prop APType], [Prop APType])
               -> [StructPrecRel APType]
@@ -328,8 +331,9 @@ isSatisfiable phi ap sprs =
         , deltaShift = dShift
         , deltaPop = dPop
         }
-  in not $ isEmpty delta initials isFinal
+  in not $ isEmpty delta initials (isFinal T)
 
+-- parametric with respect the type of the propositions
 isSatisfiableGen :: ( Ord a)
                  => Formula a
                  -> ([Prop a], [Prop a])

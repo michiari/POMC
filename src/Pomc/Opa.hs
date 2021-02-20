@@ -165,11 +165,11 @@ parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
                       -- Undefined precedence relation: reject
                       Nothing    -> False
                       -- Stack top yields to next token: push
-                      Just Yield -> recurse (push dpush conf)
+                      Just Yield -> recurse (push dpush conf) 
                       -- Stack top has same precedence as next token: shift
-                      Just Equal -> recurse (shift dshift conf)
+                      Just Equal -> recurse (shift dshift conf) 
                       -- Stack top takes precedence on next token: pop
-                      Just Take  -> recurse (pop dpop conf)
+                      Just Take  -> recurse (pop dpop conf) 
       where lookahead = safeTail tokens >>= safeHead
             dshift = adshift lookahead
             dpush  = adpush  lookahead
@@ -177,6 +177,7 @@ parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             top = head stack  --
             t   = head tokens -- safe due to laziness
             recurse xs = not $ null $ filter (== True) $ parMap (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal) xs
+            
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]
