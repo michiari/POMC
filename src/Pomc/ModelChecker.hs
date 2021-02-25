@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric, CPP #-}
 
 {- |
    Module      : Pomc.ModelChecker
@@ -7,22 +7,28 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.ModelChecker (
-                           ExplicitOpa(..)
+module Pomc.ModelChecker ( ExplicitOpa(..)
                          , modelCheck
                          , modelCheckGen
                          , extractALs
                          , countStates
                          ) where
 
+#define NDEBUG
+
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
 import Pomc.PotlV2 (Formula(..), getProps)
 import Pomc.Check (State, makeOpa)
-import Pomc.Satisfiability (SatState(..), isEmpty)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
-import qualified Pomc.Data as D (encodeInput)
+import qualified Pomc.Data as D (PropSet, encodeInput)
+#ifndef NDEBUG
+import Pomc.Satisfiability (SatState(..), isEmpty, toInputTrace, showTrace)
+import qualified Debug.Trace as DBG
+#else
+import Pomc.Satisfiability (SatState(..), isEmpty, toInputTrace)
+#endif
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -31,6 +37,7 @@ import qualified Data.HashMap.Strict as Map
 
 import GHC.Generics (Generic)
 import Data.Hashable
+
 
 data ExplicitOpa s a = ExplicitOpa
   { sigma :: ([Prop a], [Prop a]) -- the AP of the input alphabet (structural labels, all other props)
@@ -57,11 +64,22 @@ instance SatState (MCState s) where
 cartesian :: [a] -> [State] -> [MCState a]
 cartesian xs ys = [MCState x y | x <- xs, y <- ys]
 
+#ifndef NDEBUG
+modelCheck :: (Ord s, Hashable s, Show s, Show a)
+#else
 modelCheck :: (Ord s, Hashable s, Show s)
+#endif
            => Formula APType -- input formula to check
            -> ExplicitOpa s APType -- input OPA
-           -> Bool -- does the OPA satisfy the formula?
+#ifndef NDEBUG
+           -> (APType -> a)
+#endif
+           -> (Bool, [(s, D.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
+#ifndef NDEBUG
+modelCheck phi opa transInv =
+#else
 modelCheck phi opa =
+#endif
   let
       -- fromList removes duplicates
       -- all the structural labels + all the labels which appear in phi
@@ -97,15 +115,25 @@ modelCheck phi opa =
                , Sat.deltaPop = cDeltaPop
                }
 
-  in isEmpty cDelta cInitials cIsFinal
+      (sat, trace) = isEmpty cDelta cInitials cIsFinal
+#ifndef NDEBUG
+  in DBG.trace (showTrace bitenc transInv trace)
+#else
+  in
+#endif
+     (sat, map (\(MCState q _, b) -> (q, b)) $ toInputTrace bitenc trace)
 
+#ifndef NDEBUG
+modelCheckGen :: (Ord s, Hashable s, Show s, Ord a, Show a)
+#else
 modelCheckGen :: (Ord s, Hashable s, Show s, Ord a)
+#endif
               => Formula a
               -> ExplicitOpa s a
-              -> Bool
+              -> (Bool, [(s, Set (Prop a))])
 modelCheckGen phi opa =
   let (sls, als) = sigma opa
-      (tphi, tprec, trans) = convAP phi (precRel opa) (sls ++ (getProps phi) ++ als)
+      (tphi, tprec, trans, transInv) = convAP phi (precRel opa) (sls ++ (getProps phi) ++ als)
       transProps props = fmap (fmap trans) props
       transDelta delta = map (\(q, b, p) -> (q, Set.map (fmap trans) b, p)) delta
       tOpa = ExplicitOpa
@@ -117,7 +145,12 @@ modelCheckGen phi opa =
              , deltaShift = transDelta (deltaShift opa)
              , deltaPop   = deltaPop opa
              }
-  in modelCheck tphi tOpa
+#ifndef NDEBUG
+      (sat, trace) = modelCheck tphi tOpa transInv
+#else
+      (sat, trace) = modelCheck tphi tOpa
+#endif
+  in (sat, map (\(q, b) -> (q, Set.map (fmap transInv) b)) trace)
 
 -- extract all atomic propositions from the delta relation
 extractALs :: Ord a => [(s, Set (Prop a), [s])] -> [Prop a]

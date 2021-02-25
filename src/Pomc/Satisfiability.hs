@@ -5,20 +5,21 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Satisfiability (
-                             SatState(..)
+module Pomc.Satisfiability ( SatState(..)
                            , Delta(..)
                            , isEmpty
                            , isSatisfiable
                            , isSatisfiableGen
+                           , toInputTrace
+                           , showTrace
                            ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.PotlV2(Formula)
-import Pomc.Check (Input, EncPrecFunc, State(..), makeOpa)
+import Pomc.Check (Input, EncPrecFunc, State(..), makeOpa, showState, showAtom)
 import Pomc.PropConv (APType, convPropLabels)
-import Pomc.Data (BitEncoding, extractInput)
+import Pomc.Data (PropSet, BitEncoding, extractInput, decodeInput)
 
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
@@ -36,15 +37,6 @@ import qualified Data.HashTable.Class as H
 import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-
---import Debug.Trace (trace)
-
-debug :: String -> ST s Bool -> ST s Bool
-debug _ x = x
---debug msg r = fmap traceTrue r
---  where traceTrue False = False
---        traceTrue True = trace msg True
-
 
 type HashTable s k v = BH.HashTable s k v
 
@@ -169,37 +161,77 @@ data Delta state = Delta
   , deltaPop :: state -> state -> [state]
   }
 
+-- Begin debugging stuff
+data TraceType = Push | Shift | Pop | Summary | Found deriving (Eq, Show)
+type TraceId state = [(TraceType, StateId state, Stack state)]
+type Trace state = [(TraceType, state, Maybe (Input, state))]
+
+unIdTrace :: TraceId state -> Trace state
+unIdTrace trace =
+  map (\(moveType, q, g) ->
+         (moveType, getState q, fmap (\(b, r) -> (b, getState r)) g)) trace
+
+toInputTrace :: (SatState state) => BitEncoding -> Trace state -> [(state, PropSet)]
+toInputTrace be trace = foldr foldInput [] trace
+  where foldInput (moveType, q, _) rest
+          | moveType == Push || moveType == Shift =
+            (q, stateToInput q) : rest
+          | moveType == Summary =
+            (q, Set.empty) : rest
+          | moveType == Found =
+            (q, Set.singleton End) : rest
+          | otherwise = rest
+        stateToInput q =
+          (decodeInput be) . (extractInput be) . current . getSatState $ q
+
+showTrace :: (SatState state, Show state, Show a)
+          => BitEncoding
+          -> (APType -> a)
+          -> Trace state
+          -> String
+showTrace be transAP trace = concatMap showMove trace
+  where showMove (moveType, q, g) =
+          show moveType     ++ ":\nRaw State:\n" ++
+          show q ++ "\nCheck State:\n" ++
+          showState be transAP (getSatState q) ++ "\nStack:\n" ++
+          showStack g ++ "\n\n"
+        showStack (Just (b, r)) =
+          showAtom be transAP b ++ "\n" ++
+          show r ++ "\n" ++
+          showState be transAP (getSatState r)
+        showStack Nothing = "Bottom"
+-- End debugging stuff
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool)
-      -> (Stack state-> Bool)
+      -> (Stack state -> Bool)
       -> Globals s state
       -> Delta state
       -> StateId state
       -> Stack state
-      -> ST s Bool
-reach isDestState isDestStack globals delta q g = do
+      -> TraceId state
+      -> ST s (Bool, TraceId state)
+reach isDestState isDestStack globals delta q g trace = do
   alreadyVisited <- memberSM (visited globals) q g
   if alreadyVisited
-    then return False
+    then return (False, [])
     else do
     insertSM (visited globals) q g
     let qState = getState q
         precRel = (prec delta) (fst . fromJust $ g) (current . getSatState $ qState)
         cases
-          | (isDestState q) && (isDestStack g) =
-            debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
+          | (isDestState q) && (isDestStack g) = return (True, (Found, q, g) : trace)
 
           | (isNothing g) || precRel == Just Yield =
-            reachPush isDestState isDestStack globals delta q g qState
+            reachPush isDestState isDestStack globals delta q g qState trace
 
           | precRel == Just Equal =
-            reachShift isDestState isDestStack globals delta q g qState
+            reachShift isDestState isDestStack globals delta q g qState trace
 
           | precRel == Just Take =
-            reachPop isDestState isDestStack globals delta q g qState
+            reachPop isDestState isDestStack globals delta q g qState trace
 
-          | otherwise = return False
+          | otherwise = return (False, [])
     cases
 
 
@@ -211,28 +243,25 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
           -> StateId state
           -> Stack state
           -> state
-          -> ST s Bool
-reachPush isDestState isDestStack globals delta q g qState =
+          -> TraceId  state
+          -> ST s (Bool, TraceId state)
+reachPush isDestState isDestStack globals delta q g qState trace =
   let qProps = getStateProps (bitenc delta) qState
-      doPush True _ = return True
-      doPush False p = do
+      doPush res@(True, _) _ = return res
+      doPush (False, _) p = do
         insertSM (suppStarts globals) q g
-        debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-          reach isDestState isDestStack globals delta p (Just (qProps, q))
+        reach isDestState isDestStack globals delta p (Just (qProps, q)) ((Push, q, g) : trace)
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
-    pushReached <- V.foldM' doPush False newStates
+    res@(pushReached, _) <- V.foldM' doPush (False, []) newStates
     if pushReached
-      then return True
+      then return res
       else do
       currentSuppEnds <- lookupSM (suppEnds globals) q
-      foldM (\acc s -> if acc
-                       then return True
-                       else debug ("Push (summary): q = " ++ show q
-                                   ++ "\ng = " ++ show g
-                                   ++ "\ns = " ++ show s) $
-                            reach isDestState isDestStack globals delta s g)
-        False
+      foldM (\acc s -> if fst acc
+                       then return acc
+                       else reach isDestState isDestStack globals delta s g ((Summary, q, g) : trace))
+        (False, [])
         currentSuppEnds
 
 
@@ -244,16 +273,16 @@ reachShift :: (SatState state, Eq state, Hashable state, Show state)
            -> StateId state
            -> Stack state
            -> state
-           -> ST s Bool
-reachShift isDestState isDestStack globals delta q g qState =
+           -> TraceId state
+           -> ST s (Bool, TraceId state)
+reachShift isDestState isDestStack globals delta q g qState trace =
   let qProps = getStateProps (bitenc delta) qState
-      doShift True _ = return True
-      doShift False p =
-        debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-        reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
+      doShift res@(True, _) _ = return res
+      doShift (False, _) p =
+        reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g))) ((Shift, q, g) : trace)
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
-    V.foldM' doShift False newStates
+    V.foldM' doShift (False, []) newStates
 
 
 reachPop :: (SatState state, Eq state, Hashable state, Show state)
@@ -264,56 +293,56 @@ reachPop :: (SatState state, Eq state, Hashable state, Show state)
          -> StateId state
          -> Stack state
          -> state
-         -> ST s Bool
-reachPop isDestState isDestStack globals delta q g qState =
-  let doPop True _ = return True
-      doPop False p =
+         -> TraceId state
+         -> ST s (Bool, TraceId state)
+reachPop isDestState isDestStack globals delta q g qState trace =
+  let doPop res@(True, _) _ = return res
+      doPop (False, _) p =
         let r = snd . fromJust $ g
-            closeSupports True _ = return True
-            closeSupports False g'
+            closeSupports res@(True, _) _ = return res
+            closeSupports (False, _) g'
               | isNothing g' ||
                 ((prec delta) (fst . fromJust $ g') (current . getSatState . getState $ r)) == Just Yield
-              = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-                reach isDestState isDestStack globals delta p g'
-              | otherwise = return False
+              = reach isDestState isDestStack globals delta p g' ((Pop, q, g) : trace)
+              | otherwise = return (False, [])
         in do
           insertSM (suppEnds globals) r p
           currentSuppStarts <- lookupSM (suppStarts globals) r
-          foldM closeSupports False currentSuppStarts
+          foldM closeSupports (False, []) currentSuppStarts
   in do
     newStates <- wrapStates (sIdGen globals) $
                  (deltaPop delta) qState (getState . snd . fromJust $ g)
-    V.foldM' doPop False newStates
+    V.foldM' doPop (False, []) newStates
 
 
 isEmpty :: (SatState state, Eq state, Hashable state, Show state)
         => Delta state
         -> [state]
         -> (state -> Bool)
-        -> Bool
-isEmpty delta initials isFinal = not $
-  ST.runST (do
-               newSig <- initSIdGen
-               emptyVisited <- emptySM
-               emptySuppStarts <- emptySM
-               emptySuppEnds <- emptySM
-               let globals = Globals { sIdGen = newSig
-                                     , visited = emptyVisited
-                                     , suppStarts = emptySuppStarts
-                                     , suppEnds = emptySuppEnds
-                                     }
-                 in do
-                 initialsId <- wrapStates newSig initials
-                 foldM (\acc q -> if acc
-                                  then return True
-                                  else (reach (isFinal . getState) isNothing globals delta q Nothing))
-                   False
-                   initialsId)
+        -> (Bool, Trace state)
+isEmpty delta initials isFinal =
+  let (accepting, trace) = ST.runST $ do
+        newSig <- initSIdGen
+        emptyVisited <- emptySM
+        emptySuppStarts <- emptySM
+        emptySuppEnds <- emptySM
+        let globals = Globals { sIdGen = newSig
+                              , visited = emptyVisited
+                              , suppStarts = emptySuppStarts
+                              , suppEnds = emptySuppEnds
+                              }
+        initialsId <- wrapStates newSig initials
+        foldM (\acc q -> if fst acc
+                         then return acc
+                         else reach (isFinal . getState) isNothing globals delta q Nothing [])
+          (False, [])
+          initialsId
+  in (not accepting, unIdTrace $ reverse trace)
 
 isSatisfiable :: Formula APType
               -> ([Prop APType], [Prop APType])
               -> [StructPrecRel APType]
-              -> Bool
+              -> (Bool, [PropSet])
 isSatisfiable phi ap sprs =
   let (be, precf, initials, isFinal, dPush, dShift, dPop) = makeOpa phi ap sprs
       delta = Delta
@@ -323,14 +352,15 @@ isSatisfiable phi ap sprs =
         , deltaShift = (\q _ -> dShift q Nothing)
         , deltaPop = dPop
         }
-  in not $ isEmpty delta initials isFinal
+      (empty, trace) = isEmpty delta initials isFinal
+  in (not empty, map snd $ toInputTrace be trace)
 
-isSatisfiableGen :: ( Ord a)
+isSatisfiableGen :: (Ord a)
                  => Formula a
                  -> ([Prop a], [Prop a])
                  -> [StructPrecRel a]
-                 -> Bool
+                 -> (Bool, [Set (Prop a)])
 isSatisfiableGen phi ap precf =
-  let (tphi, tap, tprecr) = convPropLabels phi ap precf
-  in isSatisfiable tphi tap tprecr
-
+  let (tphi, tap, tprecr, transInv) = convPropLabels phi ap precf
+      (sat, trace) = isSatisfiable tphi tap tprecr
+  in (sat, map (Set.map (fmap transInv)) trace)

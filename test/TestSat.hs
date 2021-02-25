@@ -9,6 +9,7 @@ import Pomc.PotlV2 (Formula(..), Dir(..))
 import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
 import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
+import qualified Data.Set as S
 
 tests :: TestTree
 tests = testGroup "TestSat.hs Tests" [baseTests, evalTests]
@@ -22,7 +23,10 @@ evalTests = testGroup "Sat Eval Tests" $ map makeV2TestCase EvalFormulas.formula
 makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [StructPrecRel String], Bool)
              -> TestTree
 makeTestCase (name, phi, sls, als, prec, expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ isSatisfiableGen phi (sls, als) prec @?= expected
+  let (sat, trace) = isSatisfiableGen phi (sls, als) prec
+      debugMsg False _ = "Expected SAT, got UNSAT."
+      debugMsg True tr = "Expected UNSAT, got SAT. Trace:\n" ++ show (map S.toList tr)
+  in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
 
 makeV2TestCase :: (TestName, Formula String, [String], Bool) -> TestTree
 makeV2TestCase (name, phi, als, expected) =

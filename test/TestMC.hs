@@ -41,7 +41,11 @@ makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
 makeTestCase opa ((name, phi, _, _), expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ modelCheckGen phi opa @?= expected
+  let (sat, trace) = modelCheckGen phi opa
+      debugMsg False tr = "Expected True, got False. Counterexample:\n"
+        ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
+      debugMsg True _ = "Expected False, got True."
+  in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
 
 
 makeInputSet :: (Ord a) => [a] -> Set (Prop a)
