@@ -18,7 +18,7 @@ module Pomc.ModelChecker ( ExplicitOpa(..)
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
-import Pomc.PotlV2 (Formula(..), getProps)
+import Pomc.Potl (Formula(..), getProps)
 import Pomc.Check (State, makeOpa)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)

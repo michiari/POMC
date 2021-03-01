@@ -1,28 +1,27 @@
 {-# LANGUAGE DeriveGeneric #-}
 {- |
-   Module      : Pomc.PotlV2
+   Module      : Pomc.Potl
    Copyright   : 2020 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.PotlV2 ( -- * POTL V2 types
-                     Dir(..)
-                   , Prop(..)
-                   , Formula(..)
-                   , getProps
-                    -- * Predicates on formulas
-                   , atomic
-                   , future
-                   , negative
-                     -- * Operations on formulas
-                   , negation
-                   , normalize
-                   , formulaAt
-                   , formulaAfter
-                   , formulaAtDown
-                   , formulaAtUp
-                   ) where
+module Pomc.Potl ( Dir(..)
+                 , Prop(..)
+                 , Formula(..)
+                 , getProps
+                   -- * Predicates on formulas
+                 , atomic
+                 , future
+                 , negative
+                   -- * Operations on formulas
+                 , negation
+                 , normalize
+                 , formulaAt
+                 , formulaAfter
+                 , formulaAtDown
+                 , formulaAtUp
+                 ) where
 
 import Pomc.Prop (Prop(..))
 import Data.List (nub,uncons)

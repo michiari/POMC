@@ -27,7 +27,7 @@ module Pomc.Check ( -- * Checking functions
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Opa (run, augRun)
-import Pomc.PotlV2 (Formula(..), Dir(..), negative, negation, atomic, normalize, future)
+import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, future)
 import Pomc.Util (safeHead, xor, implies, iff)
 import Pomc.Data (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
 import qualified Pomc.Data as D

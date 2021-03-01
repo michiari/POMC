@@ -5,7 +5,7 @@ import Test.Tasty.HUnit
 import Pomc.Satisfiability (isSatisfiableGen)
 import Pomc.Prec (StructPrecRel)
 import Pomc.Prop (Prop(..))
-import Pomc.PotlV2 (Formula(..), Dir(..))
+import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
 import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)

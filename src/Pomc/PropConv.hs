@@ -12,7 +12,7 @@ module Pomc.PropConv ( APType
                      ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.PotlV2 (Formula, getProps)
+import Pomc.Potl (Formula, getProps)
 import Pomc.Prec (StructPrecRel)
 
 import Data.List (nub)
