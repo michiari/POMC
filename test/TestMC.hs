@@ -2,10 +2,10 @@ module TestMC (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import OPMs (stlPrecRelV2, stlPrecV2sls)
 import qualified TestSat (cases)
 import EvalFormulas (ap, formulas)
 import Pomc.Prop (Prop(..))
-import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
 import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (ExplicitOpa(..), modelCheckGen)
 

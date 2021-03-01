@@ -22,7 +22,6 @@ library:
   exposed-modules:
   - Pomc.App
   - Pomc.Check
-  - Pomc.Example
   - Pomc.Opa
   - Pomc.Potl
   - Pomc.Prec

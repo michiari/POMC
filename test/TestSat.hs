@@ -6,7 +6,7 @@ import Pomc.Satisfiability (isSatisfiableGen)
 import Pomc.Prec (StructPrecRel)
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Formula(..), Dir(..))
-import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
+import OPMs (stlPrecRelV2, stlPrecV2sls)
 import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
 import qualified Data.Set as S

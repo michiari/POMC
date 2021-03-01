@@ -4,7 +4,7 @@ module TestMP (tests) where
 
 import Pomc.MiniProcParse (programP)
 import Pomc.MiniProc (programToOpa)
-import Pomc.PotlV2 (Formula(..), Dir(..))
+import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (modelCheckGen)
 import qualified TestSat (cases)
 import EvalFormulas (ap, formulas)

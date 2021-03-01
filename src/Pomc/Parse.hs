@@ -17,7 +17,6 @@ module Pomc.Parse ( potlv2P
 import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.Potl as P
-import Pomc.Example (stlPrecRelV2Text)
 import Pomc.ModelChecker (ExplicitOpa(..), extractALs)
 
 import Data.Void (Void)
@@ -205,7 +204,7 @@ stringSectionP = do _ <- symbolP "strings"
 precSectionP :: Parser [StructPrecRel Text]
 precSectionP = do _ <- symbolP "prec"
                   _ <- symbolP "="
-                  precRels <- (stlPrecRelV2Text <$ symbolP "Mcall") <|> precRelsP
+                  precRels <- precRelsP
                   _ <- symbolP ";"
                   return precRels
   where precRelsP = precRelP `sepBy1` symbolP "," >>= return . addEnd

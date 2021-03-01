@@ -1,9 +1,9 @@
 module TestCheck (tests) where
 
 import Pomc.Check (fastcheckGen)
-import Pomc.Example (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Dir(..), Formula(..), formulaAt, formulaAfter)
+import OPMs (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
 
 import Test.Tasty
 import Test.Tasty.HUnit
