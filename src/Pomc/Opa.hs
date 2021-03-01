@@ -2,9 +2,9 @@
 
 {- |
    Module      : Pomc.Opa
-   Copyright   : 2020 Davide Bergamaschi
+   Copyright   : 2021 Davide Bergamaschi and Michele Chiari
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
 
 module Pomc.Opa ( -- * Run functions
@@ -41,8 +41,8 @@ data Config s t = Config
     } deriving (Show, Generic, NFData)
 
 runOpa :: (Eq s) => Opa s t -> [t] -> Bool
-runOpa (Opa _ prec _ initials finals dshift dpush dpop) tokens =
-  run prec initials (`elem` finals) dshift dpush dpop tokens
+runOpa (Opa _ precf _ ini fin dshift dpush dpop) tokens =
+  run precf ini (`elem` fin) dshift dpush dpop tokens
 
 run :: (t -> t -> Maybe Prec)
     -> [s]
@@ -52,23 +52,23 @@ run :: (t -> t -> Maybe Prec)
     -> (s -> s -> [s])
     -> [t]
     -> Bool
-run prec initials isFinal deltaShift deltaPush deltaPop tokens =
+run precf ini isFinal dShift dPush dPop tokens =
   any'
-    (run' prec deltaShift deltaPush deltaPop isFinal)
-    (map (\i -> Config i [] tokens) initials)
+    (run' precf dShift dPush dPop isFinal)
+    (map (\i -> Config i [] tokens) ini)
   where
-    run' prec dshift dpush dpop isFinal conf@(Config s stack tokens)
+    run' precf' dshift dpush dpop isFinal' conf@(Config s stack tokens')
       -- No more input and empty stack: accept / reject
-      | null tokens && null stack = isFinal s
+      | null tokens' && null stack = isFinal' s
 
       -- No more input but stack non-empty: pop
-      | null tokens = recurse (pop dpop conf)
+      | null tokens' = recurse (pop dpop conf)
 
       -- Stack empty: push
       | null stack = recurse (push dpush conf)
 
       -- Evaluate stack top precedence w.r.t. next token
-      | otherwise = case prec (fst top) t of
+      | otherwise = case precf' (fst top) t of
                       -- Undefined precedence relation: reject
                       Nothing    -> False
                       -- Stack top yields to next token: push
@@ -78,8 +78,8 @@ run prec initials isFinal deltaShift deltaPush deltaPop tokens =
                       -- Stack top takes precedence on next token: pop
                       Just Take  -> recurse (pop dpop conf)
       where top = head stack  --
-            t   = head tokens -- safe due to laziness
-            recurse = any' (run' prec dshift dpush dpop isFinal)
+            t   = head tokens' -- safe due to laziness
+            recurse = any' (run' precf' dshift dpush dpop isFinal')
 
 augRun :: (t -> t -> Maybe Prec)
        -> [s]
@@ -89,22 +89,22 @@ augRun :: (t -> t -> Maybe Prec)
        -> (Maybe t -> s -> s -> [s])
        -> [t]
        -> Bool
-augRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
-  let ics = (map (\i -> Config i [] tokens) initials)
-  in any' (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal) ics
+augRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
+  let ics = (map (\i -> Config i [] tokens) ini)
+  in any' (run' precf augDeltaShift augDeltaPush augDeltaPop isFinal) ics
   where
-    run' prec adshift adpush adpop isFinal conf@(Config s stack tokens)
+    run' precf' adshift adpush adpop isFinal' conf@(Config s stack tokens')
       -- No more input and empty stack: accept / reject
-      | null tokens && null stack = isFinal s
+      | null tokens' && null stack = isFinal' s
 
       -- No more input but stack non-empty: pop
-      | null tokens = recurse (pop dpop conf)
+      | null tokens' = recurse (pop dpop conf)
 
       -- Stack empty: push
       | null stack = recurse (push dpush conf)
 
       -- Evaluate stack top precedence w.r.t. next token
-      | otherwise = case prec (fst top) t of
+      | otherwise = case precf' (fst top) t of
                       -- Undefined precedence relation: reject
                       Nothing    -> False
                       -- Stack top yields to next token: push
@@ -113,26 +113,28 @@ augRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
                       Just Equal -> recurse (shift dshift conf)
                       -- Stack top takes precedence on next token: pop
                       Just Take  -> recurse (pop dpop conf)
-      where lookahead = safeTail tokens >>= safeHead
+      where lookahead = safeTail tokens' >>= safeHead
             dshift = adshift lookahead
             dpush  = adpush  lookahead
             dpop   = adpop   lookahead
             top = head stack  --
             t   = head tokens -- safe due to laziness
-            recurse = any' (run' prec adshift adpush adpop isFinal)
+            recurse = any' (run' precf' adshift adpush adpop isFinal')
 
+parAny :: (t -> Bool) -> [t] -> Bool
 parAny p xs = runEval $ parAny' p xs
-  where parAny' p [] = return False
-        parAny' p (x:xs) = do px <- rpar (p x)
-                              pxs <- parAny' p xs
-                              return (px || pxs)
+  where parAny' _ [] = return False
+        parAny' p' (y:ys) = do py <- rpar (p' y)
+                               pys <- parAny' p' ys
+                               return (py || pys)
 
+interChunks :: Int -> [a] -> V.Vector [a]
 interChunks nchunks xs = interChunks' (V.generate nchunks (const [])) 0 xs
   where interChunks' vec _ [] = vec
-        interChunks' vec i (x:xs) = interChunks'
-                                      (vec V.// [(i,x:(vec V.! i))])
+        interChunks' vec i (y:ys) = interChunks'
+                                      (vec V.// [(i,y:(vec V.! i))])
                                       ((i + 1) `mod` nchunks)
-                                      xs
+                                      ys
 
 parAugRun :: (NFData s, NFData t)
           => (t -> t -> Maybe Prec)
@@ -143,26 +145,26 @@ parAugRun :: (NFData s, NFData t)
           -> (Maybe t -> s -> s -> [s])
           -> [t]
           -> Bool
-parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
-  let ics = (map (\i -> Config i [] tokens) initials)
+parAugRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
+  let ics = (map (\i -> Config i [] tokens) ini)
       nchunks = min 128 (length ics)
       chunks = V.toList $ interChunks nchunks ics
       process = runEval . rdeepseq .
-                  any' (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal)
+                  any' (run' precf augDeltaShift augDeltaPush augDeltaPop isFinal)
   in parAny process chunks
   where
-    run' prec adshift adpush adpop isFinal conf@(Config s stack tokens)
+    run' precf' adshift adpush adpop isFinal' conf@(Config s stack tokens')
       -- No more input and empty stack: accept / reject
-      | null tokens && null stack = isFinal s
+      | null tokens' && null stack = isFinal' s
 
       -- No more input but stack non-empty: pop
-      | null tokens = recurse (pop dpop conf)
+      | null tokens' = recurse (pop dpop conf)
 
       -- Stack empty: push
       | null stack = recurse (push dpush conf)
 
       -- Evaluate stack top precedence w.r.t. next token
-      | otherwise = case prec (fst top) t of
+      | otherwise = case precf' (fst top) t of
                       -- Undefined precedence relation: reject
                       Nothing    -> False
                       -- Stack top yields to next token: push
@@ -171,25 +173,27 @@ parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
                       Just Equal -> recurse (shift dshift conf)
                       -- Stack top takes precedence on next token: pop
                       Just Take  -> recurse (pop dpop conf)
-      where lookahead = safeTail tokens >>= safeHead
+      where lookahead = safeTail tokens' >>= safeHead
             dshift = adshift lookahead
             dpush  = adpush  lookahead
             dpop   = adpop   lookahead
             top = head stack  --
             t   = head tokens -- safe due to laziness
-            recurse = any' (run' prec adshift adpush adpop isFinal)
+            recurse = any' (run' precf' adshift adpush adpop isFinal')
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]
 push dpush (Config s stack (t:ts)) =
   map (\s' -> (Config s' ((t, s):stack) ts))
       (dpush s t)
+push _ (Config _ _ []) = error "Trying to push with no more tokens."
 
 -- Partial: assumes token list and stack not empty
 shift :: (s -> t -> [s]) -> Config s t -> [Config s t]
 shift dshift (Config s stack (t:ts)) =
   map (\s' -> (Config s' ((t, (snd (head stack))):(tail stack)) ts))
       (dshift s t)
+shift _ (Config _ _ []) = error "Trying to shift with no more tokens."
 
 -- Partial: assumes stack not empty
 pop :: (s -> s -> [s]) -> Config s t -> [Config s t]
