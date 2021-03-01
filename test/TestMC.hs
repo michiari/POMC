@@ -6,7 +6,7 @@ import qualified TestSat (cases)
 import EvalFormulas (ap, formulas)
 import Pomc.Prop (Prop(..))
 import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
-import Pomc.PotlV2 (Formula(..), Dir(..))
+import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (ExplicitOpa(..), modelCheckGen)
 
 import Data.Set (Set)

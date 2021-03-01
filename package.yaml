@@ -20,12 +20,11 @@ dependencies:
 library:
   source-dirs:      src
   exposed-modules:
-  - Pomc
   - Pomc.App
   - Pomc.Check
   - Pomc.Example
   - Pomc.Opa
-  - Pomc.PotlV2
+  - Pomc.Potl
   - Pomc.Prec
   - Pomc.Prop
   - Pomc.Satisfiability

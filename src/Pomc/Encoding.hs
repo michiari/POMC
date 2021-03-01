@@ -1,39 +1,39 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 {- |
-   Module      : Pomc.Data
-   Copyright   : 2020 Davide Bergamaschi
+   Module      : Pomc.Encoding
+   Copyright   : 2020 Michele Chiari
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
 
-module Pomc.Data ( EncodedSet
-                 , FormulaSet
-                 , PropSet
-                 , BitEncoding(..)
-                 , newBitEncoding
-                 , decode
-                 , pdecode
-                 , encode
-                 , singleton
-                 , empty
-                 , generateFormulas
-                 , Pomc.Data.null
-                 , member
-                 , Pomc.Data.any
-                 , Pomc.Data.filter
-                 , suchThat
-                 , intersect
-                 , union
-                 , joinInputFormulas
-                 , extractInput
-                 , sliceInput
-                 , decodeInput
-                 , encodeInput
-                 , inputSuchThat
-                 ) where
+module Pomc.Encoding ( EncodedSet
+                     , FormulaSet
+                     , PropSet
+                     , BitEncoding(..)
+                     , newBitEncoding
+                     , decode
+                     , pdecode
+                     , encode
+                     , singleton
+                     , empty
+                     , generateFormulas
+                     , Pomc.Encoding.null
+                     , member
+                     , Pomc.Encoding.any
+                     , Pomc.Encoding.filter
+                     , suchThat
+                     , intersect
+                     , union
+                     , joinInputFormulas
+                     , extractInput
+                     , sliceInput
+                     , decodeInput
+                     , encodeInput
+                     , inputSuchThat
+                     ) where
 
-import Pomc.PotlV2
+import Pomc.Potl
 import Pomc.PropConv (APType)
 
 import Data.Set (Set)

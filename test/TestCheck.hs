@@ -3,7 +3,7 @@ module TestCheck (tests) where
 import Pomc.Check (fastcheckGen)
 import Pomc.Example (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
 import Pomc.Prop (Prop(..))
-import Pomc.PotlV2(Dir(..), Formula(..), formulaAt, formulaAfter)
+import Pomc.Potl (Dir(..), Formula(..), formulaAt, formulaAfter)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -17,7 +17,7 @@ tests :: TestTree
 tests = testGroup "Check.hs tests" [unitTests, propTests]
 
 unitTests :: TestTree
-unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
+unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
   where
     -- Takes a list of tuples like:
     --   (name, expected check result, checkable phi, prec func, input)
@@ -28,7 +28,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
       where acceptFail = "Formula should hold for given word!"
             rejectFail = "Formula should not hold for given word!"
 
-    potlv2Tests1 = testGroup "POTL, Stack Trace Lang V1, first group test" $ map makeTestCase
+    potlTests1 = testGroup "POTL, Stack Trace Lang V1, first group test" $ map makeTestCase
       [ ( "Accepting predicate on first word position"
         , True
         , Atomic . Prop  $ "call"
@@ -97,19 +97,19 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         )
       , ( "Rejecting Not PNext Up"
         , False
-        , Not $ PNext Up (Atomic $ Prop "ret") 
+        , Not $ PNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
       , ( "Rejecting PNext Up"
         , False
-        , PNext Up (Atomic $ Prop "call") 
+        , PNext Up (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
       , ( "Accepting PNext Down"
         , True
-        , PNext Down (Atomic $ Prop "ret") 
+        , PNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
@@ -121,19 +121,19 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         )
       , ( "Rejecting PNext Down"
         , False
-        , PNext Down (Atomic $ Prop "call") 
+        , PNext Down (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
       , ( "Rejecting OOB PNext [Up]"
         , False
-        , PNext Up (PNext Up (Atomic $ Prop "call")) 
+        , PNext Up (PNext Up (Atomic $ Prop "call"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
       ,  ( "Rejecting OOB PNext [Down]"
         , False
-        , PNext Down (PNext Up (Atomic $ Prop "call")) 
+        , PNext Down (PNext Up (Atomic $ Prop "call"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
@@ -215,7 +215,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Accepting XNext Down" 
+      , ( "Accepting XNext Down"
         , True
         , XNext Down (Atomic $ Prop "thr")
         , stlPrecRelV1
@@ -253,7 +253,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         )
       , ( "Check first element"
         , True
-        , (Atomic $ Prop "call") 
+        , (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret", "call", "ret"]
         )
@@ -263,7 +263,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting Not XNext Up" 
+      , ( "Rejecting Not XNext Up"
         , False
         , Not $ XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
@@ -275,61 +275,61 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting inner XNext Up" 
+      , ( "Rejecting inner XNext Up"
         , False
         , PNext Up $ XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "thr", "han", "ret"]
         )
-      , ( "Accepting XNext Down through Equal relation"  
+      , ( "Accepting XNext Down through Equal relation"
         , True
         , XNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting XNext Up through Equal relation" 
+      , ( "Accepting XNext Up through Equal relation"
         , True
         , XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting XNext Down through Yield relation" 
+      , ( "Accepting XNext Down through Yield relation"
         , True
         , XNext Down(Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Accepting XNext Up through Take relation" 
+      , ( "Accepting XNext Up through Take relation"
         , True
         , XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting Not XNext Down through Equal relation" 
+      , ( "Rejecting Not XNext Down through Equal relation"
         , False
         , Not $ XNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"] 
+        , map (S.singleton . Prop) ["call", "han", "ret"]
         )
       , ( "Rejecting Not XNext Up through Equal relation"
         , False
         , Not $ XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"] 
+        , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Not XNext Down through Yield relation" 
+      , ( "Rejecting Not XNext Down through Yield relation"
         , False
         , Not $ XNext Down (Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Rejecting Not XNext Up through Take relation" 
+      , ( "Rejecting Not XNext Up through Take relation"
         , False
         , Not $ XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting Not Or of XNext formulas through Take relation" 
+      , ( "Rejecting Not Or of XNext formulas through Take relation"
         , False
         , Not $ (Or (XNext Up (Atomic $ Prop "ret")) (Or (XNext Up (Atomic $ Prop "ret")) (XNext Down (Atomic $ Prop "ret"))))
         , stlPrecRelV1
@@ -347,7 +347,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"] -- there is no inner chain ;)
         )
-      , ( "Rejecting XNext Up" 
+      , ( "Rejecting XNext Up"
         , False
         , XNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
@@ -360,7 +360,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
         ------------ Until operators --------------------------------
-      , ( "Accepting Until Down through XNext with Yield relation" 
+      , ( "Accepting Until Down through XNext with Yield relation"
         , True
         , Until Down (Not . Atomic . Prop $ "call") (Atomic $ Prop "thr")
         , stlPrecRelV1
@@ -429,13 +429,13 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         )
       , ( "Accepting PNext chain"
         , True
-        , PNext Down (PNext Up $ Atomic $ Prop "ret") 
+        , PNext Down (PNext Up $ Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
       , ( "Accepting PBack in PNext"
         , True
-        , PNext Down (PBack Down $ Atomic $ Prop "call") 
+        , PNext Down (PBack Down $ Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
@@ -447,11 +447,11 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         )
       ,( "Accepting PNext Up"
         , True
-        , PNext Up (Atomic $ Prop "ret") 
+        , PNext Up (Atomic $ Prop "ret")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Accepting XNext Down" 
+      , ( "Accepting XNext Down"
         , True
         , XNext Down (Atomic $ Prop "ret")
         , stlPrecRelV1
@@ -475,31 +475,31 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "thr", "ret"]
         )
-      , ( "Rejecting inner XBack Down"  
+      , ( "Rejecting inner XBack Down"
         , False
         , formulaAfter  [Down, Up, Up] $ XBack Down (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )
-      , ( "Rejecting inner XBack Down -- v2" 
+      , ( "Rejecting inner XBack Down -- v2"
         , False
         , formulaAfter [Down, Down, Up] $ XBack Down (Atomic $ Prop "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret", "ret"]
         )
-      , ( "Accepting XBack Down through the Equal relation" 
+      , ( "Accepting XBack Down through the Equal relation"
         , True
         , formulaAfter [Down, Up] $ XBack Down (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Not XBack Down through the Equal relation" 
+      , ( "Rejecting Not XBack Down through the Equal relation"
         , False
         , formulaAfter [Down, Up] $ Not (XBack Down (Atomic $ Prop "call"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting inner XBack Down through Equal relation" 
+      , ( "Accepting inner XBack Down through Equal relation"
         , True
         , formulaAfter [Down, Down, Up] $ XBack Down (Atomic $ Prop "call")
         , stlPrecRelV1
@@ -523,13 +523,13 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret", "ret"]
         )
-      ,( "Accepting XBack Down through the Yield relation" 
+      ,( "Accepting XBack Down through the Yield relation"
         , True
         , formulaAfter [Down, Up] $ XBack Down (Atomic $ Prop "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
-      , ( "Accepting XBack Up" 
+      , ( "Accepting XBack Up"
         , True
         , formulaAfter [Down , Up] $ XBack Up (Atomic $ Prop "han")
         , stlPrecRelV1
@@ -541,31 +541,31 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "han", "thr", "ret", "ret"]
         )
-      , ( "Rejecting inner XBack Up -- v2"  
+      , ( "Rejecting inner XBack Up -- v2"
         , False
         , formulaAfter [Down, Up, Up] $ XBack Up (Atomic $ Prop "han")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr", "thr", "ret"]
         )
-      , ( "Accepting XBack Up through the Equal relation" 
+      , ( "Accepting XBack Up through the Equal relation"
         , True
         , formulaAfter [Down, Up] $ XBack Up (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Not XBack Up through the Equal relation" 
+      , ( "Rejecting Not XBack Up through the Equal relation"
         , False
         , formulaAfter [Down, Up] $ Not (XBack Up (Atomic $ Prop "call"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting inner XBack Up through Equal relation" 
+      , ( "Accepting inner XBack Up through Equal relation"
         , True
         , formulaAfter [Down, Down, Up] $ XBack Up (Atomic $ Prop "call")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "call", "han", "ret", "ret"]
         )
-      , ( "Accepting XBack Up through inner XBack Down" 
+      , ( "Accepting XBack Up through inner XBack Down"
         , True
         , formulaAfter [Down, Up, Up ,Up] $ XBack Up (Atomic $ Prop "han")
         , stlPrecRelV1
@@ -608,7 +608,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Since Down through Equal relation" 
+      , ( "Rejecting Since Down through Equal relation"
         , False
         , formulaAfter [Down, Up] $ Since Down (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "call")
         , stlPrecRelV1
@@ -638,7 +638,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Rejecting Since Up through Equal relation" 
+      , ( "Rejecting Since Up through Equal relation"
         , False
         , formulaAfter [Down, Up] $ Since Up (Not . Atomic . Prop $ "ret") (Atomic . Prop $ "call")
         , stlPrecRelV1
@@ -882,7 +882,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         )
       ]
 
-    potlv2Tests2 = testGroup "PotlV2, Stack Trace Lang V2, second test group" $ map makeTestCase
+    potlTests2 = testGroup "PotlV2, Stack Trace Lang V2, second test group" $ map makeTestCase
       [ ( "Accepting Xor"
         , True
         , (Atomic . Prop $ "call") `Xor` (PNext Down . Atomic . Prop $ "exc")
@@ -940,9 +940,6 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
       ]
 
 
-
-
-    
 propTests :: TestTree
 propTests = testGroup "QuickCheck tests" (map makePropTest propTuples)
   where makePropTest (name, expected, phi, _, gen) =

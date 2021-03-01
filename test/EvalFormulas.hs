@@ -1,6 +1,6 @@
 module EvalFormulas (ap, formulas) where
 
-import Pomc.PotlV2 (Formula(..), Dir(..), Prop(..))
+import Pomc.Potl (Formula(..), Dir(..), Prop(..))
 
 type TestCase = (String, Formula String, [String], Bool)
 

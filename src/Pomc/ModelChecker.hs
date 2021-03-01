@@ -18,11 +18,11 @@ module Pomc.ModelChecker ( ExplicitOpa(..)
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
-import Pomc.PotlV2 (Formula(..), getProps)
+import Pomc.Potl (Formula(..), getProps)
 import Pomc.Check (State, makeOpa)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
-import qualified Pomc.Data as D (PropSet, encodeInput)
+import qualified Pomc.Encoding as E (PropSet, encodeInput)
 #ifndef NDEBUG
 import Pomc.Satisfiability (SatState(..), isEmpty, toInputTrace, showTrace)
 import qualified Debug.Trace as DBG
@@ -74,7 +74,7 @@ modelCheck :: (Ord s, Hashable s, Show s)
 #ifndef NDEBUG
            -> (APType -> a)
 #endif
-           -> (Bool, [(s, D.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
+           -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
 #ifndef NDEBUG
 modelCheck phi opa transInv =
 #else
@@ -96,7 +96,7 @@ modelCheck phi opa =
       maybeList (Just l) = l
 
       makeDeltaMapI delta = Map.fromListWith (++) $
-        map (\(q', b', ps) -> ((q', D.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
+        map (\(q', b', ps) -> ((q', E.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
             delta
       makeDeltaMapS delta = Map.fromList $ map (\(q', b', ps) -> ((q', b'), ps)) delta
       opaDeltaPush q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaPush opa)
