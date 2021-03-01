@@ -35,6 +35,7 @@ data Statement = Assignment Identifier Bool
                | Call FunctionName
                | TryCatch [Statement] [Statement]
                | IfThenElse (Maybe Identifier) [Statement] [Statement]
+               | While (Maybe Identifier) [Statement]
                | Throw deriving Show
 data FunctionSkeleton = FunctionSkeleton { skName :: FunctionName
                                          , skStmts :: [Statement]
@@ -139,9 +140,7 @@ lowerStatement _ lowerState0 _ linkPred (Assignment lhs rhs) =
                (lsDPush lowerState1)
 
       linkAss ls succStates =
-        let dPop' = dInsert (assSid, assSid)
-                    (map (\(_, s) -> (Assign lhs rhs, s)) succStates)
-                    (lsDPop ls)
+        let dPop' = dInsert (assSid, assSid) succStates (lsDPop ls)
         in ls { lsDPop = dPop' }
 
   in (lowerState1 { lsDPush = dPush' }, linkAss)
@@ -212,6 +211,20 @@ lowerStatement sks ls0 thisFinfo linkPred0 (IfThenElse guard thenBlock elseBlock
       (ls2, linkPred2) = lowerBlock sks ls1 thisFinfo linkPred0Else elseBlock
       linkPredITE lowerState succStates = linkPred2 (linkPred1 lowerState succStates) succStates
   in (ls2, linkPredITE)
+
+lowerStatement sks ls0 thisFinfo linkPred0 (While guard body) =
+  let linkPred1 lowerState succStates = linkPred0 (linkBody lowerState enterEdges) enterEdges
+        where enterEdges = case guard of
+                             Just var -> map (\(_, s) -> (Guard var True, s)) succStates
+                             Nothing -> succStates
+
+      (ls1, linkBody) = lowerBlock sks ls0 thisFinfo linkPred1 body
+      linkPredWhile lowerState succStates =
+        let exitEdges = case guard of
+                          Just var -> map (\(_, s) -> (Guard var False, s)) succStates
+                          Nothing -> succStates
+        in linkBody (linkPred0 lowerState exitEdges) exitEdges
+  in (ls1, linkPredWhile)
 
 lowerStatement _ lowerState thisFinfo linkPred Throw =
   (linkPred lowerState [(None, fiThrow thisFinfo)], (\ls _ -> ls))

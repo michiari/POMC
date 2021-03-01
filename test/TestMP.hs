@@ -21,6 +21,7 @@ tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
                                    , simpleThenBaseTests, simpleThenEvalTests
                                    , simpleElseBaseTests, simpleElseEvalTests
                                    , jensenTests
+                                   , singleWhile
                                    ]
 
 sasBaseTests :: TestTree
@@ -64,7 +65,7 @@ makeTestCase filecont ((name, phi, _, _), expected) =
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          modelCheckGen (fmap T.pack phi) (programToOpa prog) @?= expected
+          fst (modelCheckGen (fmap T.pack phi) (programToOpa prog)) @?= expected
 
 
 expectedSasBase :: [Bool]
@@ -259,9 +260,36 @@ pc() { }
 |]
 
 
+singleWhile :: TestTree
+singleWhile = makeTestCase simpleWhileSource
+  (("Single-Iteration While Loop"
+   , Not $ Until Down T (ap "call"
+                         `And` ap "pb"
+                         `And` (HNext Up $ HUntil Up T (ap "call" `And` ap "pb")))
+   , []
+   , True)
+  , True)
+
+simpleWhileSource :: T.Text
+simpleWhileSource = T.pack [r|
+var foo;
+
+pa() {
+  foo = true;
+  while (foo) {
+    pb();
+    foo = false;
+  }
+}
+
+pb() {}
+|]
+
+
 jensenTests :: TestTree
 jensenTests = testGroup "Jensen Privileges Tests" [ jensenRd, jensenWr
-                                                  , jensenRdCp, jensenWrDb]
+                                                  , jensenRdCp, jensenWrDb
+                                                  ]
 
 jensenRd :: TestTree
 jensenRd = makeTestCase jensen

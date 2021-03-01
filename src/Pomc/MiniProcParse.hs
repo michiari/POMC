@@ -79,6 +79,15 @@ iteP = do
   elseBlock <- blockP
   return $ IfThenElse guard thenBlock elseBlock
 
+whileP :: Parser Statement
+whileP = do
+  _ <- symbolP "while"
+  _ <- symbolP "("
+  guard <- ((Nothing <$ symbolP "*") <|> fmap Just identifierP)
+  _ <- symbolP ")"
+  body <- blockP
+  return $ While guard body
+
 throwP :: Parser Statement
 throwP = symbolP "throw" >> symbolP ";" >> return Throw
 
@@ -87,6 +96,7 @@ stmtP = choice [ assP
                , callP
                , tryCatchP
                , iteP
+               , whileP
                , throwP
                ] <?> "statement"
 
