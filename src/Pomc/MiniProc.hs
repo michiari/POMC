@@ -9,6 +9,7 @@ module Pomc.MiniProc ( Program(..)
                      , FunctionSkeleton(..)
                      , Statement(..)
                      , Identifier
+                     , BoolExpr(..)
                      , FunctionName
                      , programToOpa
                      , skeletonsToOpa
@@ -28,14 +29,21 @@ import Data.Maybe (isNothing, fromJust)
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as B
 
+import Debug.Trace
+
 -- Intermediate representation for MiniProc programs
 type FunctionName = Text
 type Identifier = Text
-data Statement = Assignment Identifier Bool
+data BoolExpr = Literal Bool
+              | Term Identifier
+              | Not BoolExpr
+              | And BoolExpr BoolExpr
+              | Or BoolExpr BoolExpr deriving Show
+data Statement = Assignment Identifier BoolExpr
                | Call FunctionName
                | TryCatch [Statement] [Statement]
-               | IfThenElse (Maybe Identifier) [Statement] [Statement]
-               | While (Maybe Identifier) [Statement]
+               | IfThenElse (Maybe BoolExpr) [Statement] [Statement]
+               | While (Maybe BoolExpr) [Statement]
                | Throw deriving Show
 data FunctionSkeleton = FunctionSkeleton { skName :: FunctionName
                                          , skStmts :: [Statement]
@@ -48,7 +56,7 @@ data Program = Program { pVars :: Set Identifier
 -- Generation of the Extended OPA
 
 -- Data structures
-data Label = None | Assign Identifier Bool | Guard Identifier Bool deriving Show
+data Label = None | Assign Identifier BoolExpr | Guard BoolExpr deriving Show
 data DeltaTarget = EntryStates Text | States [(Label, Word)] deriving Show
 
 data FunctionInfo = FunctionInfo { fiEntry :: [(Label, Word)]
@@ -200,11 +208,12 @@ lowerStatement sks ls0 thisFinfo linkPred0 (TryCatch try catch) =
 lowerStatement sks ls0 thisFinfo linkPred0 (IfThenElse guard thenBlock elseBlock) =
   let linkPred0Then lowerState succStates =
         case guard of
-          Just var -> linkPred0 lowerState (map (\(_, s) -> (Guard var True, s)) succStates)
+          Just bexp -> linkPred0 lowerState (map (\(lbl, s) -> (combGuards bexp lbl, s)) succStates)
           Nothing -> linkPred0 lowerState succStates
       linkPred0Else lowerState succStates =
         case guard of
-          Just var -> linkPred0 lowerState (map (\(_, s) -> (Guard var False, s)) succStates)
+          Just bexp -> linkPred0 lowerState (map (\(lbl, s) ->
+                                                    (combGuards (Not bexp) lbl, s)) succStates)
           Nothing -> linkPred0 lowerState succStates
 
       (ls1, linkPred1) = lowerBlock sks ls0 thisFinfo linkPred0Then thenBlock
@@ -215,19 +224,24 @@ lowerStatement sks ls0 thisFinfo linkPred0 (IfThenElse guard thenBlock elseBlock
 lowerStatement sks ls0 thisFinfo linkPred0 (While guard body) =
   let linkPred1 lowerState succStates = linkPred0 (linkBody lowerState enterEdges) enterEdges
         where enterEdges = case guard of
-                             Just var -> map (\(_, s) -> (Guard var True, s)) succStates
+                             Just bexp -> map (\(lbl, s) -> (combGuards bexp lbl, s)) succStates
                              Nothing -> succStates
 
       (ls1, linkBody) = lowerBlock sks ls0 thisFinfo linkPred1 body
       linkPredWhile lowerState succStates =
         let exitEdges = case guard of
-                          Just var -> map (\(_, s) -> (Guard var False, s)) succStates
+                          Just bexp -> map (\(lbl, s) -> (combGuards (Not bexp) lbl, s)) succStates
                           Nothing -> succStates
         in linkBody (linkPred0 lowerState exitEdges) exitEdges
   in (ls1, linkPredWhile)
 
 lowerStatement _ lowerState thisFinfo linkPred Throw =
   (linkPred lowerState [(None, fiThrow thisFinfo)], (\ls _ -> ls))
+
+combGuards :: BoolExpr -> Label -> Label
+combGuards bexp1 None = Guard bexp1
+combGuards bexp1 (Guard bexp2) = Guard (bexp1 `And` bexp2)
+combGuards _ (Assign _ _) = error "Cannot combine Guard with Assignment label."
 
 lowerBlock :: Map Text FunctionSkeleton
            -> LowerState
@@ -378,18 +392,25 @@ visitEdges vars updateDelta ls vidx expandData ((src, lbl), (States dsts)) =
           where newDst = (dst, vars)
         caseDst ed (Assign lhs rhs, dst) =
           let index = vidx lhs
-              newVars = if rhs
+              newVars = if evalBoolExpr vidx vars rhs
                         then B.setBit vars index
                         else vars B..&. (B.complement $ B.zeros (B.size vars) B..|. B.bit index)
                              -- B.clearBit is buggy
               newDst = (dst, newVars)
           in (updateDelta ed ((src, vars), lbl) newDst, Just newDst)
-        caseDst ed (Guard g dir, dst)
-          | vars B.@. vidx g == dir =
+        caseDst ed (Guard g, dst)
+          | evalBoolExpr vidx vars g =
             let newDst = (dst, vars)
             in (updateDelta ed ((src, vars), lbl) newDst, Just newDst)
           | otherwise = (ed, Nothing)
 visitEdges _ _ _ _ _ (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
+
+evalBoolExpr :: VarLookup -> BitVector -> BoolExpr -> Bool
+evalBoolExpr _ _ (Literal val) = val
+evalBoolExpr vidx vars (Term var) = vars B.@. vidx var
+evalBoolExpr vidx vars (Not bexpr) = not $ evalBoolExpr vidx vars bexpr
+evalBoolExpr vidx vars (And lhs rhs) = evalBoolExpr vidx vars lhs && evalBoolExpr vidx vars rhs
+evalBoolExpr vidx vars (Or lhs rhs) = evalBoolExpr vidx vars lhs || evalBoolExpr vidx vars rhs
 
 -- Generate a plain OPA directly (without variables)
 skeletonsToOpa :: [FunctionSkeleton] -> ExplicitOpa Word Text

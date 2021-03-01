@@ -19,6 +19,7 @@ import qualified Data.Set as S
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
+import Control.Monad.Combinators.Expr
 
 
 type Parser = Parsec Void Text
@@ -38,6 +39,20 @@ identifierP = (label "identifier") . L.lexeme spaceP $ do
 boolLiteralP :: Parser Bool
 boolLiteralP = (True <$ symbolP "true") <|> (False <$ symbolP "false")
 
+boolExprP :: Parser BoolExpr
+boolExprP = makeExprParser termP opTable
+  where termP :: Parser BoolExpr
+        termP = choice
+          [ fmap Literal boolLiteralP
+          , fmap Term identifierP
+          , between (symbolP "(") (symbolP ")") boolExprP
+          ]
+
+        opTable = [ [ Prefix (Not <$ symbolP "!") ]
+                  , [ InfixL (Or  <$ symbolP "||") ]
+                  , [ InfixL (And <$ symbolP "&&") ]
+                  ]
+
 declsP :: Parser (Set Identifier)
 declsP = do
   _ <- symbolP "var"
@@ -49,7 +64,7 @@ assP :: Parser Statement
 assP = try $ do
   lhs <- identifierP
   _ <- symbolP "="
-  rhs <- boolLiteralP
+  rhs <- boolExprP
   _ <- symbolP ";"
   return $ Assignment lhs rhs
 
@@ -72,7 +87,7 @@ iteP :: Parser Statement
 iteP = do
   _ <- symbolP "if"
   _ <- symbolP "("
-  guard <- ((Nothing <$ symbolP "*") <|> fmap Just identifierP)
+  guard <- ((Nothing <$ symbolP "*") <|> fmap Just boolExprP)
   _ <- symbolP ")"
   thenBlock <- blockP
   _ <- symbolP "else"
@@ -83,7 +98,7 @@ whileP :: Parser Statement
 whileP = do
   _ <- symbolP "while"
   _ <- symbolP "("
-  guard <- ((Nothing <$ symbolP "*") <|> fmap Just identifierP)
+  guard <- ((Nothing <$ symbolP "*") <|> fmap Just boolExprP)
   _ <- symbolP ")"
   body <- blockP
   return $ While guard body
@@ -131,14 +146,24 @@ programP = do
 
 undeclared :: Program -> Set Identifier
 undeclared p = S.difference actualVars (pVars p)
-  where gatherVars :: Statement -> Set Identifier
-        gatherVars (Assignment v _) = S.singleton v
+  where gatherBExprVars :: BoolExpr -> Set Identifier
+        gatherBExprVars (Literal _) = S.empty
+        gatherBExprVars (Term v) = S.singleton v
+        gatherBExprVars (Not bexpr) = gatherBExprVars bexpr
+        gatherBExprVars (And lhs rhs) = gatherBExprVars lhs `S.union` gatherBExprVars rhs
+        gatherBExprVars (Or lhs rhs) = gatherBExprVars lhs `S.union` gatherBExprVars rhs
+
+        gatherVars :: Statement -> Set Identifier
+        gatherVars (Assignment v rhs) = S.insert v $ gatherBExprVars rhs
+        gatherVars (Call _) = S.empty
         gatherVars (TryCatch tryb catchb) = gatherBlockVars tryb `S.union` gatherBlockVars catchb
-        gatherVars (IfThenElse (Just v) thenb elseb) =
-          S.insert v (gatherBlockVars thenb `S.union` gatherBlockVars elseb)
+        gatherVars (IfThenElse (Just g) thenb elseb) =
+          gatherBExprVars g `S.union` gatherBlockVars thenb `S.union` gatherBlockVars elseb
         gatherVars (IfThenElse Nothing thenb elseb) =
           gatherBlockVars thenb `S.union` gatherBlockVars elseb
-        gatherVars _ = S.empty
+        gatherVars (While (Just g) body) = gatherBExprVars g `S.union` gatherBlockVars body
+        gatherVars (While Nothing body) = gatherBlockVars body
+        gatherVars Throw = S.empty
 
         gatherBlockVars stmts =
           foldl (\gathered stmt -> gathered `S.union` gatherVars stmt) S.empty stmts

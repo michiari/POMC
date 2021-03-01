@@ -20,8 +20,9 @@ tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
                                    , noHanBaseTests, noHanEvalTests
                                    , simpleThenBaseTests, simpleThenEvalTests
                                    , simpleElseBaseTests, simpleElseEvalTests
-                                   , jensenTests
                                    , singleWhile
+                                   , exprsTests
+                                   , jensenTests
                                    ]
 
 sasBaseTests :: TestTree
@@ -285,6 +286,58 @@ pa() {
 pb() {}
 |]
 
+
+exprsTests :: TestTree
+exprsTests = testGroup "BoolExpr Tests" [exprsPb, exprsPc, exprsPd]
+
+exprsPb :: TestTree
+exprsPb = makeTestCase exprsSource
+  (("Check Or BoolExpr"
+   , Until Down T (ap "call" `And` ap "pb")
+   , []
+   , True)
+  , True)
+
+exprsPc :: TestTree
+exprsPc = makeTestCase exprsSource
+  (("Check Or Not BoolExpr"
+   , Until Down T (ap "call" `And` ap "pc")
+   , []
+   , True)
+  , True)
+
+exprsPd :: TestTree
+exprsPd = makeTestCase exprsSource
+  (("Check And Not BoolExpr"
+   , Until Down T (ap "call" `And` ap "pd")
+   , []
+   , False)
+  , False)
+
+exprsSource :: T.Text
+exprsSource = T.pack [r|
+var foo, bar;
+
+pa() {
+  foo = true;
+  bar = false;
+  foo = !(foo || bar);
+  bar = !(foo && bar);
+  if (foo || bar) {
+    pb();
+  } else {}
+  if (!foo) {
+    pc();
+  } else {}
+  if (!bar) {
+    pd();
+  } else {}
+}
+
+pb() {}
+pc() {}
+pd() {}
+|]
 
 jensenTests :: TestTree
 jensenTests = testGroup "Jensen Privileges Tests" [ jensenRd, jensenWr

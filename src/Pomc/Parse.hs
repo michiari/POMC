@@ -67,7 +67,7 @@ allPropChars = choice [ alphaNumChar
                       , char '_', char ';']
 
 propP :: Parser (Prop Text)
-propP = choice [ End           <$  symbolP "#"
+propP = choice [ End         <$  symbolP "#"
                , Prop . pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
                , Prop . pack <$> quotesP (some allPropChars <?> "atomic proposition")
                ]
