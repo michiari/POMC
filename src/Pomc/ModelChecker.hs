@@ -33,6 +33,7 @@ import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Data.Hashable
 
+-- a type for an explicit Opa used in model checking
 data ExplicitOpa s a = ExplicitOpa
   { sigma :: ([Prop a], [Prop a]) -- the AP of the input alphabet (the first list is for structural labels, the second one is for normal labels)
   , precRel :: [StructPrecRel a] --precedence relation between structural labels of the alphabet
@@ -67,7 +68,7 @@ modelCheck :: (Ord s, Hashable s, Show s)
 modelCheck phi opa =
   let 
       --fromList removes duplicates
-      -- all the structural labels + all the labels which appear in phi
+      -- all the structural labels + all the labels which appear in phi + End
       essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
       --generate the OPA associated to the negation of the input formula
@@ -79,10 +80,12 @@ modelCheck phi opa =
       -- new isFinal function for the cartesian product: both underlying opas must be in an acceptance state
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal T p
 
+      -- unwrap an object of type Maybe List
       maybeList Nothing = []
       maybeList (Just l) = l
 
       -- generate the delta relation of the input opa
+      -- TODO: why do we have to intersect with the essentialAP
       makeDeltaMapI delta = Map.fromListWith (++) $
         map (\(q', b', ps) -> ((q', D.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
             delta
@@ -129,9 +132,11 @@ modelCheckGen phi opa =
   in modelCheck tphi tOpa
 
 --extract all the atomic propositions (AP) which form the language P(AP)
+-- used by the parsing code
 extractALs :: Ord a => [(s, Set (Prop a), [s])] -> [Prop a]
 extractALs deltaRels = Set.toList $ foldl (\als (_, a, _) -> als `Set.union` a) Set.empty deltaRels
 
+-- count all the states of an input ExplicitOpa
 countStates :: Ord s => ExplicitOpa s a -> Int
 countStates opa =
   let foldDeltaInput set (q, _, ps) = set `Set.union` (Set.fromList (q : ps))
@@ -140,3 +145,7 @@ countStates opa =
       popStates = foldl (\set (q, r, ps) -> set `Set.union` (Set.fromList (q : r : ps)))
                   shiftStates (deltaPop opa)
   in Set.size $ popStates `Set.union` (Set.fromList $ initials opa ++ finals opa)
+
+-- OMEGA CASE --
+
+

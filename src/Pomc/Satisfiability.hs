@@ -48,12 +48,15 @@ debug _ x = x
 --        traceTrue True = trace msg True
 
 
+-- a basic open-addressing hashtable using linear probing
+-- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
 
 
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
 
+-- insert a state into the state monad
 insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
 insertSM smref stateId val = do
   sm <- readSTRef smref
@@ -70,7 +73,7 @@ insertSM smref stateId val = do
                ; MV.unsafeModify grown (Set.insert val) sid
                ; writeSTRef smref grown
                }
-
+-- lookup the state in the state monad
 lookupSM :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
 lookupSM smref stateId = do
   sm <- readSTRef smref
@@ -79,11 +82,13 @@ lookupSM smref stateId = do
     then MV.unsafeRead sm sid
     else return Set.empty
 
+-- check whether a State is member of a SetMap referenced by a mutable variable
 memberSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s Bool
 memberSM smref stateId val = do
   vset <- lookupSM smref stateId
   return $ val `Set.member` vset
 
+-- an empty state monad, where the mutable variable is an array of sets
 emptySM :: ST.ST s (STRef s (SetMap s v))
 emptySM = do
   sm <- MV.replicate 4 Set.empty
@@ -116,15 +121,16 @@ instance Ord (StateId state) where
 instance Hashable (StateId state) where
   hashWithSalt salt s = hashWithSalt salt $ getId s
 
+-- a type to keep track of state to id relation
 data SIdGen s state = SIdGen
-  { idSequence :: STRef s Int
-  , stateToId :: HashTable s state (StateId state)
+  { idSequence :: STRef s Int -- a mutable variable in state thread s containing a variable of type Int
+  , stateToId :: HashTable s state (StateId state) -- an HashTable where (key,value) = (state, StateId)
   }
 
 initSIdGen :: ST.ST s (SIdGen s state)
 initSIdGen = do
-  newIdSequence <- newSTRef (0 :: Int)
-  newStateToId <- H.new
+  newIdSequence <- newSTRef (0 :: Int) -- build a integer new STRef in the current state thread
+  newStateToId <- H.new -- new empty HashTable
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }
 
@@ -153,12 +159,13 @@ wrapStates sig states = do
   return wrappedList
 
 
--- Stack symbol
+-- Stack symbol: (input token, state)
 type Stack state = Maybe (Input, StateId state)
 
+-- global variables in the emptiness algorithm
 data Globals s state = Globals
   { sIdGen :: SIdGen s state
-  , visited :: STRef s (SetMap s (Stack state))
+  , visited :: STRef s (SetMap s (Stack state)) -- already visited states
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (SetMap s (StateId state))
   }
@@ -172,17 +179,17 @@ data Delta state = Delta
   , deltaPop :: state -> state -> [state] -- deltapop relation
   }
 
+-- get atomic propositions holding in a state
 getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
 getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
 
-
 reach :: (SatState state, Eq state, Hashable state, Show state)
-      => (StateId state -> Bool)
-      -> (Stack state-> Bool)
-      -> Globals s state
-      -> Delta state
-      -> StateId state
-      -> Stack state
+      => (StateId state -> Bool) -- is the state as desired?
+      -> (Stack state-> Bool) -- is the stack as desired?
+      -> Globals s state -- global variables of the algorithm
+      -> Delta state -- delta relation of the opa
+      -> StateId state -- current state
+      -> Stack state -- stack symbol
       -> ST s Bool
 reach isDestState isDestStack globals delta q g = do
   alreadyVisited <- memberSM (visited globals) q g
@@ -317,6 +324,7 @@ isEmpty delta initials isFinal = not $
                    False
                    initialsId)
 
+-- TODO: update this part of code to make it parametric with respect to the omeganess
 -- given a formula, build the opa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
 isSatisfiable :: Formula APType
               -> ([Prop APType], [Prop APType])

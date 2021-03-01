@@ -19,7 +19,7 @@ module Pomc.Opa ( -- * Run functions
 import Pomc.Prec (Prec(..))
 import Pomc.Util (any', safeHead, safeTail, parMap)
 
-import Control.Parallel.Strategies (rpar, runEval, NFData(..))
+import Control.Parallel.Strategies(NFData(..))
 import GHC.Generics (Generic)
 import qualified Data.Vector as V
 
@@ -123,11 +123,6 @@ augRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             t   = head tokens -- safe due to laziness
             recurse = any' (run' prec adshift adpush adpop isFinal)
 
-parAny p xs = runEval $ parAny' p xs
-  where parAny' p [] = return False
-        parAny' p (x:xs) = do px <- rpar (p x)
-                              pxs <- parAny' p xs
-                              return (px || pxs)
 
 interChunks nchunks xs = interChunks' (V.generate nchunks (const [])) 0 xs
   where interChunks' vec _ [] = vec

@@ -50,7 +50,6 @@ import Control.Monad (guard, filterM)
 import qualified Data.Sequence as SQ
 
 import Data.Foldable (toList)
-import Control.Parallel.Strategies(using, parList, rdeepseq, rseq, rpar, runEval, rparWith)
 import Control.DeepSeq(NFData(..), force)
 
 -- import qualified Debug.Trace as DT
@@ -443,6 +442,7 @@ initials isOmega phi clos (atoms, bitenc) =
       -- set of
       xndfSet = S.fromList  [f | f@(XNext Down _) <- S.toList clos]
   -- list comprehension with all the states that are compatible and the powerset of all possible future obligations
+  -- for the Omega case, there are no stack obligations in the initial states
   in if (isOmega)
      then [WState phia (D.encode bitenc phip) (D.empty bitenc) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
      else [FState phia (D.encode bitenc phip) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
@@ -583,13 +583,13 @@ deltaRules bitenc cl precFunc =
     xrPopFpr   info = let (_, _, _, fXr) = fprFuturePendComb info in fXr
     --
 
-    -- Prop rules:: PrInfo -> Bool
+    -- propPushPr :: PrInfo -> Bool
     propPushPr info =
       let pCurr = current $ prState info -- BitVector of formulas that hold in the current position
           props = fromJust (prProps info) -- input of the current state ( alias the set of AP holding in the current states)
       in compProps bitenc pCurr props -- is the input satisfied by the formulas holding in the current state?
 
-    -- propRule:: PrInfo -> Bool
+    -- propShiftPr :: PrInfo -> Bool
     propShiftPr = propPushPr
     -- we don't need a propPop cause Pop does not consume any input
 
@@ -754,6 +754,7 @@ deltaRules bitenc cl precFunc =
           fStack = fsrFutureStack info 
           checkSet = D.intersect pStack ppStack
       in  D.intersect checkSet fStack == pStack 
+    -- end of rules for the omega case
 
     -- XND: Xnext Down 
     -- get a mask with all XNext Down formulas set to one
@@ -1249,9 +1250,9 @@ deltaRules bitenc cl precFunc =
     -- alwPushPr:: PrInfo -> Bool
     alwPushPr info =
       let pCurr = current $ prState info -- current holding formulas
-          pCurrAlwHoldingfs =  S.filter (\g -> D.member bitenc g pCurr) alwClos
+          pCurrAlwfs =  S.filter (\g -> D.member bitenc g pCurr) alwClos
           alwArgfs = D.encode bitenc $
-                     S.map (\(Always g) -> g)  pCurrAlwHoldingfs
+                     S.map (\(Always g) -> g)  pCurrAlwfs
 
           checkSet = D.intersect  pCurr alwArgfs
       in alwArgfs == checkSet
@@ -1374,11 +1375,11 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
     -- all future current rules must be satisfied by (candidate) future states
     vas = nextAtoms
       where makeFcrInfo curr = FcrInfo { fcrState      = state,
-                                      fcrProps      = mprops,
-                                      fcrPopped     = mpopped,
-                                      fcrFutureCurr = curr,
-                                      fcrNextProps  = mnextprops
-                                    }
+                                         fcrProps      = mprops,
+                                         fcrPopped     = mpopped,
+                                         fcrFutureCurr = curr,
+                                         fcrNextProps  = mnextprops
+                                        }
             nextAtoms = if isNothing mpopped
                         then filter validAtom atoms --catMaybes $ parMap (\atom -> if (validAtom atom) then Just atom else Nothing) atoms
                         else filter validAtom [current state] -- TODO: If I pop next state is??
@@ -1407,7 +1408,7 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                                               frFuturePendComb = pendComb,
                                               frNextProps      = mnextprops
                                             }
-            valid curr pcomb =  null [r | r <- frs, not (r $ makeInfo curr pcomb)] 
+            valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
     --omega case 
     -- all future pending rules must be satisfied
@@ -1438,12 +1439,6 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)] 
 
 
-
-
-
-
-
-
 -- given a BitEncoding, a state formula, determine whether the state is final
 isFinal :: BitEncoding ->  Formula APType -> State  -> Bool
 isFinal bitenc _   s@(FState {}) = isFinalF bitenc s
@@ -1456,7 +1451,7 @@ isFinalW bitenc phi s = True -- TODO: update this
 isFinalF :: BitEncoding -> State -> Bool
 isFinalF bitenc s =
   debug $ not (mustPush s) -- xe can be instead accepted, as if # = #
-  && D.member bitenc (Atomic End) currFset
+  && D.member bitenc (Atomic End) currFset -- the input tokens must be all parsed
   && (D.intersect currFset maskFuture) == D.empty bitenc
   && currPend == (D.intersect currPend maskPast)
   where
@@ -1475,7 +1470,7 @@ isFinalF bitenc s =
         currFset = current s
         currPend = pending s
         maskPast = D.union maskXbu maskAlw
-        -- only XBack Up and Always formulas are allowed
+        -- only XBack Up and Always formulas are allowed, since they refer to already processed tokens
 
 
 
@@ -1532,7 +1527,7 @@ check phi sprs ts =
           where fstates = delta rgroup atoms pcombs scombs state
                                 Nothing (Just popped) Nothing
 
--- checkGen is just check, but parametric in the type of formulas
+-- checkGen is just check, but parametric in the type of atomic propositions
 checkGen :: (Ord a, Show a)
          => Formula a
          -> [StructPrecRel a]
@@ -1665,21 +1660,19 @@ makeOpa phi isOmega (sls, als) sprs = (bitenc
         -- S.fromlist removes duplicates
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
         -- generate the closure of the normalized input formulas
-        cl =  runEval $ do 
-              cl' <- rparWith rdeepseq $ closure isOmega nphi tsprops
-              return cl'
+        cl =   closure isOmega nphi tsprops
         -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
         -- generate an EncPrecFunc from a StructPrecRel
         (prec, _) = fromStructEnc bitenc sprs
         -- generate all consistent subsets of cl
-        as = genAtoms isOmega bitenc cl inputSet  `using` (rparWith rdeepseq)
+        as = genAtoms isOmega bitenc cl inputSet  
         -- generate all possible pending obligations
         pcs = pendCombs bitenc cl 
         -- generate all possible stack obligations for the omega case
         scs = stackCombs bitenc cl 
         -- generate initial states
-        is = initials isOmega nphi cl (as, bitenc) `using`(rparWith rdeepseq)
+        is = initials isOmega nphi cl (as, bitenc) 
 
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
