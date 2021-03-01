@@ -19,7 +19,7 @@ import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Potl (Formula)
 import Pomc.Check (Input, EncPrecFunc, State(..), makeOpa, showState, showAtom)
 import Pomc.PropConv (APType, convPropLabels)
-import Pomc.Data (PropSet, BitEncoding, extractInput, decodeInput)
+import Pomc.Encoding (PropSet, BitEncoding, extractInput, decodeInput)
 
 import Control.Monad (foldM)
 import Control.Monad.ST (ST)
