@@ -15,8 +15,8 @@ module Pomc.Check ( -- * Checking functions
                     -- * Checking helpers
                   , closure
                     -- * Printing
-                  , showAtoms
-                  , showStates
+                  , showAtom
+                  , showState
                   , EncPrecFunc
                   , Input
                   , Atom
@@ -45,8 +45,6 @@ import Data.Foldable (toList)
 
 import GHC.Generics (Generic)
 import Data.Hashable
-
--- import qualified Debug.Trace as DT
 
 -- Function that, given two atoms or input symbols,
 -- returns the precedence relation between them
@@ -84,14 +82,17 @@ data State = State
 
 instance Hashable State
 
-showFormulaSet :: FormulaSet -> String
-showFormulaSet fset = let fs = S.toList fset
-                          posfs = filter (not . negative) fs
-                          negfs = filter (negative) fs
-                      in show (posfs ++ negfs)
+-- Begin debugging stuff
+showFormulaSet :: (Show a) => (APType -> a) -> FormulaSet -> String
+showFormulaSet transAP fset =
+  let fs = S.toList fset
+      posfs = filter (not . negative) fs
+      negfs = filter (negative) fs
+  in show $ map (fmap transAP) (posfs ++ negfs)
 
-showAtom :: BitEncoding -> Atom -> String
-showAtom bitenc atom = "FS: " ++ showFormulaSet (D.decode bitenc atom) ++ "\t\tES: " ++ show atom
+showAtom :: (Show a) => BitEncoding -> (APType -> a) -> Atom -> String
+showAtom bitenc transAP atom =
+  "FS: " ++ showFormulaSet transAP (D.decode bitenc atom) ++ "\t\tES: " ++ show atom
 
 instance Show State where
   show (State c p xl xe xr) = "\n{ C: "  ++ show c  ++
@@ -101,23 +102,16 @@ instance Show State where
                               "\n, XR: " ++ show xr ++
                               "\n}"
 
-showState :: BitEncoding -> State -> String
-showState bitenc (State c p xl xe xr) =
-  "\n{ C: "  ++ showAtom bitenc c  ++
-  "\n, P: "  ++ showAtom bitenc p  ++
-  "\n, XL: " ++ show xl            ++
-  "\n, X=: " ++ show xe            ++
-  "\n, XR: " ++ show xr            ++
+showState :: (Show a) => BitEncoding -> (APType -> a) -> State -> String
+showState bitenc transAP (State c p xl xe xr) =
+  "{ C: "    ++ showAtom bitenc transAP c  ++
+  "\n, P: "  ++ showAtom bitenc transAP p  ++
+  "\n, XL: " ++ show xl                    ++
+  "\n, X=: " ++ show xe                    ++
+  "\n, XR: " ++ show xr                    ++
   "\n}"
+-- End debugging stuff
 
-showAtoms :: BitEncoding -> [Atom] -> String
-showAtoms bitenc = unlines . map (showAtom bitenc)
-
-showPendCombs :: Set (EncodedSet, Bool, Bool, Bool) -> String
-showPendCombs = unlines . map show . S.toList
-
-showStates :: [State] -> String
-showStates = unlines . map show
 
 -- given a Bit Encoding, a set of all currently holding formulas and AP,
 -- and the input APs, determine whether the input APs are satisfied by fset
@@ -1391,14 +1385,14 @@ check :: Formula APType
       -> [PropSet]
       -> Bool
 check phi sprs ts =
-  debug $ run
-            prec
-            is
-            (isFinal bitenc)
-            (deltaShift as pcs shiftRules)
-            (deltaPush  as pcs pushRules)
-            (deltaPop   as pcs popRules)
-            encTs
+  run
+    prec
+    is
+    (isFinal bitenc)
+    (deltaShift as pcs shiftRules)
+    (deltaPush  as pcs pushRules)
+    (deltaPop   as pcs popRules)
+    encTs
   where nphi = normalize phi
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
         inputSet = foldl' (flip S.insert) S.empty ts
@@ -1411,7 +1405,6 @@ check phi sprs ts =
         pcs = pendCombs bitenc cl
         is = initials nphi cl (as, bitenc)
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
-        debug = id
 
         deltaShift atoms pcombs rgroup state props = fstates
           where fstates = delta rgroup atoms pcombs state
@@ -1441,14 +1434,14 @@ fastcheck :: Formula APType -- the input formula phi
           -> [PropSet] -- input tokens
           -> Bool
 fastcheck phi sprs ts =
-  debug $ augRun
-            prec
-            is
-            (isFinal bitenc)
-            (augDeltaShift as pcs shiftRules)
-            (augDeltaPush  as pcs pushRules)
-            (augDeltaPop   as pcs popRules)
-            encTs
+  augRun
+    prec
+    is
+    (isFinal bitenc)
+    (augDeltaShift as pcs shiftRules)
+    (augDeltaPush  as pcs pushRules)
+    (augDeltaPop   as pcs popRules)
+    encTs
   where nphi = normalize phi
 
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
@@ -1466,43 +1459,21 @@ fastcheck phi sprs ts =
         compInitial s = fromMaybe True $
                           (compProps bitenc) <$> (Just . current) s <*> safeHead encTs
 
-        debug = id
-        --debug = DT.trace ("\nRun with:"         ++
-        --          "\nNorm. phi:    "    ++ show nphi         ++
-        --     "\nTokens:       "    ++ show ts           ++
-        --       "\nToken props:\n"    ++ show tsprops      ++
-        --      "\nClosure:\n"        ++ showFormulaSet cl ++
-        --    "\nAtoms:\n"          ++ showAtoms bitenc as      ++
-        --  "\nPending atoms:\n"  ++ showPendCombs pcs ++
-        --"\nInitial states:\n" ++ showStates is)
-
         laProps lookahead = case lookahead of
                               Just npset -> npset
                               Nothing    -> D.encodeInput bitenc $ S.singleton End
 
-        augDeltaShift atoms pcombs rgroup lookahead state props = debug fstates
-          where
-            debug = id
-            --debug = DT.trace ("\nShift with: " ++ show ( props) ++
-            --   "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup atoms pcombs state
-                            (Just props) Nothing (Just . laProps $ lookahead)
+        augDeltaShift atoms pcombs rgroup lookahead state props = fstates
+          where fstates = delta rgroup atoms pcombs state
+                          (Just props) Nothing (Just . laProps $ lookahead)
 
-        augDeltaPush atoms pcombs rgroup lookahead state props = debug fstates
-          where
-            debug = id
-            --debug = DT.trace ("\nPush with: " ++ show ( props) ++
-            --                "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup atoms pcombs state
-                            (Just props) Nothing (Just . laProps $ lookahead)
+        augDeltaPush atoms pcombs rgroup lookahead state props = fstates
+          where fstates = delta rgroup atoms pcombs state
+                          (Just props) Nothing (Just . laProps $ lookahead)
 
-        augDeltaPop atoms pcombs rgroup lookahead state popped = debug fstates
-          where
-            debug = id
-            --debug = DT.trace ("\nPop with popped:\n" ++ show popped ++
-            --   "\nFrom:\n" ++ show state ++ "\nResult:") . DT.traceShowId
-            fstates = delta rgroup atoms pcombs state
-                            Nothing (Just popped) (Just . laProps $ lookahead)
+        augDeltaPop atoms pcombs rgroup lookahead state popped = fstates
+          where fstates = delta rgroup atoms pcombs state
+                          Nothing (Just popped) (Just . laProps $ lookahead)
 
 fastcheckGen :: ( Ord a, Show a)
              => Formula a -- the input formula phi

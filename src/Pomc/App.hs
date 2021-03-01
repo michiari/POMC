@@ -74,7 +74,12 @@ go = do args <- getArgs
                             , "\nInput OPA state count: ", show $ countStates opa
                             , "\nResult:  "
                             ])
-             (_, time) <- timeAction . putStr . show $ modelCheckGen phi opa
+             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckGen phi opa
+                                                     putStr $ show s
+                                                     return (s, t)
+             if sat
+               then return ()
+               else putStr $ "\nCounterexample: " ++ show trace
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 
