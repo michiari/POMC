@@ -118,7 +118,7 @@ augRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             dpush  = adpush  lookahead
             dpop   = adpop   lookahead
             top = head stack  --
-            t   = head tokens -- safe due to laziness
+            t   = head tokens' -- safe due to laziness
             recurse = any' (run' precf' adshift adpush adpop isFinal')
 
 parAny :: (t -> Bool) -> [t] -> Bool
