@@ -1,4 +1,4 @@
+formulas = T Ud exc;
 include = "../../Mcall.inc";
 
-formulas = T Ud exc;
 include = "opa.inc";

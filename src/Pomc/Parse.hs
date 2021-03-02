@@ -17,12 +17,15 @@ module Pomc.Parse ( potlv2P
 import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.Potl as P
+import Pomc.MiniProc (Program)
+import Pomc.MiniProcParse (programP)
 import Pomc.ModelChecker (ExplicitOpa(..), extractALs)
 
 import Data.Void (Void)
 import Data.Text
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Maybe (isNothing, isJust, fromJust)
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -34,10 +37,11 @@ type Parser = Parsec Void Text
 type PFormula = P.Formula Text
 type PropString = [Set (Prop Text)]
 
-data CheckRequest = CheckRequest { creqPrecRels :: [StructPrecRel Text]
+data CheckRequest = CheckRequest { creqPrecRels :: Maybe [StructPrecRel Text]
                                  , creqFormulas :: [PFormula]
                                  , creqStrings  :: Maybe [PropString]
                                  , creqOpa :: Maybe (ExplicitOpa Word Text)
+                                 , creqMiniProc :: Maybe Program
                                  }
 
 spaceP :: Parser ()
@@ -235,13 +239,22 @@ opaSectionP = do
   _ <- symbolP ";"
   return (ExplicitOpa ([], []) [] opaInitials opaFinals opaDeltaPush opaDeltaShift opaDeltaPop)
 
+progSectionP :: Parser Program
+progSectionP = do
+  _ <- symbolP "program"
+  _ <- symbolP ":"
+  programP
+
 checkRequestP :: Parser CheckRequest
 checkRequestP = do
-  prs <- precSectionP
   fs  <- formulaSectionP
+  prs <- optional precSectionP
   pss <- optional stringSectionP
   opa <- optional opaSectionP
-  return (CheckRequest prs fs pss (fullOpa opa prs))
+  prog <- optional progSectionP
+  if isNothing prs && (isJust pss || isJust opa)
+    then fail "If a string or an OPA is supplied, an OPM must also be specified."
+    else return (CheckRequest prs fs pss (fullOpa opa (fromJust prs)) prog)
 
 fullOpa :: Maybe (ExplicitOpa Word Text)
         -> [StructPrecRel Text]
@@ -256,7 +269,7 @@ fullOpa (Just opa) prs = Just $ ExplicitOpa
                          , deltaShift = deltaShift opa
                          , deltaPop = deltaPop opa
                          }
-  where sls = extractSLs prs  -- structural labels
+  where sls = extractSLs prs -- structural labels
         als = S.toList $
               (S.fromList (extractALs $ deltaPush opa)
                `S.union` S.fromList (extractALs $ deltaShift opa))

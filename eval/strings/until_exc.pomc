@@ -5,15 +5,15 @@
  * into a handler-caught exception pair.
  */
 
-prec = call < call, call = ret, call < han, call > exc,
-       ret > call,  ret > ret,  ret > han,  ret > exc,
-       han < call,  han > ret,  han < han,  han = exc,
-       exc > call,  exc > ret,  exc > han,  exc > exc;
-
 formulas = T Uu exc,
            PNd (PNd (T Uu exc)),
            PNd (PNd (PNd (T Uu exc))),
            G (call And pc --> (T Uu (exc And XBd han)));
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc;
 
 strings = call han call call call exc call ret call ret ret,
           (call pa) han (call pb) (call pc) (call pc) exc (call perr) (ret perr) (call perr) (ret perr) (ret pa),

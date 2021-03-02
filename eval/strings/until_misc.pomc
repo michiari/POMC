@@ -7,14 +7,14 @@
  *    possibly of another function.
  */
 
+formulas = call Ud (ret And perr),
+           XNd (call And ((call Or exc) Su pb)),
+           PNd (PNd ((call Or exc) Uu ret));
+
 prec = call < call, call = ret, call < han, call > exc,
        ret > call,  ret > ret,  ret > han,  ret > exc,
        han < call,  han > ret,  han < han,  han = exc,
        exc > call,  exc > ret,  exc > han,  exc > exc;
-
-formulas = call Ud (ret And perr),
-           XNd (call And ((call Or exc) Su pb)),
-           PNd (PNd ((call Or exc) Uu ret));
 
 strings = call han call call call exc call ret call ret ret,
           (call pa) han (call pb) (call pc) (call pc) exc (call perr) (ret perr) (call perr) (ret perr) (ret pa),

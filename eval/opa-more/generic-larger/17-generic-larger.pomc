@@ -1,4 +1,4 @@
+formulas = G ((call And pa And ((~ ret) Ud WRx)) --> XNu exc);
 include = "../../Mcall.inc";
 
-formulas = G ((call And pa And ((~ ret) Ud WRx)) --> XNu exc);
 include = "opa.inc";

@@ -1,9 +1,9 @@
-include = "../Mcall.inc";
-
 formulas = G ((call And rawrd) --> Not (T Sd (call And (Not Prd) And (Not rawrd)))),
            G ((call And rawrd) --> Not (T Sd (call And (Not Pcp) And (Not rawrd)))),
            G ((call And rawwr) --> Not (T Sd (call And (Not Pwr) And (Not rawwr)))),
            G ((call And rawwr) --> Not (T Sd (call And (Not Pdb) And (Not rawwr))));
+
+include = "../Mcall.inc";
 
 opa:
   initials = 0;

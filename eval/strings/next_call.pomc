@@ -2,15 +2,15 @@
  * position is an inner call.
  */
 
-prec = call < call, call = ret, call < han, call > exc,
-       ret > call,  ret > ret,  ret > han,  ret > exc,
-       han < call,  han > ret,  han < han,  han = exc,
-       exc > call,  exc > ret,  exc > han,  exc > exc;
-
 formulas = PNd call,
            PNd (PNd call),
            PNd (PNd (PNd call)),
            PNd (PNd (PNd (PNd call)));
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc;
 
 strings = call han call call call exc call ret call ret ret,
           call ret,

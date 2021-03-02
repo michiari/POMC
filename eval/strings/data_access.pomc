@@ -4,12 +4,12 @@
  * then they are terminated by an exception.
  */
 
+formulas = G ((call And pa And ((~ ret) Ud WRx)) --> XNu exc);
+
 prec = call < call, call = ret, call < han, call > exc,
        ret > call,  ret > ret,  ret > han,  ret > exc,
        han < call,  han > ret,  han < han,  han = exc,
        exc > call,  exc > ret,  exc > han,  exc > exc;
-
-formulas = G ((call And pa And ((~ ret) Ud WRx)) --> XNu exc);
 
 strings = call han (call pa) (call pb) (call pc) (call WRx) exc ret,
           call han (call pa) (call pb) (call WRx) call exc ret,

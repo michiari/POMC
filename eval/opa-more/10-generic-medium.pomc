@@ -1,5 +1,3 @@
-include = "../Mcall.inc";
-
 formulas = XNd perr,
            PNd (PNd (call And (XNu exc))),
            PNd (han And (XNd (exc And (XBu call)))),
@@ -38,6 +36,8 @@ formulas = XNd perr,
            call Ud (ret And perr),
            XNd (call And ((call Or exc) Su pb)),
            PNd (PNd ((call Or exc) Uu ret));
+
+include = "../Mcall.inc";
 
 opa:
   initials = 0;

@@ -39,8 +39,8 @@ formulas = [
 n = 11
 for form in formulas:
     with open(str(n) + '-generic-larger.pomc', 'w') as f:
-        f.write('include = "../../Mcall.inc";\n\n')
         f.write('formulas = ' + form + ';\n')
+        f.write('include = "../../Mcall.inc";\n\n')
         f.write('include = "opa.inc";')
     n += 1
 

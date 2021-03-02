@@ -1,4 +1,4 @@
+formulas = XNd perr;
 include = "../../Mcall.inc";
 
-formulas = XNd perr;
 include = "opa.inc";

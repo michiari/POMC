@@ -1,4 +1,4 @@
+formulas = G (han --> XNu ret);
 include = "../../Mcall.inc";
 
-formulas = G (han --> XNu ret);
 include = "opa.inc";

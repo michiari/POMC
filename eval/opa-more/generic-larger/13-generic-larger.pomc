@@ -1,4 +1,4 @@
+formulas = PNd (han And (XNd (exc And (XBu call))));
 include = "../../Mcall.inc";
 
-formulas = PNd (han And (XNd (exc And (XBu call))));
 include = "opa.inc";

@@ -2,12 +2,12 @@
  * statement (i.e., they do not catch any exception).
  */
 
+formulas = G (han --> XNu ret);
+
 prec = call < call, call = ret, call < han, call > exc,
        ret > call,  ret > ret,  ret > han,  ret > exc,
        han < call,  han > ret,  han < han,  han = exc,
        exc > call,  exc > ret,  exc > han,  exc > exc;
-
-formulas = G (han --> XNu ret);
 
 strings = call han (call pb) (call pb) (call pc) call exc ret,
           call han (call pb) (ret pb) (call pa) han (call pc) (ret pc) (ret pa) ret;

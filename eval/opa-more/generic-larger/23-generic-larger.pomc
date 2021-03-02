@@ -1,4 +1,4 @@
+formulas = F (HBd pb);
 include = "../../Mcall.inc";
 
-formulas = F (HBd pb);
 include = "opa.inc";
