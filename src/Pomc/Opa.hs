@@ -83,6 +83,7 @@ run prec initials isFinal deltaShift deltaPush deltaPop tokens =
             t   = head tokens -- safe due to laziness
             recurse = any' (run' prec dshift dpush dpop isFinal)
 
+-- run some tokens over an OPA and check acceptance, but use the lookahead for early discard of non accepting computations
 augRun :: (t -> t -> Maybe Prec)
        -> [s]
        -> (s -> Bool)
@@ -131,6 +132,7 @@ interChunks nchunks xs = interChunks' (V.generate nchunks (const [])) 0 xs
                                       ((i + 1) `mod` nchunks)
                                       xs
 
+-- same as AugRun, but with some parallelim
 parAugRun :: (NFData s, NFData t)
           => (t -> t -> Maybe Prec)
           -> [s]
@@ -143,7 +145,7 @@ parAugRun :: (NFData s, NFData t)
 parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
   let ics = (map (\i -> Config i [] tokens) initials)
       results = parMap (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal) ics              
-  in not $ null $ filter (== True) results
+  in any id results
   where
     run' prec adshift adpush adpop isFinal conf@(Config s stack tokens)
       -- No more input and empty stack: accept / reject
@@ -171,7 +173,7 @@ parAugRun prec initials isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             dpop   = adpop   lookahead
             top = head stack  --
             t   = head tokens -- safe due to laziness
-            recurse xs = not $ null $ filter (== True) $ parMap (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal) xs
+            recurse xs = any id $ parMap (run' prec augDeltaShift augDeltaPush augDeltaPop isFinal) xs
             
 
 -- Partial: assumes token list not empty

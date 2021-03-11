@@ -20,7 +20,7 @@ import Pomc.Prec (StructPrecRel)
 import Pomc.PotlV2 (Formula(..), getProps)
 import Pomc.Check ( makeOpa)
 import Pomc.State(State(..))
-import Pomc.Satisfiability (SatState(..), isEmpty)
+import Pomc.Satisfiability (SatState(..), isEmpty, isEmptyOmega)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
 import qualified Pomc.Data as D (encodeInput)
@@ -62,23 +62,26 @@ cartesian xs ys = [MCState x y | x <- xs, y <- ys]
 
 -- check a formula phi against an opa opa
 modelCheck :: (Ord s, Hashable s, Show s)
-           => Formula APType -- input formula to check
+           => Bool -- is it the infinite case?
+           -> Formula APType -- input formula to check
            -> ExplicitOpa s APType -- input OPA
            -> Bool -- does the OPA satisfy the formula?
-modelCheck phi opa =
+modelCheck isOmega phi opa =
   let 
       --fromList removes duplicates
       -- all the structural labels + all the labels which appear in phi + End
       essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
       --generate the OPA associated to the negation of the input formula
-      (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
-        makeOpa (Not phi) False (fst $ sigma opa, getProps phi) (precRel opa) 
+      (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
+        makeOpa (Not phi) isOmega (fst $ sigma opa, getProps phi) (precRel opa) 
 
       -- compute the cartesian product between the initials of the two opas
       cInitials = cartesian (initials opa) phiInitials
       -- new isFinal function for the cartesian product: both underlying opas must be in an acceptance state
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal T p
+      cIsFinalOmega states = (any (\(MCState q p) -> Set.member q $ Set.fromList $ finals opa) states) &&
+                             all (\f -> any (\(MCState q p) -> phiIsFinal f p) states) S.toList cl
 
       -- unwrap an object of type Maybe List
       maybeList Nothing = []
@@ -107,15 +110,18 @@ modelCheck phi opa =
                }
 
      -- check the emptiness of the language of the cartesian product
-  in isEmpty cDelta cInitials cIsFinal
+  in if isOmega
+     then isEmptyOmega cDelta cInitials cIsFinalOmega
+     else isEmpty cDelta cInitials cIsFinal
 
 -- check a formula phi against an Opa
 -- this function is parametric with respect to the type of propositions
 modelCheckGen :: ( Ord s, Hashable s, Show s, Ord a)
-              => Formula a
+              => Bool 
+              -> Formula a
               -> ExplicitOpa s a
               -> Bool
-modelCheckGen phi opa =
+modelCheckGen isOmega phi opa =
   let (sls, als) = sigma opa
       (tphi, tprec, trans) = convAP phi (precRel opa) (sls ++ (getProps phi) ++ als)
       transProps props = fmap (fmap trans) props
@@ -129,7 +135,7 @@ modelCheckGen phi opa =
              , deltaShift = transDelta (deltaShift opa)
              , deltaPop   = deltaPop opa
              }
-  in modelCheck tphi tOpa
+  in modelCheck isOmega tphi tOpa
 
 --extract all the atomic propositions (AP) which form the language P(AP)
 -- used by the parsing code
@@ -146,6 +152,6 @@ countStates opa =
                   shiftStates (deltaPop opa)
   in Set.size $ popStates `Set.union` (Set.fromList $ initials opa ++ finals opa)
 
--- OMEGA CASE --
+
 
 

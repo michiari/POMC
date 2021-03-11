@@ -8,7 +8,9 @@
 module Pomc.Satisfiability (
                              SatState(..)
                            , Delta(..)
+                           , StateId(..)
                            , isEmpty
+                           , isEmptyOmega
                            , isSatisfiable
                            , isSatisfiableGen
                            ) where
@@ -21,7 +23,7 @@ import Pomc.State(Input, State(..))
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
 
-import Control.Monad (foldM)
+import Control.Monad (foldM, forM_)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
@@ -53,10 +55,11 @@ debug _ x = x
 type HashTable s k v = BH.HashTable s k v
 
 
+
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
 
--- insert a state into the state monad
+-- insert a state into the SetMap
 insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
 insertSM smref stateId val = do
   sm <- readSTRef smref
@@ -82,13 +85,13 @@ lookupSM smref stateId = do
     then MV.unsafeRead sm sid
     else return Set.empty
 
--- check whether a State is member of a SetMap referenced by a mutable variable
+-- check whether a couple (StateId, Stack) iha already been visited checking the presence of the Stack in the Set at StateId position
 memberSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s Bool
 memberSM smref stateId val = do
   vset <- lookupSM smref stateId
   return $ val `Set.member` vset
 
--- an empty state monad, where the mutable variable is an array of sets
+-- an empty Set Map,  an array of sets
 emptySM :: ST.ST s (STRef s (SetMap s v))
 emptySM = do
   sm <- MV.replicate 4 Set.empty
@@ -129,11 +132,12 @@ data SIdGen s state = SIdGen
 
 initSIdGen :: ST.ST s (SIdGen s state)
 initSIdGen = do
-  newIdSequence <- newSTRef (0 :: Int) -- build a integer new STRef in the current state thread
+  newIdSequence <- newSTRef (1 :: Int) -- build a integer new STRef in the current state thread
   newStateToId <- H.new -- new empty HashTable
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }
 
+-- wrap a State into the StateId data type and into the ST monad, and update accordingly SidGen 
 wrapState :: (Eq state, Hashable state)
           => SIdGen s state
           -> state
@@ -150,8 +154,9 @@ wrapState sig q = do
     H.insert (stateToId sig) q newQwrapped
     return newQwrapped
 
+--wrap a list of states into the ST monad, giving to each of them a unique ID
 wrapStates :: (Eq state, Hashable state)
-           => SIdGen s state
+           => SIdGen s state -- keep track of state to id relation
            -> [state]
            -> ST.ST s (Vector (StateId state))
 wrapStates sig states = do
@@ -159,16 +164,24 @@ wrapStates sig states = do
   return wrappedList
 
 
--- Stack symbol: (input token, state)
-type Stack state = Maybe (Input, StateId state)
+-- Stack symbol: (input token, state) || Bottom if empty stack
+type Stack state = Maybe (Input, StateId state) 
 
--- global variables in the emptiness algorithm
-data Globals s state = Globals
+-- global variables in the algorithms
+data Globals s state = FGlobals
   { sIdGen :: SIdGen s state
   , visited :: STRef s (SetMap s (Stack state)) -- already visited states
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (SetMap s (StateId state))
-  }
+  } |   WGlobals
+  { sIdGen :: SIdGen s state
+  , visited :: STRef s (HashTable s (Key state) (Value state))
+  , suppStarts :: STRef s (SetMap s (Stack state))
+  , suppEnds :: STRef s (SetMap s (StateId state)) -- this may change to add all the visited states TODO: find a solution for this
+  , bStack :: STRef s (GabowStack s Int) 
+  , sStack :: STRef s (GabowStack s (GraphNode state)) 
+  , c :: STRef s Int -- number to identify SSCs
+  } 
 
 -- a type for the delta relation, parametric with respect to the type of the state
 data Delta state = Delta
@@ -183,6 +196,7 @@ data Delta state = Delta
 getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
 getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
 
+-- implementation of the reachability algorithm, as described in the notes
 reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool) -- is the state as desired?
       -> (Stack state-> Bool) -- is the stack as desired?
@@ -194,12 +208,12 @@ reach :: (SatState state, Eq state, Hashable state, Show state)
 reach isDestState isDestStack globals delta q g = do
   alreadyVisited <- memberSM (visited globals) q g
   if alreadyVisited
-    then return False
+    then return False 
     else do
     insertSM (visited globals) q g
     let be = bitenc delta
-        qProps = getSidProps be q
-        qState = getState q
+        qProps = getSidProps be q -- atomic propositions holding in the state
+        qState = getState q 
         cases
           | (isDestState q) && (isDestStack g) =
             debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $ return True
@@ -293,7 +307,7 @@ reachPop isDestState isDestStack globals delta q g qState =
         in do
           insertSM (suppEnds globals) r p
           currentSuppStarts <- lookupSM (suppStarts globals) r
-          foldM closeSupports False currentSuppStarts
+          foldM closeSupports False currentSupStarts
   in do
     newStates <- wrapStates (sIdGen globals) $
                  (deltaPop delta) qState (getState . snd . fromJust $ g)
@@ -307,11 +321,11 @@ isEmpty :: (SatState state, Eq state, Hashable state, Show state)
         -> Bool
 isEmpty delta initials isFinal = not $
   ST.runST (do
-               newSig <- initSIdGen
+               newSig <- initSIdGen -- a variable to keep track of state to id relation
                emptyVisited <- emptySM
                emptySuppStarts <- emptySM
                emptySuppEnds <- emptySM
-               let globals = Globals { sIdGen = newSig
+               let globals = FGlobals { sIdGen = newSig -- a variable to keep track of state to id realtion
                                      , visited = emptyVisited
                                      , suppStarts = emptySuppStarts
                                      , suppEnds = emptySuppEnds
@@ -324,14 +338,15 @@ isEmpty delta initials isFinal = not $
                    False
                    initialsId)
 
--- TODO: update this part of code to make it parametric with respect to the omeganess
--- given a formula, build the opa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
-isSatisfiable :: Formula APType
+
+-- given a formula, build the fopa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
+isSatisfiable :: Bool
+              -> Formula APType
               -> ([Prop APType], [Prop APType])
               -> [StructPrecRel APType]
               -> Bool
-isSatisfiable phi ap sprs =
-  let (be, precf, initials, isFinal, dPush, dShift, dPop) = makeOpa phi False ap sprs
+isSatisfiable isOmega phi ap sprs =
+  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) = makeOpa phi isOmega ap sprs
       delta = Delta
         { bitenc = be
         , prec = precf
@@ -339,15 +354,19 @@ isSatisfiable phi ap sprs =
         , deltaShift = dShift
         , deltaPop = dPop
         }
-  in not $ isEmpty delta initials (isFinal T)
+      isFinalOmega states = all (\f -> any (\s -> phiIsFinal f (getSatState s)) states) S.toList cl
+  in if isOmega
+     then not $ isEmptyOmega delta initials isFinalOmega
+     else not $ isEmpty delta initials (isFinal T)
 
 -- parametric with respect the type of the propositions
 isSatisfiableGen :: ( Ord a)
-                 => Formula a
+                 => Bool
+                 -> Formula a
                  -> ([Prop a], [Prop a])
                  -> [StructPrecRel a]
                  -> Bool
-isSatisfiableGen phi ap precf =
+isSatisfiableGen isOmega phi ap precf =
   let (tphi, tap, tprecr) = convPropLabels phi ap precf
-  in isSatisfiable tphi tap tprecr
+  in isSatisfiable isOmega tphi tap tprecr
 

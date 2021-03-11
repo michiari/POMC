@@ -71,7 +71,7 @@ go = do args <- getArgs
                             , "\nInput OPA state count: ", show $ countStates opa
                             , "\nResult:  "
                             ])
-             (_, time) <- timeAction . putStr . show $ modelCheckGen phi opa
+             (_, time) <- timeAction . putStr . show $ modelCheckGen False phi opa
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 

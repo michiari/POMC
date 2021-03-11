@@ -63,6 +63,6 @@ timeAction action = do initializeTime
 timeToString :: Double -> String
 timeToString = secs
 
-
+-- a map where the function is applied (with reduction to normal form) to all the elements of the list in parallel
 parMap :: (NFData a, NFData b) => (a -> b) -> [a] -> [b]
 parMap f xs = map f xs `using` parList rdeepseq

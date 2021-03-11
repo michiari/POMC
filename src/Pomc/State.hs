@@ -2,7 +2,7 @@
 
 {- |
    Module      : Pomc.State
-   Copyright   : 2020 Francesco Pontiggia
+   Copyright   : 2021 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
@@ -24,32 +24,13 @@ import qualified Data.Set as S
 import GHC.Generics (Generic)
 import Data.Hashable
 import Data.BitVector (BitVector)
-import qualified Data.BitVector as BV
 import Pomc.PotlV2 (Formula(..), Dir(..), negative)
 import Control.DeepSeq(NFData(..))
 
 type Input = EncodedSet
 type Atom = EncodedSet
-
-
-instance Hashable State
-instance Show State where
-  show  (FState current pending mustPush mustShift afterPop)  = "\n{ C: "  ++ show current  ++
-                                                               "\n, P: "  ++ show pending   ++
-                                                               "\n, XL: " ++ show mustPush  ++
-                                                               "\n, X=: " ++ show mustShift  ++
-                                                               "\n, XR: " ++ show afterPop ++
-                                                               "\n}"
-  show (WState current pending instack mustPush mustShift afterPop)  = "\n{ C: "  ++ show current  ++
-                                                                       "\n, P: "  ++ show pending   ++
-                                                                       "\n, S: "  ++ show instack   ++
-                                                                       "\n, XL: " ++ show mustPush  ++
-                                                                       "\n, X=: " ++ show mustShift  ++
-                                                                       "\n, XR: " ++ show afterPop ++
-                                                                       "\n}"                                                            
-
-
--- a OPA state for the finite case
+                                    
+-- a OPA state for both the finite and the infinite case
 data State = FState
   { current    :: Atom -- Bit Vector representing the formulas and AP holding in this state
   , pending    :: EncodedSet -- Bit Vector representing temporal obligations holding in the current state
@@ -65,8 +46,23 @@ data State = FState
   , afterPop    :: !Bool
 } deriving (Generic, Ord, Eq)
 
+instance Hashable State
+instance Show State where
+  show  (FState current pending mustPush mustShift afterPop)  = "\n{ C: "  ++ show current  ++
+                                                               "\n, P: "  ++ show pending   ++
+                                                               "\n, XL: " ++ show mustPush  ++
+                                                               "\n, X=: " ++ show mustShift  ++
+                                                               "\n, XR: " ++ show afterPop ++
+                                                               "\n}"
+  show (WState current pending instack mustPush mustShift afterPop)  = "\n{ C: "  ++ show current  ++
+                                                                       "\n, P: "  ++ show pending   ++
+                                                                       "\n, S: "  ++ show instack   ++
+                                                                       "\n, XL: " ++ show mustPush  ++
+                                                                       "\n, X=: " ++ show mustShift  ++
+                                                                       "\n, XR: " ++ show afterPop ++
+                                                                       "\n}"                        
 
-
+-- to allow parallelism
 instance NFData State where
   rnf (FState current pending _ _ _) = current `seq` pending `seq` ()
   rnf (WState current pending stack _ _ _) = current `seq` pending `seq` stack `seq` ()

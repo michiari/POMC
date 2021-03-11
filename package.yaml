@@ -16,6 +16,7 @@ extra-source-files:
 
 dependencies:
 - base >= 4.7 && < 5
+- Stack > 0.3.1 && < 0.4.0
 
 library:
   source-dirs:      src
@@ -30,6 +31,7 @@ library:
   - Pomc.Prop
   - Pomc.Satisfiability
   - Pomc.ModelChecker
+  - Pomc.SCCAlgorithm
   - Pomc.OpaGen
   ghc-options:
   - -Wall

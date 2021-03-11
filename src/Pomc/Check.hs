@@ -1446,7 +1446,19 @@ isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
 
 -- determine whether a state is final for a formula, for the omega case
 isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
-isFinalW bitenc phi s = True -- TODO: update this
+isFinalW bitenc phi@(Until Down _ h) s =   (not $ D.member bitenc (XNext Down phi) (stack s))
+                                        && (not $ D.member bitenc (XNext Up   phi) (stack s))
+                                        && ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
+isFinalW bitenc phi@(Until Up _ h) s   =   (not $ D.member bitenc (XNext Down phi)  (stack s))
+                                        && (not $ D.member bitenc (XNext Up   phi)  (stack s))
+                                        &&  ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
+isFinalW bitenc phi@(XNext _ _) s      =   (not $ D.member bitenc phi (stack   s))
+                                        && (not $ D.member bitenc phi (pending s))
+                                        && (not $ D.member bitenc phi (current s))
+isFinalW bitenc phi s = if future phi 
+                        then (not $ D.member bitenc phi (pending s)) && (not $ D.member bitenc phi (current s))
+                        else True
+
 -- determine whether a state is final, for the finite case
 isFinalF :: BitEncoding -> State -> Bool
 isFinalF bitenc s =
@@ -1487,7 +1499,7 @@ check phi sprs ts =
   debug $ run
             prec
             is
-            (isFinalF bitenc) -- here T is just a placeholder, as a formula is not needed for the finite case
+            (isFinalF bitenc) 
             (deltaShift as pcs scs shiftRules)
             (deltaPush  as pcs scs pushRules)
             (deltaPop   as pcs scs popRules)
@@ -1547,7 +1559,7 @@ fastcheck phi sprs ts =
   debug $ parAugRun
             prec
             is
-            (isFinalF bitenc) -- here T is just a placeholder, as a formula is not needed for the finite case
+            (isFinalF bitenc) 
             (augDeltaShift as pcs scs shiftRules)
             (augDeltaPush  as pcs scs pushRules)
             (augDeltaPop   as pcs scs popRules)
@@ -1642,6 +1654,7 @@ makeOpa :: Formula APType -- the input formula
            , State -> Input -> [State] -- deltaPush
            , State -> Input -> [State] -- deltaShift
            , State -> State -> [State] -- deltaPop
+           , FormulaSet -- closure
            )
 makeOpa phi isOmega (sls, als) sprs = (bitenc
                               , prec
@@ -1650,6 +1663,7 @@ makeOpa phi isOmega (sls, als) sprs = (bitenc
                               , deltaPush  as pcs scs pushRules      -- apply PushRules
                               , deltaShift as pcs scs shiftRules     -- apply ShiftRules
                               , deltaPop   as pcs scs popRules       -- apply PopRules
+                              , cl
                               )
   where
         --remove double negations

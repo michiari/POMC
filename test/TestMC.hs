@@ -36,12 +36,12 @@ lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
   map (makeTestCase largerRec) (zip EvalFormulas.formulas expectedLargerRecEval)
 
-
+-- finite model checking case
 makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
 makeTestCase opa ((name, phi, _, _), expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ modelCheckGen phi opa @?= expected
+  testCase (name ++ " (" ++ show phi ++ ")") $ modelCheckGen False phi opa @?= expected
 
 
 makeInputSet :: (Ord a) => [a] -> Set (Prop a)

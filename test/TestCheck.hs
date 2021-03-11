@@ -16,6 +16,7 @@ import Control.Monad
 tests :: TestTree
 tests = testGroup "Check.hs tests" [unitTests, propTests]
 
+-- only for the finite case
 unitTests :: TestTree
 unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
   where
@@ -94,6 +95,42 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , Not (Or (Atomic . Prop $ "call") (Atomic . Prop $ "ret"))
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Accepting Xor"
+        , True
+        , (Atomic . Prop $ "call") `Xor` (PNext Down . Atomic . Prop $ "exc")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Rejecting Xor"
+        , False
+        , (Atomic . Prop $ "call") `Xor` (PNext Down . Atomic . Prop $ "han")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Accepting Implies" -- Ex falso quodlibet ;)
+        , True
+        , (Atomic . Prop $ "ret") `Implies` (HNext Up . Atomic . Prop $ "han")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Rejecting Implies"
+        , False
+        , (Atomic . Prop $ "call") `Implies` (PNext Down . Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Accepting Iff"
+        , True
+        , (Atomic . Prop $ "call") `Iff` (XNext Up . Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Rejecting Iff"
+        , False
+        , (Atomic . Prop $ "call") `Iff` (XNext Up . Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "exc"]
         )
       , ( "Rejecting Not PNext Up"
         , False
@@ -220,6 +257,12 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , XNext Down (Atomic $ Prop "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
+        )
+      , ( "Accepting XNext Down -- v2" 
+        , True
+        , XNext Down (Atomic $ Prop "ret")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
         )
       , ( "Rejecting Not XNext Down"
         , False
@@ -420,7 +463,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      ---------------------- XBack operator -------------------------------------------------------------------------
+      
       ,( "Accepting PBack Down [Down]"
         , True
         , PNext Down (PBack Down (Atomic $ Prop "call"))
@@ -451,12 +494,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Accepting XNext Down" 
-        , True
-        , XNext Down (Atomic $ Prop "ret")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
+      ---------------------- XBack operator -------------------------------------------------------------------------
       , ( "Rejecting Not XBack Down through the Yield relation"
         , False
         , formulaAfter [Down, Up] $ Not (XBack Down (Atomic $ Prop "han"))
@@ -760,6 +798,12 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["c", "c", "cend", "call", "thr"])
         )
+      , ( "Accepting HUntil Down -- v1"
+        , True
+        , PNext Down (HUntil Down T (Atomic . Prop $ "call"))
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["han", "call", "call", "call", "exc", "ret"]
+        )
       , ( "Rejecting Not HUntil Down"
         , False
         , Not ( HUntil Down (Atomic . Prop $ "c") (Atomic . Prop $ "cend"))
@@ -810,6 +854,18 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         )
       , ( "Accepting Eventually"
         , True
+        , Eventually . Atomic . Prop $ "ret"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Rejecting Eventually"
+        , False
+        , Eventually . Atomic . Prop $ "ret"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "exc"]
+        )
+      , ( "Accepting Eventually"
+        , True
         , Eventually (Atomic . Prop $ "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
@@ -826,17 +882,17 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting Always -- v0"
-        , True
-        , Always . Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call"]
-        )
-      ,( "Accepting Always"
+      , ( "Accepting Always"
         , True
         , Always . Atomic . Prop $ "call"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Accepting Always -- v1"
+        , True
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call"]
         )
       , ( "Accepting Always -- v2"
         , True
@@ -881,76 +937,14 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , map (S.singleton . Prop) ["call", "call"]
         )
       ]
-
+    -- this is for heavy tasks to test performances
     potlv2Tests2 = testGroup "PotlV2, Stack Trace Lang V2, second test group" $ map makeTestCase
-      [ ( "Accepting Xor"
-        , True
-        , (Atomic . Prop $ "call") `Xor` (PNext Down . Atomic . Prop $ "exc")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
-        )
-      , ( "Rejecting Xor"
-        , False
-        , (Atomic . Prop $ "call") `Xor` (PNext Down . Atomic . Prop $ "han")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
-        )
-      , ( "Accepting Implies" -- Ex falso quodlibet ;)
-        , True
-        , (Atomic . Prop $ "ret") `Implies` (HNext Up . Atomic . Prop $ "han")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
-        )
-      , ( "Rejecting Implies"
-        , False
-        , (Atomic . Prop $ "call") `Implies` (PNext Down . Atomic . Prop $ "ret")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
-        )
-      , ( "Accepting Iff"
-        , True
-        , (Atomic . Prop $ "call") `Iff` (XNext Up . Atomic . Prop $ "ret")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
-        )
-      , ( "Rejecting Iff"
-        , False
-        , (Atomic . Prop $ "call") `Iff` (XNext Up . Atomic . Prop $ "ret")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc"]
-        )
-      , ( "Accepting Eventually"
-        , True
-        , Eventually . Atomic . Prop $ "ret"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
-        )
-      , ( "Rejecting Eventually"
-        , False
-        , Eventually . Atomic . Prop $ "ret"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc"]
-        )
-      , ( "Accepting HUntil Down"
-        , True
-        , PNext Down (HUntil Down T (Atomic . Prop $ "call"))
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["han", "call", "call", "call", "exc", "ret"]
-        )
-      , ( "Accepting Always -- performance check"
-        , True
-        , Always . Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call", "call", "call" , "call", "call", "call"]
-        )
-      , ( "performance check"
+      [ ( "performance check"
         , True
         , formulaAfter [Down, Down, Down, Down, Down, Down] $  Atomic . Prop $ "call"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "call", "call", "call", "call" , "call", "call", "call", "call"]
         )
-      
-
       ]
 
 
