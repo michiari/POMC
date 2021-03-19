@@ -1,0 +1,744 @@
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{libertine}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{stmaryrd}
+\usepackage{wasysym}
+\usepackage{mathrsfs}
+\usepackage{multirow}
+\usepackage{rotating}
+\usepackage[colorlinks]{hyperref}
+
+\input{macros}
+
+\title{POMC User's Guide}
+\author{Michele Chiari}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+POMC is an implementation of the automaton construction for formulas
+of Precedence-Oriented Temporal Logic (POTL), and the model checking
+procedure thereof.
+This document is a reference guide to its input and output formats,
+and also describes at a high level its architecture and source code.
+\end{abstract}
+
+\section{Introduction}
+
+Precedence-Oriented Temporal Logic (POTL) \cite{ChiariMP19} is a novel temporal
+logic formalism based on the family of Operator Precedence Languages (OPL),
+a subclass of deterministic context-free languages.
+POTL is strictly more expressive than LTL and other temporal logics based
+on subfamilies of context-free languages, such as CaRet \cite{AlurEM04}
+and NWTL \cite{lmcs/AlurABEIL08}.
+In particular, POTL reasons on an algebraic structure equipped with,
+besides the usual linear order, a binary nesting relation between word positions,
+which can be one-to-one, one-to-many, or many-to-one.
+Such a relation is more general than the one found in Nested Words \cite{jacm/AlurM09},
+because the latter may only be one-to-one.
+POTL can be applied to the specification of several kinds of requirements
+on procedural programs with exceptions.
+
+Besides some results concerning its expressiveness,
+we introduced an automata-based model checking procedure for POTL.
+This procedure consists in building an Operator Precedence Automaton (OPA),
+the class of pushdown automata that identifies OPL,
+accepting the language denoted by a given POTL formula.
+The size of the generated automaton is exponential in the length of the formula,
+which is asymptotically comparable with other linear-time temporal logic
+formalisms such as LTL, CaRet, and NWTL.
+
+POMC is a tool that implements the automaton construction
+for POTL, and a model checking procedure for it.
+For the time being, only the construction for finite words has been implemented.
+Given a POTL formula $\varphi$ and an input OPA modeling some system,
+POMC builds the OPA equivalent to $\neg \varphi$, computes its intersection
+with the input OPA, and checks the emptiness of the resulting OPA.
+Both the OPA construction and the intersection are done on-the-fly.
+
+We used POMC to prove some interesting properties of programs which we
+modeled as OPA.  All such experiments are contained in
+\texttt{\hyphenchar\font=`\-
+  \hyphenpenalty=10000
+  \exhyphenpenalty=-50
+  pomc}
+files in the \texttt{opa} and \texttt{opa-more} subdirectories.
+
+
+If you wish to examine the input formulas and OPA to such experiments more carefully,
+or to write your own, we describe the format of POMC input files in Section~\ref{sec:format}.
+We also demonstrate the use of the tool with a few experiments in Section~\ref{sec:exp}.
+Finally, Section~\ref{sec:sources} contains a high-level description of the source code.
+
+
+\section{Quick-Start Guide}
+\label{sec:quick-start}
+
+POMC has been developed in the Haskell programming language,
+and it has been packaged with the Haskell Tool Stack\footnote{\url{https://www.haskellstack.org/}}.
+POMC can be built from sources by typing the following commands in a shell:
+\begin{verbatim}
+$ cd ~/path/to/POMC-sources
+$ stack setup
+$ stack build
+\end{verbatim}
+Then, POMC can be executed on an input file \verb|file.pomc| as follows:
+\begin{verbatim}
+$ stack exec pomc -- file.pomc
+\end{verbatim}
+
+Directory \verb|eval| contains several POMC input files. Such files
+contain POTL formulas and OPA to be checked against them. For more
+details on the format of POMC input files, see
+Section~\ref{sec:format}.
+
+Directory \verb|eval| also contains the Python script \verb|mcbench.py|,
+which may be useful to evaluate POMC input files, as it also prints
+a summary of the resources used by POMC.
+It must be executed with a subdirectory of \verb|~/path/to/POMC-sources|
+as its working directory.
+If invoked with no arguments, it executes POMC on all input files in the current
+working directory. E.g.,
+\begin{verbatim}
+$ cd ~/path/to/POMC-sources/eval
+$ python3 mcbench.py opa
+\end{verbatim}
+evaluates all \verb|*.pomc| files in directory \verb|~/path/to/POMC-sources/eval/opa|.
+The script can also be invoked with POMC files as its arguments,
+which are then evaluated. E.g.,
+\begin{verbatim}
+$ cd ~/path/to/POMC-sources/eval/opa
+$ python3 mcbench.py 1-generic-small.pomc
+                                2-generic-medium.pomc
+\end{verbatim}
+executes POMC with input files \verb|1-generic-small.pomc| and \verb|2-generic-medium.pomc|.
+\texttt{mcbench.py} can be invoked with the following optional flags:
+\begin{description}
+\item[\texttt{-iter <\#iters>}]
+  Number of iterations of the benchmarks to be performed.
+  The final table printed by the script contains the mean time
+  and memory values computed on all iterations. (Default: 1)
+\item[\texttt{-jobs <\#jobs>}]
+  Number of benchmarks to be run in parallel.
+  If you provide a value greater than 1, make sure you increase
+  the number of cores available to the VM accordingly.
+  (Default: 1)
+\item[\texttt{-ms}]
+  Output time in milliseconds.
+\end{description}
+
+
+\section{POMC Input/Output Format}
+\label{sec:format}
+
+\begin{figure}
+\[
+\begin{array}{r | c c c c}
+         & \lcall   & \lret   & \lhandle & \lthrow \\
+\hline
+\lcall   & \lessdot & \doteq  & \lessdot & \gtrdot \\
+\lret    & \gtrdot  & \gtrdot & \gtrdot & \gtrdot \\
+\lhandle & \lessdot & \gtrdot & \lessdot & \doteq \\
+\lthrow  & \gtrdot  & \gtrdot & \gtrdot  & \gtrdot \\
+\end{array}
+\]
+\caption{OPM $M_\lcall$.}
+\label{fig:opm}
+\end{figure}
+
+POMC takes in input plain text files of two possible formats.
+The first one contains a requirement specification in terms of a list of
+POTL formulas, and an OPA to be checked against them:
+\begin{verbatim}
+formulas = FORMULA [, FORMULA ...] ;
+prec = SL PR SL [, SL PR SL ...] ;
+opa:
+  initials = STATE_SET ;
+  finals = STATE_SET ;
+  deltaPush = (STATE, AP_SET, STATE_SET)
+                [, (STATE, AP_SET, STATE_SET) ...] ;
+  deltaShift = (STATE, AP_SET, STATE_SET)
+                [, (STATE, AP_SET, STATE_SET) ...] ;
+  deltaPop = (STATE, STATE, STATE_SET)
+                [, (STATE, STATE, STATE_SET) ...] ;
+\end{verbatim}
+where \texttt{STATE\_SET} is either a single state, or a space-separated list of states,
+surrounded by parentheses.
+States are non-negative integer numbers (e.g. \texttt{(0 1 ...)}).
+\texttt{AP\_SET} is a space-separated list of atomic propositions, surrounded by parentheses
+(e.g. \texttt{(call p1)} or \texttt{("call" "p1")})
+In more detail:
+\begin{itemize}
+\item \texttt{prec}
+  is followed by a comma-separated list of precedence relations between structural labels,
+  that make up an Operator Precedence Matrix.
+  The list is terminated by a semicolon.
+  Precedence relations (\texttt{PR}) can be one of \texttt{<}, \texttt{=}, or \texttt{>},
+  which respectively mean $\lessdot$, $\doteq$, and $\gtrdot$.
+  Structural labels (\texttt{SL}) can be any sequence of alphabetic characters.
+\item \texttt{formulas}
+  is followed by a comma-separated, semicolon-terminated list of POTL formulas.
+  The syntax of such formulas is defined later in this section.
+\item \texttt{opa}
+  is followed by the explicit description of an OPA.
+  The list of initial and final states must be given, as well as the transition relations.
+\end{itemize}
+
+Additionally, POMC input files may contain C++-style single-line comments
+starting with \verb|\\|, and C-style multi-line comments enclosed in
+\verb|/*| and \verb|*/|.
+
+External files can be included with
+\begin{verbatim}
+include = "path/to/file.inc";
+\end{verbatim}
+where the path is relative to the \texttt{pomc} file location.
+
+POTL formulas can be written by using the operators in the ``POMC Operator'' column
+of Table~\ref{tab:potl-syntax}, following the same syntax rules as in \cite{ChiariMP19}.
+
+Once POMC is executed on an input file in the format above,
+it checks whether the given OPA satisfies the given formulas,
+one by one.
+
+Consider the example input file \texttt{1-generic-small.pomc}, reported below:
+\begin{verbatim}
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc;
+
+formulas = G ((call And pb And (T Sd (call And pa))) --> (PNu exc Or XNu exc));
+
+opa:
+  initials = 0;
+  finals = 10;
+  deltaPush =
+    (0, (call pa),   1),
+    (1, (han),       2),
+    (2, (call pb),   3),
+    (3, (call pc),   4),
+    (4, (call pc),   4),
+    (6, (call perr), 7),
+    (8, (call perr), 7);
+  deltaShift =
+    (4, (exc),       5),
+    (7, (ret perr),  7),
+    (9, (ret pa),    11);
+  deltaPop =
+    (4, 2, 4),
+    (4, 3, 4),
+    (4, 4, 4),
+    (5, 1, 6),
+    (7, 6, 8),
+    (7, 8, 9),
+    (11, 0, 10);
+\end{verbatim}
+First, OPM $M_\lcall$ from \cite{ChiariMP19} (Figure~\ref{fig:opm}) is chosen.
+
+The meaning of the formula
+\texttt{G ((call And pb And (T Sd (call And pa))) --> (PNu exc Or XNu exc))},
+or
+\(
+  \llglob \big((\lcall \land \mathrm{p}_B \land
+    \lcallsince(\top, \mathrm{p}_A))
+    \implies \lthrnext(\top) \big)
+\),
+is explained in the paper.
+
+POMC will check the OPA against the formula, yielding the following output:
+\begin{verbatim}
+_________________________________________________________
+Evaluating file opa/1-generic-small.pomc ...
+
+Model Checking
+Formula: G ((("call" And "pb") And (T Sd ("call" And "pa")))
+                --> ((PNu "exc") Or (XNu "exc")))
+Input OPA state count: 12
+Result:  True
+Elapsed time: 14.59 s
+
+
+Total elapsed time: 14.59 s (1.4593e1 s)
+
+Max memory used (KB): 129152
+\end{verbatim}
+Indeed, the OPA does satisfy the formula.
+POMC additionally outputs the time taken by each acceptance check,
+and the maximum resident memory used.
+
+\begin{table}
+\centering
+\begin{tabular}{| c | l | l | l | l |}
+\hline
+Group & POTL Operator & POMC Operator & Notation & Associativity \\
+\hline
+\hline
+\multirow{15}{*}{\rotatebox[origin=c]{90}{Unary}}
+& $\neg$ & \verb!~!, \texttt{Not} & Prefix & -- \\
+& $\ldnext$ & \texttt{PNd}           & Prefix & -- \\
+& $\lunext$ & \texttt{PNu}           & Prefix & -- \\
+& $\ldback$ & \texttt{PBd}           & Prefix & -- \\
+& $\luback$ & \texttt{PBu}           & Prefix & -- \\
+& $\lcdnext$ & \texttt{XNd}           & Prefix & -- \\
+& $\lcunext$ & \texttt{XNu}           & Prefix & -- \\
+& $\lcdback$ & \texttt{XBd}           & Prefix & -- \\
+& $\lcuback$ & \texttt{XBu}           & Prefix & -- \\
+& $\lhdnext$ & \texttt{HNd}           & Prefix & -- \\
+& $\lhunext$ & \texttt{HNu}           & Prefix & -- \\
+& $\lhdback$ & \texttt{HBd}           & Prefix & -- \\
+& $\lhuback$ & \texttt{HBu}           & Prefix & -- \\
+& $\lleven$ & \texttt{F}, \texttt{Eventually} & Prefix & -- \\
+& $\llglob$ & \texttt{G}, \texttt{Always}     & Prefix & -- \\
+\hline
+\multirow{8}{*}{\rotatebox[origin=c]{90}{POTL Binary}}
+& $\lcduntil{}{}$ & \texttt{Ud}            & Infix  & Right \\
+& $\lcuuntil{}{}$ & \texttt{Uu}            & Infix  & Right \\
+& $\lcdsince{}{}$ & \texttt{Sd}            & Infix  & Right \\
+& $\lcusince{}{}$ & \texttt{Su}            & Infix  & Right \\
+& $\lhduntil{}{}$ & \texttt{HUd}           & Infix  & Right \\
+& $\lhuuntil{}{}$ & \texttt{HUu}           & Infix  & Right \\
+& $\lhdsince{}{}$ & \texttt{HSd}           & Infix  & Right \\
+& $\lhusince{}{}$ & \texttt{HSu}           & Infix  & Right \\
+\hline
+\multirow{5}{*}{\rotatebox[origin=c]{90}{Prop.\ Binary}}
+& $\land$ & \texttt{And}, \verb!&&! & Infix  & Left \\
+& $\lor$ & \texttt{Or}, \verb!||!  & Infix  & Left \\
+& $\oplus$ & \texttt{Xor}           & Infix  & Left \\
+& $\implies$ & \texttt{Implies}, \verb!-->!  & Infix  & Right \\
+& $\iff$ & \texttt{Iff}, \verb!<-->!     & Infix  & Right \\
+\hline
+\end{tabular}
+\caption{This table contains all currently supported POTL operators, in descending order
+of precedence. Operators listed on the same line are synonyms. Operators in the
+same group have the same precedence. Note that operators are case sensitive.}
+\label{tab:potl-syntax}
+\end{table}
+
+
+The second kind of input files also contains POTL formulas,
+and a program in the \emph{MiniProc} language to be checked against them.
+MiniProc is a simplified procedural programming language, where variables are all global
+and only take Boolean values (note that MiniProc is not Turing-complete,
+so any use of the word `program' when referring to it is a deliberate abuse of terminology).
+This limitation allows POMC to translate every MiniProc program into an OPA,
+that is then checked against the supplied formulas.
+This kind of input files have this form:
+\begin{verbatim}
+formulas = FORMULA [, FORMULA ...] ;
+program:
+PROGRAM
+\end{verbatim}
+MiniProc programs have the following syntax:
+\begin{verbatim}
+PROGRAM := [DECLS]; FUNCTION [FUNCTION ...]
+DECLS := var IDENTIFIER [, IDENTIFIER ...] ;
+FUNCTION := IDENTIFIER () { STMT; [STMT ...] }
+STMT := IDENTIFIER := BEXPR
+      | while (BEXPR) { [STMT ...] }
+      | if (BEXPR) { [STMT ...] } else { [STMT ...] }
+      | try { [STMT ...] } catch { [STMT ...] }
+      | IDENTIFIER()
+      | throw
+BEXPR := BEXPR && BDISJ | BDISJ
+BDISJ := BDISJ || BTERM | BTERM
+BTERM := !BTERM | (BEXPR) | IDENTIFIER | true | false
+\end{verbatim}
+In the definition, non-terminal symbols are uppercase, and keywords lowercase.
+Parts surrounded by square brackets are optional, and ellipses mean that the enclosing
+group can be repeated zero or more times.
+An \texttt{IDENTIFIER} is any sequence of letters, numbers, or characters \texttt{.} and \texttt{\_},
+starting with a letter or an underscore.
+The program starts with a variable declaration, which mist include all variables used in the program.
+Then, a sequence of functions are defined, the first one being the entry-point to the program.
+Function bodies consist of semicolon-separated statements.
+Assignments, while loops and ifs have the usual semantics.
+The try-catch statement executes the catch block whenever an exception is thrown by any statement
+in the try block (or any function it calls).
+Exceptions are thrown by the \texttt{throw} statement, and they are not typed
+(i.e., there is no way to distinguish different kinds of exceptions).
+Functions can be called by prepending their name to the \texttt{()} token
+(they do not admit arguments, as all variables are global).
+Since all variables are Boolean, expressions can be composed with the logical and (\texttt{\&\&}),
+or (\texttt{||}) and negation (\texttt{!}) operators.
+
+An example input file is given below:
+\begin{verbatim}
+formulas = G ((call And pb And (call Sd (call And pa))) --> (PNu exc Or XNu exc));
+
+program:
+var foo;
+
+pa() {
+  foo = false;
+  try {
+    pb();
+  } catch {
+    pc();
+  }
+}
+
+pb() {
+  if (foo) {
+    throw;
+  } else {}
+}
+
+pc() { }
+\end{verbatim}
+
+
+\clearpage
+
+\section{Some experiments}
+\label{sec:exp}
+
+In this section we report the results of some experiments, that
+are provided in the \texttt{eval} directory.
+
+
+\subsection{Directory \texttt{opa}}
+
+This directory contains a few programs modeled as OPA,
+on which POMC proves or disproves some interesting specifications.
+The resources employed by POMC on such tasks are reported in Table~\ref{tab:eval}.
+If you wish to repeat such experiments, you may run the following
+commands:
+\begin{verbatim}
+$ cd ~/artifact/contents
+$ python3 mcbench.py opa
+\end{verbatim}
+
+\begin{table}[b]
+  \centering
+  \begin{tabular}{| r | l | r | r | r | l |}
+    \hline
+    & Benchmark name & \# states & Time (s) & Mem. (MB) & Result \\
+    \hline
+    1 & generic small & 12 & 14 & 126 & True \\
+    2 & generic medium & 24 & 15 & 119 & False \\
+    3 & generic larger & 30 & 16 & 233 & True \\
+    4 & Jensen & 42 & 1 & 70 & True \\
+    5 & unsafe stack & 63 & 46 & 185 & False \\
+    6 & safe stack & 77 & 44 & 70 & True \\
+    7 & unsafe stack neutrality & 63 & 62 & 1,787 & True \\
+    8 & safe stack neutrality & 77 & 29 & 126 & True \\
+    \hline
+  \end{tabular}
+  \caption{Results of the evaluation.}
+  \label{tab:eval}
+\end{table}
+
+\paragraph{Generic procedural programs.}
+Formula
+\[
+  \llglob \big((\lcall \land \mathrm{p}_B \land
+    \lcallsince(\top, \mathrm{p}_A))
+    \implies \lthrnext(\top) \big)
+\]
+means that whenever procedure $\mathrm{p}_B$ is executed and at least
+one instance of $\mathrm{p}_A$ is on the stack, $\mathrm{p}_B$ is
+terminated by an exception.  We checked it against three OPA
+representing some simple procedural programs with exceptions and
+recursive procedures.  The formula holds on benchmarks no.\ 1 and 3,
+but not on no.\ 2.
+
+\paragraph{Stack Inspection.}
+\cite{JensenLT99} contains an example Java program for managing a bank
+account, which uses the security framework of the Java Development Kit
+to enforce user permissions. The program allows the user to check the
+account balance, and to withdraw money. To perform such tasks, the
+invoking program must have been granted permissions \texttt{CanPay}
+and \texttt{Debit}, respectively.  We modeled such program as an OPA
+(bench.\ 4), and proved that the program enforces such security
+measures effectively by checking it against the formula
+\[
+\llglob (\lcall \land \mathtt{read} \implies
+  \neg (\lcdsince{\top}{(\lcall \land
+                         \neg \mathtt{CanPay}
+                         \land \neg \mathtt{read})}))
+\]
+meaning that the account balance cannot be read if some function in
+the stack lacks the \texttt{CanPay} permission (a similar formula
+checks the \texttt{Debit} permission).
+
+\paragraph{Exception Safety.}
+\cite{Sutter97} is a tutorial on how to make exception-safe generic
+containers in C++. It presents two implementations of a generic stack
+data structure, parametric on the element type \texttt{T}. The first
+one is not exception-safe: if the constructor of \texttt{T} throws an
+exception during a pop action, the topmost element is removed, but it
+is not returned, and it is lost.  This violates the strong exception
+safety \cite{Abrahams00} requirement that each operation is rolled
+back if an exception is thrown. The second version of the data
+structure instead satisfies such requirement.
+
+While exception safety is, in general, undecidable, it is possible to
+prove the stronger requirement that each modification to the data
+structure is only committed once no more exceptions can be thrown.
+We modeled both versions as OPA, and checked
+such requirement with the following formula:
+\[
+\llglob (\lthrow \implies
+         \neg ((\luback \mathtt{modified} \lor
+               \lcuback \mathtt{modified})
+         \land \lcuback (\mathtt{Stack::push} \lor \mathtt{Stack::pop})))
+\]
+POMC successfully found a counterexample for the first implementation (5),
+and proved the safety of the second one (6).
+
+Additionally, we proved that both implementations are
+\emph{exception neutral} (7, 8), i.e.\ they do not block exceptions
+thrown by the underlying types.
+
+
+\subsection{Directory \texttt{opa-more}}
+
+\begin{table}
+\centering
+\begin{tabular}{| l | c |}
+\hline
+Formula & Time (s) \\
+\hline
+\hline
+$\lcdnext \mathrm{p}_\mathit{err}$ & 0.043 \\
+$\ldnext (\ldnext (\lcall \land \lcunext \lthrow))$ & 0.094 \\
+$\ldnext (\lhandle \land (\lcdnext (\lthrow \land \lcuback \lcall)))$ & 0.889 \\
+$\llglob (\lthrow \implies \lcuback \lcall)$ & 0.051 \\
+$\lcduntil{\top}{\lthrow}$ & 0.006 \\
+$\ldnext (\ldnext (\lcduntil{\top}{\lthrow}))$ & 0.021 \\
+$\llglob ((\lcall \land \mathrm{p}_A \land (\lcduntil{\neg \lret}{\mathrm{WRx}})) \implies \lcunext \lthrow)$ & 214 \\
+$\ldnext (\lunext \lcall)$ & 0.001 \\
+$\ldnext (\ldnext (\ldnext (\luback \lcall)))$ & 0.003 \\
+$\lcdnext (\ldnext (\luback \lcall))$ & 0.081 \\
+$\llglob ((\lcall \land \mathrm{p}_A \land (\lunext \lthrow \lor \lcunext \lthrow)) \implies (\lunext \mathrm{e}_B \lor \lcunext \mathrm{e}_B))$ & 541 \\
+$\lleven (\lhdnext \mathrm{p}_B)$ & 0.053 \\
+$\lleven (\lhdback \mathrm{p}_B)$ & 0.010 \\
+$\lleven (\mathrm{p}_A \land (\lhduntil{\lcall}{\mathrm{p}_C}))$ & 0.36 \\
+$\lleven (\mathrm{p}_C \land (\lhdsince{\lcall}{\mathrm{p}_A}))$ & 0.252 \\
+$\llglob ((\mathrm{p}_C \land \lcunext \lthrow) \implies (\lhdsince{\neg \mathrm{p}_A}{\mathrm{p}_B}))$ & 567 \\
+$\llglob (\lcall \land \mathrm{p}_B \implies \lhuuntil{\neg \mathrm{p}_C}{\mathrm{p}_\mathit{err}})$ & 0.137 \\
+$\lleven (\lhunext \mathrm{p}_\mathit{err})$ & 0.003 \\
+$\lleven (\lhuback \mathrm{p}_\mathit{err})$ & 0.002 \\
+$\lleven (\mathrm{p}_A \land (\lhuuntil{\lcall}{\mathrm{p}_B}))$ & 0.032 \\
+$\lleven (\mathrm{p}_B \land (\lhusince{\lcall}{\mathrm{p}_A}))$ & 0.031 \\
+$\ldnext \lcall$ & 0.001 \\
+$\ldnext (\ldnext \lcall)$ & 0.001 \\
+$\ldnext (\ldnext (\ldnext \lcall))$ & 0.001 \\
+$\ldnext (\ldnext (\ldnext (\ldnext \lcall)))$ & 0.004 \\
+$\llglob (\lcall \implies \lcdnext \lret)$ & 0.095 \\
+$\llglob (\lcall \implies \neg \lunext \lthrow)$ & 0.003 \\
+$\llglob (\lcall \land \mathrm{p}_A \implies \neg (\lunext \lthrow \lor \lcunext \lthrow))$ & 0.647 \\
+$\llglob (\lthrow \implies \neg (\luback (\lcall \land \mathrm{p}_A) \lor \lcuback (\lcall \land \mathrm{p}_A)))$ & 0.676 \\
+$\llglob ((\lcall \land \mathrm{p}_B \land (\lcdsince{\lcall}{(\lcall \land \mathrm{p}_A)})) \implies \lunext \lthrow \lor \lcunext \lthrow$ & 32.4 \\
+$\llglob (\lhandle \implies \lcunext \lret)$ & 0.090 \\
+$\lcuuntil{\top}{\lthrow}$ & 0.045 \\
+$\ldnext (\ldnext (\lcuuntil{\top}{\lthrow}))$ & 0.205 \\
+$\ldnext (\ldnext (\ldnext (\lcuuntil{\top}{\lthrow})))$ & 0.694 \\
+$\llglob (\lcall \land \mathrm{p}_C \implies (\lcuuntil{\top}{\lthrow \land \lcdback \lhandle}))$ & 5.06 \\
+$\lcduntil{\lcall}{(\lret \land \mathrm{p}_\mathit{err})}$ & 0.145 \\
+$\lcdnext (\lcall \land (\lcusince{(\lcall \lor \lthrow)}{\mathrm{p}_B}))$ & 1.44 \\
+$\ldnext (\ldnext (\lcuuntil{(\lcall \lor \lthrow)}{\lret}))$ & 0.332 \\
+\hline
+Total & 1366 \\
+\hline
+\hline
+Maximum memory used (MB) & 18,956.048 \\
+\hline
+\end{tabular}
+\caption{Results of the additional experiments on OPA ``generic small''.}
+\label{tab:more-exp-1}
+\end{table}
+
+\begin{table}
+\centering
+\begin{tabular}{| l | c |}
+\hline
+Formula & Time (s) \\
+\hline
+\hline
+$\lcdnext \mathrm{p}_\mathit{err}$ & 0.006 \\
+$\ldnext (\ldnext (\lcall \land \lcunext \lthrow))$ & 0.543 \\
+$\ldnext (\lhandle \land (\lcdnext (\lthrow \land \lcuback \lcall)))$ & 3.24 \\
+$\llglob (\lthrow \implies \lcuback \lcall)$ & 0.055 \\
+$\lcduntil{\top}{\lthrow}$ & 0.017 \\
+$\ldnext (\ldnext (\lcduntil{\top}{\lthrow}))$ & 0.041 \\
+$\llglob ((\lcall \land \mathrm{p}_A \land (\lcduntil{\neg \lret}{\mathrm{WRx}})) \implies \lcunext \lthrow)$ & 616 \\
+$\ldnext (\lunext \lcall)$ & 0.001 \\
+$\ldnext (\ldnext (\ldnext (\luback \lcall)))$ & 0.009 \\
+$\lcdnext (\ldnext (\luback \lcall))$ & 0.008 \\
+$\llglob ((\lcall \land \mathrm{p}_A \land (\lunext \lthrow \lor \lcunext \lthrow)) \implies (\lunext \mathrm{e}_B \lor \lcunext \mathrm{e}_B))$ & 673 \\
+$\lleven (\lhdnext \mathrm{p}_B)$ & 0.005 \\
+$\lleven (\lhdback \mathrm{p}_B)$ & 0.007 \\
+$\lleven (\mathrm{p}_A \land (\lhduntil{\lcall}{\mathrm{p}_C}))$ & 1.29 \\
+$\lleven (\mathrm{p}_C \land (\lhdsince{\lcall}{\mathrm{p}_A}))$ & 1.48 \\
+$\llglob ((\mathrm{p}_C \land \lcunext \lthrow) \implies (\lhdsince{\neg \mathrm{p}_A}{\mathrm{p}_B}))$ & 2253 \\
+$\llglob (\lcall \land \mathrm{p}_B \implies \lhuuntil{\neg \mathrm{p}_C}{\mathrm{p}_\mathit{err}})$ & 0.310 \\
+$\lleven (\lhunext \mathrm{p}_\mathit{err})$ & 0.002 \\
+$\lleven (\lhuback \mathrm{p}_\mathit{err})$ & 0.001 \\
+$\lleven (\mathrm{p}_A \land (\lhuuntil{\lcall}{\mathrm{p}_B}))$ & 0.035 \\
+$\lleven (\mathrm{p}_B \land (\lhusince{\lcall}{\mathrm{p}_A}))$ & 0.028 \\
+$\ldnext \lcall$ & 0.001 \\
+$\ldnext (\ldnext \lcall)$ & 0.001 \\
+$\ldnext (\ldnext (\ldnext \lcall))$ & 0.001 \\
+$\ldnext (\ldnext (\ldnext (\ldnext \lcall)))$ & 0.003 \\
+$\llglob (\lcall \implies \lcdnext \lret)$ & 0.037 \\
+$\llglob (\lcall \implies \neg \lunext \lthrow)$ & 0.004 \\
+$\llglob (\lcall \land \mathrm{p}_A \implies \neg (\lunext \lthrow \lor \lcunext \lthrow))$ & 0.367 \\
+$\llglob (\lthrow \implies \neg (\luback (\lcall \land \mathrm{p}_A) \lor \lcuback (\lcall \land \mathrm{p}_A)))$ & 0.622 \\
+$\llglob ((\lcall \land \mathrm{p}_B \land (\lcdsince{\lcall}{(\lcall \land \mathrm{p}_A)})) \implies \lunext \lthrow \lor \lcunext \lthrow$ & 0.046 \\
+$\llglob (\lhandle \implies \lcunext \lret)$ & 0.152 \\
+$\lcuuntil{\top}{\lthrow}$ & 0.215 \\
+$\ldnext (\ldnext (\lcuuntil{\top}{\lthrow}))$ & 1.30 \\
+$\ldnext (\ldnext (\ldnext (\lcuuntil{\top}{\lthrow})))$ & 3.79 \\
+$\llglob (\lcall \land \mathrm{p}_C \implies (\lcuuntil{\top}{\lthrow \land \lcdback \lhandle}))$ & 5.84 \\
+$\lcduntil{\lcall}{(\lret \land \mathrm{p}_\mathit{err})}$ & 0.014 \\
+$\lcdnext (\lcall \land (\lcusince{(\lcall \lor \lthrow)}{\mathrm{p}_B}))$ & 0.856 \\
+$\ldnext (\ldnext (\lcuuntil{(\lcall \lor \lthrow)}{\lret}))$ & 0.053 \\
+\hline
+Total & 3607 \\
+\hline
+\hline
+Maximum memory used (MB) & 94,535.576 \\
+\hline
+\end{tabular}
+\caption{Results of the additional experiments on OPA ``generic medium''.}
+\label{tab:more-exp-2}
+\end{table}
+
+\begin{table}
+\centering
+\begin{tabular}{| l | c |}
+\hline
+Formula & Time (s) \\
+\hline
+\hline
+$\lcdnext \mathrm{p}_\mathit{err}$ & 0.003 \\
+$\ldnext (\ldnext (\lcall \land \lcunext \lthrow))$ & 0.517 \\
+$\ldnext (\lhandle \land (\lcdnext (\lthrow \land \lcuback \lcall)))$ & 0.243 \\
+$\llglob (\lthrow \implies \lcuback \lcall)$ & 0.054 \\
+$\lcduntil{\top}{\lthrow}$ & 0.008 \\
+$\ldnext (\ldnext (\lcduntil{\top}{\lthrow}))$ & 0.018 \\
+$\llglob ((\lcall \land \mathrm{p}_A \land (\lcduntil{\neg \lret}{\mathrm{WRx}})) \implies \lcunext \lthrow)$ & 728 \\
+$\ldnext (\lunext \lcall)$ & 0.001 \\
+$\ldnext (\ldnext (\ldnext (\luback \lcall)))$ & 0.001 \\
+$\lcdnext (\ldnext (\luback \lcall))$ & 0.008 \\
+$\llglob ((\lcall \land \mathrm{p}_A \land (\lunext \lthrow \lor \lcunext \lthrow)) \implies (\lunext \mathrm{e}_B \lor \lcunext \mathrm{e}_B))$ &  1843 \\
+$\lleven (\lhdnext \mathrm{p}_B)$ & 0.016 \\
+$\lleven (\lhdback \mathrm{p}_B)$ & 0.006 \\
+$\lleven (\mathrm{p}_A \land (\lhduntil{\lcall}{\mathrm{p}_C}))$ & 0.446 \\
+$\lleven (\mathrm{p}_C \land (\lhdsince{\lcall}{\mathrm{p}_A}))$ & 0.466 \\
+$\llglob ((\mathrm{p}_C \land \lcunext \lthrow) \implies (\lhdsince{\neg \mathrm{p}_A}{\mathrm{p}_B}))$ & 1764 \\
+$\llglob (\lcall \land \mathrm{p}_B \implies \lhuuntil{\neg \mathrm{p}_C}{\mathrm{p}_\mathit{err}})$ & 0.132 \\
+$\lleven (\lhunext \mathrm{p}_\mathit{err})$ & 0.002 \\
+$\lleven (\lhuback \mathrm{p}_\mathit{err})$ & 0.001 \\
+$\lleven (\mathrm{p}_A \land (\lhuuntil{\lcall}{\mathrm{p}_B}))$ & 0.028 \\
+$\lleven (\mathrm{p}_B \land (\lhusince{\lcall}{\mathrm{p}_A}))$ & 0.027 \\
+$\ldnext \lcall$ & 0.001 \\
+$\ldnext (\ldnext \lcall)$ & 0.002 \\
+$\ldnext (\ldnext (\ldnext \lcall))$ & 0.001 \\
+$\ldnext (\ldnext (\ldnext (\ldnext \lcall)))$ & 0.008 \\
+$\llglob (\lcall \implies \lcdnext \lret)$ & 0.030 \\
+$\llglob (\lcall \implies \neg \lunext \lthrow)$ & 0.003 \\
+$\llglob (\lcall \land \mathrm{p}_A \implies \neg (\lunext \lthrow \lor \lcunext \lthrow))$ & 0.743 \\
+$\llglob (\lthrow \implies \neg (\luback (\lcall \land \mathrm{p}_A) \lor \lcuback (\lcall \land \mathrm{p}_A)))$ & 0.622 \\
+$\llglob ((\lcall \land \mathrm{p}_B \land (\lcdsince{\lcall}{(\lcall \land \mathrm{p}_A)})) \implies \lunext \lthrow \lor \lcunext \lthrow$ & 31.9 \\
+$\llglob (\lhandle \implies \lcunext \lret)$ & 0.362 \\
+$\lcuuntil{\top}{\lthrow}$ & 0.241 \\
+$\ldnext (\ldnext (\lcuuntil{\top}{\lthrow}))$ & 1.39 \\
+$\ldnext (\ldnext (\ldnext (\lcuuntil{\top}{\lthrow})))$ & 4.80 \\
+$\llglob (\lcall \land \mathrm{p}_C \implies (\lcuuntil{\top}{\lthrow \land \lcdback \lhandle}))$ & 5.78 \\
+$\lcduntil{\lcall}{(\lret \land \mathrm{p}_\mathit{err})}$ & 0.027 \\
+$\lcdnext (\lcall \land (\lcusince{(\lcall \lor \lthrow)}{\mathrm{p}_B}))$ & 0.728 \\
+$\ldnext (\ldnext (\lcuuntil{(\lcall \lor \lthrow)}{\lret}))$ & 1.85 \\
+\hline
+Total & 4385 \\
+\hline
+\hline
+Maximum memory used (MB) & 60,318.568 \\
+\hline
+\end{tabular}
+\caption{Results of the additional experiments on OPA ``generic larger''.}
+\label{tab:more-exp-3}
+\end{table}
+
+This directory contains more experiments devised with the purpose of
+testing all POTL operators, also in order to find the most critical
+cases.  In fact, the complexity of POTL model checking is exponential
+in the length of the formula.  This is of course unsurprising, since
+it subsumes logics such as LTL and NWTL, whose model checking is also
+exponential.  Actually, model checking is feasible for many
+specifications useful in practice.  There are, however, some cases in
+which the exponentiality of the construction becomes evident.
+
+In Tables~\ref{tab:more-exp-1}, \ref{tab:more-exp-2} and
+\ref{tab:more-exp-3} we show the results of model checking numerous
+POTL formulas on three OPA representing generic procedural programs.
+Some of them are checked very quickly,
+while others require a long execution time and a very large amount of
+memory.  Because of the memory requirements of some of such formulas,
+these results were run on a server with a 2.0 GHz 16-core AMD CPU and
+500 GB of RAM (the fact that the CPU has 16 cores is actually
+irrelevant, as POMC only runs on one for the time being).
+
+If you wish to repeat such experiments, you may run the following
+commands:
+\begin{verbatim}
+$ cd ~/artifact/contents
+$ python3 mcbench.py opa-more
+\end{verbatim}
+Of course, a machine with an appropriate amount of RAM is needed.
+
+
+\section{Source Code}
+\label{sec:sources}
+
+The source code of POMC is contained in the \texttt{src/Pomc} directory.
+We describe the contents of each file below.
+\begin{description}
+\item[Check.hs] This file contains the data structures and functions
+  that implement the translation of POTL formulas into OPA.
+  The \texttt{check} and \texttt{fastcheck} functions build the OPA
+  and check for string acceptance. \texttt{makeOpa} returns
+  a thunk containing an un-evaluated OPA, which is built on-the-fly
+  while the calling context evaluates the transition functions.
+\item[Encoding.hs] contains a data structure that represents a set of POTL
+  formulas as a bit vector. It is use to encode OPA states in a
+  memory-efficient form in Check.hs.
+\item[MiniProc.hs] contains code that translates MiniProc programs into OPA.
+\item[MiniProcParse.hs] contains a parser for MiniProc programs.
+\item[ModelChecker.hs] contains the model checking launcher functions,
+  and a data structure to represent the input OPA to be checked explicitly.
+  It calls \texttt{makeOpa} to translate the negation of the specification
+  into an equivalent OPA, creates a thunk representing an un-evaluated
+  intersection of the two OPA, and then uses the reachability algorithm from
+  Satisfiability.hs to determine emptiness.
+\item[Opa.hs] contains an implementation of OPA, which is used to test
+  string acceptance.
+\item[OpaGen.hs] contains a simple automated OPA generator (still experimental).
+\item[Parse.hs] contains a parser for POMC input files.
+\item[Potl.hs] defines the datatype for POTL formulas.
+\item[Prec.hs] defines the data type for precedence relations.
+\item[Prop.hs] defines the data type for atomic propositions.
+\item[PropConv.hs] contains dome functions useful to change the representation
+  of atomic propositions from strings to unsigned integers.
+  This is used by other parts of the program to achieve better performances,
+  as strings are represented as lists of char in Haskell, which is quite
+  inefficient.
+\item[Satisfiability.hs] contains the reachability algorithms used in the
+  model checker to decide OPA emptiness. They can also be use to decide
+  satisfiability of a formula.
+\item[Util.hs] contains various functions used in other parts of the code.
+\end{description}
+
+
+\bibliographystyle{abbrv}
+\bibliography{optl}
+
+\end{document}
