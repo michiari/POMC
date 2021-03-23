@@ -22,7 +22,9 @@ tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
                                    , simpleElseBaseTests, simpleElseEvalTests
                                    , singleWhile
                                    , exprsTests
+                                   , generic
                                    , jensenTests
+                                   , stackTests
                                    ]
 
 sasBaseTests :: TestTree
@@ -66,7 +68,8 @@ makeTestCase filecont ((name, phi, _, _), expected) =
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          fst (modelCheckGen (fmap T.pack phi) (programToOpa prog)) @?= expected
+          let opa = programToOpa prog
+          fst (modelCheckGen (fmap T.pack phi) opa) @?= expected
 
 
 expectedSasBase :: [Bool]
@@ -339,6 +342,128 @@ pc() {}
 pd() {}
 |]
 
+
+-- Tests from POTL paper
+
+generic :: TestTree
+generic = testGroup "MiniProc Generic Tests" [genSmall, genMed, genLarge]
+
+genSmall :: TestTree
+genSmall = makeTestCase sasMPSource
+  (("MiniProc Generic Small"
+   , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
+     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
+   , []
+   , True)
+  , True)
+
+genMed :: TestTree
+genMed = makeTestCase genMedSource
+  (("MiniProc Generic Medium"
+   , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
+     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
+   , []
+   , False)
+  , False)
+
+genMedSource :: T.Text
+genMedSource = T.pack [r|
+pa() {
+  pb();
+  try {
+    pc();
+  } catch {
+    perr();
+  }
+}
+
+pb() {
+  if (*) {
+    pc();
+  } else {
+    try {
+      pc();
+    } catch {
+      perr();
+    }
+  }
+}
+
+pc() {
+  if (*) {
+    pb();
+  } else {
+    throw;
+  }
+}
+
+perr() {
+  if (*) {
+    perr();
+  } else {}
+}
+|]
+
+genLarge :: TestTree
+genLarge = makeTestCase genLargeSource
+  (("MiniProc Generic Large"
+   , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
+     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
+   , []
+   , True)
+  , True)
+
+genLargeSource :: T.Text
+genLargeSource = T.pack [r|
+main() {
+       pa();
+       try {
+           pa();
+           pb();
+       } catch {
+           perr();
+       }
+}
+
+pa() {
+     pc();
+     pd();
+     if (*) {
+        pa();
+     } else {}
+}
+
+pb() {
+     try {
+         pe();
+     } catch {
+         perr();
+     }
+}
+
+pc() {
+     if (*) {
+        pa();
+     } else {
+        pe();
+     }
+}
+
+pd() {
+     pc();
+     pa();
+}
+
+pe() {
+     if (*) {
+        throw;
+     } else {}
+}
+
+perr() {}
+|]
+
+
 jensenTests :: TestTree
 jensenTests = testGroup "Jensen Privileges Tests" [ jensenRd, jensenWr
                                                   , jensenRdCp, jensenWrDb
@@ -478,4 +603,326 @@ write() {
 
 raw_read() {}
 raw_write() {}
+|]
+
+
+stackTests :: TestTree
+stackTests = testGroup "MiniProc Stack Tests" [ stackUnsafe, stackUnsafeNeutrality
+                                              , stackSafe, stackSafeNeutrality]
+
+stackUnsafe :: TestTree
+stackUnsafe = makeTestCase stackUnsafeSource
+  (("MiniProc Unsafe Stack"
+   , Always $ (ap "exc"
+               `Implies`
+               (Not $ (PBack Up (ap "tainted")
+                       `Or` XBack Up (ap "tainted" `And` Not (ap "main")))
+                `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop")))
+   , []
+   , False)
+  , False)
+
+stackUnsafeNeutrality :: TestTree
+stackUnsafeNeutrality = makeTestCase stackUnsafeSource
+  (("MiniProc Unsafe Stack Neutrality"
+   , Always ((ap "exc"
+              `And` PBack Up (ap "T::T"
+                              `Or` ap "T::Tcp"
+                              `Or` ap "T::operator_new"
+                              `Or`ap "T::operator=")
+              `And` XBack Down (ap "han" `And` XBack Down (ap "Stack::NewCopy")))
+              `Implies`
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
+     , []
+     , True)
+  , True)
+
+stackUnsafeSource :: T.Text
+stackUnsafeSource = T.pack [r|
+var tainted;
+
+main() {
+  tainted = false;
+
+  Stack::Stack();
+
+  T::T();
+  Stack::push();
+
+  tainted = false;
+  T::T();
+  Stack::push();
+
+  tainted = false;
+  Stack::size();
+  Stack::pop();
+
+  tainted = false;
+  T::Tcp();
+
+  Stack::~Stack();
+  T::~T();
+}
+
+Stack::Stack() {
+  T::operator_new();
+}
+
+Stack::~Stack() {
+  T::operator_delete();
+}
+
+Stack::Stackcp() {
+  Stack::NewCopy();
+}
+
+Stack::operator=() {
+  if (*) {
+    Stack::NewCopy();
+    T::operator_delete();
+  } else {}
+}
+
+Stack::push() {
+  if (*) {
+    Stack::NewCopy();
+    T::operator_delete();
+  } else {}
+  tainted = true;
+  T::operator=();
+}
+
+Stack::pop() {
+  if (*) {
+    throw;
+  } else {
+    tainted = true;
+    T::Tcp();
+  }
+}
+
+Stack::size() {}
+
+Stack::NewCopy() {
+  T::operator_new();
+  try {
+    std::copy();
+  } catch {
+    T::operator_delete();
+    throw;
+  }
+}
+
+T::T() {
+  if (*) {
+    throw;
+  } else {}
+}
+
+T::Tcp() {
+  if (*) {
+    throw;
+  } else {}
+}
+
+T::operator_new() {
+  if (*) {
+    throw;
+  } else {
+    while (*) {
+      T::T();
+    }
+  }
+}
+
+T::operator=() {
+  if (*) {
+    throw;
+  } else {}
+}
+
+T::operator_delete() {}
+T::~T() {}
+
+std::copy() {
+  T::operator=();
+}
+|]
+
+
+stackSafe :: TestTree
+stackSafe = makeTestCase stackSafeSource
+  (("MiniProc Safe Stack"
+   , Always $ (ap "exc"
+               `Implies`
+               (Not $ (PBack Up (ap "tainted")
+                       `Or` XBack Up (ap "tainted" `And` Not (ap "main")))
+                `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop")))
+   , []
+   , True)
+  , True)
+
+stackSafeNeutrality :: TestTree
+stackSafeNeutrality = makeTestCase stackSafeSource
+  (("MiniProc Safe Stack Neutrality"
+   , Always ((ap "exc"
+              `And` PBack Up (ap "T::T"
+                              `Or` ap "T::Tcp"
+                              `Or` ap "T::operator_new"
+                              `Or`ap "T::operator=")
+              `And` XBack Down (ap "han" `And` XBack Down (ap "Stack::push")))
+              `Implies`
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
+     , []
+     , True)
+  , True)
+
+stackSafeSource :: T.Text
+stackSafeSource = T.pack [r|
+var tainted, full;
+
+main() {
+  tainted = false;
+  full = false;
+
+  Stack::Stack();
+
+  T::T();
+  Stack::push();
+
+  tainted = false;
+  full = true;
+  T::T();
+  Stack::push();
+
+  tainted = false;
+  Stack::size();
+  Stack::pop();
+
+  tainted = false;
+  T::Tcp();
+
+  Stack::~Stack();
+  T::~T();
+}
+
+StackImpl::StackImpl() {
+  _::operator_new();
+}
+
+StackImpl::~StackImpl() {
+  std::destroy();
+  _::operator_delete();
+}
+
+StackImpl::swap() {
+  std::swap();
+  std::swap();
+  std::swap();
+}
+
+Stack::Stack() {
+  StackImpl::StackImpl();
+}
+
+Stack::Stackcp() {
+  StackImpl::StackImpl();
+  while (*) {
+    std::construct();
+  }
+}
+
+Stack::operator=() {
+  Stack::Stackcp();
+  StackImpl::swap();
+}
+
+Stack::size() {}
+
+Stack::push() {
+  if (full) {
+    Stack::Stack();
+    full = false;
+    while (*) {
+      Stack::push();
+    }
+    Stack::push();
+    StackImpl::swap();
+  } else {
+    std::construct();
+  }
+}
+
+Stack::top() {
+  if (*) {
+    throw;
+  } else {
+    T::Tcp();
+  }
+}
+
+Stack::pop() {
+  if (*) {
+    throw;
+  } else {
+    std::destroy();
+  }
+}
+
+Stack::~Stack() {
+  StackImpl::StackImpl();
+}
+
+T::T() {
+  if (*) {
+    throw;
+  } else {}
+}
+
+T::Tcp() {
+  if (*) {
+    throw;
+  } else {}
+}
+
+T::operator_new() {
+  if (*) {
+    throw;
+  } else {
+    while (*) {
+      T::T();
+    }
+  }
+}
+
+T::operator=() {
+  if (*) {
+    throw;
+  } else {}
+}
+
+T::~T() {}
+
+std::swap() {
+  tainted = true;
+}
+
+std::construct() {
+  while (*) {
+    T::Tcp();
+  }
+}
+
+std::destroy() {
+  while (*) {
+    T::~T();
+  }
+}
+
+_::operator_new() {
+  if (*) {
+    throw;
+  } else {}
+}
+_::operator_delete() {}
 |]

@@ -519,7 +519,7 @@ jensenFull = ExplicitOpa
 
 
 stackExcTests :: TestTree
-stackExcTests = testGroup "Exception Safety Unsafe Stack" [stackExcConsistent
+stackExcTests = testGroup "Exception Safety Unsafe Stack" [ stackExcConsistent
                                                           , stackExcNeutral
                                                           , stackExcNeutralS]
 
@@ -532,7 +532,7 @@ stackExcConsistent = makeTestCase stackExc
                        `Or` XBack Up (ap "tainted"))
                 `And` XBack Up (ap "Stack::push(const T&)" `Or` ap "Stack::pop()")))
    , []
-   , True)
+   , False)
   , False)
 
 stackExcNeutral :: TestTree
