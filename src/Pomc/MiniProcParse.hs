@@ -33,7 +33,7 @@ symbolP = L.symbol spaceP
 identifierP :: Parser Text
 identifierP = (label "identifier") . L.lexeme spaceP $ do
   first <- choice [letterChar, char '_']
-  rest <- many $ choice [alphaNumChar, char '_', char '.']
+  rest <- many $ choice [alphaNumChar, char '_', char '.', char ':', char '=', char '~']
   return $ T.pack (first:rest)
 
 boolLiteralP :: Parser Bool
@@ -139,13 +139,14 @@ programP = do
                   Just s -> s
                   Nothing -> S.empty
       p = Program declSet sks
-      undeclVars = undeclared p
-  if S.null undeclVars
+      undeclVars = undeclaredVars p
+      undeclFuns = undeclaredFuns p
+  if S.null undeclVars && S.null undeclFuns
     then return p
-    else fail $ "Undeclared variable identifier(s): " ++ show (S.toList undeclVars)
+    else fail $ "Undeclared identifier(s): " ++ show (S.toList undeclVars ++ S.toList undeclFuns)
 
-undeclared :: Program -> Set Identifier
-undeclared p = S.difference actualVars (pVars p)
+undeclaredVars :: Program -> Set Identifier
+undeclaredVars p = S.difference actualVars (pVars p)
   where gatherBExprVars :: BoolExpr -> Set Identifier
         gatherBExprVars (Literal _) = S.empty
         gatherBExprVars (Term v) = S.singleton v
@@ -171,3 +172,22 @@ undeclared p = S.difference actualVars (pVars p)
         actualVars =
           foldl (\gathered sk ->
                    gathered `S.union` (gatherBlockVars . skStmts $ sk)) S.empty (pSks p)
+
+undeclaredFuns :: Program -> Set Identifier
+undeclaredFuns p = S.difference usedFuns declaredFuns
+  where declaredFuns = S.fromList $ map skName (pSks p)
+
+        gatherFuns :: Statement -> Set Identifier
+        gatherFuns (Assignment _ _) = S.empty
+        gatherFuns (Call fname) = S.singleton fname
+        gatherFuns (TryCatch tryb catchb) = gatherBlockFuns tryb `S.union` gatherBlockFuns catchb
+        gatherFuns (IfThenElse _ thenb elseb) = gatherBlockFuns thenb `S.union` gatherBlockFuns elseb
+        gatherFuns (While _ body) = gatherBlockFuns body
+        gatherFuns Throw = S.empty
+
+        gatherBlockFuns stmts =
+          foldl (\gathered stmt -> gathered `S.union` gatherFuns stmt) S.empty stmts
+
+        usedFuns =
+          foldl (\gathered sk ->
+                   gathered `S.union` (gatherBlockFuns . skStmts $ sk)) S.empty (pSks p)

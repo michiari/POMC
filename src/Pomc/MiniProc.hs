@@ -29,7 +29,6 @@ import Data.Maybe (isNothing, fromJust)
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as B
 
-
 -- Intermediate representation for MiniProc programs
 type FunctionName = Text
 type Identifier = Text
