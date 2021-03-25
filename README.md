@@ -13,7 +13,7 @@ $ stack build
 Stack will automatically download and compile all the required packages.
 Then, POMC can be executed on an input file `file.pomc` as follows:
 ```
-$ stack exec pomc -- file.pomc
+$ stack exec -- pomc file.pomc
 ```
 
-For more info, please refer to the User's Guide in `POMC-Guide.pdf`.
+For more info, please refer to the User's Guide in `docs`.
