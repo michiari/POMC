@@ -31,7 +31,6 @@ library:
   - Pomc.Prop
   - Pomc.Satisfiability
   - Pomc.ModelChecker
-  - Pomc.SCCAlgorithm
   - Pomc.OpaGen
   ghc-options:
   - -Wall

@@ -9,6 +9,7 @@ module Pomc.Satisfiability (
                              SatState(..)
                            , Delta(..)
                            , StateId(..)
+                           , Stack
                            , isEmpty
                            , isEmptyOmega
                            , isSatisfiable
@@ -22,6 +23,7 @@ import Pomc.Check ( EncPrecFunc, makeOpa)
 import Pomc.State(Input, State(..))
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
+--import Pomc.SCCAlgorithm(Graph,SummaryBody,TwinSet, newGraph, alreadyDiscovered, initialNodes)
 
 import Control.Monad (foldM, forM_)
 import Control.Monad.ST (ST)
@@ -76,7 +78,7 @@ insertSM smref stateId val = do
                ; MV.unsafeModify grown (Set.insert val) sid
                ; writeSTRef smref grown
                }
--- lookup the state in the state monad
+
 lookupSM :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
 lookupSM smref stateId = do
   sm <- readSTRef smref
@@ -173,14 +175,6 @@ data Globals s state = FGlobals
   , visited :: STRef s (SetMap s (Stack state)) -- already visited states
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (SetMap s (StateId state))
-  } |   WGlobals
-  { sIdGen :: SIdGen s state
-  , visited :: STRef s (HashTable s (Key state) (Value state))
-  , suppStarts :: STRef s (SetMap s (Stack state))
-  , suppEnds :: STRef s (SetMap s (StateId state)) -- this may change to add all the visited states TODO: find a solution for this
-  , bStack :: STRef s (GabowStack s Int) 
-  , sStack :: STRef s (GabowStack s (GraphNode state)) 
-  , c :: STRef s Int -- number to identify SSCs
   } 
 
 -- a type for the delta relation, parametric with respect to the type of the state
@@ -212,7 +206,7 @@ reach isDestState isDestStack globals delta q g = do
     else do
     insertSM (visited globals) q g
     let be = bitenc delta
-        qProps = getSidProps be q -- atomic propositions holding in the state
+        qProps = getSidProps be q -- atomic propositions holding in the state (the input)
         qState = getState q 
         cases
           | (isDestState q) && (isDestStack g) =
@@ -307,7 +301,7 @@ reachPop isDestState isDestStack globals delta q g qState =
         in do
           insertSM (suppEnds globals) r p
           currentSuppStarts <- lookupSM (suppStarts globals) r
-          foldM closeSupports False currentSupStarts
+          foldM closeSupports False currentSuppStarts
   in do
     newStates <- wrapStates (sIdGen globals) $
                  (deltaPop delta) qState (getState . snd . fromJust $ g)
@@ -338,7 +332,6 @@ isEmpty delta initials isFinal = not $
                    False
                    initialsId)
 
-
 -- given a formula, build the fopa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
 isSatisfiable :: Bool
               -> Formula APType
@@ -354,7 +347,7 @@ isSatisfiable isOmega phi ap sprs =
         , deltaShift = dShift
         , deltaPop = dPop
         }
-      isFinalOmega states = all (\f -> any (\s -> phiIsFinal f (getSatState s)) states) S.toList cl
+      isFinalOmega states = all (\f -> any (\s -> isFinal f (getSatState s)) states) $ Set.toList cl
   in if isOmega
      then not $ isEmptyOmega delta initials isFinalOmega
      else not $ isEmpty delta initials (isFinal T)
@@ -369,4 +362,17 @@ isSatisfiableGen :: ( Ord a)
 isSatisfiableGen isOmega phi ap precf =
   let (tphi, tap, tprecr) = convPropLabels phi ap precf
   in isSatisfiable isOmega tphi tap tprecr
+
+
+----------------------------------------------------------------------------------------
+-- OMEGA CASE --
+-- check the emptiness of the Language expressed by an automaton
+isEmptyOmega  :: (SatState state, Eq state, Hashable state, Show state)
+        => Delta state -- delta relation of an opa
+        -> [state] -- list of initial states of the opa
+        -> ([state] -> Bool) -- determine whether a list of states determine an accepting computation
+        -> Bool -- TODO: implement this
+isEmptyOmega delta initials areFinal = True -- TODO: implement me
+
+
 
