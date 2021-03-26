@@ -230,3 +230,23 @@ setgnIValue new  SingleNode{getgnId = gid, node = n} = SingleNode{getgnId = gid,
 
 resetgnIValue :: (SatState state, Eq state, Hashable state, Show state) => GraphNode k state -> GraphNode k state 
 resetgnIValue  = setgnIValue 0
+
+lookupEdge :: (Ord k) => STRef s (Set (Edge k)) -> k -> k -> ST.ST s (Set (Edge k))
+lookupEdge edgeref fr t = do
+  edgeSet <- readSTRef edgeref
+  return $ Set.fromList $ filter (\e -> from e == fr && to e == t) $ Set.toList edgeSet -- can we have an Internal and a Summary with the same from and to?
+
+edgeGNodes :: (Ord k) => Edge k -> Set k
+edgeGNodes (Internal{from=fr, to=t}) = Set.fromList [fr,t]
+edgeGNodes (Summary{from= fr, to=t, body =b}) = Set.union (Set.fromList [fr,t]) $ Set.unions (Set.map edgeGNodes b)
+
+selfLoop :: (Ord k ) => STRef s (Set (Edge k)) -> k -> ST.ST s Bool
+selfLoop edgeref node = do
+  selfEdges <- lookupEdge edgeref node node 
+  return $ not $ Set.null selfEdges 
+
+-- this is used in let it run
+nextStepsFrom :: (Ord k) => STRef s (Set (Edge k)) -> k -> ST.ST s (Set  k)
+nextStepsFrom edgeref fr  = do
+  edgeSet <- readSTRef edgeref
+  return $ Set.fromList $ map (\e -> to e) $ filter (\e -> from e == fr) $ Set.toList edgeSet
