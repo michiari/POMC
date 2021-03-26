@@ -193,5 +193,14 @@ valuesDHT (_, ht2) = do
   ht2entries <- H.toList ht2
   return $ Set.fromList . snd . unzip $ ht2entries
 
+freshPosId :: STRef s Int -> ST.ST s Int
+freshPosId idSeq = do
+  curr <- readSTRef idSeq
+  modifySTRef' idSeq (+1);
+  return $ curr
 
-
+freshNegId :: STRef s Int -> ST.ST s Int
+freshNegId idSeq = do
+  curr <- readSTRef idSeq
+  modifySTRef' idSeq (+(-1));
+  return $ curr
