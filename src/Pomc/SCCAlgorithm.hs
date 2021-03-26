@@ -8,13 +8,9 @@
 module Pomc.SCCAlgorithm () where
  -- TODO. optimize imports
 import Pomc.Satisfiability( StateId(..), Stack) 
-import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.PotlV2(Formula)
-import Pomc.PropConv (APType) 
-import Pomc.Data (FormulaSet, BitEncoding(..)) 
 import qualified Data.Stack.ST  as StackST 
 
-import Control.Monad (foldM, forM_, forM) 
+import Control.Monad ( forM_, forM) 
 import Control.Monad.ST
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef') 
@@ -101,4 +97,41 @@ data Graph s state = Graph
   , initials        :: STRef s (TwinSet Int)
   , summaries       :: STRef s (Set (Int -> Edge Int, Key state))
   } 
+
+
+-- TwinSet interface operation 
+emptyTS :: ST.ST s (STRef s (TwinSet a))
+emptyTS = newSTRef ((Set.empty, Set.empty))
+
+resetTS :: (Ord a) => STRef s (TwinSet a) -> ST.ST s ()
+resetTS tsref = modifySTRef' tsref  (\(s1,s2) -> (Set.empty, Set.union s1 s2)) 
+
+unmarkTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s ()
+unmarkTS tsref val= modifySTRef' tsref (\(s1,s2) -> if Set.member val s2 
+                                                      then (Set.insert val s1, Set.delete val s2)
+                                                      else (s1,s2) 
+                                        ) 
+
+containsTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s Bool
+containsTS tsref val = do
+  (s1,s2) <- readSTRef tsref
+  return $ (Set.member val s1) || (Set.member val s2)
+
+initializeTS :: (Ord a) => STRef s (TwinSet a) -> Set a -> ST.ST s ()
+initializeTS tsref newSet = modifySTRef' tsref ( const (Set.empty, newSet)) 
+
+setTS :: (Ord a) => STRef s (TwinSet a) -> TwinSet a -> ST.ST s ()
+setTS tsref (s1,s2) = modifySTRef' tsref (const (s1,s2)) 
+
+isMarkedTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s Bool
+isMarkedTS tsref val = do
+  (s1,s2) <- readSTRef tsref
+  return $ Set.member val s2
+
+valuesTS :: (Ord a) => STRef s (TwinSet a) -> ST.ST s (Set a)
+valuesTS tsref = do
+  (s1,s2) <- readSTRef tsref
+  return $ Set.union s1 s2 
+
+
 
