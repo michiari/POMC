@@ -40,10 +40,10 @@ data Edge k = Internal
   ,  body :: Set (Edge k) 
   } deriving (Show, Ord)-- is it fine to derive Ord?
 
-instance (Eq k, Ord k) => Eq (Edge k) where
+instance (Ord k) => Eq (Edge k) where
   p@(Internal{}) == q@(Internal{}) = (from p) == (from q) && (to p) == (to q) 
-  p@(Summary{})  == q@(Summary{}) = (from p) ==( from q) 
-                                    && (to p) == (to q )
+  p@(Summary{})  == q@(Summary{}) = (from p) == (from q) 
+                                    && (to p) == (to q)
                                     && (all (\e -> Set.member e (body q)) $ Set.toList (body p))
                                     && (all (\e -> Set.member e (body p)) $ Set.toList (body q))
   _ == _ = False
@@ -55,6 +55,11 @@ data SummaryBody k = SummaryBody
   , bodyEdges :: Set (Edge k)
   }
 
+instance (Ord k) => Eq (SummaryBody k) where 
+  p == q = (firstNode p) == (firstNode q)
+          && (lastNode p) == (lastNode q)
+          && (all (\e -> Set.member e (bodyEdges q)) $ Set.toList (bodyEdges p))
+          && (all (\e -> Set.member e (bodyEdges p)) $ Set.toList (bodyEdges q))
 data GraphNode k state = SCComponent
   { getgnId   :: k -- immutable
   , iValue    :: Int -- changes at each iteration of the Gabow algorithm
@@ -90,7 +95,7 @@ data Graph s state = Graph
   , bStack          :: GabowStack s Int -- for the Gabow algorithm
   , sStack          :: GabowStack s Int -- for the Gabow algorithm
   , initials        :: STRef s (TwinSet Int)
-  , summaries       :: STRef s (Set (Int -> Edge Int, Key state))
+  , summaries       :: STRef s (Vector (Int -> Edge Int, Key state))
   } 
 
 
@@ -281,7 +286,7 @@ newGraph initials = do
   newBS         <- StackST.stackNew
   newSS         <- StackST.stackNew
   newInitials   <- emptyTS
-  newSummaries  <- newSTRef(Set.empty)
+  newSummaries  <- newSTRef(V.empty)
   initialsIds  <- forM (initials) $ \key -> do 
                   newId <- freshPosId newIdSequence
                   insertDHT dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
@@ -347,6 +352,47 @@ updateSCC graph node = do
     else do
       StackST.stackPop (bStack graph);
       updateSCC graph node
+
+
+-- when this is called, the current initials have nothing marked!!
+-- safe
+resolveSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Int -> Edge Int, Key state) -> ST.ST s (Bool, Int)
+resolveSummary graph (builder, key) = do 
+  alrDir <- alreadyDiscovered graph key 
+  ident <- lookupIdDHT (nodeToGraphNode graph) key
+  modifySTRef' (edges graph) $ Set.insert $ builder $ fromJust ident;
+  return (alrDir, fromJust ident)
+
+-- this simply creates a Summary Body
+-- unsafe
+discoverSummaryBody :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> StateId state -> Key state  -> ST.ST s (SummaryBody Int)
+discoverSummaryBody graph from to = let untilcond = \ident -> do 
+                                                                gn <- lookupIntDHT (nodeToGraphNode graph) ident
+                                                                return $ containsStateId from gn
+                                    in do  
+                                        body <- allUntil (sStack graph) [] untilcond
+                                        edgeSet <- toEdges (edges graph) Set.empty body 
+                                        return $ SummaryBody{firstNode = head body, lastNode = last body, bodyEdges = edgeSet}
+
+-- unsafe 
+discoverSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> SummaryBody Int ->  Key state -> ST.ST s ()
+discoverSummary graph from body to = do 
+  gnFrom <- lookupDHT (nodeToGraphNode graph) from 
+  modifySTRef' (summaries graph) $ V.cons (\toInt -> buildSummary (getgnId gnFrom) body toInt, to)
+
+-- unsafe
+insertInternal :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> Key state -> ST.ST s ()
+insertInternal graph from to = do from <- lookupIdDHT (nodeToGraphNode graph) from
+                                  to   <- lookupIdDHT (nodeToGraphNode graph) to
+                                  modifySTRef' (edges graph) $ Set.insert $ Internal (fromJust from) (fromJust to)
+
+-- unsafe
+insertSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> Key state -> SummaryBody Int -> ST.ST s ()
+insertSummary graph fromKey toKey  sb = do fr <- lookupIdDHT (nodeToGraphNode graph) fromKey
+                                           t  <- lookupIdDHT (nodeToGraphNode graph) toKey
+                                           modifySTRef' (edges graph) $ Set.insert $ buildSummary (fromJust fr) sb (fromJust t);
+                                           modifySTRef' (edges graph) $ Set.insert $ Internal{from=(fromJust fr), to = firstNode sb};
+                                           -- TODO: ricorda che qui non hai inserito l'edge lastNode - to
 
 
 -- the same as CreateComponent in the algorithm
