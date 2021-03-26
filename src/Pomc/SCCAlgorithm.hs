@@ -31,8 +31,6 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V 
 import Data.List
 
-
------------------------------------- OMEGA CASE ------------------------------------------------------------------
 data Edge k = Internal 
   { from :: k
   ,  to  :: k 
@@ -49,9 +47,6 @@ instance (Eq k, Ord k) => Eq (Edge k) where
                                     && (all (\e -> Set.member e (body q)) $ Set.toList (body p))
                                     && (all (\e -> Set.member e (body p)) $ Set.toList (body q))
   _ == _ = False
-
-  -- TODO: devo rendere Edge instance of Ord as well??
-
 
 -- the nodes which form a  summary body
 data SummaryBody k = SummaryBody 
@@ -256,3 +251,28 @@ toEdges edgeref acc [x] = return acc
 toEdges edgeref acc (x:y:xs) = do 
                                 found <- lookupEdge edgeref x y 
                                 toEdges edgeref  (Set.union acc found) (y:xs)
+
+newGraph :: (SatState state, Eq state, Hashable state, Show state) => Vector (Key state) -> ST.ST s (Graph s state)
+newGraph initials = do
+  newIdSequence <- newSTRef (1 :: Int)
+  dht           <- emptyDHT
+  newSet        <- newSTRef (Set.empty)
+  newCSequence  <- newSTRef (-1 :: Int)
+  newBS         <- StackST.stackNew
+  newSS         <- StackST.stackNew
+  newInitials   <- emptyTS
+  newSummaries  <- newSTRef(Set.empty)
+  initialsIds  <- forM (initials) $ \key -> do 
+                  newId <- freshPosId newIdSequence
+                  insertDHT dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
+                  return newId
+  initializeTS  newInitials $ Set.fromList $ V.toList initialsIds;
+  return $ Graph { idSeq = newIdSequence
+                 , nodeToGraphNode = dht 
+                 , edges = newSet 
+                 , c = newCSequence
+                 , bStack = newBS
+                 , sStack = newSS
+                 , initials = newInitials
+                 , summaries = newSummaries
+                }
