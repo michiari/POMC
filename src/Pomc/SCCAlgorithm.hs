@@ -297,6 +297,58 @@ newGraph initials = do
                  , summaries = newSummaries
                 }
 
+-- unsafe
+initialNodes :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s (Vector (Key state))
+initialNodes graph = do 
+  inIdents <- valuesTS $ initials graph
+  inGnList <- forM (Set.toList inIdents) (\ident -> lookupIntDHT (nodeToGraphNode graph) ident)
+  return $ V.fromList $ Set.toList $ Set.unions $ map (gnNodes) inGnList
+
+
+-- unsafe: precond: the node is already there
+alreadyVisited :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s Bool 
+alreadyVisited graph k = do
+  graphNode <- lookupDHT (nodeToGraphNode graph) k
+  return $ (iValue graphNode) == 0
+
+
+-- True: the graphNode was already discovered, False otherwise
+alreadyDiscovered :: (SatState state, Eq state, Hashable state, Show state) => Graph s state-> Key state-> ST.ST s Bool -- was the graphNode already there?
+alreadyDiscovered graph key = do 
+  ident <- lookupIdDHT (nodeToGraphNode graph) key
+  if isJust ident
+    then do 
+          isMarked <- isMarkedTS (initials graph) $ fromJust ident
+          return $ not isMarked 
+    else do 
+          ident <- freshPosId $ idSeq graph
+          insertDHT (nodeToGraphNode graph) key ident SingleNode{getgnId = ident,iValue = 0, node = key };
+          return False
+
+
+
+-- unsafe
+visitNode :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s ()
+visitNode graph key = do
+  gn <- lookupDHT (nodeToGraphNode graph) key 
+  unmarkTS (initials graph) $ getgnId gn;
+  StackST.stackPush (sStack graph) (getgnId gn);
+  sSize <- StackST.stackSize $ sStack graph 
+  insertIntDHT (nodeToGraphNode graph) (getgnId gn) $ setgnIValue (naturalToInt sSize) gn;
+  StackST.stackPush (bStack graph) (naturalToInt sSize);
+
+--unsafe
+updateSCC :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s ()
+updateSCC graph node = do 
+  gn <- lookupDHT (nodeToGraphNode graph) node
+  topElemB <- StackST.stackPeek (bStack graph)
+  if iValue gn < 0 || iValue gn >= (fromJust topElemB) -- TODO: shall we do some checks here about the fromJust?
+    then return ()
+    else do
+      StackST.stackPop (bStack graph);
+      updateSCC graph node
+
+
 -- the same as CreateComponent in the algorithm
 createComponent :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Key state -> ([state] -> Bool) -> ST.ST s Bool
 createComponent graph key areFinal = do
