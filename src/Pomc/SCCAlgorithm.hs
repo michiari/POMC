@@ -444,3 +444,32 @@ isAccepting graph gn areFinal = let gnList = Set.toList $ flattengn gn
                                   edgeSetList <- forM couples (\(from,to) -> lookupEdge (edges graph) from to)
                                   gnList <- forM (Set.toList . Set.unions . Set.map edgeGNodes . Set.unions $ edgeSetList) $ lookupIntDHT $ nodeToGraphNode graph
                                   return $ areFinal (Set.toList . Set.unions . map gnStates $ gnList)
+
+
+newSummariesSize :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Int
+newSummariesSize graph = do
+    summ <- readSTRef $ summaries graph
+    return $ V.length summ
+
+-- here we don't want to remove the summaries
+-- returns the new Initials
+-- TODO: test this
+toCollapsePhase :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s (TwinSet Int)
+toCollapsePhase graph = let unmarked list = snd . unzip $ filter (\(cond, _) -> cond) list
+                            marked list = snd . unzip $ filter (\(cond, _) ->  not cond) list
+                        in do 
+                            gns <- valuesDHT (nodeToGraphNode graph)
+                            forM_ (Set.toList gns) $ \gn -> insertIntDHT (nodeToGraphNode graph) (getgnId gn) (resetgnIValue gn);
+                            summ <- readSTRef $ summaries graph 
+                            resolvedSummariesList <- forM (V.toList summ) $ resolveSummary graph
+                            resetTS (initials graph);
+                            return (Set.fromList $ unmarked resolvedSummariesList, Set.fromList $ marked resolvedSummariesList)
+
+
+toSearchPhase :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> TwinSet Int -> ST.ST s ()
+toSearchPhase graph ts = do 
+  gns <- valuesDHT (nodeToGraphNode graph)
+  forM_ (Set.toList gns) $ \gn -> insertIntDHT (nodeToGraphNode graph) (getgnId gn) (resetgnIValue gn);
+  setTS (initials graph) ts;
+  modifySTRef' (summaries graph) $ const (V.empty)
+
