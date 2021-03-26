@@ -252,6 +252,14 @@ toEdges edgeref acc (x:y:xs) = do
                                 found <- lookupEdge edgeref x y 
                                 toEdges edgeref  (Set.union acc found) (y:xs)
 
+buildSummary :: (Ord k) => k -> SummaryBody k -> k -> Edge k
+buildSummary fr sb t  = Summary {from = fr, to = t, 
+                                  body = Set.unions [
+                                    bodyEdges sb
+                                  , Set.singleton $ Internal {from = fr, to = firstNode sb}
+                                  , Set.singleton $ Internal {from = lastNode sb,to = t   }]
+                                }
+
 newGraph :: (SatState state, Eq state, Hashable state, Show state) => Vector (Key state) -> ST.ST s (Graph s state)
 newGraph initials = do
   newIdSequence <- newSTRef (1 :: Int)
