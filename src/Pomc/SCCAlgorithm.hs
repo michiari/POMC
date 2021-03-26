@@ -250,3 +250,9 @@ nextStepsFrom :: (Ord k) => STRef s (Set (Edge k)) -> k -> ST.ST s (Set  k)
 nextStepsFrom edgeref fr  = do
   edgeSet <- readSTRef edgeref
   return $ Set.fromList $ map (\e -> to e) $ filter (\e -> from e == fr) $ Set.toList edgeSet
+
+toEdges :: (Ord k) => STRef s (Set (Edge k)) -> Set (Edge k) -> [k] -> ST.ST s (Set (Edge k))
+toEdges edgeref acc [x] = return acc
+toEdges edgeref acc (x:y:xs) = do 
+                                found <- lookupEdge edgeref x y 
+                                toEdges edgeref  (Set.union acc found) (y:xs)
