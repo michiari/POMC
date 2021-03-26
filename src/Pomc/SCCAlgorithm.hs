@@ -296,3 +296,53 @@ newGraph initials = do
                  , initials = newInitials
                  , summaries = newSummaries
                 }
+
+-- the same as CreateComponent in the algorithm
+createComponent :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Key state -> ([state] -> Bool) -> ST.ST s Bool
+createComponent graph key areFinal = do
+  gn <- lookupDHT (nodeToGraphNode graph) key
+  topB <- StackST.stackPeek (bStack graph) 
+  if (isJust topB && (iValue gn) == (fromJust topB))
+    then do 
+      StackST.stackPop (bStack graph)
+      createComponent' graph (iValue gn) Set.empty areFinal
+    else return $ False 
+
+
+createComponent' :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Int -> Set Int -> ([state] -> Bool)  -> ST.ST s Bool
+createComponent' graph iValue  acc areFinal = do
+  sSize <- StackST.stackSize (sStack graph)
+  if iValue < (naturalToInt sSize)
+    then do 
+      gnList <- forM (Set.toList acc) $ lookupIntDHT $ nodeToGraphNode graph
+      unifyGns graph gnList areFinal
+    else do
+      elem <- StackST.stackPop (sStack graph)
+      createComponent' graph iValue (Set.insert (fromJust elem) acc) areFinal
+ 
+unifyGns :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> [GraphNode Int state]-> ([state] -> Bool) -> ST.ST s Bool
+unifyGns graph [gn@(SCComponent{})] areFinal = return False
+unifyGns graph [sn@(SingleNode{})]  areFinal = do
+  self <- selfLoop (edges graph) (getgnId sn)
+  if self 
+    then do
+      newC <- freshNegId (c graph)
+      insertDHT (nodeToGraphNode graph) (node sn) (getgnId sn) (SCComponent{nodes = Set.singleton sn, getgnId = (getgnId sn), iValue = newC})
+      isAccepting graph (SCComponent{nodes = Set.singleton sn, getgnId = (getgnId sn), iValue = newC}) areFinal
+    else return False
+unifyGns graph gns areFinal = do 
+  multDeleteDHT (nodeToGraphNode graph) $ Set.unions $ map gnNodes gns;
+  newC <- freshNegId (c graph)
+  newId <- freshPosId (idSeq graph)
+  multInsertDHT (nodeToGraphNode graph)  (Set.unions $ map gnNodes gns) newId $ SCComponent{nodes = Set.fromList gns, getgnId = newId, iValue = newC}
+  isAccepting graph (SCComponent{nodes = Set.fromList gns, getgnId = newId, iValue = newC}) areFinal
+
+-- not safe
+isAccepting :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> GraphNode Int state -> ([state] -> Bool) -> ST.ST s Bool
+isAccepting graph gn areFinal = let gnList = Set.toList $ flattengn gn
+                                    gnListIds = map getgnId gnList
+                                    couples = [(from, to) | from <- gnListIds, to <- gnListIds] 
+                                in do 
+                                  edgeSetList <- forM couples (\(from,to) -> lookupEdge (edges graph) from to)
+                                  gnList <- forM (Set.toList . Set.unions . Set.map edgeGNodes . Set.unions $ edgeSetList) $ lookupIntDHT $ nodeToGraphNode graph
+                                  return $ areFinal (Set.toList . Set.unions . map gnStates $ gnList)
