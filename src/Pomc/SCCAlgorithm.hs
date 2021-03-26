@@ -7,7 +7,7 @@
 
 module Pomc.SCCAlgorithm () where
  -- TODO. optimize imports
-import Pomc.Satisfiability( StateId(..), Stack) 
+import Pomc.Satisfiability( StateId(..), Stack, SatState) 
 import qualified Data.Stack.ST  as StackST 
 
 import Control.Monad ( forM_, forM) 
@@ -132,6 +132,66 @@ valuesTS :: (Ord a) => STRef s (TwinSet a) -> ST.ST s (Set a)
 valuesTS tsref = do
   (s1,s2) <- readSTRef tsref
   return $ Set.union s1 s2 
+
+----------------------------------------------------------------------------------------
+emptyDHT  :: ST.ST s (DoubleHashTable s k v)
+emptyDHT = do
+            ht1 <- BH.new 
+            ht2 <- BH.new
+            return (ht1, ht2)
+
+lookupIdDHT :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> ST.ST s (Maybe Int)
+lookupIdDHT (ht1, _) key = BH.lookup ht1 key
+
+-- insert a (key,value) tuple into the dht, with the given int identifier
+insertDHT :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> Int -> v -> ST.ST s ()
+insertDHT (ht1, ht2) key ident value = do 
+  BH.insert ht1 key ident;
+  BH.insert ht2 ident value
+
+-- insert a set of keys into the dht, all mapped to the same value with the same identifier
+multInsertDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Set k -> Int -> v -> ST.ST s ()
+multInsertDHT (ht1, ht2) keySet ident value = do 
+  forM_ (Set.toList keySet) ( \key -> BH.insert ht1 key ident);
+  BH.insert ht2 ident value
+
+deleteDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) ->  k -> ST.ST s ()
+deleteDHT (ht1, ht2) key  = do 
+  maybeId <- BH.lookup ht1 key
+  BH.delete ht1 key;
+  if (isJust maybeId)
+    then BH.delete ht2 (fromJust maybeId)
+    else return ()
+
+
+multDeleteDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) ->  Set k -> ST.ST s ()
+multDeleteDHT (ht1, ht2) keySet = forM_ (Set.toList keySet) ( \key -> deleteDHT (ht1,ht2) key)
+
+-- not safe
+lookupDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> k -> ST.ST s v
+lookupDHT (ht1, ht2) key = do
+  ident <- BH.lookup ht1 key
+  value <- BH.lookup ht2 $ fromJust ident
+  return $ fromJust value
+
+-- not safe
+lookupIntDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> ST.ST s v
+lookupIntDHT (_, ht2) ident = do
+  value <- BH.lookup ht2 ident
+  return $ fromJust value
+
+insertIntDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> v -> ST.ST s ()
+insertIntDHT (_,ht2) ident val = BH.insert ht2 ident val  
+
+keysDHT :: (Eq k, Hashable k, Ord k) => (DoubleHashTable s k v) -> ST.ST s (Set k)
+keysDHT (ht1, _) = do 
+  ht1entries <- H.toList ht1
+  return $ Set.fromList $ fst . unzip $ ht1entries
+
+valuesDHT :: (Eq k, Hashable k, Ord v) => (DoubleHashTable s k v) -> ST.ST s (Set v)
+valuesDHT (_, ht2) = do 
+  ht2entries <- H.toList ht2
+  return $ Set.fromList . snd . unzip $ ht2entries
 
 
 
