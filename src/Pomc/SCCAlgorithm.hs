@@ -260,6 +260,18 @@ buildSummary fr sb t  = Summary {from = fr, to = t,
                                   , Set.singleton $ Internal {from = lastNode sb,to = t   }]
                                 }
 
+allUntil :: GabowStack s v -> [v] -> (v -> ST.ST s Bool)  -> ST.ST s [v]
+allUntil stack acc cond  = do 
+  topElem <- StackST.stackPeek stack
+  condEval <- cond $ fromJust topElem 
+  if condEval
+    then do 
+      forM_ (acc) $ StackST.stackPush stack
+      return acc
+    else do
+      topPopped <- StackST.stackPop stack 
+      allUntil stack ((fromJust topPopped):acc) cond 
+
 newGraph :: (SatState state, Eq state, Hashable state, Show state) => Vector (Key state) -> ST.ST s (Graph s state)
 newGraph initials = do
   newIdSequence <- newSTRef (1 :: Int)
