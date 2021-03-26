@@ -45,7 +45,7 @@ data ExplicitOpa s a = ExplicitOpa
   } deriving (Show)
 
 -- a specific type for the model checker state: the parametric s is for the input OPA, the second field is for the generated opa from the input formula
-data MCState s = MCState s State deriving (Generic, Eq, Show)
+data MCState s = MCState s State deriving (Generic, Eq, Show, Ord)
 
 instance Hashable s => Hashable (MCState s)
 

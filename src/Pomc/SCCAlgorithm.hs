@@ -204,3 +204,29 @@ freshNegId idSeq = do
   curr <- readSTRef idSeq
   modifySTRef' idSeq (+(-1));
   return $ curr
+
+gnStates :: (SatState state, Eq state, Ord state, Hashable state, Show state)=> GraphNode k state-> Set state
+gnStates (SingleNode{node = n}) = Set.singleton (getState . fst $ n)
+gnStates (SCComponent{nodes = ns}) = Set.unions (Set.map gnStates ns)
+
+-- get all the nodes (i.e, tuples (StateID state, Stack state)) which form a GraphNode
+gnNodes :: (SatState state, Eq state, Hashable state, Show state) => GraphNode k state -> Set (Key state)
+gnNodes (SingleNode{node = n}) = Set.singleton n
+gnNodes (SCComponent{nodes = ns}) = Set.unions (Set.map gnNodes ns)  
+
+containsStateId :: (SatState state, Eq state, Hashable state, Show state) =>  StateId state -> GraphNode k state -> Bool
+containsStateId sid gn = let gnn = gnNodes gn 
+                         in not $ Set.null $ Set.filter (\node -> fst node == sid) gnn -- TODO: maybe an alternative implementation performs better?
+
+-- from a GraphNode, get a list of all recursive GraphNodes contained in it
+flattengn :: (SatState state, Eq state, Hashable state, Show state, Ord k) => GraphNode k state -> Set (GraphNode k state)
+flattengn n@(SingleNode{}) = Set.singleton n
+flattengn n@(SCComponent{nodes = ns}) = Set.union (Set.singleton n) $ Set.unions (Set.map flattengn ns)
+    
+-- the iValue is used in the Gabow algorithm
+setgnIValue ::  (SatState state, Eq state, Hashable state, Show state) => Int -> GraphNode k state -> GraphNode k state 
+setgnIValue new (SCComponent { getgnId = gid, nodes = ns}) = SCComponent{ getgnId = gid, iValue = new,nodes = ns} 
+setgnIValue new  SingleNode{getgnId = gid, node = n} = SingleNode{getgnId = gid, iValue = new, node = n}
+
+resetgnIValue :: (SatState state, Eq state, Hashable state, Show state) => GraphNode k state -> GraphNode k state 
+resetgnIValue  = setgnIValue 0
