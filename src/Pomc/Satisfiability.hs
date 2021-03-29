@@ -5,12 +5,7 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Satisfiability (
-                             SatState(..)
-                           , Delta(..)
-                           , StateId(..)
-                           , Stack
-                           , isEmpty
+module Pomc.Satisfiability ( isEmpty
                            , isEmptyOmega
                            , isSatisfiable
                            , isSatisfiableGen
@@ -18,12 +13,13 @@ module Pomc.Satisfiability (
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.PotlV2(Formula)
+import Pomc.PotlV2(Formula(..))
 import Pomc.Check ( EncPrecFunc, makeOpa)
 import Pomc.State(Input, State(..))
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
---import Pomc.SCCAlgorithm(Graph,SummaryBody,TwinSet, newGraph, alreadyDiscovered, initialNodes)
+import Pomc.SatUtils
+import Pomc.SCCAlgorithm
 
 import Control.Monad (foldM, forM_)
 import Control.Monad.ST (ST)
@@ -37,137 +33,10 @@ import qualified Data.Set as Set
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
-import Pomc.PotlV2 (Formula(..))
 
 import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-
---import Debug.Trace (trace)
-
-debug :: String -> ST s Bool -> ST s Bool
-debug _ x = x
---debug msg r = fmap traceTrue r
---  where traceTrue False = False
---        traceTrue True = trace msg True
-
-
--- a basic open-addressing hashtable using linear probing
--- s = thread state, k = key, v = value.
-type HashTable s k v = BH.HashTable s k v
-
-
-
--- Map to sets
-type SetMap s v = MV.MVector s (Set v)
-
--- insert a state into the SetMap
-insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
-insertSM smref stateId val = do
-  sm <- readSTRef smref
-  let len = MV.length sm
-      sid = getId stateId
-  if sid < len
-    then MV.unsafeModify sm (Set.insert val) sid
-    else let newLen = computeLen len sid
-
-             computeLen size idx | idx < size = size
-                                 | otherwise = computeLen (size*2) idx
-         in do { grown <- MV.grow sm (newLen-len)
-               ; mapM_ (\i -> MV.unsafeWrite grown i Set.empty) [len..(newLen-1)]
-               ; MV.unsafeModify grown (Set.insert val) sid
-               ; writeSTRef smref grown
-               }
-
-lookupSM :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
-lookupSM smref stateId = do
-  sm <- readSTRef smref
-  let sid = getId stateId
-  if sid < MV.length sm
-    then MV.unsafeRead sm sid
-    else return Set.empty
-
--- check whether a couple (StateId, Stack) iha already been visited checking the presence of the Stack in the Set at StateId position
-memberSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s Bool
-memberSM smref stateId val = do
-  vset <- lookupSM smref stateId
-  return $ val `Set.member` vset
-
--- an empty Set Map,  an array of sets
-emptySM :: ST.ST s (STRef s (SetMap s v))
-emptySM = do
-  sm <- MV.replicate 4 Set.empty
-  newSTRef sm
-
-
--- State class for satisfiability
-class SatState state where
-  getSatState ::  state -> State
-  getStateProps :: BitEncoding -> state -> Input
-
-instance SatState State where
-  getSatState = id
-  {-# INLINABLE getSatState #-}
-
-  getStateProps bitencoding s = extractInput bitencoding (current $ s)
-  {-# INLINABLE getStateProps #-}
-
-
--- States with unique IDs
-data StateId state = StateId { getId :: !Int,
-                               getState :: state } deriving (Show)
-
-instance Eq (StateId state) where
-  p == q = getId p == getId q
-
-instance Ord (StateId state) where
-  compare p q = compare (getId p) (getId q)
-
-instance Hashable (StateId state) where
-  hashWithSalt salt s = hashWithSalt salt $ getId s
-
--- a type to keep track of state to id relation
-data SIdGen s state = SIdGen
-  { idSequence :: STRef s Int -- a mutable variable in state thread s containing a variable of type Int
-  , stateToId :: HashTable s state (StateId state) -- an HashTable where (key,value) = (state, StateId)
-  }
-
-initSIdGen :: ST.ST s (SIdGen s state)
-initSIdGen = do
-  newIdSequence <- newSTRef (1 :: Int) -- build a integer new STRef in the current state thread
-  newStateToId <- H.new -- new empty HashTable
-  return $ SIdGen { idSequence = newIdSequence,
-                    stateToId = newStateToId }
-
--- wrap a State into the StateId data type and into the ST monad, and update accordingly SidGen 
-wrapState :: (Eq state, Hashable state)
-          => SIdGen s state
-          -> state
-          -> ST.ST s (StateId state)
-wrapState sig q = do
-  qwrapped <- H.lookup (stateToId sig) q
-  if isJust qwrapped
-    then return $ fromJust qwrapped
-    else do
-    let idSeq = idSequence sig
-    newId <- readSTRef idSeq
-    modifySTRef' idSeq (+1)
-    let newQwrapped = StateId newId q
-    H.insert (stateToId sig) q newQwrapped
-    return newQwrapped
-
---wrap a list of states into the ST monad, giving to each of them a unique ID
-wrapStates :: (Eq state, Hashable state)
-           => SIdGen s state -- keep track of state to id relation
-           -> [state]
-           -> ST.ST s (Vector (StateId state))
-wrapStates sig states = do
-  wrappedList <- V.mapM (wrapState sig) (V.fromList states)
-  return wrappedList
-
-
--- Stack symbol: (input token, state) || Bottom if empty stack
-type Stack state = Maybe (Input, StateId state) 
 
 -- global variables in the algorithms
 data Globals s state = FGlobals
@@ -175,20 +44,13 @@ data Globals s state = FGlobals
   , visited :: STRef s (SetMap s (Stack state)) -- already visited states
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (SetMap s (StateId state))
-  } 
+  } | WGlobals 
+  { sIdGen :: SIdGen s state
+  , suppStarts :: STRef s (SetMap s (Stack state))
+  , wSuppEnds :: STRef s (SetMap s (StateId state, SummaryBody Int)) -- TODO: find a solution to avoid exposing this implementation
+  , graph :: Graph s state -- TODO: update the code to use corretly the new suppEnds
+  }  
 
--- a type for the delta relation, parametric with respect to the type of the state
-data Delta state = Delta
-  { bitenc :: BitEncoding
-  , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
-  , deltaPush :: state -> Input -> [state] -- deltaPush relation
-  , deltaShift :: state -> Input -> [state] -- deltaShift relation
-  , deltaPop :: state -> state -> [state] -- deltapop relation
-  }
-
--- get atomic propositions holding in a state
-getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
-getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
 
 -- implementation of the reachability algorithm, as described in the notes
 reach :: (SatState state, Eq state, Hashable state, Show state)
@@ -332,6 +194,84 @@ isEmpty delta initials isFinal = not $
                    False
                    initialsId)
 
+
+------------------------------------------------------------------------------------------
+isEmptyOmega  :: (SatState state, Eq state, Hashable state, Show state)
+        => Delta state -- delta relation of an opa
+        -> [state] -- list of initial states of the opa
+        -> ([state] -> Bool) -- determine whether a list of states determine an accepting computation
+        -> Bool -- TODO: implement this
+isEmptyOmega delta initials areFinal = not $
+  ST.runST (do
+               newSig <- initSIdGen -- a variable to keep track of state to id relation
+               emptySuppStarts <- emptySM
+               emptySuppEnds <- emptySM
+               initialsId <- wrapStates newSig initials
+               initialNodes <- V.mapM (\sId -> return (sId, Nothing)) initialsId
+               gr <- newGraph initialNodes
+               let globals = WGlobals { sIdGen = newSig 
+                                      , suppStarts = emptySuppStarts
+                                      , wSuppEnds = emptySuppEnds 
+                                      , graph = gr
+                                      }
+                in visitInitials areFinal globals delta
+            )
+
+-- TODO: make more readable this code
+visitInitials :: (SatState state, Eq state, Hashable state, Show state) 
+                  => ([state] -> Bool)
+                  -> Globals s state 
+                  -> Delta state 
+                  -> ST.ST s Bool
+visitInitials areFinal globals delta  = let visit node = do
+                                                            alrDisc <- alreadyDiscovered (graph globals) node 
+                                                            if not alrDisc
+                                                              then reachOmega areFinal globals delta node
+                                                              else return False
+                                            autoVisit node = do 
+                                                                alrVis <- alreadyVisited (graph globals) node 
+                                                                if not alrVis
+                                                                  then visitGraphFrom (graph globals) node 
+                                                                  else return False
+
+                                        in do 
+                                          initials <- initialNodes $ graph globals
+                                          detected <- foldM (\acc node -> if acc
+                                                                            then return True
+                                                                            else visit node ) 
+                                                            False
+                                                            initials
+                                          if detected 
+                                            then return True 
+                                            else do size <- newSummariesSize $ graph globals
+                                                    if size > 0
+                                                    then do
+                                                          newInitials <- toCollapsePhase $ graph globals
+                                                          autoDetected <- foldM (\acc node -> if acc
+                                                                                                then return True
+                                                                                                else autoVisit node) 
+                                                                                False
+                                                                                initials
+                                                          if autoDetected 
+                                                            then return True 
+                                                            else do 
+                                                              toSearchPhase (graph globals) (newInitials);
+                                                              visitInitials areFinal globals delta
+                                                    else return False  
+
+
+
+
+-- TODO: shall I put Ord state in the context?
+reachOmega :: (SatState state, Eq state, Hashable state, Show state)
+               => ([state] -> Bool) 
+               -> Globals s state 
+               -> Delta state 
+               -> (StateId state, Stack state) 
+               -> ST.ST s Bool 
+reachOmega areFinal globals delta (q,g) = return True -- TODO. implement me
+
+-------------------------------------------------------------
 -- given a formula, build the fopa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
 isSatisfiable :: Bool
               -> Formula APType
@@ -339,7 +279,7 @@ isSatisfiable :: Bool
               -> [StructPrecRel APType]
               -> Bool
 isSatisfiable isOmega phi ap sprs =
-  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) = makeOpa phi isOmega ap sprs
+  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) = makeOpa phi False ap sprs
       delta = Delta
         { bitenc = be
         , prec = precf
@@ -348,13 +288,14 @@ isSatisfiable isOmega phi ap sprs =
         , deltaPop = dPop
         }
       isFinalOmega states = all (\f -> any (\s -> isFinal f (getSatState s)) states) $ Set.toList cl
-  in if isOmega
-     then not $ isEmptyOmega delta initials isFinalOmega
-     else not $ isEmpty delta initials (isFinal T)
+  in if isOmega 
+        then isEmpty delta initials (isFinal T)
+        else isEmptyOmega delta initials isFinalOmega
+
 
 -- parametric with respect the type of the propositions
 isSatisfiableGen :: ( Ord a)
-                 => Bool
+                 => Bool 
                  -> Formula a
                  -> ([Prop a], [Prop a])
                  -> [StructPrecRel a]
@@ -364,15 +305,7 @@ isSatisfiableGen isOmega phi ap precf =
   in isSatisfiable isOmega tphi tap tprecr
 
 
-----------------------------------------------------------------------------------------
--- OMEGA CASE --
--- check the emptiness of the Language expressed by an automaton
-isEmptyOmega  :: (SatState state, Eq state, Hashable state, Show state)
-        => Delta state -- delta relation of an opa
-        -> [state] -- list of initial states of the opa
-        -> ([state] -> Bool) -- determine whether a list of states determine an accepting computation
-        -> Bool -- TODO: implement this
-isEmptyOmega delta initials areFinal = True -- TODO: implement me
+
 
 
 

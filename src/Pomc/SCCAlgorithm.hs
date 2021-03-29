@@ -5,9 +5,19 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.SCCAlgorithm () where
+module Pomc.SCCAlgorithm ( Graph
+                         , SummaryBody
+                         , newGraph
+                         , alreadyDiscovered
+                         , alreadyVisited
+                         , visitGraphFrom
+                         , initialNodes
+                         , newSummariesSize
+                         , toCollapsePhase
+                         , toSearchPhase
+                         ) where
  -- TODO. optimize imports
-import Pomc.Satisfiability( StateId(..), Stack, SatState) 
+import Pomc.SatUtils( StateId(..), Stack, SatState, Delta) 
 import qualified Data.Stack.ST  as StackST 
 
 import Control.Monad ( forM_, forM) 
@@ -96,7 +106,7 @@ data Graph s state = Graph
   , sStack          :: GabowStack s Int -- for the Gabow algorithm
   , initials        :: STRef s (TwinSet Int)
   , summaries       :: STRef s (Vector (Int -> Edge Int, Key state))
-  } 
+  }
 
 
 -- TwinSet interface operation 
@@ -316,9 +326,7 @@ alreadyVisited graph k = do
   graphNode <- lookupDHT (nodeToGraphNode graph) k
   return $ (iValue graphNode) == 0
 
-
--- True: the graphNode was already discovered, False otherwise
-alreadyDiscovered :: (SatState state, Eq state, Hashable state, Show state) => Graph s state-> Key state-> ST.ST s Bool -- was the graphNode already there?
+alreadyDiscovered :: (SatState state, Eq state, Hashable state, Show state) => Graph s state-> Key state-> ST.ST s Bool 
 alreadyDiscovered graph key = do 
   ident <- lookupIdDHT (nodeToGraphNode graph) key
   if isJust ident
@@ -472,4 +480,8 @@ toSearchPhase graph ts = do
   forM_ (Set.toList gns) $ \gn -> insertIntDHT (nodeToGraphNode graph) (getgnId gn) (resetgnIValue gn);
   setTS (initials graph) ts;
   modifySTRef' (summaries graph) $ const (V.empty)
+
+visitGraphFrom :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s Bool 
+visitGraphFrom graph key = return True -- TODO: implement me following the same implementation of the algo
+
 
