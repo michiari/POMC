@@ -231,7 +231,7 @@ visitInitials areFinal globals delta  = let visit node = do
                                             autoVisit node = do 
                                                                 alrVis <- alreadyVisited (graph globals) node 
                                                                 if not alrVis
-                                                                  then visitGraphFrom (graph globals) node 
+                                                                  then visitGraphFrom areFinal (graph globals) node 
                                                                   else return False
 
                                         in do 
@@ -247,6 +247,7 @@ visitInitials areFinal globals delta  = let visit node = do
                                                     if size > 0
                                                     then do
                                                           newInitials <- toCollapsePhase $ graph globals
+                                                          -- let it run
                                                           autoDetected <- foldM (\acc node -> if acc
                                                                                                 then return True
                                                                                                 else autoVisit node) 
@@ -260,17 +261,89 @@ visitInitials areFinal globals delta  = let visit node = do
                                                     else return False  
 
 
-
-
--- TODO: shall I put Ord state in the context?
 reachOmega :: (SatState state, Eq state, Hashable state, Show state)
                => ([state] -> Bool) 
                -> Globals s state 
                -> Delta state 
                -> (StateId state, Stack state) 
                -> ST.ST s Bool 
-reachOmega areFinal globals delta (q,g) = return True -- TODO. implement me
+reachOmega areFinal globals delta (q,g) = 
+  do visitNode (graph globals) (q,g)
+  let be = bitenc delta 
+      qProps = getSidProps be q -- atomic propositions holding in the state (the input)
+      qState = getState q 
+      cases 
+        | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) =
+          reachOmegaPush areFinal globals delta (q,g) qState qProps
 
+        | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) =
+          reachOmegaShift areFinal globals delta (q,g) qState qProps
+
+        | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
+            reachOmegaPop isDestState isDestStack globals delta q g qState
+
+        | otherwise = return False
+  success <- cases
+  if success
+    then return True 
+    else createComponent (graph globals) (q,g) areFinal
+
+
+reachOmegaPush :: (SatState state, Eq state, Hashable state, Show state)
+          => ([state] -> Bool)
+          -> Globals s state
+          -> Delta state
+          -> (StateId state, Stack state)
+          -> state
+          -> Input
+          -> ST s Bool
+reachOmegaPush areFinal globals delta (q,g) qState qProps =
+  let doPush True _ = return True
+      doPush False p = do
+        insertSM (suppStarts globals) q g
+        debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+          reachTransition Nothing areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
+  in do
+    newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
+    pushReached <- V.foldM' doPush False newStates
+    if pushReached
+      then return True
+      else do
+      currentSuppEnds <- lookupSM (suppEnds globals) q
+      foldM (\acc (s, sb) -> if acc
+                              then return True
+                              else debug ("Push (summary): q = " ++ show q
+                                   ++ "\ng = " ++ show g
+                                   ++ "\ns = " ++ show s) $
+                                  reachTransition (Just sb) areFinal globals delta (q,g) (s,g))
+        False
+        currentSuppEnds
+
+
+reachTransition :: (SatState state, Eq state, Hashable state, Show state)
+                 -> Maybe (SummaryBody Int) 
+                 -> ([state] -> Bool)
+                 -> Globals s state
+                 -> Delta state
+                 -> (StateId state, Stack state)
+                 -> (StateId state, Stack state)
+                 -> ST s Bool
+reachTransition body areFinal globals delta from to = do 
+  alrDisc <- alreadyDiscovered (graph globals) to
+  let insert False = insertInternal (graph globals) from to
+      insert True  = insertSummary (graph globals) from to $ fromJust body
+  insert $ isJust body 
+  if alrDisc 
+    then do 
+      alrVis <- alreadyVisited (graph globals) to
+      if alrVis 
+        then do updateSCC (graph globals) to;
+                return False 
+        else visitGraphFrom (graph globals) to
+    else reachOmega areFinal globals delta to
+
+
+ 
 -------------------------------------------------------------
 -- given a formula, build the fopa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
 isSatisfiable :: Bool

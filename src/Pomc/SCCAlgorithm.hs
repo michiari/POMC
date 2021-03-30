@@ -15,6 +15,8 @@ module Pomc.SCCAlgorithm ( Graph
                          , newSummariesSize
                          , toCollapsePhase
                          , toSearchPhase
+                         , visitNode
+                         , createComponent
                          ) where
  -- TODO. optimize imports
 import Pomc.SatUtils( StateId(..), Stack, SatState, Delta) 
@@ -470,7 +472,7 @@ toCollapsePhase graph = let unmarked list = snd . unzip $ filter (\(cond, _) -> 
                             forM_ (Set.toList gns) $ \gn -> insertIntDHT (nodeToGraphNode graph) (getgnId gn) (resetgnIValue gn);
                             summ <- readSTRef $ summaries graph 
                             resolvedSummariesList <- forM (V.toList summ) $ resolveSummary graph
-                            resetTS (initials graph);
+                            resetTS (initials graph); -- marks everything
                             return (Set.fromList $ unmarked resolvedSummariesList, Set.fromList $ marked resolvedSummariesList)
 
 
