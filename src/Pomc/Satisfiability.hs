@@ -319,6 +319,23 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
         False
         currentSuppEnds
 
+reachOmegaShift :: (SatState state, Eq state, Hashable state, Show state)
+           => ( [state] -> Bool)
+           -> Globals s state
+           -> Delta state
+           -> (StateId state, Stack state)
+           -> state
+           -> Input
+           -> ST s Bool
+reachOmegaShift areFinal globals delta (q,g) qState qProps =
+  let doShift True _ = return True
+      doShift False p =
+        debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+        reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
+  in do
+    newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
+    V.foldM' doShift False newStates
+
 
 reachTransition :: (SatState state, Eq state, Hashable state, Show state)
                  -> Maybe (SummaryBody Int) 
