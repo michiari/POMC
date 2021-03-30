@@ -280,7 +280,7 @@ reachOmega areFinal globals delta (q,g) =
           reachOmegaShift areFinal globals delta (q,g) qState qProps
 
         | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
-            reachOmegaPop isDestState isDestStack globals delta q g qState
+            reachOmegaPop areFinal globals delta (q,g) qState
 
         | otherwise = return False
   success <- cases
@@ -331,10 +331,37 @@ reachOmegaShift areFinal globals delta (q,g) qState qProps =
   let doShift True _ = return True
       doShift False p =
         debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-        reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
+          reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
     V.foldM' doShift False newStates
+
+reachOmegaPop :: (SatState state, Eq state, Hashable state, Show state)
+         => ( [state] -> Bool)
+         -> Globals s state
+         -> Delta state
+         -> (StateId state, Stack state)
+         -> state
+         -> ST s Bool
+reachOmegaPop areFinal globals delta (q,g) qState =
+  let doPop p =
+        let r = snd . fromJust $ g
+            closeSupports g'
+              | isNothing g' ||
+                ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
+              = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+                discoverSummary (graph globals) (r,g') sb (p,g') -- do not explore this node, but store for later exploration, to ensure correctness of the Gabow algo                        
+              | otherwise = return ()
+        in do
+          sb <- discoverSummaryBody (graph globals) r
+          insertSM (suppEnds globals) r (p,sb)
+          currentSuppStarts <- lookupSM (suppStarts globals) r
+          forM_ currentSuppStarts closeSupports 
+  in do
+    newStates <- wrapStates (sIdGen globals) $
+                 (deltaPop delta) qState (getState . snd . fromJust $ g)
+    forM_  newStates doPop;
+    return False
 
 
 reachTransition :: (SatState state, Eq state, Hashable state, Show state)

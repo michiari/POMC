@@ -17,6 +17,10 @@ module Pomc.SCCAlgorithm ( Graph
                          , toSearchPhase
                          , visitNode
                          , createComponent
+                         , discoverSummaryBody
+                         , insertInternal
+                         , insertSummary
+                         , discoverSummary
                          ) where
  -- TODO. optimize imports
 import Pomc.SatUtils( StateId(..), Stack, SatState, Delta) 
@@ -375,7 +379,7 @@ resolveSummary graph (builder, key) = do
 
 -- this simply creates a Summary Body
 -- unsafe
-discoverSummaryBody :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> StateId state -> Key state  -> ST.ST s (SummaryBody Int)
+discoverSummaryBody :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> StateId state -> ST.ST s (SummaryBody Int)
 discoverSummaryBody graph from to = let untilcond = \ident -> do 
                                                                 gn <- lookupIntDHT (nodeToGraphNode graph) ident
                                                                 return $ containsStateId from gn
