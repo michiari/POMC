@@ -27,7 +27,7 @@ module Pomc.SCCAlgorithm ( Graph
 import Pomc.SatUtils( StateId(..), Stack, SatState, Delta) 
 import qualified Data.Stack.ST  as StackST 
 
-import Control.Monad ( forM_, forM) 
+import Control.Monad ( forM_, forM,foldM, mapM) 
 import Control.Monad.ST
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef') 
@@ -352,22 +352,31 @@ alreadyDiscovered graph key = do
 visitNode :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s ()
 visitNode graph key = do
   gn <- lookupDHT (nodeToGraphNode graph) key 
+  visitNode' graph gn
+  
+
+visitNode' :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> GraphNode Int state -> ST.ST s ()
+visitNode' graph gn = do 
   unmarkTS (initials graph) $ getgnId gn;
   StackST.stackPush (sStack graph) (getgnId gn);
   sSize <- StackST.stackSize $ sStack graph 
   insertIntDHT (nodeToGraphNode graph) (getgnId gn) $ setgnIValue (naturalToInt sSize) gn;
-  StackST.stackPush (bStack graph) (naturalToInt sSize);
+  StackST.stackPush (bStack graph) (naturalToInt sSize)
 
 --unsafe
-updateSCC :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s ()
-updateSCC graph node = do 
-  gn <- lookupDHT (nodeToGraphNode graph) node
+updateSCC' :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> GraphNode Int state -> ST.ST s ()
+updateSCC' graph gn = do 
   topElemB <- StackST.stackPeek (bStack graph)
   if iValue gn < 0 || iValue gn >= (fromJust topElemB) -- TODO: shall we do some checks here about the fromJust?
     then return ()
     else do
       StackST.stackPop (bStack graph);
-      updateSCC graph node
+      updateSCC' graph gn
+
+updateSCC :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s ()
+updateSCC graph key = do 
+  gn <- lookupDHT (nodeToGraphNode graph) key
+  updateSCC' graph gn 
 
 
 -- when this is called, the current initials have nothing marked!!
@@ -412,19 +421,24 @@ insertSummary graph fromKey toKey  sb = do fr <- lookupIdDHT (nodeToGraphNode gr
 
 
 -- the same as CreateComponent in the algorithm
-createComponent :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Key state -> ([state] -> Bool) -> ST.ST s Bool
-createComponent graph key areFinal = do
-  gn <- lookupDHT (nodeToGraphNode graph) key
+-- TODO: update these functions' names to make the code more readable
+createComponent' :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> GraphNode Int state -> ([state] -> Bool) -> ST.ST s Bool
+createComponent' graph gn areFinal = do
   topB <- StackST.stackPeek (bStack graph) 
   if (isJust topB && (iValue gn) == (fromJust topB))
     then do 
       StackST.stackPop (bStack graph)
-      createComponent' graph (iValue gn) Set.empty areFinal
+      createComponent'' graph (iValue gn) Set.empty areFinal
     else return $ False 
 
+createComponent :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Key state -> ([state] -> Bool) -> ST.ST s Bool
+createComponent graph key areFinal = do
+  gn <- lookupDHT (nodeToGraphNode graph) key
+  createComponent' graph gn areFinal
 
-createComponent' :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Int -> Set Int -> ([state] -> Bool)  -> ST.ST s Bool
-createComponent' graph iValue  acc areFinal = do
+
+createComponent'' :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Int -> Set Int -> ([state] -> Bool)  -> ST.ST s Bool
+createComponent'' graph iValue  acc areFinal = do
   sSize <- StackST.stackSize (sStack graph)
   if iValue < (naturalToInt sSize)
     then do 
@@ -432,7 +446,7 @@ createComponent' graph iValue  acc areFinal = do
       unifyGns graph gnList areFinal
     else do
       elem <- StackST.stackPop (sStack graph)
-      createComponent' graph iValue (Set.insert (fromJust elem) acc) areFinal
+      createComponent'' graph iValue (Set.insert (fromJust elem) acc) areFinal
  
 unifyGns :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> [GraphNode Int state]-> ([state] -> Bool) -> ST.ST s Bool
 unifyGns graph [gn@(SCComponent{})] areFinal = return False
@@ -489,7 +503,36 @@ toSearchPhase graph ts = do
   setTS (initials graph) ts;
   modifySTRef' (summaries graph) $ const (V.empty)
 
-visitGraphFrom :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ([state] -> Bool) -> Key state -> ST.ST s Bool 
-visitGraphFrom graph areFinal key = return True -- TODO: implement me following the same implementation of the algo
+--unsafe
+visitGraphFrom :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> ([state] -> Bool) -> Key state -> ST.ST s Bool 
+visitGraphFrom graph areFinal key = do 
+  gn <- lookupDHT (nodeToGraphNode graph) key 
+  visitGraphFrom' graph areFinal gn 
+
+visitGraphFrom' :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> ([state] -> Bool) -> GraphNode Int state -> ST.ST s Bool 
+visitGraphFrom' graph areFinal gn = do 
+  visitNode' graph gn;
+  next <- nextStepsFrom (edges graph) (getgnId gn)
+  nextNodes <- mapM (\n -> lookupIntDHT (nodeToGraphNode graph) n) $ Set.toList next
+  success <-  foldM (\acc gn -> if acc
+                                  then return True 
+                                  else if (iValue gn) == 0 
+                                          then visitGraphFrom' graph areFinal gn
+                                          else  do 
+                                            updateSCC' graph gn
+                                            return False 
+                                            )
+                    False
+                    nextNodes 
+  if success
+    then return True 
+    else createComponent' graph gn areFinal
+
+
+
+
+
+
+
 
 
