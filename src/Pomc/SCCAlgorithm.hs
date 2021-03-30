@@ -6,7 +6,7 @@
 -}
 
 module Pomc.SCCAlgorithm ( Graph
-                         , SummaryBody
+                         , SummaryBody(..)
                          , newGraph
                          , alreadyDiscovered
                          , alreadyVisited
@@ -21,6 +21,7 @@ module Pomc.SCCAlgorithm ( Graph
                          , insertInternal
                          , insertSummary
                          , discoverSummary
+                         , updateSCC
                          ) where
  -- TODO. optimize imports
 import Pomc.SatUtils( StateId(..), Stack, SatState, Delta) 
@@ -69,13 +70,14 @@ data SummaryBody k = SummaryBody
   { firstNode :: k
   , lastNode  :: k 
   , bodyEdges :: Set (Edge k)
-  }
+  } deriving (Show,Ord)
 
 instance (Ord k) => Eq (SummaryBody k) where 
   p == q = (firstNode p) == (firstNode q)
           && (lastNode p) == (lastNode q)
           && (all (\e -> Set.member e (bodyEdges q)) $ Set.toList (bodyEdges p))
           && (all (\e -> Set.member e (bodyEdges p)) $ Set.toList (bodyEdges q))
+
 data GraphNode k state = SCComponent
   { getgnId   :: k -- immutable
   , iValue    :: Int -- changes at each iteration of the Gabow algorithm
@@ -380,7 +382,7 @@ resolveSummary graph (builder, key) = do
 -- this simply creates a Summary Body
 -- unsafe
 discoverSummaryBody :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> StateId state -> ST.ST s (SummaryBody Int)
-discoverSummaryBody graph from to = let untilcond = \ident -> do 
+discoverSummaryBody graph from    = let untilcond = \ident -> do 
                                                                 gn <- lookupIntDHT (nodeToGraphNode graph) ident
                                                                 return $ containsStateId from gn
                                     in do  
@@ -487,7 +489,7 @@ toSearchPhase graph ts = do
   setTS (initials graph) ts;
   modifySTRef' (summaries graph) $ const (V.empty)
 
-visitGraphFrom :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s Bool 
-visitGraphFrom graph key = return True -- TODO: implement me following the same implementation of the algo
+visitGraphFrom :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ([state] -> Bool) -> Key state -> ST.ST s Bool 
+visitGraphFrom graph areFinal key = return True -- TODO: implement me following the same implementation of the algo
 
 

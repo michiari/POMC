@@ -45,7 +45,7 @@ import qualified Data.Vector as V
 
 --import Debug.Trace (trace)
 
-debug :: String -> ST s Bool -> ST s Bool
+debug :: String -> ST s a -> ST s a
 debug _ x = x
 --debug msg r = fmap traceTrue r
 --  where traceTrue False = False

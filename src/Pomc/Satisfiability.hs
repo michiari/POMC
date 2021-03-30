@@ -196,7 +196,7 @@ isEmpty delta initials isFinal = not $
 
 
 ------------------------------------------------------------------------------------------
-isEmptyOmega  :: (SatState state, Eq state, Hashable state, Show state)
+isEmptyOmega  :: (SatState state, Ord state, Hashable state, Show state)
         => Delta state -- delta relation of an opa
         -> [state] -- list of initial states of the opa
         -> ([state] -> Bool) -- determine whether a list of states determine an accepting computation
@@ -218,7 +218,7 @@ isEmptyOmega delta initials areFinal = not $
             )
 
 -- TODO: make more readable this code
-visitInitials :: (SatState state, Eq state, Hashable state, Show state) 
+visitInitials :: (SatState state, Ord state, Hashable state, Show state) 
                   => ([state] -> Bool)
                   -> Globals s state 
                   -> Delta state 
@@ -231,7 +231,7 @@ visitInitials areFinal globals delta  = let visit node = do
                                             autoVisit node = do 
                                                                 alrVis <- alreadyVisited (graph globals) node 
                                                                 if not alrVis
-                                                                  then visitGraphFrom areFinal (graph globals) node 
+                                                                  then visitGraphFrom (graph globals) areFinal node 
                                                                   else return False
 
                                         in do 
@@ -261,14 +261,14 @@ visitInitials areFinal globals delta  = let visit node = do
                                                     else return False  
 
 
-reachOmega :: (SatState state, Eq state, Hashable state, Show state)
+reachOmega :: (SatState state, Ord state, Hashable state, Show state)
                => ([state] -> Bool) 
                -> Globals s state 
                -> Delta state 
                -> (StateId state, Stack state) 
                -> ST.ST s Bool 
-reachOmega areFinal globals delta (q,g) = 
-  do visitNode (graph globals) (q,g)
+reachOmega areFinal globals delta (q,g) = do 
+  visitNode (graph globals) (q,g)
   let be = bitenc delta 
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
       qState = getState q 
@@ -280,16 +280,17 @@ reachOmega areFinal globals delta (q,g) =
           reachOmegaShift areFinal globals delta (q,g) qState qProps
 
         | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
-            reachOmegaPop areFinal globals delta (q,g) qState
+          reachOmegaPop areFinal globals delta (q,g) qState
 
         | otherwise = return False
+    
   success <- cases
   if success
     then return True 
     else createComponent (graph globals) (q,g) areFinal
 
 
-reachOmegaPush :: (SatState state, Eq state, Hashable state, Show state)
+reachOmegaPush :: (SatState state, Ord state, Hashable state, Show state)
           => ([state] -> Bool)
           -> Globals s state
           -> Delta state
@@ -309,7 +310,7 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
     if pushReached
       then return True
       else do
-      currentSuppEnds <- lookupSM (suppEnds globals) q
+      currentSuppEnds <- lookupSM (wSuppEnds globals) q
       foldM (\acc (s, sb) -> if acc
                               then return True
                               else debug ("Push (summary): q = " ++ show q
@@ -319,7 +320,8 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
         False
         currentSuppEnds
 
-reachOmegaShift :: (SatState state, Eq state, Hashable state, Show state)
+
+reachOmegaShift :: (SatState state, Ord state, Hashable state, Show state)
            => ( [state] -> Bool)
            -> Globals s state
            -> Delta state
@@ -336,7 +338,7 @@ reachOmegaShift areFinal globals delta (q,g) qState qProps =
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
     V.foldM' doShift False newStates
 
-reachOmegaPop :: (SatState state, Eq state, Hashable state, Show state)
+reachOmegaPop :: (SatState state, Ord state, Hashable state, Show state)
          => ( [state] -> Bool)
          -> Globals s state
          -> Delta state
@@ -346,7 +348,7 @@ reachOmegaPop :: (SatState state, Eq state, Hashable state, Show state)
 reachOmegaPop areFinal globals delta (q,g) qState =
   let doPop p =
         let r = snd . fromJust $ g
-            closeSupports g'
+            closeSupports sb g'
               | isNothing g' ||
                 ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
               = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
@@ -354,18 +356,18 @@ reachOmegaPop areFinal globals delta (q,g) qState =
               | otherwise = return ()
         in do
           sb <- discoverSummaryBody (graph globals) r
-          insertSM (suppEnds globals) r (p,sb)
+          insertSM (wSuppEnds globals) r (p,sb)
           currentSuppStarts <- lookupSM (suppStarts globals) r
-          forM_ currentSuppStarts closeSupports 
+          forM_ currentSuppStarts (closeSupports sb)
   in do
     newStates <- wrapStates (sIdGen globals) $
                  (deltaPop delta) qState (getState . snd . fromJust $ g)
-    forM_  newStates doPop;
+    forM_  newStates doPop
     return False
 
 
-reachTransition :: (SatState state, Eq state, Hashable state, Show state)
-                 -> Maybe (SummaryBody Int) 
+reachTransition :: (SatState state, Ord state, Hashable state, Show state)
+                 => Maybe (SummaryBody Int) 
                  -> ([state] -> Bool)
                  -> Globals s state
                  -> Delta state
@@ -383,7 +385,7 @@ reachTransition body areFinal globals delta from to = do
       if alrVis 
         then do updateSCC (graph globals) to;
                 return False 
-        else visitGraphFrom (graph globals) to
+        else visitGraphFrom (graph globals) areFinal to
     else reachOmega areFinal globals delta to
 
 
