@@ -71,7 +71,9 @@ modelCheck isOmega phi opa =
   let 
       --fromList removes duplicates
       -- all the structural labels + all the labels which appear in phi + End
-      essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
+      essentialAP  
+        | isOmega  = Set.fromList $ (fst $ sigma opa) ++ (getProps phi)
+        | otherwise = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
       --generate the OPA associated to the negation of the input formula
       (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =

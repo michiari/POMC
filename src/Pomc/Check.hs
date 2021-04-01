@@ -35,6 +35,7 @@ import Pomc.PropConv (APType, convPropTokens)
 import Pomc.State(State(..), Input, Atom, showStates, showFormulaSet, showAtoms, showPendCombs)
 
 import Data.Maybe (fromJust, fromMaybe, isNothing, catMaybes)
+import Debug.Trace (trace)
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -52,7 +53,7 @@ import qualified Data.Sequence as SQ
 import Data.Foldable (toList)
 import Control.DeepSeq(NFData(..), force)
 
--- import qualified Debug.Trace as DT
+import qualified Debug.Trace as DT
 
 import GHC.Generics (Generic)
 
@@ -94,7 +95,7 @@ closure isOmega phi otherProps = let propClos = concatMap (closList . Atomic) (E
                                      phiClos  = closList phi
                                      omegaPropClos = concatMap (closList . Atomic) (otherProps)
                          in if (isOmega)
-                            then S.fromList (omegaPropClos ++ phiClos)
+                            then S.fromList (propClos ++ phiClos)
                             else S.fromList (propClos ++ phiClos)
                          
   where
@@ -142,7 +143,7 @@ closure isOmega phi otherProps = let propClos = concatMap (closList . Atomic) (E
 
 
 -- given a formula closure, generate a bitEncoding
-makeBitEncoding :: FormulaSet -> BitEncoding
+makeBitEncoding ::  FormulaSet -> BitEncoding
 makeBitEncoding clos =
   let
       -- positive formulas
@@ -166,10 +167,11 @@ makeBitEncoding clos =
       unwrapProp (Atomic End) = 0
       unwrapProp (Atomic (Prop n)) = fromIntegral n
 
+
       -- Mapping between positive closure and bits
       pClosVec = pAtomicVec V.++ pFormulaVec
       --index function of BitEncoding
-      pClosLookup phi = fromJust $ M.lookup phi pClosMap
+      pClosLookup phi = trace ("check for formula: " ++ show phi ++ "\n") $ fromJust $ M.lookup phi pClosMap
         where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
 
   in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
@@ -178,7 +180,7 @@ makeBitEncoding clos =
 -- we have to distinguish between the omega case and the finite case
 -- the first Bool means isOmega
 genAtoms  :: Bool -> BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
-genAtoms True  bitenc clos inputSet = genAtoms' bitenc clos   inputSet
+genAtoms True  bitenc clos inputSet = genAtoms' bitenc clos $ S.insert (S.singleton End) inputSet
 genAtoms False bitenc clos inputSet = genAtoms' bitenc clos $ S.insert (S.singleton End) inputSet
 
 genAtoms' :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
@@ -444,8 +446,8 @@ initials isOmega phi clos (atoms, bitenc) =
   -- list comprehension with all the states that are compatible and the powerset of all possible future obligations
   -- for the Omega case, there are no stack obligations in the initial states
   in if (isOmega)
-     then [WState phia (D.encode bitenc phip) (D.empty bitenc) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
-     else [FState phia (D.encode bitenc phip) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
+      then [WState phia (D.encode bitenc phip) (D.empty bitenc) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
+      else [FState phia (D.encode bitenc phip) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
 
 
 
@@ -1411,7 +1413,7 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
             valid curr pcomb = null [r | r <- frs, not (r $ makeInfo curr pcomb)]
 
     --omega case 
-    -- all future pending rules must be satisfied
+    -- all future stack rules must be satisfied
     vscs = S.toList . S.filter valid $ scombs
       where makeInfo stackComb = FsrInfo {fsrState           = state,
                                           fsrProps           = mprops,
@@ -1423,10 +1425,11 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
 
 
     wfstates = if (pvalid)
-                then [WState curr pend stack xl xe xr | curr <- vas,
-                                                        pc@(pend, xl, xe, xr) <- vpcs,
-                                                        stack <- vscs,
-                                                        valid curr pc]
+                then let newStates =  [WState curr pend stack xl xe xr | curr <- vas,
+                                                                        pc@(pend, xl, xe, xr) <- vpcs,
+                                                                        stack <- vscs,
+                                                                        valid curr pc]
+                     in DT.trace ("New omega states found: " ++ show (length newStates) ++ "\n") $ newStates
                 else []
       -- all future rules must be satisfied
       where makeInfo curr pendComb = FrInfo { frState          = state,
@@ -1446,12 +1449,8 @@ isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
 
 -- determine whether a state is final for a formula, for the omega case
 isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
-isFinalW bitenc phi@(Until Down _ h) s =   (not $ D.member bitenc (XNext Down phi) (stack s))
-                                        && (not $ D.member bitenc (XNext Up   phi) (stack s))
+isFinalW bitenc phi@(Until dir _ h) s =   (not $ D.member bitenc (XNext dir phi) (stack s))
                                         && ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
-isFinalW bitenc phi@(Until Up _ h) s   =   (not $ D.member bitenc (XNext Down phi)  (stack s))
-                                        && (not $ D.member bitenc (XNext Up   phi)  (stack s))
-                                        &&  ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
 isFinalW bitenc phi@(XNext _ _) s      =   (not $ D.member bitenc phi (stack   s))
                                         && (not $ D.member bitenc phi (pending s))
                                         && (not $ D.member bitenc phi (current s))
@@ -1476,8 +1475,8 @@ isFinalF bitenc s =
         checkAlw(Always _) = True
         checkAlw _ = False
 
-        debug = id
-        --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
+        --debug = id
+        debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
         currFset = current s
         currPend = pending s

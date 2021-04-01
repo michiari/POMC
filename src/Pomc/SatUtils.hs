@@ -43,13 +43,11 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 
 
---import Debug.Trace (trace)
+import Debug.Trace (trace)
 
-debug :: String -> ST s a -> ST s a
-debug _ x = x
---debug msg r = fmap traceTrue r
---  where traceTrue False = False
---        traceTrue True = trace msg True
+debug :: String -> a -> a
+--debug _ x = x
+debug msg r = trace msg r 
 
 
 -- a basic open-addressing hashtable using linear probing
