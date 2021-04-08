@@ -59,7 +59,7 @@ convAP phi precr other =
       apMap = Map.fromList $ zip allProps [1..]
       -- given a prop expressed in a custom type(p), look for the corresponding number in the Map
       trans p = fromJust $ Map.lookup p apMap
-  in (fmap trans phi -- we need fmap because props are stored in the container Prop -> fmap:: Functor f --> (a -> b) -> f a 
+  in (fmap trans phi -- we need fmap because props are stored in the container Prop -> fmap :: Functor f => (a -> b) -> f a 
      , map (\(sl1, sl2, pr) -> ( fmap trans $ sl1
                                , fmap trans $ sl2
                                , pr

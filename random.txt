@@ -1,0 +1,25 @@
+7,3763,4154,4368,4542,4543,4640,4700,4707,4719,4842,5161,5236,5246,5250,5260,5335,5341,5763,5818,
+
+
+
+
+InsertSummary: from: Just 4842} ---> to: Just 5161
+edge: Summary {from = 4842, to = 5161, 
+body = fromList [Internal {from = 4842, to = 4843}
+		,Internal {from = 4882, to = 4973}
+		,Internal {from = 4973, to = 5161}
+		,Summary {from = 4843, to = 4846, body = fromList [Internal {from = 358, to = 359}  ,Internal {from = 359, to = 4846} ,Internal {from = 4843, to = 358}]}
+		,Summary {from = 4846, to = 4882, body = fromList [Internal {from = 1045, to = 1066},Internal {from = 1066, to = 4882},Internal {from = 4846, to = 1031},Summary {from = 1031, to = 1045, body = fromList [Internal {from = 317, to = 1045},Internal {from = 1031, to = 317}]}]}]}
+
+
+nsertSummary: from: Just 7} ---> to: Just 3763
+edge: Summary {from = 7, to = 3763, 
+body = fromList [Internal {from = 7, to = 10}
+		,Summary {from = 10, to = 3454  , body = fromList [Internal {from = 10, to = 25}    , Internal {from = 25, to = 26}    , Internal {from = 26, to = 3454}]}
+		,Summary {from = 3454, to = 3457, body = fromList [Internal {from = 896, to = 902}  , Internal {from = 902, to = 3457} , Internal {from = 3454, to = 896}]}		
+		,Summary {from = 3457, to = 3459, body = fromList [Internal {from = 1231, to = 3459}, Internal {from = 3457, to = 1230}, Summary {from = 1230, to = 1231, body = fromList [Internal {from = 317, to = 1231},Internal {from = 1230, to = 317}]}]}]}		
+		,Internal {from = 3459, to = 3460}
+		,Internal {from = 3460, to = 3763}
+		
+
+     		

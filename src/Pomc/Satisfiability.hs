@@ -15,11 +15,12 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.PotlV2(Formula(..))
 import Pomc.Check ( EncPrecFunc, makeOpa)
-import Pomc.State(Input, State(..))
+import Pomc.State(Input, State(..), showState)
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
 import Pomc.SatUtils
 import Pomc.SCCAlgorithm
+
 
 import Control.Monad (foldM, forM_)
 import Control.Monad.ST (ST)
@@ -66,7 +67,7 @@ reach isDestState isDestStack globals delta q g = do
   if alreadyVisited
     then return False 
     else do
-    insertSM (visited globals) q g
+    debug ("Visiting: " ++ show q ++ "\ng = " ++ show g ++ "\n\n\n" ) $ insertSM (visited globals) q g 
     let be = bitenc delta
         qProps = getSidProps be q -- atomic propositions holding in the state (the input)
         qState = getState q 
@@ -235,7 +236,7 @@ visitInitials areFinal globals delta  = let visit node = do
                                                                   else return False
 
                                         in do 
-                                          initials <- initialNodes $ graph globals
+                                          initials <- initialNodes (bitenc delta) $ graph globals
                                           detected <- foldM (\acc node -> if acc
                                                                             then return True
                                                                             else visit node ) 
@@ -246,18 +247,16 @@ visitInitials areFinal globals delta  = let visit node = do
                                             else do size <- newSummariesSize $ graph globals
                                                     if size > 0
                                                       then do
-                                                          newInitials <- toCollapsePhase $ graph globals
-                                                          -- let it run
-                                                          debug ("start autodetec\n") $ return ();
+                                                          newInitials <- debug ("Moving to collapse phase") $ toCollapsePhase $ graph globals
                                                           autoDetected <- foldM (\acc node -> if acc
-                                                                                                                              then return True
-                                                                                                                              else autoVisit node) 
+                                                                                                then return True
+                                                                                                else autoVisit node) 
                                                                                 False
                                                                                 initials
                                                           if autoDetected 
                                                             then return True 
                                                             else do 
-                                                              toSearchPhase (graph globals) (newInitials);
+                                                              debug ("Moving to search phase again...") $ toSearchPhase (graph globals) (newInitials);
                                                               visitInitials areFinal globals delta
                                                       else return False  
 
@@ -268,7 +267,7 @@ reachOmega :: (SatState state, Ord state, Hashable state, Show state)
                -> Delta state 
                -> (StateId state, Stack state) 
                -> ST.ST s Bool 
-reachOmega areFinal globals delta (q,g) = do 
+reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ show (q,g) ++ "\n" ++ "state: " ++ showState (bitenc delta) (getSatState . getState $ q)) $ do 
   debug ("Call to visit node\n") $ visitNode (graph globals) (q,g)
   let be = bitenc delta 
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
@@ -352,7 +351,7 @@ reachOmegaPop areFinal globals delta (q,g) qState =
             closeSupports sb g'
               | isNothing g' ||
                 ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
-              = debug  ""--("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") 
+              = debug  ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "}} --> to: q = " ++ show p ++ "\ng = " ++ show g') 
                 $ discoverSummary (graph globals) (r,g') sb (p,g') -- do not explore this node, but store for later exploration, to ensure correctness of the Gabow algo                        
               | otherwise = return ()
         in do
@@ -377,8 +376,8 @@ reachTransition :: (SatState state, Ord state, Hashable state, Show state)
                  -> ST s Bool
 reachTransition body areFinal globals delta from to = do 
   alrDisc <- alreadyDiscovered (graph globals) to
-  let insert False = debug  ("InsertInternal: from: " ++ show from ++ "} ---> to: " ++ show to ++ "\n") $ insertInternal (graph globals) from to
-      insert True  = debug  ("InsertSummary: from: " ++ show from ++ "} ---> to: " ++ show to ++ "\n") $  insertSummary (graph globals) from to $ fromJust body
+  let insert False =  insertInternal (graph globals) from to
+      insert True  =  insertSummary (graph globals) from to $ fromJust body
   insert $ isJust body 
   if alrDisc 
     then do 
@@ -387,7 +386,7 @@ reachTransition body areFinal globals delta from to = do
         then do updateSCC (graph globals) to;
                 debug ("AlreadyVisitedNode: " ++ show to ++ "\n") $ return False 
         else debug ("AlreadyDisc but not alreadyVisitedNode: " ++ show to ++ "\n") $ visitGraphFrom (graph globals) areFinal to
-    else debug ("newReachOmegawithNode: " ++ show to ++ "\n") $ reachOmega areFinal globals delta to
+    else reachOmega areFinal globals delta to
 
 
  
@@ -407,7 +406,12 @@ isSatisfiable isOmega phi ap sprs =
         , deltaShift = dShift
         , deltaPop = dPop
         }
-      isFinalOmega states = all (\f -> any (\s -> isFinal f (getSatState s)) states) $ Set.toList cl
+      isFinalOmega states = let isFin f s = debug ("IsFinCheck: f = " ++ show f ++ "; s = " ++ show s ++" -- with result: " ++ show (isFinal f (getSatState s)) ++ "\n" ) $ isFinal f (getSatState s)
+                                x = map (\f -> (f,any (\s -> isFin f s) states)) $ Set.toList cl
+                                y = filter (\(f,b) -> not b) x 
+                            in debug ("Non accepted formulas: " ++ show y) $ null y
+
+
   in if isOmega 
         then not $ isEmptyOmega delta initials isFinalOmega
         else not $ isEmpty delta initials (isFinal T)
@@ -422,7 +426,7 @@ isSatisfiableGen :: ( Ord a)
                  -> Bool
 isSatisfiableGen isOmega phi ap precf =
   let (tphi, tap, tprecr) = convPropLabels phi ap precf
-  in isSatisfiable isOmega tphi tap tprecr
+  in debug ("Input formula: " ++ show tphi ++ "\n\n") $ isSatisfiable isOmega tphi tap tprecr
 
 
 

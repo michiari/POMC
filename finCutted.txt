@@ -1,0 +1,953 @@
+creating component for node: 7
+SCComponent found: 
+
+[(7,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(10,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+}]),(25,fromList [
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: False
+}]),(26,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(317,fromList [
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(358,fromList [
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: False
+}]),(359,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(896,fromList [
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: False
+}]),(902,fromList [
+{ C: EncodedAtom [9]4
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(1031,fromList [
+{ C: EncodedAtom [9]4
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+}]),(1045,fromList [
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: True
+}]),(1066,fromList [
+{ C: EncodedAtom [9]264
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(1230,fromList [
+{ C: EncodedAtom [9]4
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+}]),(1231,fromList [
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: True
+}]),(3454,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+}]),(3457,fromList [
+{ C: EncodedAtom [9]4
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+}]),(3459,fromList [
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: True
+}]),(3460,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3485,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3505,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3545,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3550,fromList [
+{ C: EncodedAtom [9]354
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3763,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(3766,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+}]),(3769,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+}]),(3772,fromList [
+{ C: EncodedAtom [9]4
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+}]),(3774,fromList [
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: True
+}]),(3775,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3800,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3820,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3860,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(3865,fromList [
+{ C: EncodedAtom [9]354
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4154,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(4155,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+}]),(4158,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+}]),(4194,fromList [
+{ C: EncodedAtom [9]264
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: True
+}]),(4195,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4220,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4240,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4280,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4285,fromList [
+{ C: EncodedAtom [9]354
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4368,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(4373,fromList [
+{ C: EncodedAtom [9]264
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: False
+}]),(4374,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4399,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4419,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4459,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4464,fromList [
+{ C: EncodedAtom [9]354
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4542,fromList [   
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(4543,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(4640,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(4700,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(4707,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(4719,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(4842,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(4843,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+}]),(4846,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+}]),(4882,fromList [
+{ C: EncodedAtom [9]264
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: True
+}]),(4883,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4908,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4928,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4968,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(4973,fromList [
+{ C: EncodedAtom [9]354              
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(5161,fromList [
+{ C: EncodedAtom [9]354                  -------------------------------------
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(5236,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(5246,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(5250,fromList [
+{ C: EncodedAtom [9]354          --------------------------------------
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+}]),(5260,fromList [
+{ C: EncodedAtom [9]354        --------------------------------------------
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(5335,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(5341,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(5346,fromList [
+{ C: EncodedAtom [9]264
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: False
+}]),(5347,fromList [
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(5372,fromList [
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(5392,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(5432,fromList [
+{ C: EncodedAtom [9]418
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(5437,fromList [
+{ C: EncodedAtom [9]354        
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+}]),(5763,fromList [          ------------------------------------------------------
+{ C: EncodedAtom [9]354
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}]),(5818,fromList [
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+}])]
+
+
+
+IsFinCheck: f = 1; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = 2; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = 3; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = 4; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = #; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ 1; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ 2; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ 3; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ 4; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ #; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ (1 And ((~ 2) Ud 3)); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ (PNd ((~ 2) Ud 3)); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ (XNd ((~ 2) Ud 3)); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = ~ ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = 1 And ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = PNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: True
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]4
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]4
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]4
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]16
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]68
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]132
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]264
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]264
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]264
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]128
+, XL: False
+, X=: True
+, XR: True
+} -- with result: False
+---------------------------------------------------------------------------
+IsFinCheck: f = XNd ((~ 2) Ud 3); s = 
+{ C: EncodedAtom [9]354
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+} -- with result: True
+-----------------------------------------------------------------------------
+
+IsFinCheck: f = (~ 2) Ud 3; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: False
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = (~ 2) Ud 3; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: False
+} -- with result: False
+
+IsFinCheck: f = (~ 2) Ud 3; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]0
+, S: EncodedAtom [9]128
+, XL: True
+, X=: False
+, XR: True
+} -- with result: False
+
+IsFinCheck: f = (~ 2) Ud 3; s = 
+{ C: EncodedAtom [9]2
+, P: EncodedAtom [9]128
+, S: EncodedAtom [9]0
+, XL: True
+, X=: False
+, XR: False
+} -- with result: True
+
+Non accepted formulas: []
+Found gn 5830components: 7,3763,4154,4368,4542,4543,4640,4700,4707,4719,4842,5161,5236,5246,5250,5260,5335,5341,5763,5818,
+with acceptance True

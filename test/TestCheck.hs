@@ -463,8 +463,7 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      
-      ,( "Accepting PBack Down [Down]"
+      , ( "Accepting PBack Down [Down]"
         , True
         , PNext Down (PBack Down (Atomic $ Prop "call"))
         , stlPrecRelV1

@@ -171,7 +171,7 @@ makeBitEncoding clos =
       -- Mapping between positive closure and bits
       pClosVec = pAtomicVec V.++ pFormulaVec
       --index function of BitEncoding
-      pClosLookup phi = trace ("check for formula: " ++ show phi ++ "\n") $ fromJust $ M.lookup phi pClosMap
+      pClosLookup phi =  fromJust $ M.lookup phi pClosMap
         where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
 
   in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
@@ -755,7 +755,7 @@ deltaRules bitenc cl precFunc =
           ppStack = stack $ fromJust (fsrPopped info)
           fStack = fsrFutureStack info 
           checkSet = D.intersect pStack ppStack
-      in  D.intersect checkSet fStack == pStack 
+      in  D.intersect checkSet fStack == checkSet
     -- end of rules for the omega case
 
     -- XND: Xnext Down 
@@ -1429,7 +1429,7 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                                                                         pc@(pend, xl, xe, xr) <- vpcs,
                                                                         stack <- vscs,
                                                                         valid curr pc]
-                     in DT.trace ("New omega states found: " ++ show (length newStates) ++ "\n") $ newStates
+                     in newStates
                 else []
       -- all future rules must be satisfied
       where makeInfo curr pendComb = FrInfo { frState          = state,
@@ -1475,8 +1475,8 @@ isFinalF bitenc s =
         checkAlw(Always _) = True
         checkAlw _ = False
 
-        --debug = id
-        debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
+        debug = id
+        --debug = DT.trace ("\nIs state final?" ++ show s) . DT.traceShowId
 
         currFset = current s
         currPend = pending s

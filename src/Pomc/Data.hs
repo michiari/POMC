@@ -69,7 +69,7 @@ newBitEncoding :: (Int -> Formula APType)
 newBitEncoding fetch_ index_ width_ propBits_ =
   BitEncoding fetch_ index_ width_ propBits_ maskProps_
   --the vector is just a mask of ones of size propBits
-  where maskProps_ = EncodedAtom $ BV.ones propBits_
+    where maskProps_ = EncodedAtom $ BV.ones propBits_
 
 --an encoded atom is just a BitVector
 newtype EncodedAtom = EncodedAtom BitVector deriving (Eq, Ord, Show)

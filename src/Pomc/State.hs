@@ -12,6 +12,7 @@ module Pomc.State (
                   , Input
                   , Atom
                   , showStates
+                  , showState
                   , showFormulaSet
                   , showAtoms
                   , showPendCombs
@@ -67,8 +68,8 @@ instance NFData State where
   rnf (FState current pending _ _ _) = current `seq` pending `seq` ()
   rnf (WState current pending stack _ _ _) = current `seq` pending `seq` stack `seq` ()
 
-showStates :: [State] -> String
-showStates = unlines . map show
+showStates :: BitEncoding -> [State]  -> String
+showStates bitenc = unlines . map (showState bitenc)
 
 showFormulaSet :: FormulaSet -> String
 showFormulaSet fset = let fs = S.toList fset
@@ -85,6 +86,21 @@ showAtoms bitenc = unlines . map (showAtom bitenc)
 showPendCombs :: Set (EncodedSet, Bool, Bool, Bool) -> String
 showPendCombs = unlines . map show . S.toList
 
+showState :: BitEncoding -> State -> String
+showState bitenc (FState current pending mustPush mustShift afterPop)  = "\n{ C: "  ++ showAtom bitenc  current  ++
+                                                                           "\n, P: "  ++ showAtom bitenc  pending   ++
+                                                                           "\n, XL: " ++ show  mustPush  ++
+                                                                           "\n, X=: " ++ show mustShift  ++
+                                                                           "\n, XR: " ++ show afterPop ++
+                                                                           "\n}"
+showState bitenc (WState current pending instack mustPush mustShift afterPop)  = "\n{ C: "  ++ showAtom bitenc  current  ++
+                                                                       "\n, P: "  ++ showAtom bitenc  pending   ++
+                                                                       "\n, S: "  ++ showAtom bitenc  instack   ++
+                                                                       "\n, input: " ++ showAtom  bitenc (D.extractInput bitenc current) ++
+                                                                       "\n, XL: " ++ show mustPush  ++
+                                                                       "\n, X=: " ++ show mustShift  ++
+                                                                       "\n, XR: " ++ show afterPop ++
+                                                                       "\n}"     
 
 
 
