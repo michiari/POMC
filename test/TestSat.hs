@@ -32,16 +32,18 @@ makeV2TestCase (name, phi, als, expected) =
 cases :: [(String, Formula String, [String], Bool)]
 cases =
   [ 
+    ( "No han until down exc"
+    , (ap "call" `And` Until Down T (ap "exc"))
+    , []
+    , False
+    )
+    {-,
     ( "No han until ret"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
     , []
     , True
-    ){-,
-    ( "No han until down exc"
-    , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
-    , []
-    , False
-    ),
+    )
+    ,
     ( "XNext Extensive"
     , And (XNext Down . Atomic . Prop $ "call") (Atomic . Prop $ "call")
     , []
