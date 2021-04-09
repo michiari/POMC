@@ -19,6 +19,14 @@ module Pomc.SatUtils ( SatState(..)
                      , lookupSM
                      , memberSM
                      , emptySM
+                     , emptyTS
+                     , resetTS
+                     , unmarkTS
+                     , containsTS
+                     , initializeTS
+                     , setTS
+                     , isMarkedTS
+                     , valuesTS
                      , getSidProps
                      ) where
 
@@ -97,12 +105,12 @@ type HashTable s k v = BH.HashTable s k v
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
 
+
 -- insert a state into the SetMap
-insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
-insertSM smref stateId val = do
+insertSM :: (Ord v) => STRef s (SetMap s v) -> Int -> v -> ST.ST s ()
+insertSM smref sid val = do
   sm <- readSTRef smref
   let len = MV.length sm
-      sid = getId stateId
   if sid < len
     then MV.unsafeModify sm (Set.insert val) sid
     else let newLen = computeLen len sid
@@ -115,18 +123,17 @@ insertSM smref stateId val = do
                ; writeSTRef smref grown
                }
 
-lookupSM :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
-lookupSM smref stateId = do
+lookupSM :: STRef s (SetMap s v) -> Int -> ST.ST s (Set v)
+lookupSM smref sid = do
   sm <- readSTRef smref
-  let sid = getId stateId
   if sid < MV.length sm
     then MV.unsafeRead sm sid
     else return Set.empty
 
 -- check whether a couple (StateId, Stack) iha already been visited checking the presence of the Stack in the Set at StateId position
-memberSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s Bool
-memberSM smref stateId val = do
-  vset <- lookupSM smref stateId
+memberSM :: (Ord v) => STRef s (SetMap s v) -> Int -> v -> ST.ST s Bool
+memberSM smref sid val = do
+  vset <- lookupSM smref sid
   return $ val `Set.member` vset
 
 -- an empty Set Map,  an array of sets
