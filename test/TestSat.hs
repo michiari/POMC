@@ -100,11 +100,6 @@ cases =
     , []
     , True
     ),
-    ( "XNext Extensive"
-    , And (XNext Down . Atomic . Prop $ "call") (Atomic . Prop $ "call")
-    , []
-    , False
-    ),
     ( "First Call"
     , Atomic . Prop $ "call"
     , []
