@@ -24,7 +24,7 @@ module Pomc.SCCAlgorithm ( Graph
                          , updateSCC
                          ) where
  -- TODO. optimize imports
-import Pomc.SatUtils( StateId(..), Stack, SatState(..), Delta, debug) 
+import Pomc.SatUtils 
 import Pomc.State(showStates)
 import Pomc.Data(BitEncoding)
 import qualified Data.Stack.ST  as StackST 
@@ -106,7 +106,6 @@ instance (Hashable k) => Hashable (GraphNode k state) where
 
 type HashTable s k v = BH.HashTable s k v
 type DoubleHashTable s k v = (HashTable s k Int, HashTable s Int v)
-type TwinSet a = (Set a, Set a)
 type Key state = (StateId state, Stack state)
 type Value k state = GraphNode k state
 type GabowStack s v = StackST.Stack s v
@@ -123,40 +122,6 @@ data Graph s state = Graph
   , summaries       :: STRef s (Vector (Int -> Edge Int, Key state))
   }
 
-
--- TwinSet interface operation 
-emptyTS :: ST.ST s (STRef s (TwinSet a))
-emptyTS = newSTRef ((Set.empty, Set.empty))
-
-resetTS :: (Ord a) => STRef s (TwinSet a) -> ST.ST s ()
-resetTS tsref = modifySTRef' tsref  (\(s1,s2) -> (Set.empty, Set.union s1 s2)) 
-
-unmarkTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s ()
-unmarkTS tsref val= modifySTRef' tsref (\(s1,s2) -> if Set.member val s2 
-                                                      then (Set.insert val s1, Set.delete val s2)
-                                                      else (s1,s2) 
-                                        ) 
-
-containsTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s Bool
-containsTS tsref val = do
-  (s1,s2) <- readSTRef tsref
-  return $ (Set.member val s1) || (Set.member val s2)
-
-initializeTS :: (Ord a) => STRef s (TwinSet a) -> Set a -> ST.ST s ()
-initializeTS tsref newSet = modifySTRef' tsref ( const (Set.empty, newSet)) 
-
-setTS :: (Ord a) => STRef s (TwinSet a) -> TwinSet a -> ST.ST s ()
-setTS tsref (s1,s2) = modifySTRef' tsref (const (s1,s2)) 
-
-isMarkedTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s Bool
-isMarkedTS tsref val = do
-  (s1,s2) <- readSTRef tsref
-  return $ Set.member val s2
-
-valuesTS :: (Ord a) => STRef s (TwinSet a) -> ST.ST s (Set a)
-valuesTS tsref = do
-  (s1,s2) <- readSTRef tsref
-  return $ Set.union s1 s2 
 
 ----------------------------------------------------------------------------------------
 emptyDHT  :: ST.ST s (DoubleHashTable s k v)
