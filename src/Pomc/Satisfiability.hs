@@ -408,7 +408,7 @@ isSatisfiable isOmega phi ap sprs =
         }
       isFinalOmega states = let isFin f s = debug ("IsFinCheck: f = " ++ show f ++ "; s = " ++ show s ++" -- with result: " ++ show (isFinal f (getSatState s)) ++ "\n" ) $ isFinal f (getSatState s)
                                 x = map (\f -> (f,any (\s -> isFin f s) states)) $ Set.toList cl
-                                y = filter (\(f,b) -> not b) x 
+                                y = filter (\(_,b) -> not b) x 
                             in debug ("Non accepted formulas: " ++ show y) $ null y
 
 

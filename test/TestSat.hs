@@ -22,7 +22,7 @@ evalTests = testGroup "Sat Eval Tests" $ map makeV2TestCase EvalFormulas.formula
 makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [StructPrecRel String], Bool)
              -> TestTree
 makeTestCase (name, phi, sls, als, prec, expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ isSatisfiableGen False phi (sls, als) prec @?= expected
+  testCase (name ++ " (" ++ show phi ++ ")") $ isSatisfiableGen True phi (sls, als) prec @?= expected
 
 makeV2TestCase :: (TestName, Formula String, [String], Bool) -> TestTree
 makeV2TestCase (name, phi, als, expected) =
