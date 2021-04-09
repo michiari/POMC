@@ -84,7 +84,8 @@ cases =
                  `And` (PBack Up (Atomic . Prop $ "call") `And` (Atomic . Prop $ "pa"))))
     , ["pa"]
     , True
-    ),
+    ) {-,
+    
     ( "No han until down exc"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
     , []
@@ -214,4 +215,6 @@ cases =
     , []
     , True
     ) 
+
+    -}
   ]

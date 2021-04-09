@@ -12,6 +12,7 @@ module Pomc.SatUtils ( SatState(..)
                      , SIdGen
                      , SetMap
                      , TwinSet
+                     , DoubleHashTable
                      , debug
                      , initSIdGen
                      , wrapStates
@@ -27,6 +28,17 @@ module Pomc.SatUtils ( SatState(..)
                      , setTS
                      , isMarkedTS
                      , valuesTS
+                     , emptyDHT
+                     , lookupIdDHT
+                     , insertDHT
+                     , multInsertDHT
+                     , deleteDHT
+                     , multDeleteDHT
+                     , lookupDHT
+                     , lookupIntDHT
+                     , insertIntDHT
+                     , keysDHT
+                     , valuesDHT
                      , getSidProps
                      ) where
 

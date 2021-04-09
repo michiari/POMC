@@ -280,7 +280,7 @@ reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ sh
           reachOmegaShift areFinal globals delta (q,g) qState qProps
 
         | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
-          reachOmegaPop areFinal globals delta (q,g) qState
+          reachOmegaPop globals delta (q,g) qState
 
         | otherwise = debug ("No transition found\n") $ return False
     
@@ -339,13 +339,12 @@ reachOmegaShift areFinal globals delta (q,g) qState qProps =
     V.foldM' doShift False newStates
 
 reachOmegaPop :: (SatState state, Ord state, Hashable state, Show state)
-         => ( [state] -> Bool)
-         -> Globals s state
+         => Globals s state
          -> Delta state
          -> (StateId state, Stack state)
          -> state
          -> ST s Bool
-reachOmegaPop areFinal globals delta (q,g) qState =
+reachOmegaPop globals delta (q,g) qState =
   let doPop p =
         let r = snd . fromJust $ g
             closeSupports sb g'
