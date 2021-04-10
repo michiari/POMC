@@ -84,74 +84,16 @@ cases =
                  `And` (PBack Up (Atomic . Prop $ "call") `And` (Atomic . Prop $ "pa"))))
     , ["pa"]
     , True
-    ) {-,
+    ) ,
     
     ( "No han until down exc"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
     , []
     , False
-    ),
+    ){-,
     ( "No han until ret"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
     , []
-    , True
-    ),
-    ( "XNext test"
-    , XNext Down . Atomic . Prop $ "call"
-    , []
-    , True
-    ),
-    ( "First Call"
-    , Atomic . Prop $ "call"
-    , []
-    , True
-    ),
-    ( "First Call"
-    , Atomic . Prop $ "call"
-    , []
-    , True
-    ),
-    ( "First Not Call"
-    , Not . Atomic . Prop $ "call"
-    , []
-    , True
-    ),
-    ( "Call and not call"
-    , ((Atomic . Prop $ "call") `And` (Not (Atomic . Prop $ "call")))
-    , []
-    , False
-    ),
-    ( "Call and ret"
-    , ((Atomic . Prop $ "call") `And` (Atomic . Prop $ "ret"))
-    , []
-    , False
-    ),
-    ( "Call, next ret 1"
-    , ((Atomic . Prop $ "call") `And` (PNext Down (Atomic . Prop $ "ret")))
-    , []
-    , True
-    ),
-    ( "Call, next ret 2"
-    , ((Atomic . Prop $ "call")
-       `And` (PNext Down (Atomic . Prop $ "ret"))
-       `And` (PNext Up (Atomic . Prop $ "ret")))
-    , []
-    , True
-    ), 
-    ( "Call, next down call"
-    , ((Atomic . Prop $ "call") `And` (PNext Down (Atomic . Prop $ "call")))
-    , []
-    , True
-    ),
-    ( "Call, next up call"
-    , ((Atomic . Prop $ "call") `And` (PNext Up (Atomic . Prop $ "call")))
-    , []
-    , False
-    ),
-    ( "Exc, back call pa"
-    , (PNext Up ((Atomic . Prop $ "exc")
-                 `And` (PBack Up (Atomic . Prop $ "call") `And` (Atomic . Prop $ "pa"))))
-    , ["pa"]
     , True
     ),
     ( "Matched call 1"

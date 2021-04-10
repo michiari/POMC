@@ -37,7 +37,6 @@ module Pomc.SatUtils ( SatState(..)
                      , lookupDHT
                      , lookupIntDHT
                      , insertIntDHT
-                     , keysDHT
                      , valuesDHT
                      , getSidProps
                      ) where
@@ -155,6 +154,9 @@ lookupDHT (ht1, ht2) key = do
   return $ fromJust value
 
 -- not safe
+-- TODO: fare un multLookupInt
+-- meglio detto come lookup and apply :: Bool -> [int] -> (v -> g) -> set g
+-- ti serve una funzione getsubs?
 lookupIntDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> ST.ST s v
 lookupIntDHT (_, ht2) ident = do
   value <- BH.lookup ht2 ident
@@ -163,11 +165,7 @@ lookupIntDHT (_, ht2) ident = do
 insertIntDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> v -> ST.ST s ()
 insertIntDHT (_,ht2) ident val = BH.insert ht2 ident val  
 
-keysDHT :: (Eq k, Hashable k, Ord k) => (DoubleHashTable s k v) -> ST.ST s (Set k)
-keysDHT (ht1, _) = do 
-  ht1entries <- H.toList ht1
-  return $ Set.fromList $ fst . unzip $ ht1entries
-
+-- questa deve essere sostituita da modify :: [Int] -> (v -> v)
 valuesDHT :: (Eq k, Hashable k, Ord v) => (DoubleHashTable s k v) -> ST.ST s (Set v)
 valuesDHT (_, ht2) = do 
   ht2entries <- H.toList ht2
@@ -180,10 +178,11 @@ type SetMap s v = MV.MVector s (Set v)
 
 
 -- insert a state into the SetMap
-insertSM :: (Ord v) => STRef s (SetMap s v) -> Int -> v -> ST.ST s ()
-insertSM smref sid val = do
+insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
+insertSM smref stateid val = do
   sm <- readSTRef smref
   let len = MV.length sm
+      sid = getId stateid
   if sid < len
     then MV.unsafeModify sm (Set.insert val) sid
     else let newLen = computeLen len sid
@@ -196,17 +195,18 @@ insertSM smref sid val = do
                ; writeSTRef smref grown
                }
 
-lookupSM :: STRef s (SetMap s v) -> Int -> ST.ST s (Set v)
-lookupSM smref sid = do
+lookupSM :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
+lookupSM smref stateid = do
   sm <- readSTRef smref
+  let sid = getId stateid
   if sid < MV.length sm
     then MV.unsafeRead sm sid
     else return Set.empty
 
 -- check whether a couple (StateId, Stack) iha already been visited checking the presence of the Stack in the Set at StateId position
-memberSM :: (Ord v) => STRef s (SetMap s v) -> Int -> v -> ST.ST s Bool
-memberSM smref sid val = do
-  vset <- lookupSM smref sid
+memberSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s Bool
+memberSM smref stateid val = do
+  vset <- lookupSM smref stateid
   return $ val `Set.member` vset
 
 -- an empty Set Map,  an array of sets

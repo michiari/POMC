@@ -38,17 +38,13 @@ import Data.Maybe
 import Data.Set (Set) 
 import qualified Data.Set as Set 
 
-import Data.Hashable
-import qualified Data.HashTable.ST.Basic as BH
-import qualified Data.HashTable.Class as H
-
 import GHC.Natural(naturalToInt)
 
-
-import qualified Data.Vector.Mutable as MV 
 import Data.Vector (Vector) 
 import qualified Data.Vector as V 
 import Data.List
+
+import Data.Hashable
 
 data Edge k = Internal 
   { from :: k
