@@ -129,7 +129,7 @@ data Graph s state = Graph
 instance RecursiveTypes (GraphNode state) where
   subs Bottom = []
   subs SingleNode{} = []
-  subs SCComponent{nodes = ns} = ns
+  subs SCComponent{nodes = ns} = Set.toList ns
 ----------------------------------------------------------------------------------------
 
 -- TODO: update this to reuse the code of gnNodes
@@ -165,7 +165,7 @@ flattengn graph n@(SCComponent{nodes = ns}) = do
 setgnIValue ::  (SatState state, Eq state, Hashable state, Show state) => Int -> GraphNode state -> GraphNode state 
 setgnIValue new (SCComponent { getgnId = gid, nodes = ns}) = SCComponent{ getgnId = gid, iValue = new,nodes = ns} 
 setgnIValue new  SingleNode{getgnId = gid, node = n} = SingleNode{getgnId = gid, iValue = new, node = n}
-setgnIValue Bottom = Bottom
+setgnIValue _ Bottom = Bottom
 
 resetgnIValue :: (SatState state, Eq state, Hashable state, Show state) => GraphNode state -> GraphNode state 
 resetgnIValue  = setgnIValue 0

@@ -34,7 +34,6 @@ module Pomc.SatUtils ( SatState(..)
                      , lookupIntVHT
                      , insertVHT
                      , multInsertVHT
-                     , modifyVHT
                      , modifyAllVHT
                      , lookupVHT
                      , lookupApplyVHT
@@ -47,7 +46,7 @@ import Pomc.Check ( EncPrecFunc)
 import Pomc.State(Input, State(..))
 import Pomc.Data (BitEncoding, extractInput)
 
-import Control.Monad (foldM, forM_, forM)
+import Control.Monad (foldM, forM_, forM, mapM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
@@ -68,7 +67,7 @@ import qualified Data.Vector as V
 import Debug.Trace (trace)
 
 class RecursiveTypes t where  
-  subs :: t -> Set Int
+  subs :: t -> [Int]
 
 debug :: String -> a -> a
 debug _ x = x
@@ -171,17 +170,18 @@ lookupIntVHT (_, vtref, _) ident = do
   vt <- readSTRef vtref
   MV.unsafeRead vt ident
 
-getSubs :: (RecursiveTypes v) => (MV.MVector s v) -> Int -> ST.ST. s (Set Int)
+getSubs :: (RecursiveTypes v) => (MV.MVector s v) -> Int -> ST.ST s (Set Int)
 getSubs vt ident = do 
   value <- MV.unsafeRead vt ident
-  return $ Set.union (Set.singleton ident) . Set.unions . Set.map getSubs $ subs value
+  subValues <- forM (subs value) (getSubs vt) 
+  return $ Set.union (Set.singleton ident) . Set.unions $ subValues
 
 -- True means is recursive
 lookupApplyVHT :: (Eq k, Hashable k, RecursiveTypes v) => (VectorHashTable s k v) -> Bool -> [Int] -> (v -> w) ->ST.ST s [w]
 lookupApplyVHT vht@(_,vtref,_) True idents f = do 
-  vt = readSTRef vtref 
-  allIdents = forM idents $ getSubs vt 
-  lookuApplyVHT vht False (Set.toList . Set.unions $ allIdents) f 
+  vt <- readSTRef vtref 
+  allIdents <- forM idents $ getSubs vt 
+  lookupApplyVHT vht False (Set.toList . Set.unions $ allIdents) f 
 lookupApply (_,vtref,_) False idents f = do 
   vt <- readSTRef vtref 
   values <- forM idents $ MV.unsafeRead vt 
