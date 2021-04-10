@@ -12,7 +12,8 @@ module Pomc.SatUtils ( SatState(..)
                      , SIdGen
                      , SetMap
                      , TwinSet
-                     , DoubleHashTable
+                     , VectorHashTable
+                     , RecursiveTypes(..)
                      , debug
                      , initSIdGen
                      , wrapStates
@@ -28,16 +29,17 @@ module Pomc.SatUtils ( SatState(..)
                      , setTS
                      , isMarkedTS
                      , valuesTS
-                     , emptyDHT
-                     , lookupIdDHT
-                     , insertDHT
-                     , multInsertDHT
-                     , deleteDHT
-                     , multDeleteDHT
-                     , lookupDHT
-                     , lookupIntDHT
-                     , insertIntDHT
-                     , valuesDHT
+                     , emptyVHT
+                     , lookupIdVHT
+                     , lookupIntVHT
+                     , insertVHT
+                     , multInsertVHT
+                     , modifyVHT
+                     , modifyAllVHT
+                     , lookupVHT
+                     , lookupApplyVHT
+                     , insertIntVHT
+                     , valuesVHT
                      , getSidProps
                      ) where
 
@@ -45,7 +47,7 @@ import Pomc.Check ( EncPrecFunc)
 import Pomc.State(Input, State(..))
 import Pomc.Data (BitEncoding, extractInput)
 
-import Control.Monad (foldM, forM_)
+import Control.Monad (foldM, forM_, forM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
@@ -64,6 +66,9 @@ import qualified Data.Vector as V
 
 
 import Debug.Trace (trace)
+
+class RecursiveTypes t where  
+  subs :: t -> Set Int
 
 debug :: String -> a -> a
 debug _ x = x
@@ -89,7 +94,7 @@ containsTS tsref val = do
   (s1,s2) <- readSTRef tsref
   return $ (Set.member val s1) || (Set.member val s2)
 
-initializeTS :: (Ord a) => STRef s (TwinSet a) -> Set a -> ST.ST s ()
+initializeTS :: (Ord a, Show a) => STRef s (TwinSet a) -> Set a -> ST.ST s ()
 initializeTS tsref newSet = modifySTRef' tsref ( const (Set.empty, newSet)) 
 
 setTS :: (Ord a) => STRef s (TwinSet a) -> TwinSet a -> ST.ST s ()
@@ -110,68 +115,97 @@ valuesTS tsref = do
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
-type DoubleHashTable s k v = (HashTable s k Int, HashTable s Int v)
+type VectorHashTable s k v = (HashTable s k Int, STRef s (MV.MVector s v), v)
 
-emptyDHT  :: ST.ST s (DoubleHashTable s k v)
-emptyDHT = do
-            ht1 <- BH.new 
-            ht2 <- BH.new
-            return (ht1, ht2)
+emptyVHT  :: v -> ST.ST s (VectorHashTable s k v)
+emptyVHT initialValue = do
+  ht <- BH.new 
+  vt <- MV.replicate 4 initialValue
+  vtref <- newSTRef vt
+  return (ht, vtref,initialValue)
 
-lookupIdDHT :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> ST.ST s (Maybe Int)
-lookupIdDHT (ht1, _) key = BH.lookup ht1 key
+lookupIdVHT :: (Eq k, Hashable k) => VectorHashTable s k v -> k -> ST.ST s (Maybe Int)
+lookupIdVHT (ht, _, _) key = BH.lookup ht key
 
--- insert a (key,value) tuple into the dht, with the given int identifier
-insertDHT :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> Int -> v -> ST.ST s ()
-insertDHT (ht1, ht2) key ident value = do 
-  BH.insert ht1 key ident;
-  BH.insert ht2 ident value
+-- insert a (key,value) tuple into the vht, with the given int identifier
+insertVHT :: (Eq k, Hashable k) => VectorHashTable s k v -> k -> Int -> v -> ST.ST s ()
+insertVHT (ht, vtref, ini) key ident value = do 
+  BH.insert ht key ident;
+  insertVT vtref ident value ini
+  
 
--- insert a set of keys into the dht, all mapped to the same value with the same identifier
-multInsertDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Set k -> Int -> v -> ST.ST s ()
-multInsertDHT (ht1, ht2) keySet ident value = do 
-  forM_ (Set.toList keySet) ( \key -> BH.insert ht1 key ident);
-  BH.insert ht2 ident value
+-- insert a set of keys into the vht, all mapped to the same value with the same identifier
+multInsertVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> Set k -> Int -> v -> ST.ST s ()
+multInsertVHT (ht, vtref, ini) keySet ident value = do 
+  forM_ (Set.toList keySet) ( \key -> BH.insert ht key ident);
+  insertVT vtref ident value ini
 
--- TODO: are we going to use this code?
-deleteDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) ->  k -> ST.ST s ()
-deleteDHT (ht1, ht2) key  = do 
-  maybeId <- BH.lookup ht1 key
-  BH.delete ht1 key;
-  if (isJust maybeId)
-    then BH.delete ht2 (fromJust maybeId)
-    else return ()
 
--- TODO: are we going to use this code?
-multDeleteDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) ->  Set k -> ST.ST s ()
-multDeleteDHT (ht1, ht2) keySet = forM_ (Set.toList keySet) ( \key -> deleteDHT (ht1,ht2) key)
+insertVT :: STRef s (MV.MVector s v) -> Int -> v -> v ->  ST.ST s ()
+insertVT vtref ident value ini = do
+  vt <- readSTRef vtref
+  let len = MV.length vt
+  if ident < len
+    then MV.unsafeWrite vt ident value
+    else let newLen = computeLen len ident
+             computeLen size idx | idx < size = size
+                                 | otherwise = computeLen (size*2) idx
+         in do { grown <- MV.grow vt (newLen-len)
+               ; mapM_ (\i -> MV.unsafeWrite grown i ini) [len..(newLen-1)]
+               ; MV.unsafeWrite grown ident value
+               ; writeSTRef vtref grown
+               }
 
 -- not safe
-lookupDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> k -> ST.ST s v
-lookupDHT (ht1, ht2) key = do
+lookupVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> k -> ST.ST s v
+lookupVHT (ht1, vtref, _) key = do
   ident <- BH.lookup ht1 key
-  value <- BH.lookup ht2 $ fromJust ident
-  return $ fromJust value
+  vt <- readSTRef vtref
+  MV.unsafeRead vt $ fromJust ident
 
 -- not safe
--- TODO: fare un multLookupInt
+-- meglio cambiarne l'uso
 -- meglio detto come lookup and apply :: Bool -> [int] -> (v -> g) -> set g
--- ti serve una funzione getsubs?
-lookupIntDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> ST.ST s v
-lookupIntDHT (_, ht2) ident = do
-  value <- BH.lookup ht2 ident
-  return $ fromJust value
+lookupIntVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> Int -> ST.ST s v
+lookupIntVHT (_, vtref, _) ident = do
+  vt <- readSTRef vtref
+  MV.unsafeRead vt ident
 
-insertIntDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> v -> ST.ST s ()
-insertIntDHT (_,ht2) ident val = BH.insert ht2 ident val  
+getSubs :: (RecursiveTypes v) => (MV.MVector s v) -> Int -> ST.ST. s (Set Int)
+getSubs vt ident = do 
+  value <- MV.unsafeRead vt ident
+  return $ Set.union (Set.singleton ident) . Set.unions . Set.map getSubs $ subs value
+
+-- True means is recursive
+lookupApplyVHT :: (Eq k, Hashable k, RecursiveTypes v) => (VectorHashTable s k v) -> Bool -> [Int] -> (v -> w) ->ST.ST s [w]
+lookupApplyVHT vht@(_,vtref,_) True idents f = do 
+  vt = readSTRef vtref 
+  allIdents = forM idents $ getSubs vt 
+  lookuApplyVHT vht False (Set.toList . Set.unions $ allIdents) f 
+lookupApply (_,vtref,_) False idents f = do 
+  vt <- readSTRef vtref 
+  values <- forM idents $ MV.unsafeRead vt 
+  return $ map f values
+
+
+
+insertIntVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> Int -> v -> ST.ST s ()
+insertIntVHT (_,vtref, ini) ident val = insertVT vtref ident val ini
+
+modifyAllVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> (v -> v) -> ST.ST s ()
+modifyAllVHT (_, vtref, _) f = do 
+  vt <- readSTRef vtref 
+  forM_ [0..((MV.length vt) -1)] $ MV.unsafeModify vt f
+
+
 
 -- questa deve essere sostituita da modify :: [Int] -> (v -> v)
-valuesDHT :: (Eq k, Hashable k, Ord v) => (DoubleHashTable s k v) -> ST.ST s (Set v)
-valuesDHT (_, ht2) = do 
-  ht2entries <- H.toList ht2
-  return $ Set.fromList . snd . unzip $ ht2entries
-
-
+-- probabilmente ci dovrà anche essere un modify all
+valuesVHT :: (Eq k, Hashable k, Ord v) => (VectorHashTable s k v) -> (v -> Bool) -> ST.ST s (Set v)
+valuesVHT (_, vtref, _) f= do 
+  vt <- readSTRef vtref
+  valuesList <- forM [0..((MV.length vt) -1)] $ MV.unsafeRead vt
+  return $ Set.fromList . filter f $ valuesList
 
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)

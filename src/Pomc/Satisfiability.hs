@@ -39,6 +39,8 @@ import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 
+import Debug.Trace (trace)
+
 -- global variables in the algorithms
 data Globals s state = FGlobals
   { sIdGen :: SIdGen s state
@@ -268,7 +270,7 @@ reachOmega :: (SatState state, Ord state, Hashable state, Show state)
                -> (StateId state, Stack state) 
                -> ST.ST s Bool 
 reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ show (q,g) ++ "\n" ++ "state: " ++ showState (bitenc delta) (getSatState . getState $ q)) $ do 
-  debug ("Call to visit node\n") $ visitNode (graph globals) (q,g)
+  visitNode (graph globals) (q,g)
   let be = bitenc delta 
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
       qState = getState q 
