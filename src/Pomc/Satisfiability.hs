@@ -48,7 +48,7 @@ data Globals s state = FGlobals
   } | WGlobals 
   { sIdGen :: SIdGen s state
   , suppStarts :: STRef s (SetMap s (Stack state))
-  , wSuppEnds :: STRef s (SetMap s (StateId state, SummaryBody Int)) -- TODO: find a solution to avoid exposing this implementation
+  , wSuppEnds :: STRef s (SetMap s (StateId state, SummaryBody)) -- TODO: find a way to avoid exposing SummaryBody here
   , graph :: Graph s state 
   }  
 
@@ -366,7 +366,7 @@ reachOmegaPop globals delta (q,g) qState =
 
 
 reachTransition :: (SatState state, Ord state, Hashable state, Show state)
-                 => Maybe (SummaryBody Int) 
+                 => Maybe SummaryBody
                  -> ([state] -> Bool)
                  -> Globals s state
                  -> Delta state
