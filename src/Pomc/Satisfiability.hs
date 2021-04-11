@@ -39,7 +39,6 @@ import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 
-import Debug.Trace (trace)
 
 -- global variables in the algorithms
 data Globals s state = FGlobals
@@ -246,7 +245,7 @@ visitInitials areFinal globals delta  = let visit node = do
                                                             initials
                                           if detected 
                                             then return True 
-                                            else do size <- newSummariesSize $ graph globals
+                                            else do size <- summariesSize $ graph globals
                                                     if size > 0
                                                       then do
                                                           newInitials <- debug ("Moving to collapse phase") $ toCollapsePhase $ graph globals

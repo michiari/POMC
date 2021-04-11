@@ -31,14 +31,13 @@ module Pomc.SatUtils ( SatState(..)
                      , valuesTS
                      , emptyVHT
                      , lookupIdVHT
-                     , lookupIntVHT
                      , insertVHT
                      , multInsertVHT
+                     , modifyVHT
+                     , modifyMultVHT
                      , modifyAllVHT
                      , lookupVHT
                      , lookupApplyVHT
-                     , insertIntVHT
-                     , valuesVHT
                      , getSidProps
                      ) where
 
@@ -162,35 +161,34 @@ lookupVHT (ht1, vtref, _) key = do
   vt <- readSTRef vtref
   MV.unsafeRead vt $ fromJust ident
 
--- not safe
--- meglio cambiarne l'uso
--- meglio detto come lookup and apply :: Bool -> [int] -> (v -> g) -> set g
-lookupIntVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> Int -> ST.ST s v
-lookupIntVHT (_, vtref, _) ident = do
-  vt <- readSTRef vtref
-  MV.unsafeRead vt ident
-
-getSubs :: (RecursiveTypes v) => (MV.MVector s v) -> Int -> ST.ST s (Set Int)
-getSubs vt ident = do 
-  value <- MV.unsafeRead vt ident
-  subValues <- forM (subs value) (getSubs vt) 
-  return $ Set.union (Set.singleton ident) . Set.unions $ subValues
 
 -- True means is recursive
 lookupApplyVHT :: (Eq k, Hashable k, RecursiveTypes v) => (VectorHashTable s k v) -> Bool -> [Int] -> (v -> w) ->ST.ST s [w]
-lookupApplyVHT vht@(_,vtref,_) True idents f = do 
+lookupApplyVHT (_,vtref,_) True idents f = do 
   vt <- readSTRef vtref 
-  allIdents <- forM idents $ getSubs vt 
-  lookupApplyVHT vht False (Set.toList . Set.unions $ allIdents) f 
-lookupApply (_,vtref,_) False idents f = do 
+  recursiveLookupAndApplyVHT vt [] idents f 
+lookupApplyVHT (_,vtref,_) False idents f = do 
   vt <- readSTRef vtref 
   values <- forM idents $ MV.unsafeRead vt 
   return $ map f values
 
+recursiveLookupAndApplyVHT :: (RecursiveTypes v) => (MV.MVector s v) -> [w] -> [Int] -> (v -> w) ->ST.ST s [w]
+recursiveLookupAndApplyVHT _ acc [] _ = return acc 
+recursiveLookupAndApplyVHT vt acc idents f = do 
+  values <- forM idents $ MV.unsafeRead vt 
+  let subidents = concatMap (subs) values
+      results   = map f values 
+  recursiveLookupAndApplyVHT vt (acc ++ results) subidents f 
 
+modifyVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> Int -> (v -> v) -> ST.ST s ()
+modifyVHT (_, vtref, _) ident f = do
+  vt <- readSTRef vtref 
+  MV.unsafeModify vt f ident
 
-insertIntVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> Int -> v -> ST.ST s ()
-insertIntVHT (_,vtref, ini) ident val = insertVT vtref ident val ini
+modifyMultVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> (v -> v) -> [Int] -> ST.ST s ()
+modifyMultVHT (_, vtref, _) f idents = do
+  vt <- readSTRef vtref 
+  forM_ idents $ MV.unsafeModify vt f 
 
 modifyAllVHT :: (Eq k, Hashable k) => (VectorHashTable s k v) -> (v -> v) -> ST.ST s ()
 modifyAllVHT (_, vtref, _) f = do 
@@ -198,14 +196,6 @@ modifyAllVHT (_, vtref, _) f = do
   forM_ [0..((MV.length vt) -1)] $ MV.unsafeModify vt f
 
 
-
--- questa deve essere sostituita da modify :: [Int] -> (v -> v)
--- probabilmente ci dovrà anche essere un modify all
-valuesVHT :: (Eq k, Hashable k, Ord v) => (VectorHashTable s k v) -> (v -> Bool) -> ST.ST s (Set v)
-valuesVHT (_, vtref, _) f= do 
-  vt <- readSTRef vtref
-  valuesList <- forM [0..((MV.length vt) -1)] $ MV.unsafeRead vt
-  return $ Set.fromList . filter f $ valuesList
 
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)

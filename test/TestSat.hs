@@ -11,7 +11,7 @@ import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
 
 tests :: TestTree
-tests = testGroup "TestSat.hs Tests" [baseTests]
+tests = testGroup "TestSat.hs Tests" [baseTests, evalTests]
 
 baseTests :: TestTree
 baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
@@ -28,16 +28,9 @@ makeV2TestCase :: (TestName, Formula String, [String], Bool) -> TestTree
 makeV2TestCase (name, phi, als, expected) =
   makeTestCase (name, phi, stlPrecV2sls, map Prop als, stlPrecRelV2, expected)
 
--- only for the finite case
 cases :: [(String, Formula String, [String], Bool)]
 cases =
-  [ 
-    ( "First Call"
-    , Atomic . Prop $ "call"
-    , []
-    , True
-    ),
-    ( "First Call"
+  [ ( "First Call"
     , Atomic . Prop $ "call"
     , []
     , True
@@ -84,20 +77,14 @@ cases =
                  `And` (PBack Up (Atomic . Prop $ "call") `And` (Atomic . Prop $ "pa"))))
     , ["pa"]
     , True
-    ) ,
-    
-    ( "No han until down exc"
-    , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
-    , []
-    , False
-    ){-,
-    ( "No han until ret"
-    , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
-    , []
-    , True
     ),
     ( "Matched call 1"
     , (ap "call" `And` (XNext Down (ap "ret")))
+    , []
+    , True
+    ),
+    ( "Matched call 2"
+    , (ap "call" `And` (XNext Down (ap "ret")) `And` (XNext Up (ap "ret")))
     , []
     , True
     ),
@@ -110,7 +97,22 @@ cases =
     , (ap "call" `And` (XNext Down (ap "call")))
     , []
     , True
-    ), 
+    ),
+    ( "Inner call before exc"
+    , (ap "call" `And` (XNext Up (ap "exc" `And` (XBack Up $ ap "call"))))
+    , []
+    , True
+    ),
+    ( "No han until ret"
+    , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
+    , []
+    , True
+    ),
+    ( "No han until down exc"
+    , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
+    , []
+    , False
+    ),
     ( "Next exp, not pa since pb"
     , (ap "call" `And` (XNext Up (ap "exc" `And` (PBack Up $ Since Up (Not . ap $ "pa") (ap "pb")))))
     , ["pa", "pb"]
@@ -146,17 +148,5 @@ cases =
        `And` (XNext Down (HUntil Up (ap "pa") (ap "pb"))))
     , ["pa", "pb"]
     , True
-    ), 
-    ( "Matched call 2"
-    , (ap "call" `And` (XNext Down (ap "ret")) `And` (XNext Up (ap "ret")))
-    , []
-    , True
-    ),
-    ( "Inner call before exc"
-    , (ap "call" `And` (XNext Up (ap "exc" `And` (XBack Up $ ap "call"))))
-    , []
-    , True
-    ) 
-
-    -}
+    )
   ]

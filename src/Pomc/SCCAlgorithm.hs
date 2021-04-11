@@ -12,7 +12,7 @@ module Pomc.SCCAlgorithm ( Graph
                          , alreadyVisited
                          , visitGraphFrom
                          , initialNodes
-                         , newSummariesSize
+                         , summariesSize
                          , toCollapsePhase
                          , toSearchPhase
                          , visitNode
@@ -44,8 +44,6 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V 
 import Data.List
 
-import Debug.Trace (trace)
-
 import Data.Hashable
 
 data Edge = Internal 
@@ -55,28 +53,14 @@ data Edge = Internal
   { from :: Int
   ,   to :: Int
   ,  body :: Set (Edge) 
-  } deriving (Show, Ord)
-
-instance Eq Edge where
-  p@(Internal{}) == q@(Internal{}) = (from p) == (from q) && (to p) == (to q) 
-  p@(Summary{})  == q@(Summary{}) = (from p) == (from q) 
-                                    && (to p) == (to q)
-                                    && (all (\e -> Set.member e (body q)) $ Set.toList (body p))
-                                    && (all (\e -> Set.member e (body p)) $ Set.toList (body q))
-  _ == _ = False
+  } deriving (Show, Eq, Ord)
 
 -- the nodes which form a  summary body
 data SummaryBody = SummaryBody 
   { firstNode :: Int
   , lastNode  :: Int 
   , bodyEdges :: Set (Edge)
-  } deriving (Show,Ord)
-
-instance Eq SummaryBody  where 
-  p == q = (firstNode p) == (firstNode q)
-          && (lastNode p) == (lastNode q)
-          && (all (\e -> Set.member e (bodyEdges q)) $ Set.toList (bodyEdges p))
-          && (all (\e -> Set.member e (bodyEdges p)) $ Set.toList (bodyEdges q))
+  } deriving (Show,Eq,Ord)
 
 data GraphNode state = SCComponent
   { getgnId   :: Int -- immutable
@@ -132,39 +116,11 @@ instance RecursiveTypes (GraphNode state) where
   subs SCComponent{nodes = ns} = Set.toList ns
 ----------------------------------------------------------------------------------------
 
--- TODO: update this to reuse the code of gnNodes
-gnStates :: (SatState state, Eq state, Ord state, Hashable state, Show state)=> Graph s state -> GraphNode state-> ST.ST s (Set state)
-gnStates _        (SingleNode{node = n}) = return $ Set.singleton (getState . fst $ n)
-gnStates graph (SCComponent{nodes = ns}) = do 
-  gns <- forM (Set.toList ns) $ lookupIntVHT (nodeToGraphNode graph)
-  stateSetList <- forM gns $ gnStates graph
-  return $ Set.unions stateSetList
-
--- get all the nodes (i.e, tuples (StateID state, Stack state)) which form a GraphNode
-gnNodes :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> GraphNode state -> ST.ST s (Set (Key state))
-gnNodes _        (SingleNode{node = n}) = return $ Set.singleton n
-gnNodes graph (SCComponent{nodes = ns}) = do 
-  gns <- forM (Set.toList ns) $ lookupIntVHT (nodeToGraphNode graph)
-  nodeSetList <- forM (gns) $ gnNodes graph
-  return $ Set.unions nodeSetList  
-
-containsStateId :: (SatState state, Eq state, Hashable state, Show state) =>  Graph s state -> StateId state -> GraphNode state -> ST.ST s Bool
-containsStateId graph sid gn = do 
-  nodes <- gnNodes graph gn 
-  return $  not $ Set.null $ Set.filter (\node -> fst node == sid) nodes 
-
--- from a GraphNode, get a list of all recursive GraphNodes contained in it
-flattengn :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> GraphNode state -> ST.ST s (Set Int)
-flattengn _     n@(SingleNode{}) = return $ Set.singleton $ getgnId n
-flattengn graph n@(SCComponent{nodes = ns}) = do
-  gns <- forM (Set.toList ns) $ lookupIntVHT (nodeToGraphNode graph)
-  identSetList <- forM gns $ flattengn graph 
-  return $ Set.union (Set.singleton $ getgnId n) $ Set.unions identSetList
     
 -- the iValue is used in the Gabow algorithm
 setgnIValue ::  (SatState state, Eq state, Hashable state, Show state) => Int -> GraphNode state -> GraphNode state 
-setgnIValue new (SCComponent { getgnId = gid, nodes = ns}) = SCComponent{ getgnId = gid, iValue = new,nodes = ns} 
-setgnIValue new  SingleNode{getgnId = gid, node = n} = SingleNode{getgnId = gid, iValue = new, node = n}
+setgnIValue new SCComponent { getgnId = gid, nodes = ns} = SCComponent{ getgnId = gid, iValue = new,nodes = ns} 
+setgnIValue new SingleNode{getgnId = gid, node = n}      = SingleNode{getgnId = gid, iValue = new, node = n}
 setgnIValue _ Bottom = Bottom
 
 resetgnIValue :: (SatState state, Eq state, Hashable state, Show state) => GraphNode state -> GraphNode state 
@@ -185,15 +141,11 @@ freshNegId idSeq = do
 lookupEdge :: STRef s (Set (Edge)) -> Int -> Int -> ST.ST s (Set (Edge))
 lookupEdge edgeref fr t = do
   edgeSet <- readSTRef edgeref
-  return $ Set.fromList $ filter (\e -> from e == fr && to e == t) $ Set.toList edgeSet -- can we have an Internal and a Summary with the same from and to?
-
-edgeGNodes ::  Edge -> Set Int
-edgeGNodes (Internal{from=fr, to=t}) = Set.fromList [fr,t]
-edgeGNodes (Summary{from= fr, to=t, body =b}) = Set.union (Set.fromList [fr,t]) $ Set.unions (Set.map edgeGNodes b)
+  return $ Set.fromList $ filter (\e -> from e == fr && to e == t) $ Set.toList edgeSet 
 
 selfLoop ::  STRef s (Set (Edge)) -> Int -> ST.ST s Bool
-selfLoop edgeref node = do
-  selfEdges <- lookupEdge edgeref node node 
+selfLoop edgeref ident = do
+  selfEdges <- lookupEdge edgeref ident ident 
   return $ not $ Set.null selfEdges 
 
 -- this is used in let it run
@@ -256,13 +208,15 @@ newGraph initials = do
 
 -- unsafe
 initialNodes :: (SatState state, Eq state, Hashable state, Show state) => BitEncoding -> Graph s state -> ST.ST s (Vector (Key state))
-initialNodes bitenc graph = do 
-  inIdents <- valuesTS $ initials graph
-  inGnList <- forM (Set.toList inIdents) (\ident -> lookupIntVHT (nodeToGraphNode graph) ident)
-  gnNodesList <- forM inGnList $ gnNodes graph
-  let results =  Set.toList $ Set.unions $ gnNodesList
-      satStates = map (getSatState . getState . fst) results
-  debug ("Initial nodes of this search phase: " ++ (showStates bitenc satStates) ++ "\n\n" ++ show results) $ return $ V.fromList results 
+initialNodes bitenc graph = 
+  let gnNode (SingleNode{node = n}) = Set.singleton n
+      gnNode _ = Set.empty
+  in do 
+    inIdents <- valuesTS $ initials graph
+    gnNodesList <- lookupApplyVHT (nodeToGraphNode graph) True (Set.toList inIdents) gnNode
+    let results =  Set.toList $ Set.unions $ gnNodesList
+        satStates = map (getSatState . getState . fst) results
+    debug ("Initial nodes of this search phase: " ++ (showStates bitenc satStates) ++ "\n\n" ++ show results) $ return $ V.fromList results 
 
 
 -- unsafe: precond: the node is already there
@@ -298,7 +252,7 @@ visitNode' graph gn = do
   unmarkTS (initials graph) $ getgnId gn;
   StackST.stackPush (sStack graph) (getgnId gn);
   sSize <- StackST.stackSize $ sStack graph 
-  insertIntVHT (nodeToGraphNode graph) (getgnId gn) $ setgnIValue (naturalToInt sSize) gn;
+  modifyVHT (nodeToGraphNode graph) (getgnId gn) $ setgnIValue (naturalToInt sSize);
   StackST.stackPush (bStack graph) (naturalToInt sSize)
 
 --unsafe
@@ -311,8 +265,8 @@ updateSCC' :: (SatState state, Eq state, Hashable state, Show state) => Graph s 
 updateSCC' graph iValue =  do 
   return ();
   topElemB <- StackST.stackPeek (bStack graph)
-  if (iValue  < 0) || (iValue  >= (fromJust topElemB)) -- TODO: shall we do some checks here about the fromJust?
-    then debug ("Cannot find other nodes to merge\n") $ return ()
+  if (iValue  < 0) || (iValue  >= (fromJust topElemB)) 
+    then  return ()
     else do
       StackST.stackPop (bStack graph);
       updateSCC' graph iValue
@@ -331,14 +285,16 @@ resolveSummary graph (builder, key) = do
 -- this simply creates a Summary Body
 -- unsafe
 discoverSummaryBody :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> StateId state -> ST.ST s SummaryBody
-discoverSummaryBody graph from    = let untilcond = \ident -> do 
-                                                                gn <- lookupIntVHT (nodeToGraphNode graph) ident
-                                                                cont <- containsStateId graph from gn
-                                                                return cont
-                                    in do  
-                                        body <- allUntil (sStack graph) [] untilcond
-                                        edgeSet <- toEdges (edges graph) Set.empty body 
-                                        return $ SummaryBody{firstNode = head body, lastNode = last body, bodyEdges = edgeSet}
+discoverSummaryBody graph from  = 
+  let containsSId SingleNode{node = n} = fst n == from 
+      containsSId _ = False 
+      untilcond = \ident -> do 
+                              results <- lookupApplyVHT (nodeToGraphNode graph) True [ident] containsSId
+                              return $ any id results 
+  in do  
+    body <- allUntil (sStack graph) [] untilcond
+    edgeSet <- toEdges (edges graph) Set.empty body 
+    return $ SummaryBody{firstNode = head body, lastNode = last body, bodyEdges = edgeSet}
 
 -- unsafe 
 discoverSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> SummaryBody ->  Key state -> ST.ST s ()
@@ -385,7 +341,7 @@ mergeComponents graph iValue  acc areFinal = do
   sSize <- StackST.stackSize (sStack graph)
   if iValue > (naturalToInt sSize)
     then do 
-      gnList <- forM (Set.toList acc) $ lookupIntVHT $ nodeToGraphNode graph
+      gnList <- lookupApplyVHT (nodeToGraphNode graph) False (Set.toList acc) id
       unifyGns graph gnList areFinal
     else do
       elem <- StackST.stackPop (sStack graph)
@@ -395,34 +351,40 @@ mergeComponents graph iValue  acc areFinal = do
 unifyGns :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> [GraphNode state]-> ([state] -> Bool) -> ST.ST s Bool
 unifyGns graph [gn@(SingleNode{})]  areFinal = do
   newC <- freshNegId (c graph)
-  insertVHT (nodeToGraphNode graph) (node gn) (getgnId gn) $ setgnIValue newC gn
+  modifyVHT (nodeToGraphNode graph) (getgnId gn) $ setgnIValue newC 
   self <- selfLoop (edges graph) (getgnId gn)
   if self 
     then debug ("Single Node with Cycle found: " ++ show (setgnIValue newC gn) ++ "\n") $ isAccepting graph gn areFinal
     else debug ("Single Node without Cycle found: " ++ show (setgnIValue newC gn) ++ "\n") $ return False
-unifyGns graph gns areFinal = do 
-  newC <- freshNegId (c graph)
-  newId <- freshPosId (idSeq graph)
-  let newgn = SCComponent{nodes = Set.fromList . map getgnId $ gns, getgnId = newId, iValue = newC}
-  gnNodesList <- forM gns $ gnNodes graph
-  multInsertVHT (nodeToGraphNode graph)  (Set.unions gnNodesList) newId newgn 
-  isAccepting graph   (debug ("SCComponent found: " ++ "\n") newgn) areFinal
+unifyGns graph gns areFinal = 
+  let 
+    gnNode (SingleNode{node = n}) = Set.singleton n
+    gnNode _ = Set.empty
+  in do 
+    newC <- freshNegId (c graph)
+    newId <- freshPosId (idSeq graph)
+    let newgn = SCComponent{nodes = Set.fromList . map getgnId $ gns, getgnId = newId, iValue = newC}
+    gnNodesList <- lookupApplyVHT (nodeToGraphNode graph) True (map getgnId gns) gnNode
+    multInsertVHT (nodeToGraphNode graph)  (Set.unions gnNodesList) newId newgn 
+    isAccepting graph newgn areFinal
 
 -- not safe
 isAccepting :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> GraphNode state -> ([state] -> Bool) -> ST.ST s Bool
 isAccepting graph gn areFinal = let couples list = [(from, to) | from <- list, to <- list] 
+                                    gnState SingleNode{node = n} = Set.singleton $ getState . fst $ n
+                                    gnState _ = Set.empty
+                                    edgeGnIdents Internal{from=fr, to=t}          = Set.fromList [fr,t]
+                                    edgeGnIdents Summary{from= fr, to=t, body =b} = Set.union (Set.fromList [fr,t]) $ Set.unions (Set.map edgeGnIdents b)
                                 in do 
-                                  ids <- flattengn graph gn 
-                                  edgeSetList <- forM (couples . Set.toList $ ids) (\(from,to) -> lookupEdge (edges graph) from to)
-                                  gnList <- forM (Set.toList . Set.unions . Set.map edgeGNodes . Set.unions $ edgeSetList) $ lookupIntVHT $ nodeToGraphNode graph
-                                  gnStatesList <- forM gnList $ \n ->  do states <- gnStates graph n 
-                                                                          return (n,states)
-                                  let aF = debug (show gnStatesList) $ areFinal (Set.toList . Set.unions . snd . unzip $ gnStatesList)
+                                  ids <- lookupApplyVHT (nodeToGraphNode graph) True [(getgnId gn)] getgnId     
+                                  edgeSetList <- forM (couples ids) (\(f,t) -> lookupEdge (edges graph) f t)
+                                  gnStatesList <- lookupApplyVHT (nodeToGraphNode graph) False (Set.toList . Set.unions . Set.map edgeGnIdents . Set.unions $ edgeSetList) gnState
+                                  let aF = debug (show gnStatesList) $ areFinal (Set.toList . Set.unions $ gnStatesList)
                                   debug ("Found gn " ++ show gn ++ "with acceptance " ++ show aF ++ "\n") $ return aF
 
 
-newSummariesSize :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Int
-newSummariesSize graph = do
+summariesSize :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Int
+summariesSize graph = do
     summ <- readSTRef $ summaries graph
     return $ V.length summ
 
@@ -456,7 +418,7 @@ visitGraphFrom' :: (SatState state, Ord state, Hashable state, Show state) => Gr
 visitGraphFrom' graph areFinal gn = do 
   visitNode' graph gn;
   next <- nextStepsFrom (edges graph) (getgnId gn)
-  nextNodes <- mapM (\n -> lookupIntVHT (nodeToGraphNode graph) n) $ Set.toList next
+  nextGns <- lookupApplyVHT (nodeToGraphNode graph) False (Set.toList next) id  
   success <-  foldM (\acc gn -> if acc
                                   then return True 
                                   else if (iValue gn) == 0 
@@ -466,7 +428,7 @@ visitGraphFrom' graph areFinal gn = do
                                             return False 
                                             )
                     False
-                    nextNodes 
+                    nextGns 
   if success
     then return True 
     else createComponent' graph gn areFinal

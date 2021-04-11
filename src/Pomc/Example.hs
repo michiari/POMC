@@ -176,7 +176,7 @@ stlPrecRelV1 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
 stlPrecRelV2 :: [StructPrecRel String]
 stlPrecRelV2 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
                ++ map (\p -> (Prop p, End, Take)) sl
-  where precs = [("call", "call", Yield)
+  where precs = [ ("call", "call", Yield)
                 , ("call", "ret",  Equal)
                 , ("call", "han",  Yield)
                 , ("call", "exc",  Take)
@@ -193,10 +193,10 @@ stlPrecRelV2 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
                 , ("exc",  "han",  Take)
                 , ("exc",  "exc",  Take)
                 ]
-        sl = [ "call", "han", "ret", "exc"]
+        sl = ["call", "ret", "han", "exc"]
 
 stlPrecV2sls :: [Prop String]
-stlPrecV2sls = map Prop [ "call", "han", "ret", "exc"]
+stlPrecV2sls = map Prop ["call", "ret", "exc", "han"]
 
 stlPrecRelV2Text :: [StructPrecRel T.Text]
 stlPrecRelV2Text = map (\(p1, p2, pr) -> (fmap T.pack p1, fmap T.pack p2, pr)) stlPrecRelV2
