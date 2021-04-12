@@ -77,12 +77,12 @@ cases =
                  `And` (PBack Up (Atomic . Prop $ "call") `And` (Atomic . Prop $ "pa"))))
     , ["pa"]
     , True
-    ),
+    ), -}
     ( "Matched call 1"
     , (ap "call" `And` (XNext Down (ap "ret")))
     , []
     , True
-    ),
+    ){-,
     ( "Matched call 2"
     , (ap "call" `And` (XNext Down (ap "ret")) `And` (XNext Up (ap "ret")))
     , []
@@ -148,5 +148,5 @@ cases =
        `And` (XNext Down (HUntil Up (ap "pa") (ap "pb"))))
     , ["pa", "pb"]
     , True
-    )
+    ) -}
   ]

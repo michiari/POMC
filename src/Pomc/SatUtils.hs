@@ -21,6 +21,7 @@ module Pomc.SatUtils ( SatState(..)
                      , lookupSM
                      , memberSM
                      , emptySM
+                     , modifyAllSM
                      , emptyTS
                      , resetTS
                      , unmarkTS
@@ -32,11 +33,12 @@ module Pomc.SatUtils ( SatState(..)
                      , emptyDHT
                      , lookupIdDHT
                      , insertDHT
-                     , multInsertDHT
+                     , fuseDHT
                      , modifyDHT
                      , modifyAllDHT
                      , lookupDHT
                      , lookupApplyDHT
+                     , modifyAllVT
                      , getSidProps
                      ) where
 
@@ -65,7 +67,7 @@ import qualified Data.Vector as V
 import Debug.Trace (trace)
 
 class RecursiveTypes t where  
-  subs :: t -> [Int]
+  subs :: t -> [t]
 
 debug :: String -> a -> a
 debug _ x = x
@@ -114,8 +116,8 @@ valuesTS tsref = do
 type HashTable s k v = BH.HashTable s k v
 type DoubleHashTable s k v = (HashTable s k Int, HashTable s Int v)
 
-emptyDHT  :: v -> ST.ST s (DoubleHashTable s k v)
-emptyDHT initialValue = do
+emptyDHT  :: ST.ST s (DoubleHashTable s k v)
+emptyDHT = do
   ht1 <- BH.new 
   ht2 <- BH.new
   return (ht1,ht2)
@@ -131,10 +133,15 @@ insertDHT (ht1, ht2) key ident value = do
   
 
 -- insert a set of keys into the vht, all mapped to the same value with the same identifier
-multInsertDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Set k -> Int -> v -> ST.ST s ()
-multInsertDHT (ht1, ht2) keySet ident value = do 
-  forM_ (Set.toList keySet) ( \key -> BH.insert ht1 key ident);
+fuseDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Set k -> Int -> v -> ST.ST s ()
+fuseDHT (ht1, ht2) keySet ident value = do 
+  forM_ (Set.toList keySet) ( \key -> do 
+                                        oldIdent <- BH.lookup ht1 key 
+                                        BH.insert ht1 key ident;
+                                        BH.delete ht2 $ fromJust oldIdent 
+                            );
   BH.insert ht2 ident value
+
 
 
 -- not safe
@@ -145,19 +152,18 @@ lookupDHT (ht1, ht2) key = do
   return $ fromJust value
 
 -- True means is recursive
-lookupApplyDHT :: (Eq k, Hashable k, RecursiveTypes v) => (DoubleHashTable s k v) -> Bool -> [Int] -> (v -> w) ->ST.ST s [w]
-lookupApplyDHT (_,ht2) True idents f = recursiveLookupAndApplyDHT ht2 [] idents f 
-lookupApplyDHT (_,ht2) False idents f = do 
-  values <- forM idents $ BH.lookup ht2 
-  return $ map (f . fromJust) values
-
-recursiveLookupAndApplyDHT :: (RecursiveTypes v) => (HashTable s Int v) -> [w] -> [Int] -> (v -> w) ->ST.ST s [w]
-recursiveLookupAndApplyDHT _ acc [] _ = return acc 
-recursiveLookupAndApplyDHT ht acc idents f = do 
-  values <- forM idents $ BH.lookup ht 
-  let subidents = concatMap (subs . fromJust) values
-      results   = map (f . fromJust) values 
-  recursiveLookupAndApplyDHT ht (acc ++ results) subidents f 
+lookupApplyDHT :: (Show v, Eq k, Hashable k, RecursiveTypes v) => (DoubleHashTable s k v) -> Bool -> [Int] -> (v -> [w]) ->ST.ST s [w]
+lookupApplyDHT (_,ht2) isRecursive idents f =             
+  let recursiveMap  True  v = (f v) ++ concatMap (recursiveMap True) (subs v)
+      recursiveMap  False v = f v
+      debugger (i,n) = if isJust n 
+                        then  recursiveMap isRecursive . fromJust $ n 
+                        else debug ("\n\nNot found: " ++ show i ++ "\n" ++ "current status: " ++ show ht2) $ recursiveMap isRecursive . fromJust $ n 
+  in do 
+    values <- forM idents $ \i -> do 
+                                value <- BH.lookup ht2 i
+                                return (i,value)
+    return $ concatMap debugger values
 
 --unsafe
 modifyDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> v) -> ST.ST s ()
@@ -167,6 +173,11 @@ modifyDHT (_, ht2) ident f = do
 
 modifyAllDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> (v -> v) -> ST.ST s ()
 modifyAllDHT (_, ht2) f = H.mapM_ (\(k,v) -> BH.insert ht2 k (f v)) ht2
+
+modifyAllVT :: STRef s (MV.MVector s v) -> (v -> v) -> ST.ST s ()
+modifyAllVT vtref f = do 
+  vt <- readSTRef vtref
+  mapM_ (MV.unsafeModify vt  f) [0..((MV.length vt) -1)] 
 
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
@@ -204,12 +215,17 @@ memberSM smref stateid val = do
   vset <- lookupSM smref stateid
   return $ val `Set.member` vset
 
+modifyAllSM :: (Ord v) => STRef s (SetMap s v) -> (v -> v) -> ST.ST s ()
+modifyAllSM smref f = do 
+  sm <- readSTRef smref
+  mapM_ (MV.unsafeModify sm $ Set.map f) [0..((MV.length sm) -1)] 
+
 -- an empty Set Map,  an array of sets
 emptySM :: ST.ST s (STRef s (SetMap s v))
 emptySM = do
   sm <- MV.replicate 4 Set.empty
-  newSTRef sm
-
+  newSTRef sm 
+  
 
 -- State class for satisfiability
 class SatState state where

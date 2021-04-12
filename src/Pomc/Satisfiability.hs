@@ -225,7 +225,10 @@ visitInitials :: (SatState state, Ord state, Hashable state, Show state)
                   -> Globals s state 
                   -> Delta state 
                   -> ST.ST s Bool
-visitInitials areFinal globals delta  = let visit node = do
+visitInitials areFinal globals delta  = let 
+                                            updateSbs Nothing = return ()
+                                            updateSbs (Just(newId, oldIds)) = modifyAllSM (wSuppEnds globals) $ \(sid, sb) -> (sid, updateSummaryBody newId oldIds sb)
+                                            visit node = do
                                                             alrDisc <- alreadyDiscovered (graph globals) node 
                                                             if not alrDisc
                                                               then reachOmega areFinal globals delta node
@@ -233,7 +236,7 @@ visitInitials areFinal globals delta  = let visit node = do
                                             autoVisit node = do 
                                                                 alrVis <- alreadyVisited (graph globals) node 
                                                                 if not alrVis
-                                                                  then visitGraphFrom (graph globals) areFinal node 
+                                                                  then visitGraphFrom (graph globals) updateSbs areFinal node 
                                                                   else return False
 
                                         in do 
@@ -273,6 +276,8 @@ reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ sh
   let be = bitenc delta 
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
       qState = getState q 
+      updateSbs Nothing = return ()
+      updateSbs (Just(newId, oldIds)) = modifyAllSM (wSuppEnds globals) $ \(sid, sb) -> (sid, updateSummaryBody newId oldIds sb)
       cases 
         | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) =
           reachOmegaPush areFinal globals delta (q,g) qState qProps
@@ -288,7 +293,11 @@ reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ sh
   success <- cases
   if success
     then return True 
-    else createComponent (graph globals) (q,g) areFinal
+    else do 
+      result <- createComponent (graph globals) (q,g) areFinal
+      updateSbs $ snd result
+      return $ fst result
+
 
 
 reachOmegaPush :: (SatState state, Ord state, Hashable state, Show state)
@@ -374,19 +383,22 @@ reachTransition :: (SatState state, Ord state, Hashable state, Show state)
                  -> (StateId state, Stack state)
                  -> (StateId state, Stack state)
                  -> ST s Bool
-reachTransition body areFinal globals delta from to = do 
-  alrDisc <- alreadyDiscovered (graph globals) to
+reachTransition body areFinal globals delta from to = 
   let insert False =  insertInternal (graph globals) from to
       insert True  =  insertSummary (graph globals) from to $ fromJust body
-  insert $ isJust body 
-  if alrDisc 
-    then do 
-      alrVis <- alreadyVisited (graph globals) to
-      if alrVis 
-        then do updateSCC (graph globals) to;
-                debug ("AlreadyVisitedNode: " ++ show to ++ "\n") $ return False 
-        else debug ("AlreadyDisc but not alreadyVisitedNode: " ++ show to ++ "\n") $ visitGraphFrom (graph globals) areFinal to
-    else reachOmega areFinal globals delta to
+      updateSbs Nothing = return  ()
+      updateSbs (Just (newId,oldIds)) = modifyAllSM (wSuppEnds globals) $ \(sid, sb) -> (sid, updateSummaryBody newId oldIds sb)
+  in do 
+    alrDisc <- alreadyDiscovered (graph globals) to
+    insert $ isJust body 
+    if alrDisc 
+      then do 
+        alrVis <- alreadyVisited (graph globals) to
+        if alrVis 
+          then do updateSCC (graph globals) to;
+                  debug ("AlreadyVisitedNode: " ++ show to ++ "\n") $ return False 
+          else debug ("AlreadyDisc but not alreadyVisitedNode: " ++ show to ++ "\n") $ visitGraphFrom (graph globals) updateSbs areFinal to
+      else reachOmega areFinal globals delta to
 
 
  
