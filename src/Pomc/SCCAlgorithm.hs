@@ -111,11 +111,11 @@ instance RecursiveTypes (GraphNode state) where
 
     
 -- the iValue is used in the Gabow algorithm
-setgnIValue ::  (SatState state, Eq state, Hashable state, Show state) => Int -> GraphNode state -> GraphNode state 
+setgnIValue ::  Int -> GraphNode state -> GraphNode state 
 setgnIValue new SCComponent { getgnId = gid, nodes = ns} = SCComponent{ getgnId = gid, iValue = new,nodes = ns} 
 setgnIValue new SingleNode{getgnId = gid, node = n}      = SingleNode{getgnId = gid, iValue = new, node = n}
 
-resetgnIValue :: (SatState state, Eq state, Hashable state, Show state) => GraphNode state -> GraphNode state 
+resetgnIValue :: GraphNode state -> GraphNode state 
 resetgnIValue  = setgnIValue 0
 
 freshPosId :: STRef s Int -> ST.ST s Int
@@ -144,7 +144,7 @@ selfLoop edgeref ident = do
 nextStepsFrom :: STRef s (Set (Edge)) -> Int -> ST.ST s (Set  Int)
 nextStepsFrom edgeref fr  = do
   edgeSet <- readSTRef edgeref
-  return $ Set.fromList $ map (\e -> to e) $ filter (\e -> from e == fr) $ Set.toList edgeSet
+  return $ Set.map (\e -> to e) $ Set.filter (\e -> from e == fr) edgeSet
 
 -- map a list of nodes to the set of edges which connect them
 toEdges :: STRef s (Set (Edge)) -> Set Edge -> [Int] -> ST.ST s (Set Edge)
@@ -165,6 +165,7 @@ updateEdge idents newId e =
 updateEdges :: STRef s (Set (Edge)) -> Set Int -> Int -> ST.ST s ()
 updateEdges edgeref idents newId = modifySTRef' edgeref $ Set.map $ updateEdge idents newId
 
+-- TODO: exchange parameters of this!
 updateSummaryBody :: Int -> Set Int -> SummaryBody -> SummaryBody
 updateSummaryBody newId idents SummaryBody{firstNode = f, lastNode = l, bodyEdges = b} = 
   let sub n = if Set.member n idents 
@@ -195,7 +196,7 @@ allUntil stack acc cond  = do
 newGraph :: (SatState state, Eq state, Hashable state, Show state) => Vector (Key state) -> ST.ST s (Graph s state)
 newGraph initials = do
   newIdSequence <- newSTRef (0 :: Int)
-  vht           <- emptyDHT  
+  dht           <- emptyDHT  
   newSet        <- newSTRef (Set.empty)
   newCSequence  <- newSTRef (-1 :: Int)
   newBS         <- StackST.stackNew
@@ -204,11 +205,11 @@ newGraph initials = do
   newSummaries  <- newSTRef(V.empty)
   initialsIds  <- forM (initials) $ \key -> do 
                   newId <- freshPosId newIdSequence
-                  insertDHT vht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
+                  insertDHT dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
                   return newId
   initializeTS  newInitials $ Set.fromList $ V.toList initialsIds;
   return $ Graph { idSeq = newIdSequence
-                 , nodeToGraphNode = vht 
+                 , nodeToGraphNode = dht 
                  , edges = newSet 
                  , c = newCSequence
                  , bStack = newBS
@@ -274,7 +275,6 @@ updateSCC graph key = do
 
 updateSCC' :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Int -> ST.ST s ()
 updateSCC' graph iValue =  do 
-  return ();
   topElemB <- StackST.stackPeek (bStack graph)
   if (iValue  < 0) || (iValue  >= (fromJust topElemB)) 
     then  return ()
@@ -283,8 +283,6 @@ updateSCC' graph iValue =  do
       updateSCC' graph iValue
 
 
-
--- when this is called, the current initials have nothing marked!!
 -- safe
 resolveSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Int -> Edge, Key state) -> ST.ST s (Bool, Int)
 resolveSummary graph (builder, key) = do 
@@ -358,7 +356,7 @@ mergeComponents graph iValue  acc areFinal = do
  
 -- TODO: update this to optimize the case when we have a single SCComponent
 dotheMerge :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> [GraphNode state]-> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
-dotheMerge graph [gn@(SingleNode{})]  areFinal = do
+dotheMerge graph [gn]  areFinal = do
   newC <- freshNegId (c graph)
   modifyDHT (nodeToGraphNode graph) (getgnId gn) $ setgnIValue newC 
   self <- selfLoop (edges graph) (getgnId gn)
@@ -367,15 +365,6 @@ dotheMerge graph [gn@(SingleNode{})]  areFinal = do
                                                                                             isA <- isAccepting graph gn areFinal
                                                                                             return (isA, Nothing)
     else debug ("Single Node without Cycle found: " ++ show (setgnIValue newC gn) ++ "\n") $ return $ (False, Nothing)
-dotheMerge graph [gn@(SCComponent{})]  areFinal = do
-  newC <- freshNegId (c graph)
-  modifyDHT (nodeToGraphNode graph) (getgnId gn) $ setgnIValue newC 
-  self <- selfLoop (edges graph) (getgnId gn)
-  if self 
-    then debug ("GraphNode (alone) with Cycle found: " ++ show (setgnIValue newC gn) ++ "\n") $ do 
-                                                                                                  isA <- isAccepting graph gn areFinal
-                                                                                                  return (isA, Nothing)
-    else debug ("GraphNode (alone) without Cycle found: " ++ show (setgnIValue newC gn) ++ "\n") $ return $ (False, Nothing)
 dotheMerge graph gns areFinal = 
   let 
     gnNode (SingleNode{node = n}) = [n]

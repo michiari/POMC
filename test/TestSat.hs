@@ -11,7 +11,7 @@ import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
 
 tests :: TestTree
-tests = testGroup "TestSat.hs Tests" [baseTests, evalTests]
+tests = testGroup "TestSat.hs Tests" [baseTests]
 
 baseTests :: TestTree
 baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
@@ -77,7 +77,7 @@ cases =
                  `And` (PBack Up (Atomic . Prop $ "call") `And` (Atomic . Prop $ "pa"))))
     , ["pa"]
     , True
-    ), -}
+    ), 
     ( "Matched call 1"
     , (ap "call" `And` (XNext Down (ap "ret")))
     , []
@@ -87,7 +87,7 @@ cases =
     , (ap "call" `And` (XNext Down (ap "ret")) `And` (XNext Up (ap "ret")))
     , []
     , True
-    ),
+    )-},
     ( "Impossible downward exc"
     , (ap "call" `And` (XNext Down (ap "exc")))
     , []
@@ -102,17 +102,17 @@ cases =
     , (ap "call" `And` (XNext Up (ap "exc" `And` (XBack Up $ ap "call"))))
     , []
     , True
-    ),
+    ){-,
     ( "No han until ret"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
     , []
     , True
-    ),
+    )-},
     ( "No han until down exc"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
     , []
     , False
-    ),
+    ){-,
     ( "Next exp, not pa since pb"
     , (ap "call" `And` (XNext Up (ap "exc" `And` (PBack Up $ Since Up (Not . ap $ "pa") (ap "pb")))))
     , ["pa", "pb"]
@@ -122,7 +122,7 @@ cases =
     , (ap "call" `And` (XNext Down (HNext Up $ ap "pa")))
     , ["pa"]
     , True
-    ),
+    )-},
     ( "Call exc and pa in between"
     , (ap "call" `And` (XNext Up (ap "exc")) `And` (PNext Down $ HNext Down (ap "pa")))
     , ["pa"]
@@ -148,5 +148,5 @@ cases =
        `And` (XNext Down (HUntil Up (ap "pa") (ap "pb"))))
     , ["pa", "pb"]
     , True
-    ) -}
+    ) 
   ]
