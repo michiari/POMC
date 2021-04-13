@@ -11,7 +11,7 @@ import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
 
 tests :: TestTree
-tests = testGroup "TestSat.hs Tests" [baseTests]
+tests = testGroup "TestSat.hs Tests" [baseTests, baseTests, baseTests]
 
 baseTests :: TestTree
 baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
@@ -122,7 +122,7 @@ cases =
     , (ap "call" `And` (XNext Down (HNext Up $ ap "pa")))
     , ["pa"]
     , True
-    )-},
+    ),
     ( "Call exc and pa in between"
     , (ap "call" `And` (XNext Up (ap "exc")) `And` (PNext Down $ HNext Down (ap "pa")))
     , ["pa"]
@@ -148,5 +148,5 @@ cases =
        `And` (XNext Down (HUntil Up (ap "pa") (ap "pb"))))
     , ["pa", "pb"]
     , True
-    ) 
+    ) -}
   ]
