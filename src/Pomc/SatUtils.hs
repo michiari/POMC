@@ -13,7 +13,6 @@ module Pomc.SatUtils ( SatState(..)
                      , SetMap
                      , TwinSet
                      , DoubleHashTable
-                     , RecursiveTypes(..)
                      , debug
                      , initSIdGen
                      , wrapStates
@@ -38,6 +37,7 @@ module Pomc.SatUtils ( SatState(..)
                      , modifyAllDHT
                      , lookupDHT
                      , lookupApplyDHT
+                     , lookupApplyMultDHT
                      , modifyAllVT
                      , getSidProps
                      ) where
@@ -65,9 +65,6 @@ import qualified Data.Vector as V
 
 
 import Debug.Trace (trace)
-
-class RecursiveTypes t where  
-  subs :: t -> [t]
 
 debug :: String -> a -> a
 debug _ x = x
@@ -151,19 +148,15 @@ lookupDHT (ht1, ht2) key = do
   value <- BH.lookup ht2 (fromJust ident)
   return $ fromJust value
 
--- True means is recursive
-lookupApplyDHT :: (Show v, Eq k, Hashable k, RecursiveTypes v) => (DoubleHashTable s k v) -> Bool -> [Int] -> (v -> [w]) ->ST.ST s [w]
-lookupApplyDHT (_,ht2) isRecursive idents f =             
-  let recursiveMap  True  v = (f v) ++ concatMap (recursiveMap True) (subs v)
-      recursiveMap  False v = f v
-      debugger (i,n) = if isJust n 
-                        then  recursiveMap isRecursive . fromJust $ n 
-                        else debug ("\n\nNot found: " ++ show i ++ "\n" ++ "current status: " ++ show ht2) $ recursiveMap isRecursive . fromJust $ n 
-  in do 
-    values <- forM idents $ \i -> do 
-                                value <- BH.lookup ht2 i
-                                return (i,value)
-    return $ concatMap debugger values
+lookupApplyDHT :: (Show v, Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> w) ->ST.ST s w
+lookupApplyDHT (_,ht2) ident f =   do 
+    value <- BH.lookup ht2 ident        
+    return $ f . fromJust $ value
+
+lookupApplyMultDHT :: (Show v, Eq k, Hashable k) => (DoubleHashTable s k v) -> [Int] -> (v -> w) ->ST.ST s [w]
+lookupApplyMultDHT (_,ht2) idents f =   do 
+    values <- forM idents $ BH.lookup ht2         
+    return $ map (f . fromJust) values
 
 --unsafe
 modifyDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> v) -> ST.ST s ()
