@@ -1,0 +1,521 @@
+Script started on 2021-04-14 17:14:22+02:00 [TERM="xterm-256color" TTY="/dev/tty1" COLUMNS="120" LINES="30"]
+]0;francescopont@DESKTOP-6MBR7RP: /mnt/c/Users/ponti/Github/POMC[01;32mfrancescopont@DESKTOP-6MBR7RP[00m:[01;34m/mnt/c/Users/ponti/Github/POMC[00m$ stack testcd mnt/c/Users/ponti/Github/POMC..[Kstack test[3Pcd POMC[2P..script debugger.txt[12Pcd POMC-alternatives-2..[Kscript debugger.txtcd mnt/c/Users/ponti/Github/POMC..[K[1Pexitstack test[6Pexitstack testcript debugger.txtcd mnt/c/Users/ponti/Github/POMC..[Kstack test[6Pexitstack testcd mnt/c/Users/ponti/Github/POMC..[Kstack testcd mnt/c/Users/ponti/Github/POMC-alternatives-2/POMC..[Kstack testcd mnt/c/Users/ponti/Github/POMC-alternatives-2/POMC..[Kstack testcd mnt/c/Users/ponti/Github/POMC-alternatives-2..[Kstack testcd mnt/c/Users/ponti/Github/POMC..[Kstack build --ghc-options="-rtsopts -Wall -O2" --test --test-arguments="+RTS -s"[A]0;francescopont@DESKTOP-6MBR7RP: /mnt/c/Users/ponti/Github/POMC[01;32mfrancescopont@DESKTOP-6MBR7RP[00m:[01;34m/mnt/c/Users/ponti/Github/POMC[00m$ [26Pcd mnt/c/Users/ponti/Github/POMC
+[K[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[Cstack build --ghc-options="-rtsopts -Wall -O2" --test --test-arguments="+RTS -s"
+[0mpomc-0.1.0.0: unregistering (local file changes: src/Pomc/SCCAlgorithm.hs test/TestSat.hs)[0m
+Progress 0/2            [0mpomc> configure (lib + exe + test)[0m
+Progress 0/2            [0mConfiguring pomc-0.1.0.0...[0m
+Progress 0/2            [0mpomc> build (lib + exe + test)[0m
+Progress 0/2            [0mPreprocessing library for pomc-0.1.0.0..[0m
+Progress 0/2            [0mBuilding library for pomc-0.1.0.0..[0m
+Progress 0/2            [0m[14 of 19] Compiling Pomc.SCCAlgorithm[0m
+Progress 0/2            [0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:33:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘mapM’ from module ‘Control.Monad’ is redundant[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m33 |[0m[0m [;1m[35mimport Control.Monad ( forM_, forM,foldM, mapM)[0m[0m [0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:34:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘Control.Monad.ST’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Control.Monad.ST’[0m
+Progress 0/2            [0m    To import instances alone, use: import Control.Monad.ST()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m34 |[0m[0m [;1m[35mimport Control.Monad.ST[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:46:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘Data.List’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Data.List’[0m
+Progress 0/2            [0m    To import instances alone, use: import Data.List()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m46 |[0m[0m [;1m[35mimport Data.List(nub)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:48:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘Debug.Trace’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Debug.Trace’[0m
+Progress 0/2            [0m    To import instances alone, use: import Debug.Trace()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m48 |[0m[0m [;1m[35mimport Debug.Trace (trace)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:117:12: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘idSeq’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:95:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m117 |[0m[0m freshPosId [;1m[35midSeq[0m[0m = do[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m            ^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:123:12: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘idSeq’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:95:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m123 |[0m[0m freshNegId [;1m[35midSeq[0m[0m = do[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m            ^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:146:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wincomplete-patterns[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    Pattern match(es) are non-exhaustive[0m
+Progress 0/2            [0m    In an equation for ‘toEdges’: Patterns not matched: _ _ [][0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m146 |[0m[0m [;1m[35mtoEdges edgeref acc [x] = return acc[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:146:9: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-matches[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    Defined but not used: ‘edgeref’[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m146 |[0m[0m toEdges [;1m[35medgeref[0m[0m acc [x] = return acc[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m         ^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:146:22: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-matches[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    Defined but not used: ‘x’[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m146 |[0m[0m toEdges edgeref acc [[;1m[35mx[0m[0m] = return acc[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                      ^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:192:10: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘initials’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:101:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m192 |[0m[0m newGraph [;1m[35minitials[0m[0m = do[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m          ^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:217:14: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘bitenc’ shadows the existing binding[0m
+Progress 0/2            [0m      imported from ‘Pomc.SatUtils’ at src/Pomc/SCCAlgorithm.hs:28:1-20[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m217 |[0m[0m initialNodes [;1m[35mbitenc[0m[0m graph = [0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m              ^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:243:11: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘ident’ shadows the existing binding[0m
+Progress 0/2            [0m      bound at src/Pomc/SCCAlgorithm.hs:237:3[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m243 |[0m[0m           [;1m[35mident[0m[0m <- freshPosId $ idSeq graph[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m           ^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:274:18: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘iValue’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:70:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m274 |[0m[0m updateSCC' graph [;1m[35miValue[0m[0m =  do [0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                  ^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:279:7: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-do-bind[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    A do-notation statement discarded a result of type ‘Maybe Int’[0m
+Progress 0/2            [0m    Suppress this warning by saying[0m
+Progress 0/2            [0m      ‘_ <- StackST.stackPop (bStack graph)’[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m279 |[0m[0m       [;1m[35mStackST.stackPop (bStack graph)[0m[0m;[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:285:23: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘from’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:53:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m285 |[0m[0m resolveSummary graph ([;1m[35mfrom[0m[0m, body, key) = do [0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                       ^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:285:29: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘body’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:58:6[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m285 |[0m[0m resolveSummary graph (from, [;1m[35mbody[0m[0m, key) = do [0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                             ^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:294:27: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘from’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:53:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m294 |[0m[0m discoverSummaryBody graph [;1m[35mfrom[0m[0m  = [0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                           ^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:299:5: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘body’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:58:6[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m299 |[0m[0m     [;1m[35mbody[0m[0m <- allUntil (sStack graph) [] untilcond[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m     ^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:305:23: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘from’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:53:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m305 |[0m[0m discoverSummary graph [;1m[35mfrom[0m[0m body to = do [0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                       ^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:305:28: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘body’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:58:6[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m305 |[0m[0m discoverSummary graph from [;1m[35mbody[0m[0m to = do [0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                            ^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:305:33: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘to’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:54:6[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m305 |[0m[0m discoverSummary graph from body [;1m[35mto[0m[0m = do [0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                                 ^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:311:42: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘from’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:53:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m311 |[0m[0m insertInternal graph fromKey toKey  = do [;1m[35mfrom[0m[0m <- lookupIdDHT (nodeToGraphNode graph) fromKey[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                                          ^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:312:42: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘to’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:54:6[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m312 |[0m[0m                                          [;1m[35mto[0m[0m   <- lookupIdDHT (nodeToGraphNode graph) toKey[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                                          ^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:337:7: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-do-bind[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    A do-notation statement discarded a result of type ‘Maybe Int’[0m
+Progress 0/2            [0m    Suppress this warning by saying[0m
+Progress 0/2            [0m      ‘_ <- StackST.stackPop (bStack graph)’[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m337 |[0m[0m       [;1m[35mStackST.stackPop (bStack graph)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:342:23: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘iValue’ shadows the existing binding[0m
+Progress 0/2            [0m      defined at src/Pomc/SCCAlgorithm.hs:70:5[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m342 |[0m[0m mergeComponents graph [;1m[35miValue[0m[0m  acc areFinal = do[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                       ^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:349:7: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘elem’ shadows the existing binding[0m
+Progress 0/2            [0m      imported from ‘Prelude’ at src/Pomc/SCCAlgorithm.hs:8:8-24[0m
+Progress 0/2            [0m      (and originally defined in ‘Data.Foldable’)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m349 |[0m[0m       [;1m[35melem[0m[0m <- StackST.stackPop (sStack graph)[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m       ^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/SCCAlgorithm.hs:430:27: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘gn’ shadows the existing binding[0m
+Progress 0/2            [0m      bound at src/Pomc/SCCAlgorithm.hs:426:43[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m430 |[0m[0m   success <-  foldM (\acc [;1m[35mgn[0m[0m -> if acc[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                           ^^[0m[0m[0m
+Progress 0/2            [0m[15 of 19] Compiling Pomc.Satisfiability [Pomc.SCCAlgorithm changed][0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:17:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘EncPrecFunc’ from module ‘Pomc.Check’ is redundant[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m17 |[0m[0m [;1m[35mimport Pomc.Check ( EncPrecFunc, makeOpa)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:18:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘State’ from module ‘Pomc.State’ is redundant[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m18 |[0m[0m [;1m[35mimport Pomc.State(Input, State(..), showState)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:20:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘Pomc.Data’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Pomc.Data’[0m
+Progress 0/2            [0m    To import instances alone, use: import Pomc.Data()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m20 |[0m[0m [;1m[35mimport Pomc.Data (BitEncoding, extractInput)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:28:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘modifySTRef', newSTRef, readSTRef, writeSTRef’[0m
+Progress 0/2            [0m    from module ‘Data.STRef’ is redundant[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m28 |[0m[0m [;1m[35mimport Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:31:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘Data.Set’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Data.Set’[0m
+Progress 0/2            [0m    To import instances alone, use: import Data.Set()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m31 |[0m[0m [;1m[35mimport Data.Set (Set)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:35:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The qualified import of ‘Data.HashTable.ST.Basic’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Data.HashTable.ST.Basic’[0m
+Progress 0/2            [0m    To import instances alone, use: import Data.HashTable.ST.Basic()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m35 |[0m[0m [;1m[35mimport qualified Data.HashTable.ST.Basic as BH[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:36:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The qualified import of ‘Data.HashTable.Class’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Data.HashTable.Class’[0m
+Progress 0/2            [0m    To import instances alone, use: import Data.HashTable.Class()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m36 |[0m[0m [;1m[35mimport qualified Data.HashTable.Class as H[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:38:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The qualified import of ‘Data.Vector.Mutable’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Data.Vector.Mutable’[0m
+Progress 0/2            [0m    To import instances alone, use: import Data.Vector.Mutable()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m38 |[0m[0m [;1m[35mimport qualified Data.Vector.Mutable as MV[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:39:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The import of ‘Data.Vector’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘Data.Vector’[0m
+Progress 0/2            [0m    To import instances alone, use: import Data.Vector()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m39 |[0m[0m [;1m[35mimport Data.Vector (Vector)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:67:3: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘alreadyVisited’ shadows the existing binding[0m
+Progress 0/2            [0m      imported from ‘Pomc.SCCAlgorithm’ at src/Pomc/Satisfiability.hs:22:1-24[0m
+Progress 0/2            [0m      (and originally defined at src/Pomc/SCCAlgorithm.hs:231:1-14)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m67 |[0m[0m   [;1m[35malreadyVisited[0m[0m <- memberSM (visited globals) q g[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m   ^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/Satisfiability.hs:212:16: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wname-shadowing[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    This binding for ‘initials’ shadows the existing binding[0m
+Progress 0/2            [0m      bound at src/Pomc/Satisfiability.hs:206:20[0m[0m[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m212 |[0m[0m                [;1m[35minitials[0m[0m <- V.mapM (\sId -> return (sId, Nothing)) initialsId[0m
+Progress 0/2            [0m[;1m[34m    |[0m[0m[;1m[35m                ^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[16 of 19] Compiling Pomc.ModelChecker [Pomc.Satisfiability changed][0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/ModelChecker.hs:85:48: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-matches[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    Defined but not used: ‘p’[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m85 |[0m[0m       cIsFinalOmega states = (any (\(MCState q [;1m[35mp[0m[0m) -> Set.member q $ Set.fromList $ finals opa) states) &&[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m                                                ^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1msrc/Pomc/ModelChecker.hs:86:57: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-matches[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    Defined but not used: ‘q’[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m86 |[0m[0m                              (all (\f -> any (\(MCState [;1m[35mq[0m[0m p) -> phiIsFinal f p) states) $ Set.toList cl)[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m                                                         ^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0mWarning: -rtsopts and -with-rtsopts have no effect with -shared.[0m
+Progress 0/2            [0m    Call hs_init_ghc() from your main() function to set these options.[0m
+Progress 0/2            [0mPreprocessing executable 'pomc' for pomc-0.1.0.0..[0m
+Progress 0/2            [0mBuilding executable 'pomc' for pomc-0.1.0.0..[0m
+Progress 0/2            [0mLinking .stack-work/dist/x86_64-linux-tinfo6/Cabal-3.0.1.0/build/pomc/pomc ...[0m
+Progress 0/2            [0mPreprocessing test suite 'test-pomc' for pomc-0.1.0.0..[0m
+Progress 0/2            [0mBuilding test suite 'test-pomc' for pomc-0.1.0.0..[0m
+Progress 0/2            [0m[5 of 7] Compiling TestSat[0m
+Progress 0/2            [0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1mtest/TestSat.hs:20:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-top-binds[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    Defined but not used: ‘evalTests’[0m[0m[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m20 |[0m[0m [;1m[35mevalTests[0m[0m = testGroup "Sat Eval Tests" $ map makeV2TestCase EvalFormulas.formulas[0m
+Progress 0/2            [0m[;1m[34m   |[0m[0m[;1m[35m ^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[6 of 7] Compiling TestMC [TestSat changed][0m
+Progress 0/2            [0m[7 of 7] Compiling Main [TestSat changed][0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1mtest/Test.hs:3:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The qualified import of ‘TestOpa’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘TestOpa’[0m
+Progress 0/2            [0m    To import instances alone, use: import TestOpa()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m  |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m3 |[0m[0m [;1m[35mimport qualified TestOpa   (tests)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m  |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1mtest/Test.hs:4:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The qualified import of ‘TestCheck’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘TestCheck’[0m
+Progress 0/2            [0m    To import instances alone, use: import TestCheck()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m  |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m4 |[0m[0m [;1m[35mimport qualified TestCheck (tests)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m  |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0m/mnt/c/Users/ponti/Github/POMC/[;1mtest/Test.hs:6:1: [;1m[35mwarning:[0m[0m[;1m [[;1m[35m-Wunused-imports[0m[0m[;1m][0m[0m[;1m[0m
+Progress 0/2            [0m    The qualified import of ‘TestMC’ is redundant[0m
+Progress 0/2            [0m      except perhaps to import instances from ‘TestMC’[0m
+Progress 0/2            [0m    To import instances alone, use: import TestMC()[0m[0m[0m
+Progress 0/2            [0m[;1m[34m  |[0m[0m[0m
+Progress 0/2            [0m[;1m[34m6 |[0m[0m [;1m[35mimport qualified TestMC    (tests)[0m[0m[0m
+Progress 0/2            [0m[;1m[34m  |[0m[0m[;1m[35m ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m[0m[0m
+Progress 0/2            [0mLinking .stack-work/dist/x86_64-linux-tinfo6/Cabal-3.0.1.0/build/test-pomc/test-pomc ...[0m
+Progress 0/2            [0m[0m[0m[0m[0m
+Progress 0/2            [0mpomc> copy/register[0m
+Progress 0/2            [0mInstalling library in /mnt/c/Users/ponti/Github/POMC/.stack-work/install/x86_64-linux-tinfo6/85007b2e7300b1cb2e7901946034e105ed957cb11d537ef59da0e1bca3733848/8.8.4/lib/x86_64-linux-ghc-8.8.4/pomc-0.1.0.0-GpRZHhL7kihMMbv3EmWWD[0m
+Progress 0/2            [0mInstalling executable pomc in /mnt/c/Users/ponti/Github/POMC/.stack-work/install/x86_64-linux-tinfo6/85007b2e7300b1cb2e7901946034e105ed957cb11d537ef59da0e1bca3733848/8.8.4/bin[0m
+Progress 0/2            [0mRegistering library for pomc-0.1.0.0..[0m
+Progress 0/2            Progress 1/2: pomc                  [0mpomc> test (suite: test-pomc, args: +RTS -s)[0m
+Progress 1/2: pomc                  [0m[0m
+[?25lTests
+  TestSat.hs Tests
+    Sat Base Tests
+      First Call ("call"):                                               [32;22mOK[m[32;22m
+[m      First Not Call (~ "call"):                                         [32;22mOK[m[32;22m
+[m      Call and not call ("call" And (~ "call")):                         [32;22mOK[m[32;22m
+[m      Call and ret ("call" And "ret"):                                   [32;22mOK[m[32;22m
+[m      Call, next ret 1 ("call" And (PNd "ret")):                         [32;22mOK[m[32;22m (0.02s)[m[32;22m
+[m      Call, next ret 2 (("call" And (PNd "ret")) And (PNu "ret")):       [32;22mOK[m[32;22m (0.04s)[m[32;22m
+[m      Call, next down call ("call" And (PNd "call")):                    [32;22mOK[m[32;22m (0.06s)[m[32;22m
+[m      Call, next up call ("call" And (PNu "call")):                      [32;22mOK[m[32;22m
+[m      Exc, back call pa (PNu ("exc" And ((PBu "call") And "pa"))):       [32;22mOK[m[32;22m (0.54s)[m[32;22m
+[m      Matched call 1 ("call" And (XNd "ret")):                           [32;22mOK[m[32;22m (1.89s)[m[32;22m
+[m      Impossible downward exc ("call" And (XNd "exc")):                  [32;22mOK[m[32;22m (2.56s)[m[32;22m
+[m      Nested calls ("call" And (XNd "call")):                            [32;22mOK[m[32;22m (12.26s)[m[32;22m
+[m      Inner call before exc ("call" And (XNu ("exc" And (XBu "call")))): 
+[32;22mOK[m[32;22m (543.95s)[m[32;22m
+[m      No han until down exc ("call" And ((~ "han") Ud "exc")):           [32;22mOK[m[32;22m (22.37s)[m[32;22m
+[m    Sat Base Tests
+      First Call ("call"):                                               [32;22mOK[m[32;22m (0.03s)[m[32;22m
+[m      First Not Call (~ "call"):                                         [32;22mOK[m[32;22m
+[m      Call and not call ("call" And (~ "call")):                         [32;22mOK[m[32;22m
+[m      Call and ret ("call" And "ret"):                                   [32;22mOK[m[32;22m
+[m      Call, next ret 1 ("call" And (PNd "ret")):                         [32;22mOK[m[32;22m (0.04s)[m[32;22m
+[m      Call, next ret 2 (("call" And (PNd "ret")) And (PNu "ret")):       [32;22mOK[m[32;22m (0.08s)[m[32;22m
+[m      Call, next down call ("call" And (PNd "call")):                    [32;22mOK[m[32;22m (0.12s)[m[32;22m
+[m      Call, next up call ("call" And (PNu "call")):                      [32;22mOK[m[32;22m
+[m      Exc, back call pa (PNu ("exc" And ((PBu "call") And "pa"))):       [32;22mOK[m[32;22m (1.21s)[m[32;22m
+[m      Matched call 1 ("call" And (XNd "ret")):                           [32;22mOK[m[32;22m (4.01s)[m[32;22m
+[m      Impossible downward exc ("call" And (XNd "exc")):                  [32;22mOK[m[32;22m (2.97s)[m[32;22m
+[m      Nested calls ("call" And (XNd "call")):                            [32;22mOK[m[32;22m (12.41s)[m[32;22m
+[m      Inner call before exc ("call" And (XNu ("exc" And (XBu "call")))): 
+[32;22mOK[m[32;22m (654.97s)[m[32;22m
+[m      No han until down exc ("call" And ((~ "han") Ud "exc")):           [32;22mOK[m[32;22m (22.46s)[m[32;22m
+[m    Sat Base Tests
+      First Call ("call"):                                               [32;22mOK[m[32;22m
+[m      First Not Call (~ "call"):                                         [32;22mOK[m[32;22m
+[m      Call and not call ("call" And (~ "call")):                         [32;22mOK[m[32;22m
+[m      Call and ret ("call" And "ret"):                                   [32;22mOK[m[32;22m
+[m      Call, next ret 1 ("call" And (PNd "ret")):                         [32;22mOK[m[32;22m (0.07s)[m[32;22m
+[m      Call, next ret 2 (("call" And (PNd "ret")) And (PNu "ret")):       [32;22mOK[m[32;22m (0.10s)[m[32;22m
+[m      Call, next down call ("call" And (PNd "call")):                    [32;22mOK[m[32;22m (0.15s)[m[32;22m
+[m      Call, next up call ("call" And (PNu "call")):                      [32;22mOK[m[32;22m
+[m      Exc, back call pa (PNu ("exc" And ((PBu "call") And "pa"))):       [32;22mOK[m[32;22m (1.22s)[m[32;22m
+[m      Matched call 1 ("call" And (XNd "ret")):                           [32;22mOK[m[32;22m (4.55s)[m[32;22m
+[m      Impossible downward exc ("call" And (XNd "exc")):                  [32;22mOK[m[32;22m (3.03s)[m[32;22m
+[m      Nested calls ("call" And (XNd "call")):                            [32;22mOK[m[32;22m (13.41s)[m[32;22m
+[m      Inner call before exc ("call" And (XNu ("exc" And (XBu "call")))): [32;22mOK[m[32;22m (443.69s)[m[32;22m
+[m      No han until down exc ("call" And ((~ "han") Ud "exc")):           [32;22mOK[m[32;22m (11.94s)[m[32;22m
+[m[?25h
+[32;22mAll 42 tests passed[m[32;22m (1760.36s)
+[m 110,146,763,680 bytes allocated in the heap
+  63,198,429,848 bytes copied during GC
+   4,197,047,000 bytes maximum residency (62 sample(s))
+      13,042,984 bytes maximum slop
+            4002 MB total memory in use (0 MB lost due to fragmentation)
+
+                                     Tot time (elapsed)  Avg pause  Max pause
+  Gen  0     17174 colls,     0 par   60.109s  69.164s     0.0040s    2.6225s
+  Gen  1        62 colls,     0 par   35.844s  147.464s     2.3785s    50.0450s
+
+  TASKS: 4 (1 bound, 3 peak workers (3 total), using -N1)
+
+  SPARKS: 0 (0 converted, 0 overflowed, 0 dud, 0 GC'd, 0 fizzled)
+
+  INIT    time    0.000s  (  0.001s elapsed)
+  MUT     time  1494.734s  (1544.504s elapsed)
+  GC      time   95.953s  (216.628s elapsed)
+  EXIT    time    0.000s  (  0.026s elapsed)
+  Total   time  1590.688s  (1761.160s elapsed)
+
+  Alloc rate    73,689,857 bytes per MUT second
+
+  Productivity  94.0% of total user, 87.7% of total elapsed
+
+[0m[0m
+[0mpomc> Test suite test-pomc passed[0m
+[0mCompleted 2 action(s).[0m
+]0;francescopont@DESKTOP-6MBR7RP: /mnt/c/Users/ponti/Github/POMC[01;32mfrancescopont@DESKTOP-6MBR7RP[00m:[01;34m/mnt/c/Users/ponti/Github/POMC[00m$ 
+]0;francescopont@DESKTOP-6MBR7RP: /mnt/c/Users/ponti/Github/POMC[01;32mfrancescopont@DESKTOP-6MBR7RP[00m:[01;34m/mnt/c/Users/ponti/Github/POMC[00m$ 
+]0;francescopont@DESKTOP-6MBR7RP: /mnt/c/Users/ponti/Github/POMC[01;32mfrancescopont@DESKTOP-6MBR7RP[00m:[01;34m/mnt/c/Users/ponti/Github/POMC[00m$ stack build --ghc-options="-rtsopts -Wall -O2" --test --test-arguments="+RTS -s"
+[0mpomc> test (suite: test-pomc, args: +RTS -s)[0m
+[0m[0m
+[?25lTests
+  TestSat.hs Tests
+    Sat Base Tests
+      First Call ("call"):                                               [32;22mOK[m[32;22m
+[m      First Not Call (~ "call"):                                         [32;22mOK[m[32;22m
+[m      Call and not call ("call" And (~ "call")):                         [32;22mOK[m[32;22m
+[m      Call and ret ("call" And "ret"):                                   [32;22mOK[m[32;22m
+[m      Call, next ret 1 ("call" And (PNd "ret")):                         [32;22mOK[m[32;22m (0.02s)[m[32;22m
+[m      Call, next ret 2 (("call" And (PNd "ret")) And (PNu "ret")):       [32;22mOK[m[32;22m (0.04s)[m[32;22m
+[m      Call, next down call ("call" And (PNd "call")):                    [32;22mOK[m[32;22m (0.06s)[m[32;22m
+[m      Call, next up call ("call" And (PNu "call")):                      [32;22mOK[m[32;22m
+[m      Exc, back call pa (PNu ("exc" And ((PBu "call") And "pa"))):       [32;22mOK[m[32;22m (0.56s)[m[32;22m
+[m      Matched call 1 ("call" And (XNd "ret")):                           [32;22mOK[m[32;22m (1.92s)[m[32;22m
+[m      Impossible downward exc ("call" And (XNd "exc")):                  [32;22mOK[m[32;22m (1.58s)[m[32;22m
+[m      Nested calls ("call" And (XNd "call")):                            [32;22mOK[m[32;22m (8.02s)[m[32;22m
+[m      Inner call before exc ("call" And (XNu ("exc" And (XBu "call")))): [32;22mOK[m[32;22m (402.70s)[m[32;22m
+[m      No han until down exc ("call" And ((~ "han") Ud "exc")):           [32;22mOK[m[32;22m (10.81s)[m[32;22m
+[m    Sat Base Tests
+      First Call ("call"):                                               [32;22mOK[m[32;22m
+[m      First Not Call (~ "call"):                                         [32;22mOK[m[32;22m
+[m      Call and not call ("call" And (~ "call")):                         [32;22mOK[m[32;22m
+[m      Call and ret ("call" And "ret"):                                   [32;22mOK[m[32;22m
+[m      Call, next ret 1 ("call" And (PNd "ret")):                         [32;22mOK[m[32;22m (0.03s)[m[32;22m
+[m      Call, next ret 2 (("call" And (PNd "ret")) And (PNu "ret")):       [32;22mOK[m[32;22m (0.04s)[m[32;22m
+[m      Call, next down call ("call" And (PNd "call")):                    [32;22mOK[m[32;22m (0.09s)[m[32;22m
+[m      Call, next up call ("call" And (PNu "call")):                      [32;22mOK[m[32;22m
+[m      Exc, back call pa (PNu ("exc" And ((PBu "call") And "pa"))):       [32;22mOK[m[32;22m (0.63s)[m[32;22m
+[m      Matched call 1 ("call" And (XNd "ret")):                           [32;22mOK[m[32;22m (2.34s)[m[32;22m
+[m      Impossible downward exc ("call" And (XNd "exc")):                  [32;22mOK[m[32;22m (2.28s)[m[32;22m
+[m      Nested calls ("call" And (XNd "call")):                            [32;22mOK[m[32;22m (7.30s)[m[32;22m
+[m      Inner call before exc ("call" And (XNu ("exc" And (XBu "call")))): [32;22mOK[m[32;22m (390.51s)[m[32;22m
+[m      No han until down exc ("call" And ((~ "han") Ud "exc")):           [32;22mOK[m[32;22m (10.83s)[m[32;22m
+[m    Sat Base Tests
+      First Call ("call"):                                               [32;22mOK[m[32;22m
+[m      First Not Call (~ "call"):                                         [32;22mOK[m[32;22m
+[m      Call and not call ("call" And (~ "call")):                         [32;22mOK[m[32;22m
+[m      Call and ret ("call" And "ret"):                                   [32;22mOK[m[32;22m
+[m      Call, next ret 1 ("call" And (PNd "ret")):                         [32;22mOK[m[32;22m (0.04s)[m[32;22m
+[m      Call, next ret 2 (("call" And (PNd "ret")) And (PNu "ret")):       [32;22mOK[m[32;22m (0.05s)[m[32;22m
+[m      Call, next down call ("call" And (PNd "call")):                    [32;22mOK[m[32;22m (0.10s)[m[32;22m
+[m      Call, next up call ("call" And (PNu "call")):                      [32;22mOK[m[32;22m
+[m      Exc, back call pa (PNu ("exc" And ((PBu "call") And "pa"))):       [32;22mOK[m[32;22m (0.71s)[m[32;22m
+[m      Matched call 1 ("call" And (XNd "ret")):                           [32;22mOK[m[32;22m (2.22s)[m[32;22m
+[m      Impossible downward exc ("call" And (XNd "exc")):                  [32;22mOK[m[32;22m (1.59s)[m[32;22m
+[m      Nested calls ("call" And (XNd "call")):                            [32;22mOK[m[32;22m (6.54s)[m[32;22m
+[m      Inner call before exc ("call" And (XNu ("exc" And (XBu "call")))): [32;22mOK[m[32;22m (424.62s)[m[32;22m
+[m      No han until down exc ("call" And ((~ "han") Ud "exc")):           [32;22mOK[m[32;22m (11.18s)[m[32;22m
+[m[?25h
+[32;22mAll 42 tests passed[m[32;22m (1287.44s)
+[m 110,146,728,216 bytes allocated in the heap
+  63,535,537,104 bytes copied during GC
+   4,164,379,960 bytes maximum residency (64 sample(s))
+      13,032,136 bytes maximum slop
+            3971 MB total memory in use (0 MB lost due to fragmentation)
+
+                                     Tot time (elapsed)  Avg pause  Max pause
+  Gen  0     17308 colls,     0 par   46.828s  51.049s     0.0029s    1.4213s
+  Gen  1        64 colls,     0 par   25.516s  75.302s     1.1766s    26.3033s
+
+  TASKS: 4 (1 bound, 3 peak workers (3 total), using -N1)
+
+  SPARKS: 0 (0 converted, 0 overflowed, 0 dud, 0 GC'd, 0 fizzled)
+
+  INIT    time    0.000s  (  0.001s elapsed)
+  MUT     time  1141.891s  (1161.865s elapsed)
+  GC      time   72.344s  (126.351s elapsed)
+  EXIT    time    0.000s  (  0.019s elapsed)
+  Total   time  1214.234s  (1288.237s elapsed)
+
+  Alloc rate    96,459,963 bytes per MUT second
+
+  Productivity  94.0% of total user, 90.2% of total elapsed
+
+[0m[0m
+[0mpomc> Test suite test-pomc passed[0m
+]0;francescopont@DESKTOP-6MBR7RP: /mnt/c/Users/ponti/Github/POMC[01;32mfrancescopont@DESKTOP-6MBR7RP[00m:[01;34m/mnt/c/Users/ponti/Github/POMC[00m$ stack build --ghc-options="-rtsopts -Wall -O2" --test --test-arguments="+RTS -s"
+[0mpomc> test (suite: test-pomc, args: +RTS -s)[0m
+[0m[0m
+[?25lTests
+  TestSat.hs Tests
+    Sat Base Tests
+      First Call ("call"):                                               [32;22mOK[m[32;22m
+[m      First Not Call (~ "call"):                                         [32;22mOK[m[32;22m
+[m      Call and not call ("call" And (~ "call")):                         [32;22mOK[m[32;22m
+[m      Call and ret ("call" And "ret"):                                   [32;22mOK[m[32;22m
+[m      Call, next ret 1 ("call" And (PNd "ret")):                         [32;22mOK[m[32;22m
+[m      Call, next ret 2 (("call" And (PNd "ret")) And (PNu "ret")):       [32;22mOK[m[32;22m (0.04s)[m[32;22m
+[m      Call, next down call ("call" And (PNd "call")):                    [32;22mOK[m[32;22m (0.06s)[m[32;22m
+[m      Call, next up call ("call" And (PNu "call")):                      [32;22mOK[m[32;22m
+[m      Exc, back call pa (PNu ("exc" And ((PBu "call") And "pa"))):       [32;22mOK[m[32;22m (0.52s)[m[32;22m
+[m      Matched call 1 ("call" And (XNd "ret")):                           [32;22mOK[m[32;22m (1.89s)[m[32;22m
+[m      Impossible downward exc ("

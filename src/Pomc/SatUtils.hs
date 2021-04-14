@@ -11,7 +11,6 @@ module Pomc.SatUtils ( SatState(..)
                      , Stack
                      , SIdGen
                      , SetMap
-                     , TwinSet
                      , DoubleHashTable
                      , debug
                      , initSIdGen
@@ -21,14 +20,6 @@ module Pomc.SatUtils ( SatState(..)
                      , memberSM
                      , emptySM
                      , modifyAllSM
-                     , emptyTS
-                     , resetTS
-                     , unmarkTS
-                     , containsTS
-                     , initializeTS
-                     , setTS
-                     , isMarkedTS
-                     , valuesTS
                      , emptyDHT
                      , lookupIdDHT
                      , insertDHT
@@ -38,7 +29,6 @@ module Pomc.SatUtils ( SatState(..)
                      , lookupDHT
                      , lookupApplyDHT
                      , lookupApplyMultDHT
-                     , modifyAllVT
                      , getSidProps
                      ) where
 
@@ -69,44 +59,6 @@ import Debug.Trace (trace)
 debug :: String -> a -> a
 debug _ x = x
 --debug msg r = trace msg r 
-
-type TwinSet a = (Set a, Set a)
-
--- TwinSet interface operation 
-emptyTS :: ST.ST s (STRef s (TwinSet a))
-emptyTS = newSTRef ((Set.empty, Set.empty))
-
-resetTS :: (Ord a) => STRef s (TwinSet a) -> ST.ST s ()
-resetTS tsref = modifySTRef' tsref  (\(s1,s2) -> (Set.empty, Set.union s1 s2)) 
-
-unmarkTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s ()
-unmarkTS tsref val= modifySTRef' tsref (\(s1,s2) -> if Set.member val s2 
-                                                      then (Set.insert val s1, Set.delete val s2)
-                                                      else (s1,s2) 
-                                        ) 
-
-containsTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s Bool
-containsTS tsref val = do
-  (s1,s2) <- readSTRef tsref
-  return $ (Set.member val s1) || (Set.member val s2)
-
-initializeTS :: (Ord a, Show a) => STRef s (TwinSet a) -> Set a -> ST.ST s ()
-initializeTS tsref newSet = modifySTRef' tsref ( const (Set.empty, newSet)) 
-
-setTS :: (Ord a) => STRef s (TwinSet a) -> TwinSet a -> ST.ST s ()
-setTS tsref (s1,s2) = modifySTRef' tsref (const (s1,s2)) 
-
-isMarkedTS :: (Ord a) => STRef s (TwinSet a) -> a -> ST.ST s Bool
-isMarkedTS tsref val = do
-  (s1,s2) <- readSTRef tsref
-  return $ Set.member val s2
-
-valuesTS :: (Ord a) => STRef s (TwinSet a) -> ST.ST s (Set a)
-valuesTS tsref = do
-  (s1,s2) <- readSTRef tsref
-  return $ Set.union s1 s2 
-
-
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
@@ -149,7 +101,7 @@ lookupDHT (ht1, ht2) key = do
   return $ fromJust value
 
 lookupApplyDHT :: (Show v, Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> w) ->ST.ST s w
-lookupApplyDHT (_,ht2) ident f =   do 
+lookupApplyDHT (_,ht2) ident f = do 
     value <- BH.lookup ht2 ident        
     return $ f . fromJust $ value
 

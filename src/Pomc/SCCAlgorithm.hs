@@ -98,8 +98,8 @@ data Graph s state = Graph
   , c               :: STRef s Int -- for the Gabow algorithm
   , bStack          :: GabowStack s Int -- for the Gabow algorithm
   , sStack          :: GabowStack s Int -- for the Gabow algorithm
-  , initials        :: STRef s (TwinSet Int)
-  , summaries       :: STRef s (Vector (Int -> Edge, Key state))
+  , initials        :: STRef s (Set (Int,Bool))
+  , summaries       :: STRef s (Vector (Int, SummaryBody, Key state))
   }
 
 ----------------------------------------------------------------------------------------
@@ -196,13 +196,12 @@ newGraph initials = do
   newCSequence  <- newSTRef (-1 :: Int)
   newBS         <- StackST.stackNew
   newSS         <- StackST.stackNew
-  newInitials   <- emptyTS
+  newInitials   <- newSTRef (Set.empty)
   newSummaries  <- newSTRef(V.empty)
-  initialsIds  <- forM (initials) $ \key -> do 
-                  newId <- freshPosId newIdSequence
-                  insertDHT dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
-                  return newId
-  initializeTS  newInitials $ Set.fromList $ V.toList initialsIds;
+  forM_ (initials) $ \key -> do 
+    newId <- freshPosId newIdSequence
+    insertDHT dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
+    modifySTRef' newInitials (Set.insert (newId,True))
   return $ Graph { idSeq = newIdSequence
                  , nodeToGraphNode = dht 
                  , edges = newSet 
@@ -219,7 +218,8 @@ initialNodes bitenc graph =
   let gnNode (SingleNode{node = n}) = Set.singleton n
       gnNode (SCComponent{nodes=ns})= ns
   in do 
-    inIdents <- valuesTS $ initials graph
+    inSet <- readSTRef (initials graph)
+    let inIdents = Set.map fst . Set.filter snd $ inSet
     gnNodesList <- lookupApplyMultDHT (nodeToGraphNode graph) (Set.toList inIdents) gnNode
     let results =  Set.toList . Set.unions $ gnNodesList
         satStates = map (getSatState . getState . fst) results
@@ -237,8 +237,8 @@ alreadyDiscovered graph key = do
   ident <- lookupIdDHT (nodeToGraphNode graph) key
   if isJust ident
     then do 
-          isMarked <- isMarkedTS (initials graph) $ fromJust ident
-          return $ not isMarked 
+          inSet <- readSTRef (initials graph)
+          return $ not $ Set.member (fromJust ident, True) inSet
     else do 
           ident <- freshPosId $ idSeq graph
           let sn = SingleNode{getgnId = ident,iValue = 0, node = key }
@@ -256,7 +256,9 @@ visitNode graph key = do
 
 visitNode' :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> GraphNode state -> ST.ST s ()
 visitNode' graph gn = do 
-  unmarkTS (initials graph) $ getgnId gn;
+  modifySTRef' (initials graph) $ \s -> if Set.member (getgnId gn, True) s
+                                          then Set.insert (getgnId gn, False) . Set.delete (getgnId gn, True) $ s
+                                          else s 
   StackST.stackPush (sStack graph) (getgnId gn);
   sSize <- StackST.stackSize $ sStack graph 
   modifyDHT (nodeToGraphNode graph) (getgnId gn) $ setgnIValue (naturalToInt sSize);
@@ -279,12 +281,12 @@ updateSCC' graph iValue =  do
 
 
 -- safe
-resolveSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Int -> Edge, Key state) -> ST.ST s (Bool, Int)
-resolveSummary graph (builder, key) = do 
+resolveSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Int, SummaryBody, Key state) -> ST.ST s (Int,Bool)
+resolveSummary graph (from, body, key) = do 
   alrDir <- alreadyDiscovered graph key 
   ident <- lookupIdDHT (nodeToGraphNode graph) key
-  modifySTRef' (edges graph) $ Set.insert $ builder $ fromJust ident;
-  return (alrDir, fromJust ident)
+  modifySTRef' (edges graph) $ Set.insert $ buildSummary from body $ fromJust ident;
+  return (fromJust ident, not $ alrDir)
 
 -- this simply creates a Summary Body
 -- unsafe
@@ -302,7 +304,7 @@ discoverSummaryBody graph from  =
 discoverSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> SummaryBody ->  Key state -> ST.ST s ()
 discoverSummary graph from body to = do 
   gnFrom <- lookupDHT (nodeToGraphNode graph) from 
-  modifySTRef' (summaries graph) $ V.cons (\toInt -> buildSummary (getgnId gnFrom) body toInt, to)
+  modifySTRef' (summaries graph) $ V.cons (getgnId gnFrom, body, to)
 
 -- unsafe
 insertInternal :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> Key state -> ST.ST s ()
@@ -368,13 +370,13 @@ dotheMerge graph gns areFinal =
     newC <- freshNegId (c graph)
     newId <- freshPosId (idSeq graph)
     let newgn = SCComponent{nodes = gnsNodes, getgnId = newId, iValue = newC}
-        updatef f = \i -> updateEdge oldIdents newId $ f i
-        updateSumm (f,k) = (updatef f, k)
-        newSummaries v = V.map updateSumm v
+        sub n = if Set.member n oldIdents 
+                  then newId
+                  else n
     fuseDHT (nodeToGraphNode graph) gnsNodes newId newgn;
     updateEdges (edges graph) oldIdents newId;
-    vt <- readSTRef (summaries graph)
-    writeSTRef (summaries graph) $ newSummaries vt
+    modifySTRef' (summaries graph) $ V.map $ \(f,sb,t) -> (sub f, updateSummaryBody newId oldIdents sb,t)
+    modifySTRef' (initials graph)  $ Set.map $ \(n,b) -> (sub n,b)
     isA <- isAccepting graph newgn areFinal
     return (isA, Just $ (newId, oldIdents))
 
@@ -399,22 +401,20 @@ summariesSize graph = do
 -- here we don't want to remove the summaries
 -- returns the new Initials
 -- TODO: test this
-toCollapsePhase :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s (TwinSet Int)
-toCollapsePhase graph = let unmarked list = snd . unzip $ filter (\(cond, _) -> cond) list
-                            marked list = snd . unzip $ filter (\(cond, _) ->  not cond) list
-                        in do 
-                            modifyAllDHT (nodeToGraphNode graph) resetgnIValue
-                            summ <- readSTRef $ summaries graph 
-                            resolvedSummariesList <- forM (V.toList summ) $ resolveSummary graph
-                            resetTS (initials graph); -- marks everything
-                            return (Set.fromList $ unmarked resolvedSummariesList, Set.fromList $ marked resolvedSummariesList)
+toCollapsePhase :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s (Set (Int,Bool))
+toCollapsePhase graph = do 
+                          modifyAllDHT (nodeToGraphNode graph) resetgnIValue
+                          summ <- readSTRef $ summaries graph 
+                          newInitials <- forM (V.toList summ) $ resolveSummary graph
+                          modifySTRef' (initials graph) $ Set.map $ \(ident, _) -> (ident,True)
+                          return $ Set.fromList newInitials
 
 
-toSearchPhase :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> TwinSet Int -> ST.ST s ()
-toSearchPhase graph ts = do 
+toSearchPhase :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Set (Int,Bool)) -> ST.ST s ()
+toSearchPhase graph newInitials = do 
   modifyAllDHT (nodeToGraphNode graph) resetgnIValue
-  setTS (initials graph) ts;
-  modifySTRef' (summaries graph) $ const (V.empty)
+  writeSTRef (initials graph) newInitials;
+  writeSTRef (summaries graph) V.empty
 
 --unsafe
 visitGraphFrom :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> (Maybe(Int, Set Int) -> ST.ST s ()) -> ([state] -> Bool) -> Key state -> ST.ST s Bool 

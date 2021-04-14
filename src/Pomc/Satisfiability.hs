@@ -209,8 +209,8 @@ isEmptyOmega delta initials areFinal = not $
                emptySuppStarts <- emptySM
                emptySuppEnds <- emptySM
                initialsId <- wrapStates newSig initials
-               initialNodes <- V.mapM (\sId -> return (sId, Nothing)) initialsId
-               gr <- newGraph initialNodes
+               initials <- V.mapM (\sId -> return (sId, Nothing)) initialsId
+               gr <- newGraph initials
                let globals = WGlobals { sIdGen = newSig 
                                       , suppStarts = emptySuppStarts
                                       , wSuppEnds = emptySuppEnds 
