@@ -78,7 +78,6 @@ data GraphNode state = SCComponent
 instance (Show state) => Show (GraphNode  state) where
   show gn =  show $ getgnId gn 
 
-
 instance Eq (GraphNode state) where
   p == q = getgnId p == getgnId q
 

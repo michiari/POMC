@@ -167,11 +167,6 @@ modifyDHT (_, ht2) ident f = do
 modifyAllDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> (v -> v) -> ST.ST s ()
 modifyAllDHT (_, ht2) f = H.mapM_ (\(k,v) -> BH.insert ht2 k (f v)) ht2
 
-modifyAllVT :: STRef s (MV.MVector s v) -> (v -> v) -> ST.ST s ()
-modifyAllVT vtref f = do 
-  vt <- readSTRef vtref
-  mapM_ (MV.unsafeModify vt  f) [0..((MV.length vt) -1)] 
-
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
 

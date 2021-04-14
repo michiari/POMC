@@ -148,5 +148,7 @@ cases =
        `And` (XNext Down (HUntil Up (ap "pa") (ap "pb"))))
     , ["pa", "pb"]
     , True
-    ) -}
+    ) 
+
+    -}
   ]
