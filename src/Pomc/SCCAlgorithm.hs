@@ -25,7 +25,7 @@ module Pomc.SCCAlgorithm ( Graph
                          , updateSCC
                          ) where
 
-import Pomc.SatUtils 
+import Pomc.SatUtil 
 import Pomc.State(showStates)
 import Pomc.Data(BitEncoding)
 import qualified  Pomc.DoubleHashTable as DHT
@@ -90,7 +90,7 @@ type GabowStack s v = StackST.Stack s v
 
 data Graph s state = Graph
   { idSeq           :: STRef s Int
-  , nodeToGraphNode :: DoubleHashTable s (Key state) (Value state)
+  , nodeToGraphNode :: DHT.DoubleHashTable s (Key state) (Value state)
   , edges           :: STRef s (Set (Edge)) -- Set is not keyed in the monad, it needs a STRef
   , c               :: STRef s Int -- for the Gabow algorithm
   , bStack          :: GabowStack s Int -- for the Gabow algorithm
@@ -205,10 +205,10 @@ initialNodes bitenc graph =
     inSet <- readSTRef (initials graph)
     let inIdents = Set.map fst . Set.filter snd $ inSet
     gnNodesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList inIdents) gnNode
-    let results =  Set.toList . Set.unions $ gnNodesList
+    let results   =  Set.toList . Set.unions $ gnNodesList
         satStates = map (getSatState . getState . fst) results
     debug ("Initial nodes of this search phase: " ++ (showStates bitenc satStates) ++ "\n\n" ++ show results) 
-    $ return $ V.fromList results 
+      $ return $ V.fromList results 
 
 
 -- unsafe: precond: the node is already there
@@ -293,19 +293,21 @@ discoverSummary graph from body to = do
 
 -- unsafe
 insertInternal :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> Key state -> ST.ST s ()
-insertInternal graph fromKey toKey  = do from <- DHT.lookupId (nodeToGraphNode graph) fromKey
-                                         to   <- DHT.lookupId (nodeToGraphNode graph) toKey
-                                         debug ("InsertInternal: from: " ++ show from ++ "} ---> to: " ++ show to ++ "\n") $ modifySTRef' (edges graph) 
-                                         $ Set.insert $ Internal (fromJust from) (fromJust to)
+insertInternal graph fromKey toKey  = do 
+  fr <- DHT.lookupId (nodeToGraphNode graph) fromKey
+  t  <- DHT.lookupId (nodeToGraphNode graph) toKey
+  debug ("InsertInternal: from: " ++ show fr ++ "} ---> to: " ++ show t ++ "\n") $ modifySTRef' (edges graph) 
+    $ Set.insert $ Internal (fromJust fr) (fromJust t)
 
 -- unsafe
 insertSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> Key state -> SummaryBody -> ST.ST s ()
-insertSummary graph fromKey toKey  sb = do fr <- DHT.lookupId (nodeToGraphNode graph) fromKey
-                                           t  <- DHT.lookupId (nodeToGraphNode graph) toKey
-                                           let summ =  buildSummary (fromJust fr) sb (fromJust t)
-                                           modifySTRef' (edges graph) $ Set.insert summ
-                                           debug  ("InsertSummary: from: " ++ show fr ++ "} ---> to: " ++ show t ++ "edge: " ++ show summ ++ "\n") 
-                                           $ modifySTRef' (edges graph) $ Set.insert $ Internal{from=(fromJust fr), to = firstNode sb};
+insertSummary graph fromKey toKey  sb = do 
+  fr <- DHT.lookupId (nodeToGraphNode graph) fromKey
+  t  <- DHT.lookupId (nodeToGraphNode graph) toKey
+  let summ =  buildSummary (fromJust fr) sb (fromJust t)
+  modifySTRef' (edges graph) $ Set.insert summ
+  debug  ("InsertSummary: from: " ++ show fr ++ "} ---> to: " ++ show t ++ "edge: " ++ show summ ++ "\n") 
+    $ modifySTRef' (edges graph) $ Set.insert $ Internal{from=(fromJust fr), to = firstNode sb};
                                            
 
 createComponent :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Key state -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))

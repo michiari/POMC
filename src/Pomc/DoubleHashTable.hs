@@ -4,20 +4,18 @@
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
-
-module Pomc.DoubleHashtable ( 
-                     , DoubleHashTable
-                     , empty
-                     , lookupId
-                     , insert
-                     , fuse
-                     , lookup
-                     , lookupApply
-                     , lookupMap
-                     , modify
-                     , modifyAll
-                     ) where
-
+module Pomc.DoubleHashTable( DoubleHashTable
+                           , empty
+                           , lookupId
+                           , insert
+                           , fuse
+                           , lookup
+                           , lookupApply
+                           , lookupMap
+                           , modify
+                           , modifyAll
+                           ) where
+import Prelude hiding (lookup)
 import Control.Monad (forM_, forM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST

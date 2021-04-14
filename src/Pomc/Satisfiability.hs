@@ -5,7 +5,8 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Satisfiability ( isEmpty
+module Pomc.Satisfiability ( Delta(..)
+                           , isEmpty
                            , isEmptyOmega
                            , isSatisfiable
                            , isSatisfiableGen
@@ -18,7 +19,7 @@ import Pomc.Check ( EncPrecFunc, makeOpa)
 import Pomc.State(Input, State(..), showState)
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
-import Pomc.SatUtils
+import Pomc.SatUtil
 import Pomc.SCCAlgorithm
 
 
@@ -52,6 +53,15 @@ data Globals s state = FGlobals
   , wSuppEnds :: STRef s (SetMap s (StateId state, SummaryBody)) -- TODO: find a way to avoid exposing SummaryBody here
   , graph :: Graph s state 
   }  
+
+-- a type for the delta relation, parametric with respect to the type of the state
+data Delta state = Delta
+  { bitenc :: BitEncoding
+  , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
+  , deltaPush :: state -> Input -> [state] -- deltaPush relation
+  , deltaShift :: state -> Input -> [state] -- deltaShift relation
+  , deltaPop :: state -> state -> [state] -- deltapop relation
+  }
 
 -- implementation of the reachability algorithm, as described in the notes
 reach :: (SatState state, Eq state, Hashable state, Show state)
@@ -225,10 +235,10 @@ searchPhase :: (SatState state, Ord state, Hashable state, Show state)
                   -> ST.ST s Bool
 searchPhase areFinal globals delta  = 
   let visit node = do
-    alrDisc <- alreadyDiscovered (graph globals) node 
-    if not alrDisc
-      then reachOmega areFinal globals delta node
-      else return False
+        alrDisc <- alreadyDiscovered (graph globals) node 
+        if not alrDisc
+          then reachOmega areFinal globals delta node
+          else return False
   in do 
     initials <- initialNodes (bitenc delta) $ graph globals
     detected <- foldM (\acc node -> if acc
@@ -253,10 +263,10 @@ collapsePhase :: (SatState state, Ord state, Hashable state, Show state)
 collapsePhase 0 _ _ _ _ = return False
 collapsePhase _ initials areFinal globals delta = 
   let visit node = do 
-    alrVis <- alreadyVisited (graph globals) node 
-    if not alrVis
-      then visitGraphFrom (graph globals) updateSummaryBodies areFinal node 
-      else return False
+        alrVis <- alreadyVisited (graph globals) node 
+        if not alrVis
+          then visitGraphFrom (graph globals) (updateSummaryBodies globals) areFinal node 
+          else return False
   in do 
     newInitials <- toCollapsePhase $ graph globals
     detected <- foldM (\acc node -> if acc
@@ -297,7 +307,7 @@ reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ sh
     then return True 
     else do 
       result <- createComponent (graph globals) (q,g) areFinal
-      updateSummaryBodies $ snd result
+      updateSummaryBodies globals $ snd result
       return $ fst result
 
 
@@ -398,7 +408,7 @@ reachTransition body areFinal globals delta from to =
           then do updateSCC (graph globals) to;
                   debug ("AlreadyVisitedNode: " ++ show to ++ "\n") $ return False 
           else debug ("AlreadyDisc but not alreadyVisitedNode: " ++ show to ++ "\n")
-             $ visitGraphFrom (graph globals) updateSummaryBodies areFinal to
+             $ visitGraphFrom (graph globals) (updateSummaryBodies globals) areFinal to
       else reachOmega areFinal globals delta to
 
 updateSummaryBodies :: Globals s state -> Maybe (Int,Set Int) -> ST.ST s ()

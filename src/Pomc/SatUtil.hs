@@ -5,7 +5,7 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.SatUtils ( SatState(..)
+module Pomc.SatUtil ( SatState(..)
                      , StateId(..)
                      , Stack
                      , SIdGen
@@ -16,6 +16,7 @@ module Pomc.SatUtils ( SatState(..)
                      , insertSM
                      , lookupSM
                      , memberSM
+                     , modifyAllSM
                      , emptySM
                      , freshPosId
                      , freshNegId
@@ -39,12 +40,19 @@ import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 
+import Data.Hashable
+import qualified Data.HashTable.ST.Basic as BH
+import qualified Data.HashTable.Class as H
 
 import Debug.Trace (trace)
 
 debug :: String -> a -> a
 debug _ x = x
 --debug msg r = trace msg r 
+
+-- a basic open-addressing hashtable using linear probing
+-- s = thread state, k = key, v = value.
+type HashTable s k v = BH.HashTable s k v
 
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
