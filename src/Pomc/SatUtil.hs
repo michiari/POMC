@@ -6,12 +6,10 @@
 -}
 
 module Pomc.SatUtils ( SatState(..)
-                     , Delta(..)
                      , StateId(..)
                      , Stack
                      , SIdGen
                      , SetMap
-                     , DoubleHashTable
                      , debug
                      , initSIdGen
                      , wrapStates
@@ -19,16 +17,8 @@ module Pomc.SatUtils ( SatState(..)
                      , lookupSM
                      , memberSM
                      , emptySM
-                     , modifyAllSM
-                     , emptyDHT
-                     , lookupIdDHT
-                     , insertDHT
-                     , fuseDHT
-                     , modifyDHT
-                     , modifyAllDHT
-                     , lookupDHT
-                     , lookupApplyDHT
-                     , lookupApplyMultDHT
+                     , freshPosId
+                     , freshNegId
                      , getSidProps
                      ) where
 
@@ -36,7 +26,7 @@ import Pomc.Check ( EncPrecFunc)
 import Pomc.State(Input, State(..))
 import Pomc.Data (BitEncoding, extractInput)
 
-import Control.Monad (foldM, forM_, forM, mapM)
+import Control.Monad (foldM, mapM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
@@ -44,10 +34,6 @@ import Data.Maybe
 
 import Data.Set (Set)
 import qualified Data.Set as Set
-
-import Data.Hashable
-import qualified Data.HashTable.ST.Basic as BH
-import qualified Data.HashTable.Class as H
 
 import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
@@ -60,68 +46,8 @@ debug :: String -> a -> a
 debug _ x = x
 --debug msg r = trace msg r 
 
--- a basic open-addressing hashtable using linear probing
--- s = thread state, k = key, v = value.
-type HashTable s k v = BH.HashTable s k v
-type DoubleHashTable s k v = (HashTable s k Int, HashTable s Int v)
-
-emptyDHT  :: ST.ST s (DoubleHashTable s k v)
-emptyDHT = do
-  ht1 <- BH.new 
-  ht2 <- BH.new
-  return (ht1,ht2)
-
-lookupIdDHT :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> ST.ST s (Maybe Int)
-lookupIdDHT (ht1,_) key = BH.lookup ht1 key
-
--- insert a (key,value) tuple into the vht, with the given int identifier
-insertDHT :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> Int -> v -> ST.ST s ()
-insertDHT (ht1, ht2) key ident value = do 
-  BH.insert ht1 key ident;
-  BH.insert ht2 ident value
-  
-
--- insert a set of keys into the vht, all mapped to the same value with the same identifier
-fuseDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Set k -> Int -> v -> ST.ST s ()
-fuseDHT (ht1, ht2) keySet ident value = do 
-  forM_ (Set.toList keySet) ( \key -> do 
-                                        oldIdent <- BH.lookup ht1 key 
-                                        BH.insert ht1 key ident;
-                                        BH.delete ht2 $ fromJust oldIdent 
-                            );
-  BH.insert ht2 ident value
-
-
-
--- not safe
-lookupDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> k -> ST.ST s v
-lookupDHT (ht1, ht2) key = do
-  ident <- BH.lookup ht1 key
-  value <- BH.lookup ht2 (fromJust ident)
-  return $ fromJust value
-
-lookupApplyDHT :: (Show v, Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> w) ->ST.ST s w
-lookupApplyDHT (_,ht2) ident f = do 
-    value <- BH.lookup ht2 ident        
-    return $ f . fromJust $ value
-
-lookupApplyMultDHT :: (Show v, Eq k, Hashable k) => (DoubleHashTable s k v) -> [Int] -> (v -> w) ->ST.ST s [w]
-lookupApplyMultDHT (_,ht2) idents f =   do 
-    values <- forM idents $ BH.lookup ht2         
-    return $ map (f . fromJust) values
-
---unsafe
-modifyDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> v) -> ST.ST s ()
-modifyDHT (_, ht2) ident f = do 
-  value <- BH.lookup ht2 ident 
-  BH.insert ht2 ident $ f . fromJust $ value
-
-modifyAllDHT :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> (v -> v) -> ST.ST s ()
-modifyAllDHT (_, ht2) f = H.mapM_ (\(k,v) -> BH.insert ht2 k (f v)) ht2
-
 -- Map to sets
 type SetMap s v = MV.MVector s (Set v)
-
 
 -- insert a state into the SetMap
 insertSM :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
@@ -236,16 +162,18 @@ wrapStates sig states = do
 -- Stack symbol: (input token, state) || Bottom if empty stack
 type Stack state = Maybe (Input, StateId state) 
 
-
--- a type for the delta relation, parametric with respect to the type of the state
-data Delta state = Delta
-  { bitenc :: BitEncoding
-  , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
-  , deltaPush :: state -> Input -> [state] -- deltaPush relation
-  , deltaShift :: state -> Input -> [state] -- deltaShift relation
-  , deltaPop :: state -> state -> [state] -- deltapop relation
-  }
-
 -- get atomic propositions holding in a state
 getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
 getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
+
+freshPosId :: STRef s Int -> ST.ST s Int
+freshPosId idSeq = do
+  curr <- readSTRef idSeq
+  modifySTRef' idSeq (+1);
+  return $ curr
+
+freshNegId :: STRef s Int -> ST.ST s Int
+freshNegId idSeq = do
+  curr <- readSTRef idSeq
+  modifySTRef' idSeq (+(-1));
+  return $ curr

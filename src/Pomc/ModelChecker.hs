@@ -82,8 +82,8 @@ modelCheck isOmega phi opa =
       cInitials = cartesian (initials opa) phiInitials
       -- new isFinal function for the cartesian product: both underlying opas must be in an acceptance state
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal T p
-      cIsFinalOmega states = (any (\(MCState q p) -> Set.member q $ Set.fromList $ finals opa) states) &&
-                             (all (\f -> any (\(MCState q p) -> phiIsFinal f p) states) $ Set.toList cl)
+      cIsFinalOmega states = (any (\(MCState q _) -> Set.member q $ Set.fromList $ finals opa) states) &&
+                             (all (\f -> any (\(MCState _ p) -> phiIsFinal f p) states) $ Set.toList cl)
 
       -- unwrap an object of type Maybe List
       maybeList Nothing = []
