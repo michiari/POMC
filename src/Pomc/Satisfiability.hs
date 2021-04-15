@@ -243,7 +243,7 @@ searchPhase areFinal globals delta  =
           then reachOmega areFinal globals delta node
           else return False
   in do 
-    initials <- initialNodes (bitenc delta) $ graph globals
+    initials <- initialNodes $ graph globals
     detected <- foldM (\acc node -> if acc
                                       then return True
                                       else visit node) 
@@ -268,7 +268,7 @@ collapsePhase _ initials areFinal globals delta =
   let visit node = do 
         alrVis <- alreadyVisited (graph globals) node 
         if not alrVis
-          then visitGraphFrom (graph globals) (updateSummaryBodies globals) areFinal node 
+          then visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal node 
           else return False
   in do 
     newInitials <- toCollapsePhase $ graph globals
@@ -411,7 +411,7 @@ reachTransition body areFinal globals delta from to =
           then do updateSCC (graph globals) to;
                   debug ("AlreadyVisitedNode: " ++ show to ++ "\n") $ return False 
           else debug ("AlreadyDisc but not alreadyVisitedNode: " ++ show to ++ "\n")
-             $ visitGraphFrom (graph globals) (updateSummaryBodies globals) areFinal to
+             $ visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal to
       else reachOmega areFinal globals delta to
 
 updateSummaryBodies :: Globals s state -> Maybe (Int,Set Int) -> ST.ST s ()

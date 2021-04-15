@@ -10,7 +10,7 @@ module Pomc.SCCAlgorithm ( Graph
                          , newGraph
                          , alreadyDiscovered
                          , alreadyVisited
-                         , visitGraphFrom
+                         , visitGraphFromKey
                          , initialNodes
                          , summariesSize
                          , toCollapsePhase
@@ -100,6 +100,30 @@ data Graph s state = Graph
   , summaries       :: STRef s (Vector (Int, SummaryBody, Key state))
   }
 
+newGraph :: (SatState state, Eq state, Hashable state, Show state) => Vector (Key state) -> ST.ST s (Graph s state)
+newGraph initials = do
+  newIdSequence <- newSTRef (0 :: Int)
+  dht           <- DHT.empty  
+  newSet        <- newSTRef (Set.empty)
+  newCSequence  <- newSTRef (-1 :: Int)
+  newBS         <- StackST.stackNew
+  newSS         <- StackST.stackNew
+  newInitials   <- newSTRef (Set.empty)
+  newSummaries  <- newSTRef(V.empty)
+  forM_ (initials) $ \key -> do 
+    newId <- freshPosId newIdSequence
+    DHT.insert dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
+    modifySTRef' newInitials (Set.insert (newId,True))
+  return $ Graph { idSeq = newIdSequence
+                 , nodeToGraphNode = dht 
+                 , edges = newSet 
+                 , c = newCSequence
+                 , bStack = newBS
+                 , sStack = newSS
+                 , initials = newInitials
+                 , summaries = newSummaries
+                }
+
 ----------------------------------------------------------------------------------------
 
 -- the iValue is used in the Gabow algorithm
@@ -173,44 +197,17 @@ allUntil stack acc cond  = do
       topPopped <- StackST.stackPop stack 
       allUntil stack ((fromJust topPopped):acc) cond 
 
-newGraph :: (SatState state, Eq state, Hashable state, Show state) => Vector (Key state) -> ST.ST s (Graph s state)
-newGraph initials = do
-  newIdSequence <- newSTRef (0 :: Int)
-  dht           <- DHT.empty  
-  newSet        <- newSTRef (Set.empty)
-  newCSequence  <- newSTRef (-1 :: Int)
-  newBS         <- StackST.stackNew
-  newSS         <- StackST.stackNew
-  newInitials   <- newSTRef (Set.empty)
-  newSummaries  <- newSTRef(V.empty)
-  forM_ (initials) $ \key -> do 
-    newId <- freshPosId newIdSequence
-    DHT.insert dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
-    modifySTRef' newInitials (Set.insert (newId,True))
-  return $ Graph { idSeq = newIdSequence
-                 , nodeToGraphNode = dht 
-                 , edges = newSet 
-                 , c = newCSequence
-                 , bStack = newBS
-                 , sStack = newSS
-                 , initials = newInitials
-                 , summaries = newSummaries
-                }
 
 -- unsafe
-initialNodes :: (SatState state, Eq state, Hashable state, Show state) => BitEncoding -> Graph s state -> ST.ST s (Vector (Key state))
-initialNodes bitenc graph = 
+initialNodes :: (SatState state, Eq state, Hashable state, Show state) =>  Graph s state -> ST.ST s (Vector (Key state))
+initialNodes graph = 
   let gnNode (SingleNode{node = n}) = Set.singleton n
       gnNode (SCComponent{nodes=ns})= ns
   in do 
     inSet <- readSTRef (initials graph)
     let inIdents = Set.map fst . Set.filter snd $ inSet
     gnNodesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList inIdents) gnNode
-    let results   =  Set.toList . Set.unions $ gnNodesList
-        satStates = map (getSatState . getState . fst) results
-    debug ("Initial nodes of this search phase: " ++ (showStates bitenc satStates) ++ "\n\n" ++ show results) 
-      $ return $ V.fromList results 
-
+    return $ V.fromList . Set.toList . Set.unions $ gnNodesList
 
 -- unsafe: precond: the node is already there
 alreadyVisited :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s Bool 
@@ -237,11 +234,11 @@ alreadyDiscovered graph key = do
 visitNode :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s ()
 visitNode graph key = do
   gn <- DHT.lookup (nodeToGraphNode graph) key 
-  visitNode' graph gn
+  visitGraphNode graph gn
   
 
-visitNode' :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> GraphNode state -> ST.ST s ()
-visitNode' graph gn = do 
+visitGraphNode :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> GraphNode state -> ST.ST s ()
+visitGraphNode graph gn = do 
   modifySTRef' (initials graph) $ \s -> if Set.member (getgnId gn, True) s
                                           then Set.insert (getgnId gn, False) . Set.delete (getgnId gn, True) $ s
                                           else s 
@@ -254,16 +251,16 @@ visitNode' graph gn = do
 updateSCC :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> ST.ST s ()
 updateSCC graph key = do 
   gn <- DHT.lookup (nodeToGraphNode graph) key
-  updateSCC' graph (iValue gn) 
+  updateSCCInt graph (iValue gn) 
 
-updateSCC' :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Int -> ST.ST s ()
-updateSCC' graph iValue =  do 
+updateSCCInt :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Int -> ST.ST s ()
+updateSCCInt graph iValue =  do 
   topElemB <- StackST.stackPeek (bStack graph)
   if (iValue  < 0) || (iValue  >= (fromJust topElemB)) 
     then  return ()
     else do
       StackST.stackPop (bStack graph);
-      updateSCC' graph iValue
+      updateSCCInt graph iValue
 
 
 -- safe
@@ -314,10 +311,10 @@ insertSummary graph fromKey toKey  sb = do
 createComponent :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Key state -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
 createComponent graph key areFinal = do
   gn <- DHT.lookup (nodeToGraphNode graph) key
-  debug ("Creating component for node: " ++ show gn) $ createComponent' graph gn areFinal
+  debug ("Creating component for node: " ++ show gn) $ createComponentGn graph gn areFinal
 
-createComponent' :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> GraphNode state -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
-createComponent' graph gn areFinal = do
+createComponentGn :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> GraphNode state -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
+createComponentGn graph gn areFinal = do
   topB <- StackST.stackPeek (bStack graph) 
   if  (iValue gn) == (fromJust topB)
     then do 
@@ -327,58 +324,56 @@ createComponent' graph gn areFinal = do
 
 mergeComponents :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Int -> Set Int -> ([state] -> Bool)  -> ST.ST s (Bool, Maybe (Int, Set Int))
 mergeComponents graph iValue  acc areFinal = do
-  sSize <- StackST.stackSize (sStack graph)
-  if iValue > (naturalToInt sSize)
-    then do 
-      gnList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList acc) id
-      dotheMerge graph gnList areFinal
+  sSize <- StackST.stackSize $ sStack graph
+  if iValue > naturalToInt sSize
+    then merge graph (Set.toList acc) areFinal
     else do
-      elem <- StackST.stackPop (sStack graph)
-      mergeComponents graph iValue (Set.insert (fromJust elem) acc) areFinal
- 
--- TODO: update this to optimize the case when we have a single SCComponent
-dotheMerge :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> [GraphNode state]-> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
-dotheMerge graph [gn]  areFinal = do
+      elem <- StackST.stackPop $ sStack graph
+      mergeComponents graph iValue (Set.insert (fromJust elem) acc) areFinal 
+
+merge :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> [Int] -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
+merge graph [ident]  areFinal = do
   newC <- freshNegId (c graph)
-  DHT.modify (nodeToGraphNode graph) (getgnId gn) $ setgnIValue newC 
-  self <- selfLoop (edges graph) (getgnId gn)
+  DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC 
+  self <- selfLoop (edges graph) ident
   if self 
-    then debug ("Single Node with Cycle found: " ++ show (setgnIValue newC gn) ++ "\n") $ do 
-                                                                                            isA <- isAccepting graph gn areFinal
-                                                                                            return (isA, Nothing)
-    else debug ("Single Node without Cycle found: " ++ show (setgnIValue newC gn) ++ "\n") $ return $ (False, Nothing)
-dotheMerge graph gns areFinal = 
+    then do 
+      isA <- isAccepting graph ident areFinal
+      return (isA, Nothing)
+    else return $ (False, Nothing)
+merge graph idents areFinal = 
   let 
     gnNode SingleNode{node = n}    = Set.singleton n
     gnNode SCComponent{nodes = ns} = ns
-    gnsNodes = Set.unions . map gnNode $ gns
-    oldIdents = Set.fromList . map getgnId $ gns
   in do 
     newC <- freshNegId (c graph)
     newId <- freshPosId (idSeq graph)
-    let newgn = SCComponent{nodes = gnsNodes, getgnId = newId, iValue = newC}
-        sub n = if Set.member n oldIdents 
+    gnsNodes <- DHT.lookupMap (nodeToGraphNode graph) idents gnNode
+    let gnsNodesSet = Set.unions gnsNodes
+        newgn = SCComponent{nodes = gnsNodesSet, getgnId = newId, iValue = newC}
+        identsSet = Set.fromList idents
+        sub n = if Set.member n identsSet 
                   then newId
-                  else n
-    DHT.fuse (nodeToGraphNode graph) gnsNodes newId newgn;
-    updateEdges (edges graph) oldIdents newId;
-    modifySTRef' (summaries graph) $ V.map $ \(f,sb,t) -> (sub f, updateSummaryBody newId oldIdents sb,t)
+                  else n        
+    DHT.fuse (nodeToGraphNode graph) gnsNodesSet newId newgn;
+    updateEdges (edges graph) identsSet newId;
+    modifySTRef' (summaries graph) $ V.map $ \(f,sb,t) -> (sub f, updateSummaryBody newId identsSet sb,t)
     modifySTRef' (initials graph)  $ Set.map $ \(n,b) -> (sub n,b)
-    isA <- isAccepting graph newgn areFinal
-    return (isA, Just $ (newId, oldIdents))
+    isA <- isAccepting graph newId areFinal
+    return (isA, Just $ (newId, identsSet))
 
 -- not safe
-isAccepting :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> GraphNode state -> ([state] -> Bool) -> ST.ST s Bool
-isAccepting graph gn areFinal = 
+isAccepting :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> Int -> ([state] -> Bool) -> ST.ST s Bool
+isAccepting graph ident areFinal = 
   let gnStates SingleNode{node = n} = Set.singleton . getState . fst $ n
       gnStates SCComponent{nodes= ns} = Set.map (getState . fst) ns
       edgeGnIdents Internal{from=fr, to=t}          = Set.fromList [fr,t]
       edgeGnIdents Summary{from= fr, to=t, body =b} = Set.union (Set.fromList [fr,t]) $ Set.unions (Set.map edgeGnIdents b)
   in do   
-    gnEdges <- lookupEdges (edges graph) (getgnId gn) (getgnId gn)
+    gnEdges <- lookupEdges (edges graph) ident ident
     gnStatesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList . Set.unions . Set.map edgeGnIdents $ gnEdges) gnStates
-    let aF = areFinal . Set.toList . Set.unions $ gnStatesList
-    debug ("Found gn " ++ show gn ++ "with acceptance " ++ show aF ++ "\n") $ return aF
+    return $ areFinal . Set.toList . Set.unions $ gnStatesList
+    
 
 
 summariesSize :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Int
@@ -402,30 +397,30 @@ toSearchPhase graph newInitials = do
   writeSTRef (summaries graph) V.empty
 
 --unsafe
-visitGraphFrom :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> (Maybe(Int, Set Int) -> ST.ST s ()) -> ([state] -> Bool) -> Key state -> ST.ST s Bool 
-visitGraphFrom graph sbUpdater areFinal  key = do 
+visitGraphFromKey :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> (Maybe(Int, Set Int) -> ST.ST s ()) -> ([state] -> Bool) -> Key state -> ST.ST s Bool 
+visitGraphFromKey graph sbUpdater areFinal  key = do 
   gn <- DHT.lookup (nodeToGraphNode graph) key 
-  visitGraphFrom' graph sbUpdater areFinal gn 
+  visitGraphFrom graph sbUpdater areFinal gn 
 
-visitGraphFrom' :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> (Maybe(Int, Set Int) -> ST.ST s ()) -> ([state] -> Bool) -> GraphNode state -> ST.ST s Bool 
-visitGraphFrom' graph sbUpdater areFinal  gn = do 
-  visitNode' graph gn;
+visitGraphFrom :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> (Maybe(Int, Set Int) -> ST.ST s ()) -> ([state] -> Bool) -> GraphNode state -> ST.ST s Bool 
+visitGraphFrom graph sbUpdater areFinal  gn = do 
+  visitGraphNode graph gn;
   next <- nextStepsFrom (edges graph) (getgnId gn)
   nextGns <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList next) id
   success <-  foldM (\acc gn -> if acc
                                   then return True 
                                   else if (iValue gn) == 0 
-                                        then visitGraphFrom' graph sbUpdater areFinal gn
+                                        then visitGraphFrom graph sbUpdater areFinal gn
                                         else  do 
-                                          updateSCC' graph (iValue gn)
+                                          updateSCCInt graph (iValue gn)
                                           return False)                                          
                     False
                     nextGns 
   if success
     then return True 
     else  do 
-      result <- createComponent' graph gn areFinal
-      sbUpdater (snd result);
+      result <- createComponentGn graph gn areFinal
+      sbUpdater $ snd result;
       return $ fst result
 
 
