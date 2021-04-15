@@ -21,6 +21,9 @@ import Pomc.PropConv (APType, convPropLabels)
 import Pomc.Data (BitEncoding, extractInput)
 import Pomc.SatUtil
 import Pomc.SCCAlgorithm
+import Pomc.SetMap
+import qualified Pomc.SetMap as SM
+
 
 
 import Control.Monad (foldM, forM_)
@@ -44,13 +47,13 @@ import qualified Data.Vector as V
 -- global variables in the algorithms
 data Globals s state = FGlobals
   { sIdGen :: SIdGen s state
-  , visited :: STRef s (SetMap s (Stack state)) -- already visited states
+  , visited :: STRef s (SetMap s (Stack state)) 
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (SetMap s (StateId state))
   } | WGlobals 
   { sIdGen :: SIdGen s state
   , suppStarts :: STRef s (SetMap s (Stack state))
-  , wSuppEnds :: STRef s (SetMap s (StateId state, SummaryBody)) -- TODO: find a way to avoid exposing SummaryBody here
+  , wSuppEnds :: STRef s (SetMap s (StateId state, SummaryBody)) 
   , graph :: Graph s state 
   }  
 
@@ -73,11 +76,11 @@ reach :: (SatState state, Eq state, Hashable state, Show state)
       -> Stack state -- stack symbol
       -> ST s Bool
 reach isDestState isDestStack globals delta q g = do
-  alreadyVisited <- memberSM (visited globals) q g
+  alreadyVisited <- SM.member (visited globals) q g
   if alreadyVisited
     then return False 
     else do
-    debug ("Visiting: " ++ show q ++ "\ng = " ++ show g ++ "\n\n\n" ) $ insertSM (visited globals) q g 
+    debug ("Visiting: " ++ show q ++ "\ng = " ++ show g ++ "\n\n\n" ) $ SM.insert (visited globals) q g 
     let be = bitenc delta
         qProps = getSidProps be q -- atomic propositions holding in the state (the input)
         qState = getState q 
@@ -111,7 +114,7 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
 reachPush isDestState isDestStack globals delta q g qState qProps =
   let doPush True _ = return True
       doPush False p = do
-        insertSM (suppStarts globals) q g
+        SM.insert (suppStarts globals) q g
         debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
           reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
   in do
@@ -120,7 +123,7 @@ reachPush isDestState isDestStack globals delta q g qState qProps =
     if pushReached
       then return True
       else do
-      currentSuppEnds <- lookupSM (suppEnds globals) q
+      currentSuppEnds <- SM.lookup (suppEnds globals) q
       foldM (\acc s -> if acc
                        then return True
                        else debug ("Push (summary): q = " ++ show q
@@ -172,8 +175,8 @@ reachPop isDestState isDestStack globals delta q g qState =
                 reach isDestState isDestStack globals delta p g'
               | otherwise = return False
         in do
-          insertSM (suppEnds globals) r p
-          currentSuppStarts <- lookupSM (suppStarts globals) r
+          SM.insert (suppEnds globals) r p
+          currentSuppStarts <- SM.lookup (suppStarts globals) r
           foldM closeSupports False currentSuppStarts
   in do
     newStates <- wrapStates (sIdGen globals) $
@@ -189,9 +192,9 @@ isEmpty :: (SatState state, Eq state, Hashable state, Show state)
 isEmpty delta initials isFinal = not $
   ST.runST (do
                newSig <- initSIdGen -- a variable to keep track of state to id relation
-               emptyVisited <- emptySM
-               emptySuppStarts <- emptySM
-               emptySuppEnds <- emptySM
+               emptyVisited <- SM.empty
+               emptySuppStarts <- SM.empty
+               emptySuppEnds <- SM.empty
                let globals = FGlobals { sIdGen = newSig -- a variable to keep track of state to id realtion
                                      , visited = emptyVisited
                                      , suppStarts = emptySuppStarts
@@ -215,8 +218,8 @@ isEmptyOmega  :: (SatState state, Ord state, Hashable state, Show state)
 isEmptyOmega delta initials areFinal = not $
   ST.runST (do
                newSig <- initSIdGen -- a variable to keep track of state to id relation
-               emptySuppStarts <- emptySM
-               emptySuppEnds <- emptySM
+               emptySuppStarts <- SM.empty
+               emptySuppEnds <- SM.empty
                initialsId <- wrapStates newSig initials
                initials <- V.mapM (\sId -> return (sId, Nothing)) initialsId
                gr <- newGraph initials
@@ -323,7 +326,7 @@ reachOmegaPush :: (SatState state, Ord state, Hashable state, Show state)
 reachOmegaPush areFinal globals delta (q,g) qState qProps =
   let doPush True _ = return True
       doPush False p = do
-        insertSM (suppStarts globals) q g
+        SM.insert (suppStarts globals) q g
         debug ""--("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
           reachTransition Nothing areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
   in do
@@ -332,7 +335,7 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
     if pushReached
       then return True
       else do
-      currentSuppEnds <- lookupSM (wSuppEnds globals) q
+      currentSuppEnds <- SM.lookup (wSuppEnds globals) q
       foldM (\acc (s, sb) -> if acc
                               then return True
                               else debug ("Push (summary): q = " ++ show q
@@ -354,7 +357,7 @@ reachOmegaShift :: (SatState state, Ord state, Hashable state, Show state)
 reachOmegaShift areFinal globals delta (q,g) qState qProps =
   let doShift True _ = return True
       doShift False p =
-        debug ""--("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
+        debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") 
           $ reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
@@ -377,8 +380,8 @@ reachOmegaPop globals delta (q,g) qState =
               | otherwise = return ()
         in do
           sb <- discoverSummaryBody (graph globals) r
-          insertSM (wSuppEnds globals) r (p,sb)
-          currentSuppStarts <- lookupSM (suppStarts globals) r
+          SM.insert (wSuppEnds globals) r (p,sb)
+          currentSuppStarts <- SM.lookup (suppStarts globals) r
           forM_ currentSuppStarts (closeSupports sb)
   in do
     newStates <- wrapStates (sIdGen globals) $
@@ -412,8 +415,8 @@ reachTransition body areFinal globals delta from to =
       else reachOmega areFinal globals delta to
 
 updateSummaryBodies :: Globals s state -> Maybe (Int,Set Int) -> ST.ST s ()
-updateSummaryBodies globals Nothing = return  ()
-updateSummaryBodies globals (Just (newId,oldIds)) = modifyAllSM (wSuppEnds globals) $ \(sid, sb) -> (sid, updateSummaryBody newId oldIds sb)
+updateSummaryBodies _ Nothing = return  ()
+updateSummaryBodies globals (Just (newId,oldIds)) = SM.modifyAll (wSuppEnds globals) $ \(sid, sb) -> (sid, updateSummaryBody newId oldIds sb)
 
 -------------------------------------------------------------
 -- given a formula, build the fopa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)

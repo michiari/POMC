@@ -25,7 +25,8 @@ module Pomc.SCCAlgorithm ( Graph
                          , updateSCC
                          ) where
 
-import Pomc.SatUtil 
+import Pomc.SatUtil
+import Pomc.SetMap 
 import Pomc.State(showStates)
 import Pomc.Data(BitEncoding)
 import qualified  Pomc.DoubleHashTable as DHT
