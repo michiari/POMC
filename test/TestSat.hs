@@ -11,7 +11,7 @@ import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
 
 tests :: TestTree
-tests = testGroup "TestSat.hs Tests" [baseTests, baseTests, baseTests]
+tests = testGroup "TestSat.hs Tests" [baseTests]
 
 baseTests :: TestTree
 baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
@@ -82,12 +82,12 @@ cases =
     , (ap "call" `And` (XNext Down (ap "ret")))
     , []
     , True
-    ){-,
+    ),
     ( "Matched call 2"
     , (ap "call" `And` (XNext Down (ap "ret")) `And` (XNext Up (ap "ret")))
     , []
     , True
-    )-},
+    ),
     ( "Impossible downward exc"
     , (ap "call" `And` (XNext Down (ap "exc")))
     , []
@@ -102,17 +102,17 @@ cases =
     , (ap "call" `And` (XNext Up (ap "exc" `And` (XBack Up $ ap "call"))))
     , []
     , True
-    ){-,
+    ),
     ( "No han until ret"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
     , []
     , True
-    )-},
+    ),
     ( "No han until down exc"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
     , []
     , False
-    ){-,
+    ),
     ( "Next exp, not pa since pb"
     , (ap "call" `And` (XNext Up (ap "exc" `And` (PBack Up $ Since Up (Not . ap $ "pa") (ap "pb")))))
     , ["pa", "pb"]
@@ -149,6 +149,4 @@ cases =
     , ["pa", "pb"]
     , True
     ) 
-
-    -}
   ]
