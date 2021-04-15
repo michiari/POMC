@@ -63,6 +63,8 @@ data SummaryBody = SummaryBody
   , bodyEdges :: Set (Edge)
   } deriving (Show,Eq,Ord)
 
+
+
 data GraphNode state = SCComponent
   { getgnId   :: Int -- immutable
   , iValue    :: Int -- changes at each iteration of the Gabow algorithm
@@ -134,56 +136,14 @@ setgnIValue new SingleNode{getgnId = gid, node = n}      = SingleNode{getgnId = 
 resetgnIValue :: GraphNode state -> GraphNode state 
 resetgnIValue  = setgnIValue 0
 
-lookupEdges :: STRef s (Set (Edge)) -> Int -> Int -> ST.ST s (Set (Edge))
-lookupEdges edgeref fr t = do
-  edgeSet <- readSTRef edgeref
-  return $  Set.filter (\e -> from e == fr && to e == t) edgeSet 
-
-selfLoop ::  STRef s (Set (Edge)) -> Int -> ST.ST s Bool
-selfLoop edgeref ident = do
-  selfEdges <- lookupEdges edgeref ident ident 
-  return $ not $ Set.null selfEdges 
-
--- this is used in let it run
-nextStepsFrom :: STRef s (Set (Edge)) -> Int -> ST.ST s (Set  Int)
-nextStepsFrom edgeref fr  = do
-  edgeSet <- readSTRef edgeref
-  return $ Set.map (\e -> to e) $ Set.filter (\e -> from e == fr) edgeSet
-
--- map a list of nodes to the set of edges which connect them
-toEdges :: STRef s (Set (Edge)) -> Set Edge -> [Int] -> ST.ST s (Set Edge)
-toEdges edgeref acc [x] = return acc
-toEdges edgeref acc (x:y:xs) = do 
-                                found <- lookupEdges edgeref x y 
-                                toEdges edgeref  (Set.union acc found) (y:xs)
-
-updateEdge :: Set Int -> Int -> Edge -> Edge 
-updateEdge idents newId e = 
-  let sub n = if Set.member n idents 
-                then newId
-                else n
-      update Internal{from = f, to = t} = Internal{from = sub f, to = sub t}
-      update Summary{from = f, to =t, body = b} = Summary{from = sub f, to = sub t, body = Set.map update b }
-  in update e 
-
-updateEdges :: STRef s (Set (Edge)) -> Set Int -> Int -> ST.ST s ()
-updateEdges edgeref idents newId = modifySTRef' edgeref $ Set.map $ updateEdge idents newId
-
--- TODO: exchange parameters of this!
 updateSummaryBody :: Int -> Set Int -> SummaryBody -> SummaryBody
 updateSummaryBody newId idents SummaryBody{firstNode = f, lastNode = l, bodyEdges = b} = 
   let sub n = if Set.member n idents 
                 then newId 
                 else n
-  in SummaryBody{firstNode = sub f, lastNode= sub l, bodyEdges = Set.map (updateEdge idents newId) b}
-
-buildSummary :: Int -> SummaryBody -> Int -> Edge 
-buildSummary fr sb t  = Summary {from = fr, to = t, 
-                                  body = Set.unions [
-                                    bodyEdges sb
-                                  , Set.singleton $ Internal {from = fr, to = firstNode sb}
-                                  , Set.singleton $ Internal {from = lastNode sb,to = t   }]
-                                }
+      update Internal{from = f, to = t} = Internal{from = sub f, to = sub t}
+      update Summary{from = f, to =t, body = b} = Summary{from = sub f, to = sub t, body = Set.map update b}
+  in SummaryBody{firstNode = sub f, lastNode= sub l, bodyEdges = Set.map update b}
 
 allUntil :: GabowStack s v -> [v] -> (v -> ST.ST s Bool)  -> ST.ST s [v]
 allUntil stack acc cond  = do 
@@ -265,23 +225,34 @@ updateSCCInt graph iValue =  do
 
 -- safe
 resolveSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Int, SummaryBody, Key state) -> ST.ST s (Int,Bool)
-resolveSummary graph (from, body, key) = do 
+resolveSummary graph (fr, sb, key) = do 
   alrDir <- alreadyDiscovered graph key 
   ident <- DHT.lookupId (nodeToGraphNode graph) key
-  modifySTRef' (edges graph) $ Set.insert $ buildSummary from body $ fromJust ident;
+  modifySTRef' (edges graph) $ Set.insert $ Summary{from = fr, to = fromJust ident, 
+                                                    body = Set.unions [
+                                                    bodyEdges sb
+                                                    , Set.singleton $ Internal {from = fr, to = firstNode sb}
+                                                    , Set.singleton $ Internal {from = lastNode sb,to =   fromJust ident}]
+                                                    } 
   return (fromJust ident, not $ alrDir)
 
 -- this simply creates a Summary Body
 -- unsafe
 discoverSummaryBody :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> StateId state -> ST.ST s SummaryBody
-discoverSummaryBody graph from  = 
-  let containsSId SingleNode{node = n} = fst n == from 
-      containsSId SCComponent{nodes=ns} = Set.member from . Set.map fst $ ns
-      untilcond = \ident -> DHT.lookupApply (nodeToGraphNode graph) ident containsSId                            
+discoverSummaryBody graph fr  = 
+  let containsSId SingleNode{node = n} = fst n == fr 
+      containsSId SCComponent{nodes=ns} = Set.member fr . Set.map fst $ ns
+      untilcond = \ident -> DHT.lookupApply (nodeToGraphNode graph) ident containsSId 
+      toEdges acc [e] = return acc 
+      toEdges acc (x:y:xs) = do 
+                              edgeSet <- readSTRef (edges graph) 
+                              let foundEdges = Set.filter (\e -> from e == x && to e == y) edgeSet
+                              toEdges (Set.union acc foundEdges) (y:xs) 
+      mapToEdges edges = toEdges Set.empty edges                          
   in do  
     body <- allUntil (sStack graph) [] untilcond
-    edgeSet <- toEdges (edges graph) Set.empty body 
-    return $ SummaryBody{firstNode = head body, lastNode = last body, bodyEdges = edgeSet}
+    bodyE <- mapToEdges body 
+    return $ SummaryBody{firstNode = head body, lastNode = last body, bodyEdges = bodyE}
 
 -- unsafe 
 discoverSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> SummaryBody ->  Key state -> ST.ST s ()
@@ -302,7 +273,12 @@ insertSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph
 insertSummary graph fromKey toKey  sb = do 
   fr <- DHT.lookupId (nodeToGraphNode graph) fromKey
   t  <- DHT.lookupId (nodeToGraphNode graph) toKey
-  let summ =  buildSummary (fromJust fr) sb (fromJust t)
+  let summ =  Summary{from = fromJust fr, to = fromJust t, 
+                                                    body = Set.unions [
+                                                    bodyEdges sb
+                                                    , Set.singleton $ Internal {from = fromJust fr, to = firstNode sb}
+                                                    , Set.singleton $ Internal {from = lastNode sb,to =   fromJust t}]
+                                                    } 
   modifySTRef' (edges graph) $ Set.insert summ
   debug  ("InsertSummary: from: " ++ show fr ++ "} ---> to: " ++ show t ++ "edge: " ++ show summ ++ "\n") 
     $ modifySTRef' (edges graph) $ Set.insert $ Internal{from=(fromJust fr), to = firstNode sb};
@@ -335,8 +311,9 @@ merge :: (SatState state, Ord state, Hashable state, Show state) => Graph s stat
 merge graph [ident]  areFinal = do
   newC <- freshNegId (c graph)
   DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC 
-  self <- selfLoop (edges graph) ident
-  if self 
+  edgeSet <- readSTRef (edges graph)
+  let selfLoop = not . Set.null . Set.filter (\e -> from e == ident && to e == ident) $ edgeSet
+  if selfLoop 
     then do 
       isA <- isAccepting graph ident areFinal
       return (isA, Nothing)
@@ -354,9 +331,11 @@ merge graph idents areFinal =
         identsSet = Set.fromList idents
         sub n = if Set.member n identsSet 
                   then newId
-                  else n        
+                  else n 
+        update Internal{from = f, to = t} = Internal{from = sub f, to = sub t}
+        update Summary{from = f, to =t, body = b} = Summary{from = sub f, to = sub t, body = Set.map update b }       
     DHT.fuse (nodeToGraphNode graph) gnsNodesSet newId newgn;
-    updateEdges (edges graph) identsSet newId;
+    modifySTRef' (edges graph) $ Set.map update;
     modifySTRef' (summaries graph) $ V.map $ \(f,sb,t) -> (sub f, updateSummaryBody newId identsSet sb,t)
     modifySTRef' (initials graph)  $ Set.map $ \(n,b) -> (sub n,b)
     isA <- isAccepting graph newId areFinal
@@ -369,9 +348,10 @@ isAccepting graph ident areFinal =
       gnStates SCComponent{nodes= ns} = Set.map (getState . fst) ns
       edgeGnIdents Internal{from=fr, to=t}          = Set.fromList [fr,t]
       edgeGnIdents Summary{from= fr, to=t, body =b} = Set.union (Set.fromList [fr,t]) $ Set.unions (Set.map edgeGnIdents b)
-  in do   
-    gnEdges <- lookupEdges (edges graph) ident ident
-    gnStatesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList . Set.unions . Set.map edgeGnIdents $ gnEdges) gnStates
+      selfEdges = Set.filter (\e -> from e == ident && to e == ident)
+  in do  
+    edgeSet <- readSTRef (edges graph)
+    gnStatesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList . Set.unions . Set.map edgeGnIdents $ selfEdges edgeSet) gnStates
     return $ areFinal . Set.toList . Set.unions $ gnStatesList
     
 
@@ -402,11 +382,13 @@ visitGraphFromKey graph sbUpdater areFinal  key = do
   gn <- DHT.lookup (nodeToGraphNode graph) key 
   visitGraphFrom graph sbUpdater areFinal gn 
 
+-- unsafe
 visitGraphFrom :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> (Maybe(Int, Set Int) -> ST.ST s ()) -> ([state] -> Bool) -> GraphNode state -> ST.ST s Bool 
 visitGraphFrom graph sbUpdater areFinal  gn = do 
   visitGraphNode graph gn;
-  next <- nextStepsFrom (edges graph) (getgnId gn)
-  nextGns <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList next) id
+  edgeSet <- readSTRef (edges graph)
+  let nextIdents = Set.toList $ Set.map (\e -> to e) $ Set.filter (\e -> from e == getgnId gn) edgeSet
+  nextGns <- DHT.lookupMap (nodeToGraphNode graph) nextIdents id
   success <-  foldM (\acc gn -> if acc
                                   then return True 
                                   else if (iValue gn) == 0 
@@ -422,14 +404,3 @@ visitGraphFrom graph sbUpdater areFinal  gn = do
       result <- createComponentGn graph gn areFinal
       sbUpdater $ snd result;
       return $ fst result
-
-
-
-
-
-
-
-
-
-
-
