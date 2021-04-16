@@ -327,8 +327,8 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
   let doPush True _ = return True
       doPush False p = do
         SM.insert (suppStarts globals) q g
-        debug ""--("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-          reachTransition Nothing areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
+        debug ( "push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n" ++ "}} --> to: q = " ++ show p ++ "\ng = " ++ show (Just (getSidProps (bitenc delta) q, q)))
+          $ reachTransition Nothing areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
     pushReached <- V.foldM' doPush False newStates
@@ -357,7 +357,7 @@ reachOmegaShift :: (SatState state, Ord state, Hashable state, Show state)
 reachOmegaShift areFinal globals delta (q,g) qState qProps =
   let doShift True _ = return True
       doShift False p =
-        debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") 
+        debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n--> to: " ++ show p ++ "\ng = " ++ show (Just (qProps, (snd . fromJust $ g))) ++ "\n")
           $ reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
@@ -375,7 +375,8 @@ reachOmegaPop globals delta (q,g) qState =
             closeSupports sb g'
               | isNothing g' ||
                 ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
-              = debug  ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "}} --> to: q = " ++ show p ++ "\ng = " ++ show g') 
+              = debug  ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n--> to: q = " ++ show p ++ "\ng = " ++ show g'
+                        ++ "\nDiscovered Summary: from q = " ++ show r ++ "\ng = " ++ show g' ++ "\n-----> to: q = " ++ show p ++ "\ng = " ++ show g' ++ "\n\n") 
                 $ discoverSummary (graph globals) (r,g') sb (p,g') -- do not explore this node, but store for later exploration, to ensure correctness of the Gabow algo                        
               | otherwise = return ()
         in do

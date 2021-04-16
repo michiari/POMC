@@ -102,7 +102,7 @@ data Graph s state = Graph
 
 newGraph :: (SatState state, Eq state, Hashable state, Show state) => Vector (Key state) -> ST.ST s (Graph s state)
 newGraph initials = do
-  newIdSequence <- newSTRef (0 :: Int)
+  newIdSequence <- newSTRef (1 :: Int)
   dht           <- DHT.empty  
   newSet        <- newSTRef (Set.empty)
   newCSequence  <- newSTRef (-1 :: Int)
