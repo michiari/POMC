@@ -26,7 +26,7 @@ import GHC.Generics (Generic)
 import Data.Hashable
 import Data.BitVector (BitVector)
 import Pomc.PotlV2 (Formula(..), Dir(..), negative)
-import Control.DeepSeq(NFData(..))
+import Control.DeepSeq(NFData(..), deepseq)
 
 type Input = EncodedSet
 type Atom = EncodedSet
@@ -65,8 +65,8 @@ instance Show State where
 
 -- to allow parallelism
 instance NFData State where
-  rnf (FState current pending _ _ _) = current `seq` pending `seq` ()
-  rnf (WState current pending stack _ _ _) = current `seq` pending `seq` stack `seq` ()
+  rnf (FState current pending _ _ _) = current `deepseq` pending `deepseq` ()
+  rnf (WState current pending stack _ _ _) = current `deepseq` pending `deepseq` stack `deepseq` ()
 
 showStates :: BitEncoding -> [State]  -> String
 showStates bitenc = unlines . map (showState bitenc)

@@ -30,7 +30,7 @@ makeV2TestCase (name, phi, als, expected) =
 
 cases :: [(String, Formula String, [String], Bool)]
 cases =
-  [ ( "First Call"
+  [ {-( "First Call"
     , Atomic . Prop $ "call"
     , []
     , True
@@ -117,7 +117,7 @@ cases =
     , (ap "call" `And` (XNext Up (ap "exc" `And` (PBack Up $ Since Up (Not . ap $ "pa") (ap "pb")))))
     , ["pa", "pb"]
     , True
-    ),
+    ),-}
     ( "XNext Down HNext Up"
     , (ap "call" `And` (XNext Down (HNext Up $ ap "pa")))
     , ["pa"]

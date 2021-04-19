@@ -304,7 +304,7 @@ reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ sh
           reachOmegaPop globals delta (q,g) qState
 
         | otherwise = debug ("No transition found\n") $ return False
-  visitNode (graph globals) (q,g)
+  visitNode (graph globals) (q,g);
   success <- cases
   if success
     then return True 

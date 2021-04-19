@@ -10,7 +10,7 @@ ap = Atomic . Prop
 formulas :: [TestCase]
 formulas = chain_next
   ++ contains_exc
-  ++ data_access
+  -- ++ data_access
   ++ empty_frame
   ++ exception_safety
   ++ hier_down
@@ -41,6 +41,11 @@ chain_next =
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
+    ( "Second position is a handler not catching an exception that terminates more than one call"
+    , PNext Down $ ap "han" `And` (Not $ (XNext Down $ ap "exc" `And` XBack Up (ap "call")))
+    , ["pa", "pb", "pc", "perr"]
+    , True
+    ),
     ( "All exceptions terminate more than one call"
     , Always $ ap "exc" `Implies` (XBack Up $ ap "call")
     , ["pa", "pb", "pc", "perr"]
@@ -61,7 +66,20 @@ contains_exc =
     , PNext Down $ PNext Down $ Until Down T (ap "exc")
     , ["pa", "pb", "pc", "perr"]
     , True
+    ), 
+    ( "First position is a call whose function frame does not contain excs \
+       \which do not directly terminate the call."
+    , Not $ Until Down T (ap "exc")
+    , ["pa", "pb", "pc", "perr"]
+    , True
+    ),
+    ( "First position is a call whose function frame does not contain excs \
+      \which directly terminate the call."
+    , Not $ Until Up T (ap "exc")
+    , ["pa", "pb", "pc", "perr"]
+    , True
     )
+
   ]
 
 data_access :: [TestCase]
@@ -87,8 +105,8 @@ empty_frame =
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
-    ( "First position contains an inner call with empty body"
-    , XNext Down $ PNext Down $ PBack Up $ ap "call"
+    ( "First position does not contain an inner call with empty body"
+    , Not $ XNext Down $ PNext Down $ PBack Up $ ap "call"
     , ["pa", "pb", "pc", "perr"]
     , True
     )
@@ -109,7 +127,7 @@ hier_down :: [TestCase]
 hier_down =
   [ ( "A call is terminated by an exception, and the next function \
       \terminated by the same exception is pb"
-    , Eventually $ HNext Down (ap "pb")
+    , (Eventually $ HNext Down (ap "pb")) 
     , ["pa", "pb", "pc"]
     , True
     ),

@@ -88,21 +88,21 @@ expectedSasBase = [True, False, False, False, False, False,
                   ]
 
 expectedSasEval :: [Bool]
-expectedSasEval = [False, True, True, True,     -- chain_next
-                   True, False,                -- contains_exc
-                   True,                       -- data_access
-                   False, False, True,         -- empty_frame
-                   True,                       -- exception_safety
-                   False, False, False, False, -- hier_down
-                   False,                      -- hier_insp
-                   True,                       -- hier_insp_exc
-                   True, True, False, False,   -- hier_up
-                   False, False,               -- normal_ret
-                   True, True,                 -- no_throw
-                   True, True,                 -- stack_inspection
-                   False,                      -- uninstall_han
-                   False, True, True,          -- until_exc
-                   True, True, False           -- until_misc
+expectedSasEval = [False, False, False,False,True,  -- chain_next
+                   False, False, False, True,        -- contains_exc
+                   -- True,                            -- data_access
+                   False, False, False,              -- empty_frame
+                   True,                            -- exception_safety
+                   False, False, False, False,      -- hier_down
+                   False,                           -- hier_insp
+                   True,                            -- hier_insp_exc
+                   True, True, False, False,        -- hier_up
+                   False, False,                    -- normal_ret
+                   True, True,                      -- no_throw
+                   True, True,                      -- stack_inspection
+                   False,                           -- uninstall_han
+                   False, True, True,               -- until_exc
+                   True, True, False                -- until_misc
                   ]
 
 largerRec :: ExplicitOpa Word String

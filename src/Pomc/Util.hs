@@ -18,10 +18,11 @@ module Pomc.Util ( unsafeLookup
                  , parMap
                  ) where
 
-import Data.Foldable (foldl', concatMap)
+import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
 import Control.Parallel.Strategies(using, parList, rdeepseq, rseq)
 import Control.DeepSeq(NFData(..))
+
 
 unsafeLookup :: Eq a => a -> [(a, b)] -> b
 unsafeLookup k al = case lookup k al of
@@ -64,5 +65,5 @@ timeToString :: Double -> String
 timeToString = secs
 
 -- a map where the function is applied (with reduction to normal form) to all the elements of the list in parallel
-parMap :: (NFData a, NFData b) => (a -> b) -> [a] -> [b]
+parMap :: (NFData b) => (a -> b) -> [a] -> [b]
 parMap f xs = map f xs `using` parList rdeepseq
