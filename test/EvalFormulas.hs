@@ -230,15 +230,15 @@ no_throw =
 stack_inspection :: [TestCase]
 stack_inspection =
   [ ( "If procedure `pa' is present into the stack when \
-      \procedure `pb' is called, `pb' throws an exception."
-    , Always $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
+      \procedure `pb' is called, `pb' never throws an exception."
+    , Always $ Not $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
       `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
     , ["pa", "pb"]
     , True
     ),
     ( "If procedure `pa' is present into the stack when \
-      \procedure `pb' is called, `pb' or one of the functions it calls throw an exception."
-    , Always $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
+      \procedure `pb' is called, `pb' or one of the functions it calls never throw an exception."
+    , Always $ Not $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
       `Implies` (Until Down T (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
     , ["pa", "pb"]
     , True
@@ -263,15 +263,21 @@ until_exc =
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
-    ( "The third position is inside a function call terminated by an exception, \
-      \or a handler that catches an exception."
-    , PNext Down $ PNext Down $ Until Up T (ap "exc")
+    ( "The third position is inside a function call which either is terminated by an exception, \
+      \or a handler that catches an exception, or keeps calling procedure 'pc'"
+    , PNext Down $ PNext Down $ Until Up T (ap "exc") `Or` (Always $ PNext Down $ ap "call" `And` ap "pc")
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
     ( "Each call to pc is enclosed into a handler-caught exception pair."
     , Always $ (ap "call" `And` ap "pc") `Implies`
       (Until Up T $ ap "exc" `And` (XBack Down $ ap "han"))
+    , ["pa", "pb", "pc", "perr"]
+    , True
+    ),
+    ( "Each call to pc is enclosed into a handler-caught exception pair, or it's never ending"
+    , Always $ (ap "call" `And` ap "pc") `Implies`  
+      ((Until Up T $ ap "exc" `And` (XBack Down $ ap "han")) `Or` (Always $ PNext Down $ ap "call" `And` ap "pc"))
     , ["pa", "pb", "pc", "perr"]
     , True
     )

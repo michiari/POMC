@@ -13,7 +13,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 tests :: TestTree
-tests = testGroup "ModelChecking.hs Omega Tests" [sasEvalTests]
+tests = testGroup "ModelChecking.hs Omega Tests" [sasBaseTests, sasEvalTests]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA MC Base Tests" $
@@ -81,29 +81,29 @@ simpleExc = ExplicitOpa
             }
 
 expectedSasBase :: [Bool]
-expectedSasBase = [True, False, False, False, False, False,
+expectedSasBase = [True,  False, False, False, False, False,
                    False, False, False, False, False, False,
                    False, False, False, False, False, False,
-                   False, False, False, False
+                   False,  False, False, False, False
                   ]
 
 expectedSasEval :: [Bool]
-expectedSasEval = [False, False, False,False,True,  -- chain_next
-                   False, False, False, True,        -- contains_exc
-                   -- True,                            -- data_access
-                   False, False, False,              -- empty_frame
-                   True,                            -- exception_safety
-                   False, False, False, False,      -- hier_down
-                   False,                           -- hier_insp
-                   True,                            -- hier_insp_exc
-                   True, True, False, False,        -- hier_up
-                   False, False,                    -- normal_ret
-                   True, True,                      -- no_throw
-                   True, True,                      -- stack_inspection
-                   False,                           -- uninstall_han
-                   False, True, True,               -- until_exc
-                   True, True, False                -- until_misc
-                  ]
+expectedSasEval = [False, False, False, False, True,  -- chain_next        ok
+                   False, False, False, True,         -- contains_exc      ok
+                   --True,                           -- data_access
+                   False, False, False,               -- empty_frame       ok
+                   True,                             -- exception_safety   ok
+                   False, False, False, False,       -- hier_down
+                   False,                          -- hier_insp
+                   True,                             -- hier_insp_exc       ok
+                   False, False, False, False,       -- hier_up             ok
+                   False, False,                     -- normal_ret          ok
+                   True, True,                       -- no_throw            ok
+                   False, False,                     -- stack_inspection    ok
+                   False,                            -- uninstall_han       ok
+                   False, True, False,               -- until_exc           ok
+                   False, True, False                -- until_misc          ok
+                  ] 
 
 largerRec :: ExplicitOpa Word String
 largerRec = ExplicitOpa

@@ -86,7 +86,7 @@ expectedSasBase :: [Bool]
 expectedSasBase = [True, False, False, False, False, False,
                    False, False, False, True, True, False,
                    True, False, True, False, False, False,
-                   False, False, False, False
+                   True, False, False, False, False
                   ]
 
 expectedSasEval :: [Bool]
@@ -95,7 +95,7 @@ expectedSasEval = [True, True, True, True,     -- chain_next
                    True,                       -- data_access
                    False, False, True,         -- empty_frame
                    True,                       -- exception_safety
-                   False, False, False, False, -- hier_down
+                   False, True, False, False,  -- hier_down
                    False,                      -- hier_insp
                    True,                       -- hier_insp_exc
                    True, True, False, False,   -- hier_up
