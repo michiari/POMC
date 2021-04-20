@@ -91,11 +91,9 @@ compProps bitenc fset pset = D.extractInput bitenc fset == pset
 -- generate a closure (phi = input formula of makeOpa, otherProps = AP set of the language)
 -- fromList removes duplicates
 closure :: Formula APType -> [Prop APType] -> FormulaSet
-closure isOmega phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
-                                     phiClos  = closList phi
-                         in S.fromList (propClos ++ phiClos)
-                            
-                         
+closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : otherProps)
+                              phiClos  = closList phi
+                         in S.fromList (propClos ++ phiClos)                      
   where
     xbuExpr g = [AuxBack Down g , Not $ AuxBack Down g]
     hndExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HNext Down g) , Not $ AuxBack Down (HNext Down g)]
@@ -1672,7 +1670,7 @@ makeOpa phi isOmega (sls, als) sprs = (bitenc
         -- S.fromlist removes duplicates
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
         -- generate the closure of the normalized input formulas
-        cl =   closure isOmega nphi tsprops
+        cl =   closure nphi tsprops
         -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
         -- generate an EncPrecFunc from a StructPrecRel
