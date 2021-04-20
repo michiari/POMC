@@ -21,7 +21,6 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
 
-
 type Parser = Parsec Void Text
 
 spaceP :: Parser ()
@@ -127,7 +126,7 @@ functionP = do
   fname <- identifierP
   _ <- symbolP "()"
   stmts <- blockP
-  return $ FunctionSkeleton fname stmts
+  return $ FunctionSkeleton fname (parseModules fname) stmts
 
 programP :: Parser Program
 programP = do
@@ -191,3 +190,13 @@ undeclaredFuns p = S.difference usedFuns declaredFuns
         usedFuns =
           foldl (\gathered sk ->
                    gathered `S.union` (gatherBlockFuns . skStmts $ sk)) S.empty (pSks p)
+
+parseModules :: Text -> [Text]
+parseModules fname = joinModules (head splitModules) (tail splitModules) []
+  where sep = T.pack "::"
+        splitModules = filter (not . T.null) $ T.splitOn sep fname
+        joinModules _ [] acc = acc
+        joinModules container [_] acc = container:acc
+        joinModules container (m:ms) acc =
+          let newModule = container `T.append` sep `T.append` m
+          in joinModules newModule ms (container:acc)

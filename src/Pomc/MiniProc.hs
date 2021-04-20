@@ -44,6 +44,7 @@ data Statement = Assignment Identifier BoolExpr
                | While (Maybe BoolExpr) [Statement]
                | Throw deriving Show
 data FunctionSkeleton = FunctionSkeleton { skName :: FunctionName
+                                         , skModules :: [FunctionName]
                                          , skStmts :: [Statement]
                                          } deriving Show
 data Program = Program { pVars :: Set Identifier
@@ -75,7 +76,7 @@ sksToExtendedOpa sks =
       sksMap = M.fromList $ map (\sk -> (skName sk, sk)) sks
       firstFname = skName $ head sks
       firstFinfo = fromJust $ M.lookup firstFname (lsFinfo lowerState)
-      dPush' = M.insert (0, makeInputSet [T.pack "call", firstFname])
+      dPush' = M.insert (0, makeInputSet $ [T.pack "call", firstFname] ++ (skModules $ head sks))
                (EntryStates firstFname) (lsDPush lowerState)
       dPop' = M.insert (fiRetPad firstFinfo, 0) (States [(None, 1)]) (lsDPop lowerState)
       dPop'' = M.insert (fiThrow firstFinfo, 0) (States [(None, 2)]) dPop'
@@ -126,7 +127,7 @@ lowerFunction sks lowerState0 fsk =
 
       (lowerState2, linkPred) = lowerBlock sks lowerState1 thisFinfo addEntry (skStmts fsk)
 
-      dShift' = M.insert (sidRet, makeInputSet [T.pack "ret", skName fsk])
+      dShift' = M.insert (sidRet, makeInputSet $ [T.pack "ret", skName fsk] ++ skModules fsk)
                  (States [(None, fiRetPad thisFinfo)]) (lsDShift lowerState2)
       dShift'' = M.insert (fiThrow thisFinfo, makeInputSet [T.pack "exc"])
                  (States [(None, fiExcPad thisFinfo)]) dShift'
@@ -153,14 +154,15 @@ lowerStatement _ lowerState0 _ linkPred (Assignment lhs rhs) =
 
 
 lowerStatement sks lowerState0 thisFinfo linkPred (Call fname) =
-  let callSid = lsSid lowerState0
+  let calleeSk = fromJust $ M.lookup fname sks
+      callSid = lsSid lowerState0
       calleeFinfo0 = M.lookup fname $ lsFinfo lowerState0
       lowerState1 = lowerState0 { lsSid = callSid + 1 }
       lowerState2 = if isNothing calleeFinfo0
-                    then lowerFunction sks lowerState1 (fromJust $ M.lookup fname sks)
+                    then lowerFunction sks lowerState1 calleeSk
                     else lowerState1
       calleeFinfo1 = fromJust $ M.lookup fname (lsFinfo lowerState2)
-      dPush'' = M.insert (callSid, makeInputSet [T.pack "call", fname])
+      dPush'' = M.insert (callSid, makeInputSet $ [T.pack "call", fname] ++ skModules calleeSk)
                 (EntryStates fname) (lsDPush lowerState2)
       dPop'' = M.insert (fiThrow calleeFinfo1, callSid)
                (States [(None, fiThrow thisFinfo)]) (lsDPop lowerState2)
@@ -324,8 +326,12 @@ programToOpa (Program pvars sks) =
       (rDPush, count2, smap2) = remapPushShift (edDPush ed2) count1 smap1
       (rDShift, count3, smap3) = remapPushShift (edDShift ed2) count2 smap2
       (rDPop, _, _) = remapPop (edDPop ed2) count3 smap3
+
+      allProps = map (Prop . skName) sks
+                 ++ concatMap ((map Prop) . skModules) sks
+                 ++ map Prop (S.toList pvars)
   in ExplicitOpa
-     { sigma = (miniProcSls, map (Prop . skName) sks ++ map Prop (S.toList pvars))
+     { sigma = (miniProcSls, allProps)
      , precRel = miniProcPrecRel
      , initials = rInitials
      , finals = rFinals

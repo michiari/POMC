@@ -626,11 +626,8 @@ stackUnsafeNeutrality :: TestTree
 stackUnsafeNeutrality = makeTestCase stackUnsafeSource
   (("MiniProc Unsafe Stack Neutrality"
    , Always ((ap "exc"
-              `And` PBack Up (ap "T::T"
-                              `Or` ap "T::Tcp"
-                              `Or` ap "T::operator_new"
-                              `Or`ap "T::operator=")
-              `And` XBack Down (ap "han" `And` XBack Down (ap "Stack::NewCopy")))
+              `And` PBack Up (ap "T")
+              `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
      , []
@@ -766,11 +763,8 @@ stackSafeNeutrality :: TestTree
 stackSafeNeutrality = makeTestCase stackSafeSource
   (("MiniProc Safe Stack Neutrality"
    , Always ((ap "exc"
-              `And` PBack Up (ap "T::T"
-                              `Or` ap "T::Tcp"
-                              `Or` ap "T::operator_new"
-                              `Or`ap "T::operator=")
-              `And` XBack Down (ap "han" `And` XBack Down (ap "Stack::push")))
+              `And` PBack Up (ap "T")
+              `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
      , []
