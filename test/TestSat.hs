@@ -11,7 +11,7 @@ import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
 
 tests :: TestTree
-tests = testGroup "TestSat.hs Tests" [baseTests]
+tests = testGroup "TestSat.hs Tests" [baseTests,evalTests]
 
 baseTests :: TestTree
 baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases

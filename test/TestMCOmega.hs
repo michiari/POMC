@@ -2,7 +2,7 @@ module TestMCOmega (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import qualified TestSat (cases)
+import qualified TestSatOmega (cases)
 import EvalFormulas (ap)
 import OmegaEvalFormulas(omegaFormulas)
 import Pomc.Prop (Prop(..))
@@ -18,7 +18,7 @@ tests = testGroup "ModelChecking.hs Omega Tests" [sasBaseTests, sasEvalTests]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA MC Base Tests" $
-  map (makeTestCase simpleExc) (zip TestSat.cases expectedSasBase)
+  map (makeTestCase simpleExc) (zip TestSatOmega.cases expectedSasBase)
 
 sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
@@ -27,7 +27,7 @@ sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
 
 lRBaseTests :: TestTree
 lRBaseTests = testGroup "LargerRec OPA MC Base Tests" $
-  map (makeTestCase largerRec) (zip TestSat.cases expectedLargerRecBase)
+  map (makeTestCase largerRec) (zip TestSatOmega.cases expectedLargerRecBase)
 
 lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
