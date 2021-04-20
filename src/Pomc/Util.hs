@@ -5,9 +5,7 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Util ( unsafeLookup
-                 , lookupOrDefault
-                 , any'
+module Pomc.Util ( any'
                  , iff
                  , implies
                  , xor
@@ -24,16 +22,6 @@ import qualified Data.Set as S
 import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
 
-
-unsafeLookup :: Eq a => a -> [(a, b)] -> b
-unsafeLookup k al = case lookup k al of
-  Just v  ->  v
-  Nothing ->  error "Failed lookup!"
-
-lookupOrDefault :: Eq a => a -> [(a,b)] -> b -> b
-lookupOrDefault k al d = case lookup k al of
-  Just v  ->  v
-  Nothing ->  d
 
 any' :: Foldable t => (a -> Bool) -> t a -> Bool
 any' p = foldl' (\z x -> z || p x) False
