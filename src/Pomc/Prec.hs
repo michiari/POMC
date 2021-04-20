@@ -2,9 +2,9 @@
 
 {- |
    Module      : Pomc.Prec
-   Copyright   : 2020 Davide Bergamaschi
+   Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
 
 module Pomc.Prec ( -- * Main precedence type

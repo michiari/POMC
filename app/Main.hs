@@ -1,6 +1,6 @@
 {- |
    Module      : Main
-   Copyright   : 2021 Davide Bergamaschi, Michele Chiari
+   Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

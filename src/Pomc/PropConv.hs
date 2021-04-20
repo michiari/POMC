@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Util
-   Copyright   : 2021 Michele Chiari
+   Copyright   : 2020-2021 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
