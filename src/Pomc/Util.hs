@@ -15,10 +15,15 @@ module Pomc.Util ( unsafeLookup
                  , safeTail
                  , timeAction
                  , timeToString
+                 , prettyTrace
                  ) where
 
+import Pomc.Prop (Prop(..))
+
+import qualified Data.Set as S
 import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
+
 
 unsafeLookup :: Eq a => a -> [(a, b)] -> b
 unsafeLookup k al = case lookup k al of
@@ -59,3 +64,10 @@ timeAction action = do initializeTime
 
 timeToString :: Double -> String
 timeToString = secs
+
+prettyTrace :: a -> a -> [(s, S.Set (Prop a))] -> [(s, [a])]
+prettyTrace end summary trace = map (\(q, b) -> (q, if S.null b
+                                                    then [summary]
+                                                    else map unprop $ S.toList b)) trace
+  where unprop End = end
+        unprop (Prop p) = p

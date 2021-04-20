@@ -13,7 +13,7 @@ import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.MiniProc (programToOpa)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.Util (safeHead, timeAction, timeToString)
+import Pomc.Util (safeHead, timeAction, timeToString, prettyTrace)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
@@ -86,7 +86,8 @@ main = do
                                                      return (s, t)
              if sat
                then return ()
-               else putStr $ "\nCounterexample: " ++ show trace
+               else putStr $ "\nCounterexample: "
+                    ++ (show . prettyTrace (T.singleton '#') (T.pack "...") $ trace)
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 
