@@ -19,38 +19,43 @@ import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 
-type GStack s v = STRef s [v]
+type GStack s v = (STRef s [v], STRef s Int)
 
 push :: GStack s v -> v -> ST.ST s ()
-push gsref val = modifySTRef' gsref $ \l -> val:l
+push (gsref, lenref) val = do 
+  modifySTRef' gsref $ \l -> val:l;
+  modifySTRef' lenref  (+1)
 
 peek :: GStack s v -> ST.ST s v
-peek gsref  = do
+peek (gsref,_)  = do
   gs <- readSTRef gsref 
   return $ head gs
 
 pop :: GStack s v -> ST.ST s v
-pop gsref  = do
+pop (gsref, lenref)  = do
   gs <- readSTRef gsref 
-  writeSTRef gsref $ tail gs
+  writeSTRef gsref $ tail gs;
+  modifySTRef' lenref  (+(-1))
   return $ head gs
 
 -- slow
 size :: GStack s v -> ST.ST s Int
-size gsref = do 
-  gs <- readSTRef gsref 
-  return $ length gs
+size (_, lenref) = readSTRef lenref
+
   
 -- an empty Set Map, an array of sets
 new :: ST.ST s (GStack s v)
-new = newSTRef []
+new = do 
+  stack <- newSTRef []
+  len <- newSTRef (0::Int)
+  return (stack,len)
 
 modifyAll :: (GStack s v) -> (v -> v) -> ST.ST s ()
-modifyAll gsref f = modifySTRef' gsref $ map f
+modifyAll (gsref,_) f = modifySTRef' gsref $ map f
 
 -- get all the elements on the stack until a certain condition holds (without popping them)
 allUntil :: GStack s v -> (v -> ST.ST s Bool)  -> ST.ST s [v]
-allUntil gsref cond = 
+allUntil (gsref,_) cond = 
   let recurse acc (x:xs) = do 
         condEval <- cond x 
         if condEval 

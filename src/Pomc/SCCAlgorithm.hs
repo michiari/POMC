@@ -64,10 +64,12 @@ data GraphNode state = SCComponent
   { getgnId   :: Int -- immutable
   , iValue    :: Int -- changes at each iteration of the Gabow algorithm
   , nodes     :: Set (StateId state, Stack state)
+  , edges     :: Set Edge
   } | SingleNode
   { getgnId  :: Int
   , iValue   :: Int
   , node     :: (StateId state, Stack state)
+  , edges    :: Set Edge
   } 
 
 instance (Show state) => Show (GraphNode  state) where
@@ -88,7 +90,6 @@ type Value state = GraphNode state
 data Graph s state = Graph
   { idSeq           :: STRef s Int
   , nodeToGraphNode :: DHT.DoubleHashTable s (Key state) (Value state)
-  , edges           :: STRef s (Set (Edge)) -- Set is not keyed in the monad, it needs a STRef
   , c               :: STRef s Int -- for the Gabow algorithm
   , bStack          :: GStack s Int -- for the Gabow algorithm
   , sStack          :: GStack s (Int, Maybe Edge) -- for the Gabow algorithm
@@ -100,7 +101,6 @@ newGraph :: (SatState state, Eq state, Hashable state, Show state) => Vector (Ke
 newGraph iniNodes = do
   newIdSequence <- newSTRef (1 :: Int)
   dht           <- DHT.empty  
-  newSet        <- newSTRef (Set.empty)
   newCSequence  <- newSTRef (-1 :: Int)
   newBS         <- GS.new
   newSS         <- GS.new
@@ -108,11 +108,10 @@ newGraph iniNodes = do
   newSummaries  <- newSTRef []
   forM_ (iniNodes) $ \key -> do 
     newId <- freshPosId newIdSequence
-    DHT.insert dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key};
+    DHT.insert dht key newId $ SingleNode {getgnId = newId, iValue = 0, node = key, edges = Set.empty};
     modifySTRef' newInitials (Set.insert (newId,True))
   return $ Graph { idSeq = newIdSequence
                  , nodeToGraphNode = dht 
-                 , edges = newSet 
                  , c = newCSequence
                  , bStack = newBS
                  , sStack = newSS
@@ -123,8 +122,8 @@ newGraph iniNodes = do
 ----------------------------------------------------------------------------------------
 -- the iValue is used in the Gabow algorithm
 setgnIValue ::  Int -> GraphNode state -> GraphNode state 
-setgnIValue new SCComponent { getgnId = gid, nodes = ns} = SCComponent{ getgnId = gid, iValue = new,nodes = ns} 
-setgnIValue new SingleNode{getgnId = gid, node = n}      = SingleNode{getgnId = gid, iValue = new, node = n}
+setgnIValue new gn@SCComponent{} = gn{iValue = new} 
+setgnIValue new gn@SingleNode{}  = gn{iValue = new}
 
 resetgnIValue :: GraphNode state -> GraphNode state 
 resetgnIValue  = setgnIValue 0
@@ -223,9 +222,11 @@ insertInternal :: (SatState state, Eq state, Hashable state, Show state) => Grap
 insertInternal graph fromKey toKey  = do 
   fr <- DHT.lookupId (nodeToGraphNode graph) fromKey
   t  <- DHT.lookupId (nodeToGraphNode graph) toKey
-  debug ("InsertInternal: from: " ++ show fr ++ "} ---> to: " ++ show t ++ "\n") $ modifySTRef' (edges graph) 
-    $ Set.insert $ Internal (fromJust fr) (fromJust t)
-  return $ Internal (fromJust fr) (fromJust t)
+  let e = Internal (fromJust fr) (fromJust t)
+      insertEdge x@SingleNode{edges = es}  = x{edges = Set.insert e es}
+      insertEdge x@SCComponent{edges = es} = x{edges = Set.insert e es}
+  DHT.modify (nodeToGraphNode graph) (fromJust fr) insertEdge
+  return e
 
 -- unsafe
 insertSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> Key state -> Key state -> SummaryBody -> ST.ST s Edge
@@ -238,10 +239,12 @@ insertSummary graph fromKey toKey  sb = do
                                                     , Set.singleton $ Internal {from = fromJust fr, to = firstNode sb}
                                                     , Set.singleton $ Internal {from = lastNode sb,to =   fromJust t}]
                                                     } 
-  modifySTRef' (edges graph) $ Set.insert summ
+      e = Internal{from=(fromJust fr), to = firstNode sb}
+      insertEdges x@SingleNode{edges = es}  = x{edges = Set.insert summ $ Set.insert e es}
+      insertEdges x@SCComponent{edges = es} = x{edges = Set.insert summ $ Set.insert e es}
+  DHT.modify (nodeToGraphNode graph) (fromJust fr) insertEdges
   debug  ("InsertSummary: from: " ++ show fr ++ "} ---> to: " ++ show t ++ "edge: " ++ show summ ++ "\n") 
-    $ modifySTRef' (edges graph) $ Set.insert $ Internal{from=(fromJust fr), to = firstNode sb};
-  return summ
+    $ return summ
                                            
 createComponent :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Key state -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
 createComponent graph key areFinal = do
@@ -270,9 +273,8 @@ merge :: (SatState state, Ord state, Hashable state, Show state) => Graph s stat
 merge graph [ident]  areFinal =  do
   newC <- freshNegId (c graph)
   DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC 
-  edgeSet <- readSTRef (edges graph)
   gn <- DHT.lookupApply (nodeToGraphNode graph) ident id
-  let selfLoopOrGn SingleNode{} = not . Set.null . Set.filter (\e -> from e == ident && to e == ident) $ edgeSet
+  let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> from e == ident && to e == ident) $ es
       selfLoopOrGn SCComponent{}  = True
   if selfLoopOrGn gn 
     then do 
@@ -287,16 +289,20 @@ merge graph idents areFinal =
     newC <- freshNegId (c graph)
     newId <- freshPosId (idSeq graph)
     gnsNodes <- DHT.lookupMap (nodeToGraphNode graph) idents gnNode
+    gnsEdges <- DHT.lookupMap (nodeToGraphNode graph) idents edges
     let gnsNodesSet = Set.unions gnsNodes
-        newgn = SCComponent{nodes = gnsNodesSet, getgnId = newId, iValue = newC}
+        gnsEdgesSet = Set.unions gnsEdges
+        newgn = SCComponent{nodes = gnsNodesSet, getgnId = newId, iValue = newC, edges = gnsEdgesSet}
         identsSet = Set.fromList idents
         sub n = if Set.member n identsSet 
                   then newId
                   else n 
         update Internal{from = f, to = t} = Internal{from = sub f, to = sub t}
-        update Summary{from = f, to =t, body = b} = Summary{from = sub f, to = sub t, body = Set.map update b }       
+        update Summary{from = f, to =t, body = b} = Summary{from = sub f, to = sub t, body = Set.map update b } 
+        updateGn x@SingleNode{edges = es}  = x{edges = Set.map update es}   
+        updateGn x@SCComponent{edges = es} = x{edges = Set.map update es}     
     DHT.fuse (nodeToGraphNode graph) gnsNodesSet newId newgn;
-    modifySTRef' (edges graph) $ Set.map update;
+    DHT.modifyAll (nodeToGraphNode graph) updateGn
     modifySTRef' (summaries graph) $ map $ \(f,sb,t) -> (sub f, updateSummaryBody newId identsSet sb,t)
     modifySTRef' (initials graph)  $ Set.map $ \(n,b) -> (sub n,b)
     isA <- isAccepting graph newId areFinal
@@ -311,7 +317,7 @@ isAccepting graph ident areFinal =
       edgeGnIdents Summary{from= fr, to=t, body =b} = Set.union (Set.fromList [fr,t]) $ Set.unions (Set.map edgeGnIdents b)
       selfEdges = Set.filter (\e -> from e == ident && to e == ident)
   in do  
-    edgeSet <- readSTRef (edges graph)
+    edgeSet <- DHT.lookupApply (nodeToGraphNode graph) ident edges
     gnStatesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList . Set.unions . Set.map edgeGnIdents $ selfEdges edgeSet) gnStates
     return $ areFinal . Set.toList . Set.unions $ gnStatesList
     
@@ -325,12 +331,15 @@ toCollapsePhase graph =
   let resolveSummary (fr, sb, key) = do  
         alrDir <- alreadyDiscovered graph key 
         ident <- DHT.lookupId (nodeToGraphNode graph) key
-        modifySTRef' (edges graph) $ Set.insert $ Summary{from = fr, to = fromJust ident, 
+        let summ = Summary{from = fr, to = fromJust ident, 
                                                           body = Set.unions [
                                                           bodyEdges sb
                                                           , Set.singleton $ Internal {from = fr, to = firstNode sb}
                                                           , Set.singleton $ Internal {from = lastNode sb,to =   fromJust ident}]
-                                                          } 
+                                                          }
+            insertEdge x@SingleNode{edges = es}  = x{edges = Set.insert summ es}
+            insertEdge x@SCComponent{edges = es} = x{edges = Set.insert summ es}
+        DHT.modify (nodeToGraphNode graph) fr insertEdge
         return (fromJust ident, not $ alrDir)
   in do 
     DHT.modifyAll (nodeToGraphNode graph) resetgnIValue
@@ -355,8 +364,6 @@ visitGraphFromKey graph sbUpdater areFinal  key e= do
 visitGraphFrom :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> (Maybe(Int, Set Int) -> ST.ST s ()) -> ([state] -> Bool) -> GraphNode state -> Maybe Edge -> ST.ST s Bool 
 visitGraphFrom graph sbUpdater areFinal gn e = do 
   visitGraphNode graph gn e;
-  edgeSet <- readSTRef (edges graph)
-  let nextEdges =  Set.filter (\e -> from e == getgnId gn) edgeSet
   success <-  foldM (\acc e -> if acc
                                   then return True 
                                   else do 
@@ -367,7 +374,7 @@ visitGraphFrom graph sbUpdater areFinal gn e = do
                                         updateSCCInt graph (iValue gn)
                                         return False)                                          
                     False
-                    nextEdges
+                    (edges gn)
   if success
     then return True 
     else  do 
