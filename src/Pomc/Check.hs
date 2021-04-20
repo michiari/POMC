@@ -90,13 +90,11 @@ compProps bitenc fset pset = D.extractInput bitenc fset == pset
 
 -- generate a closure (phi = input formula of makeOpa, otherProps = AP set of the language)
 -- fromList removes duplicates
-closure :: Bool -> Formula APType -> [Prop APType] -> FormulaSet
+closure :: Formula APType -> [Prop APType] -> FormulaSet
 closure isOmega phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
                                      phiClos  = closList phi
-                                     omegaPropClos = concatMap (closList . Atomic) (otherProps)
-                         in if (isOmega)
-                            then S.fromList (propClos ++ phiClos)
-                            else S.fromList (propClos ++ phiClos)
+                         in S.fromList (propClos ++ phiClos)
+                            
                          
   where
     xbuExpr g = [AuxBack Down g , Not $ AuxBack Down g]
@@ -1383,13 +1381,13 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                                          fcrNextProps  = mnextprops
                                         }
             nextAtoms = if isNothing mpopped
-                        then filter validAtom atoms --catMaybes $ parMap (\atom -> if (validAtom atom) then Just atom else Nothing) atoms
+                        then filter validAtom atoms
                         else filter validAtom [current state] -- TODO: If I pop next state is??
             validAtom atom = null [r | r <- fcrs, not (r $ makeFcrInfo atom)]
          
 
     -- all future pending rules must be satisfied
-    vpcs =  S.toList . S.filter valid $ pcombs --catMaybes $ parMap (\pcomb -> if (valid pcomb) then Just pcomb else Nothing) $ S.toList pcombs    --
+    vpcs =  S.toList . S.filter valid $ pcombs 
       where makeFprInfo pendComb = FprInfo { fprState       = state,
                                           fprProps          = mprops,
                                           fprPopped         = mpopped,
@@ -1510,7 +1508,7 @@ check phi sprs ts =
         encTs = map (D.encodeInput bitenc) ts
 
         -- generate the closure of the normalized input formulas
-        cl = closure False nphi tsprops
+        cl = closure nphi tsprops
         -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
         -- generate an EncPrecFunc from a StructPrecRel
@@ -1574,7 +1572,7 @@ fastcheck phi sprs ts =
         encTs = map (D.encodeInput bitenc) ts
 
         -- generate the closure of the normalized input formula
-        cl = closure False nphi tsprops
+        cl = closure nphi tsprops
         -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
         -- generate all possible stack obligations for the omega case

@@ -83,8 +83,8 @@ simpleExc = ExplicitOpa
             }
 
 expectedSasBase :: [Bool]
-expectedSasBase = [True, False, False, False, False, False,
-                   False, False, False, True, True, False,
+expectedSasBase = [True,  False, False, False, False, False,
+                   False, False, False, True,  True, False,
                    True, False, True, False, False, False,
                    True, False, False, False, False
                   ]
@@ -166,7 +166,7 @@ expectedLargerRecBase = [True, False, False, False, False, False,
                          True, False, False, False, False, False,
                          False, False, False, False, False, False,
                          False, False, False, False
-                        ]
+                        ] -- TODO: add the expected result for the added test in TestSat
 
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval = [False, False, False, False, -- chain_next

@@ -3,7 +3,8 @@ module TestMCOmega (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified TestSat (cases)
-import EvalFormulas (ap, formulas)
+import EvalFormulas (ap)
+import OmegaEvalFormulas(omegaFormulas)
 import Pomc.Prop (Prop(..))
 import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
 import Pomc.PotlV2 (Formula(..), Dir(..))
@@ -21,7 +22,7 @@ sasBaseTests = testGroup "SAS OPA MC Base Tests" $
 
 sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
-  map (makeTestCase simpleExc) (zip EvalFormulas.formulas expectedSasEval)
+  map (makeTestCase simpleExc) (zip OmegaEvalFormulas.omegaFormulas expectedSasEval)
 
 
 lRBaseTests :: TestTree
@@ -30,7 +31,7 @@ lRBaseTests = testGroup "LargerRec OPA MC Base Tests" $
 
 lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
-  map (makeTestCase largerRec) (zip EvalFormulas.formulas expectedLargerRecEval)
+  map (makeTestCase largerRec) (zip OmegaEvalFormulas.omegaFormulas expectedLargerRecEval)
 
 makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
@@ -84,7 +85,7 @@ expectedSasBase :: [Bool]
 expectedSasBase = [True,  False, False, False, False, False,
                    False, False, False, False, False, False,
                    False, False, False, False, False, False,
-                   False,  False, False, False, False
+                   False, False, False, False, False
                   ]
 
 expectedSasEval :: [Bool]
@@ -167,7 +168,7 @@ expectedLargerRecBase = [True, False, False, False, False, False,
                          True, False, False, False, False, False,
                          False, False, False, False, False, False,
                          False, False, False, False
-                        ]
+                        ] -- TODO: add the expected result for the added sat test
 
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval = [False, False, False, False, -- chain_next

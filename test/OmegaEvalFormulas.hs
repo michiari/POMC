@@ -1,11 +1,4 @@
-{- |
-   Module      : EvalFormulas
-   Copyright   : 2021 Michele Chiari
-   License     : MIT
-   Maintainer  : Michele Chiari
--}
-
-module EvalFormulas (ap, formulas) where
+module OmegaEvalFormulas (omegaFormulas) where
 
 import Pomc.PotlV2 (Formula(..), Dir(..), Prop(..))
 
@@ -14,10 +7,10 @@ type TestCase = (String, Formula String, [String], Bool)
 ap :: a -> Formula a
 ap = Atomic . Prop
 
-formulas :: [TestCase]
-formulas = chain_next
+omegaFormulas :: [TestCase]
+omegaFormulas = chain_next
   ++ contains_exc
-  ++ data_access
+  -- ++ data_access
   ++ empty_frame
   ++ exception_safety
   ++ hier_down
@@ -48,6 +41,11 @@ chain_next =
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
+    ( "Second position is a handler not catching an exception that terminates more than one call"
+    , PNext Down $ ap "han" `And` (Not $ (XNext Down $ ap "exc" `And` XBack Up (ap "call")))
+    , ["pa", "pb", "pc", "perr"]
+    , True
+    ),
     ( "All exceptions terminate more than one call"
     , Always $ ap "exc" `Implies` (XBack Up $ ap "call")
     , ["pa", "pb", "pc", "perr"]
@@ -68,7 +66,20 @@ contains_exc =
     , PNext Down $ PNext Down $ Until Down T (ap "exc")
     , ["pa", "pb", "pc", "perr"]
     , True
+    ), 
+    ( "First position is a call whose function frame does not contain excs \
+       \which do not directly terminate the call."
+    , Not $ Until Down T (ap "exc")
+    , ["pa", "pb", "pc", "perr"]
+    , True
+    ),
+    ( "First position is a call whose function frame does not contain excs \
+      \which directly terminate the call."
+    , Not $ Until Up T (ap "exc")
+    , ["pa", "pb", "pc", "perr"]
+    , True
     )
+
   ]
 
 data_access :: [TestCase]
@@ -94,8 +105,8 @@ empty_frame =
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
-    ( "First position contains an inner call with empty body"
-    , XNext Down $ PNext Down $ PBack Up $ ap "call"
+    ( "First position does not contain an inner call with empty body"
+    , Not $ XNext Down $ PNext Down $ PBack Up $ ap "call"
     , ["pa", "pb", "pc", "perr"]
     , True
     )
@@ -116,7 +127,7 @@ hier_down :: [TestCase]
 hier_down =
   [ ( "A call is terminated by an exception, and the next function \
       \terminated by the same exception is pb"
-    , Eventually $ HNext Down (ap "pb")
+    , (Eventually $ HNext Down (ap "pb")) 
     , ["pa", "pb", "pc"]
     , True
     ),
@@ -219,15 +230,15 @@ no_throw =
 stack_inspection :: [TestCase]
 stack_inspection =
   [ ( "If procedure `pa' is present into the stack when \
-      \procedure `pb' is called, `pb' throws an exception."
-    , Always $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
+      \procedure `pb' is called, `pb' never throws an exception."
+    , Always $ Not $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
       `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
     , ["pa", "pb"]
     , True
     ),
     ( "If procedure `pa' is present into the stack when \
-      \procedure `pb' is called, `pb' or one of the functions it calls throw an exception."
-    , Always $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
+      \procedure `pb' is called, `pb' or one of the functions it calls never throw an exception."
+    , Always $ Not $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
       `Implies` (Until Down T (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
     , ["pa", "pb"]
     , True
@@ -252,15 +263,21 @@ until_exc =
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
-    ( "The third position is inside a function call terminated by an exception, \
-      \or a handler that catches an exception."
-    , PNext Down $ PNext Down $ Until Up T (ap "exc")
+    ( "The third position is inside a function call which either is terminated by an exception, \
+      \or a handler that catches an exception, or keeps calling procedure 'pc'"
+    , PNext Down $ PNext Down $ Until Up T (ap "exc") `Or` (Always $ PNext Down $ ap "call" `And` ap "pc")
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
     ( "Each call to pc is enclosed into a handler-caught exception pair."
     , Always $ (ap "call" `And` ap "pc") `Implies`
       (Until Up T $ ap "exc" `And` (XBack Down $ ap "han"))
+    , ["pa", "pb", "pc", "perr"]
+    , True
+    ),
+    ( "Each call to pc is enclosed into a handler-caught exception pair, or it's never ending"
+    , Always $ (ap "call" `And` ap "pc") `Implies`  
+      ((Until Up T $ ap "exc" `And` (XBack Down $ ap "han")) `Or` (Always $ PNext Down $ ap "call" `And` ap "pc"))
     , ["pa", "pb", "pc", "perr"]
     , True
     )
