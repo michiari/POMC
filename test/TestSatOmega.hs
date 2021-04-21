@@ -82,12 +82,12 @@ cases =
     , (ap "call" `And` (XNext Down (ap "ret")))
     , []
     , True
-    ){-,
+    ),
     ( "Matched call 2"
     , (ap "call" `And` (XNext Down (ap "ret")) `And` (XNext Up (ap "ret")))
     , []
     , True
-    )-},
+    ),
     ( "Impossible downward exc"
     , (ap "call" `And` (XNext Down (ap "exc")))
     , []
@@ -102,12 +102,12 @@ cases =
     , (ap "call" `And` (XNext Up (ap "exc" `And` (XBack Up $ ap "call"))))
     , []
     , True
-    ){-,
+    ),
     ( "No han until ret"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
     , []
     , True
-    )-},
+    ),
     ( "No han until down exc"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
     , []
