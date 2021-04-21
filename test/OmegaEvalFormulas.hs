@@ -10,7 +10,7 @@ ap = Atomic . Prop
 omegaFormulas :: [TestCase]
 omegaFormulas = chain_next
   ++ contains_exc
-  -- ++ data_access
+  ++ data_access
   ++ empty_frame
   ++ exception_safety
   ++ hier_down

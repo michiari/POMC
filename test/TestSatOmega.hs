@@ -14,10 +14,10 @@ tests :: TestTree
 tests = testGroup "TestSatOmega.hs Tests" [baseTests]
 
 baseTests :: TestTree
-baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
+baseTests = testGroup "OmegaSat Base Tests" $ map makeV2TestCase cases
 
 evalTests :: TestTree
-evalTests = testGroup "Sat Eval Tests" $ map makeV2TestCase OmegaEvalFormulas.omegaFormulas
+evalTests = testGroup "OmegaSat Eval Tests" $ map makeV2TestCase OmegaEvalFormulas.omegaFormulas
 
 makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [StructPrecRel String], Bool)
              -> TestTree
