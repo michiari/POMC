@@ -19,6 +19,7 @@ import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 
+-- an implementation for the stack needed in the Gabow algorithm
 type GStack s v = (STRef s [v], STRef s Int)
 
 push :: GStack s v -> v -> ST.ST s ()
@@ -38,12 +39,9 @@ pop (gsref, lenref)  = do
   modifySTRef' lenref  (+(-1))
   return $ head gs
 
--- slow
 size :: GStack s v -> ST.ST s Int
 size (_, lenref) = readSTRef lenref
 
-  
--- an empty Set Map, an array of sets
 new :: ST.ST s (GStack s v)
 new = do 
   stack <- newSTRef []
@@ -53,7 +51,7 @@ new = do
 modifyAll :: (GStack s v) -> (v -> v) -> ST.ST s ()
 modifyAll (gsref,_) f = modifySTRef' gsref $ map f
 
--- get all the elements on the stack until a certain condition holds (without popping them)
+-- get all the elements on the stack until a certain (monadic) condition holds (without popping them)
 allUntil :: GStack s v -> (v -> ST.ST s Bool)  -> ST.ST s [v]
 allUntil (gsref,_) cond = 
   let recurse acc (x:xs) = do 

@@ -42,14 +42,14 @@ empty = do
 lookupId :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> ST.ST s (Maybe Int)
 lookupId (ht1,_) key = BH.lookup ht1 key
 
--- insert a (key,value) tuple into the vht, with the given int identifier
+-- insert a (key,value) tuple into the dht, with the given int identifier
 insert :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> Int -> v -> ST.ST s ()
 insert (ht1, ht2) key ident value = do 
   BH.insert ht1 key ident;
   BH.insert ht2 ident value
   
 
--- insert a set of keys into the vht, all mapped to the same value with the same identifier
+-- insert a set of keys into the dht, all mapped to the same value with the same identifier
 fuse :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Set k -> Int -> v -> ST.ST s ()
 fuse (ht1, ht2) keySet ident value = do 
   forM_ (Set.toList keySet) ( \key -> do 
