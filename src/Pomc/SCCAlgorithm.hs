@@ -255,35 +255,35 @@ createComponent graph key areFinal = do
   debug ("Creating component for node: " ++ show gn) $ createComponentGn graph gn areFinal
 
 createComponentGn :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> GraphNode state -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
-createComponentGn graph gn areFinal = do
-  topB <- GS.peek (bStack graph) 
-  if  (iValue gn) == topB
-    then do 
-      _ <- GS.pop (bStack graph)
-      mergeComponents graph (iValue gn) Set.empty areFinal
-    else return $ (False, Nothing) 
-
-mergeComponents :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Int -> Set Int -> ([state] -> Bool)  -> ST.ST s (Bool, Maybe (Int, Set Int))
-mergeComponents graph iValue acc areFinal = do
-  sSize <- GS.size $ sStack graph
-  if iValue > sSize
-    then merge graph (Set.toList acc) areFinal
-    else do
-      popped <- GS.pop $ sStack graph
-      mergeComponents graph iValue (Set.insert popped acc) areFinal 
+createComponentGn graph gn areFinal = 
+  let 
+    toMerge [ident] = do 
+      newC <- freshNegId (c graph)
+      DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC  
+      let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> from e == ident && to e == ident) $ es
+          selfLoopOrGn SCComponent{}  = True 
+      if selfLoopOrGn gn 
+        then do 
+          isA <- isAccepting graph ident areFinal
+          return (isA, Nothing)
+        else return $ (False, Nothing)
+    toMerge idents = merge graph idents areFinal
+    findComponents acc = do 
+      sSize <- GS.size $ sStack graph
+      if (iValue gn) > sSize
+        then toMerge $ Set.toList acc
+        else do
+          popped <- GS.pop $ sStack graph
+          findComponents (Set.insert popped acc)  
+  in do
+    topB <- GS.peek (bStack graph) 
+    if  (iValue gn) == topB
+      then do 
+        _ <- GS.pop (bStack graph)
+        findComponents Set.empty 
+      else return $ (False, Nothing) 
 
 merge :: (SatState state, Ord state, Hashable state, Show state) => Graph s state  -> [Int] -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
-merge graph [ident]  areFinal =  do
-  newC <- freshNegId (c graph)
-  DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC 
-  gn <- DHT.lookupApply (nodeToGraphNode graph) ident id
-  let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> from e == ident && to e == ident) $ es
-      selfLoopOrGn SCComponent{}  = True
-  if selfLoopOrGn gn 
-    then do 
-      isA <- isAccepting graph ident areFinal
-      return (isA, Nothing)
-    else return $ (False, Nothing)
 merge graph idents areFinal = 
   let 
     gnNode SingleNode{node = n}    = Set.singleton n

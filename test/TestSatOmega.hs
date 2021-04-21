@@ -11,7 +11,7 @@ import EvalFormulas (ap)
 import qualified OmegaEvalFormulas (omegaFormulas)
 
 tests :: TestTree
-tests = testGroup "TestSatOmega.hs Tests" [baseTests, baseTests, baseTests]
+tests = testGroup "TestSatOmega.hs Tests" [baseTests,baseTests,baseTests]
 
 baseTests :: TestTree
 baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
@@ -102,7 +102,7 @@ cases =
     , (ap "call" `And` (XNext Up (ap "exc" `And` (XBack Up $ ap "call"))))
     , []
     , True
-    ){-s,
+    ){-,
     ( "No han until ret"
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "ret"))
     , []
