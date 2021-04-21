@@ -1,0 +1,27 @@
+pa() {
+  pb();
+  try { pc(); }
+  catch { perr(); }
+}
+
+pb() {
+  if (*) {
+    pc();
+  } else {
+    try {
+      pc();
+    } catch {
+      perr();
+    }
+  }
+}
+
+pc() {
+  if (*) {
+    pb();
+  } else {
+    throw;
+  }
+}
+
+perr() { perr(); }
