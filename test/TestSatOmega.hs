@@ -112,7 +112,7 @@ cases =
     , (ap "call" `And` Until Down (Not . ap $ "han") (ap "exc"))
     , []
     , False
-    ),
+    ){-,
     ( "Next exp, not pa since pb"
     , (ap "call" `And` (XNext Up (ap "exc" `And` (PBack Up $ Since Up (Not . ap $ "pa") (ap "pb")))))
     , ["pa", "pb"]
@@ -121,11 +121,6 @@ cases =
     ( "XNext Down HNext Up"
     , (ap "call" `And` (XNext Down (HNext Up $ ap "pa")))
     , ["pa"]
-    , True
-    ),
-    ( "XNext Down HNext Up perr" --added
-    , (ap "call" `And` (XNext Down (HNext Up $ ap "perr")))
-    , ["perr"]
     , True
     ),
     ( "Call exc and pa in between"
@@ -153,5 +148,10 @@ cases =
        `And` (XNext Down (HUntil Up (ap "pa") (ap "pb"))))
     , ["pa", "pb"]
     , True
-    )
+    ),
+    ( "XNext Down HNext Up perr" --added
+    , (ap "call" `And` (XNext Down (HNext Up $ ap "perr")))
+    , ["perr"]
+    , True
+    )-}
   ]

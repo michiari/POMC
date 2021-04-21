@@ -14,7 +14,8 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 tests :: TestTree
-tests = testGroup "ModelChecking.hs Omega Tests" [sasBaseTests, sasEvalTests]
+tests = testGroup "ModelChecking.hs Omega Tests" [sasBaseTests, sasEvalTests,
+                                                  lRBaseTests, lREvalTests]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA MC Base Tests" $
@@ -93,17 +94,17 @@ expectedSasEval = [False, False, False, False, True,  -- chain_next
                    False, False, False, True,         -- contains_exc      
                    True,                              -- data_access
                    False, False, False,               -- empty_frame       
-                   True,                             -- exception_safety   
-                   False, False, False, False,       -- hier_down
-                   False,                          -- hier_insp
-                   True,                             -- hier_insp_exc      
-                   False, False, False, False,       -- hier_up
-                   False, False,                     -- normal_ret          
-                   True, True,                       -- no_throw            
-                   False, False,                     -- stack_inspection    
-                   False,                            -- uninstall_han       
-                   False, True, False,               -- until_exc           
-                   False, True, False                -- until_misc          
+                   True,                              -- exception_safety   
+                   False, False, False, False,        -- hier_down
+                   False,                             -- hier_insp
+                   True,                              -- hier_insp_exc      
+                   False, False, False, False,        -- hier_up
+                   False, False,                      -- normal_ret          
+                   True, True,                        -- no_throw            
+                   False, False,                      -- stack_inspection    
+                   False,                             -- uninstall_han       
+                   False, False, True, False,                -- until_exc           
+                   False, True, False                 -- until_misc          
                   ] 
 
 largerRec :: ExplicitOpa Word String
@@ -167,25 +168,25 @@ expectedLargerRecBase :: [Bool]
 expectedLargerRecBase = [True, False, False, False, False, False,
                          True, False, False, False, False, False,
                          False, False, False, False, False, False,
-                         False, False, False, False
-                        ] -- TODO: add the expected result for the added sat test
+                         False, False, False, False, False
+                        ] 
 
 expectedLargerRecEval :: [Bool]
-expectedLargerRecEval = [False, False, False, False, -- chain_next
-                         False, False,               -- contains_exc
-                         True,                       -- data_access
-                         False, False, False,        -- empty_frame
-                         True,                       -- exception_safety
-                         False, False, False, False, -- hier_down
-                         False,                      -- hier_insp
-                         False,                      -- hier_insp_exc
-                         False, False, False, False, -- hier_up
-                         False, False,               -- normal_ret
-                         False, False,               -- no_throw
-                         False, True,                -- stack_inspection
-                         False,                      -- uninstall_han
-                         False, True, False,         -- until_exc
-                         False, False, False         -- until_misc
+expectedLargerRecEval = [False, False, False, False, False, -- chain_next
+                         False, False, False, False, True,  -- contains_exc
+                         True,                              -- data_access
+                         False, False, False,               -- empty_frame
+                         True,                              -- exception_safety
+                         False, False, False, False,        -- hier_down
+                         False,                             -- hier_insp
+                         False,                             -- hier_insp_exc
+                         False, False, False, False,        -- hier_up
+                         False, False,                      -- normal_ret
+                         False, False,                      -- no_throw
+                         False, True,                       -- stack_inspection
+                         False,                             -- uninstall_han
+                         False, True, False, False,                -- until_exc
+                         False, False, False                -- until_misc
                         ]
 
 
