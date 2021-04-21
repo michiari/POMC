@@ -94,7 +94,7 @@ expectedSasEval = [False, False, False, False, True,  -- chain_next
                    False, False, False, True,         -- contains_exc      
                    True,                              -- data_access
                    False, False, False,               -- empty_frame       
-                   True,                              -- exception_safety   
+                   --True,                              -- exception_safety   
                    False, False, False, False,        -- hier_down
                    False,                             -- hier_insp
                    True,                              -- hier_insp_exc      
