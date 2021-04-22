@@ -85,7 +85,7 @@ printFunctions nf maxCalls maxDepth = do
   gen <- newStdGen
   (skeletons, _) <- return $ genSkeletons gen nf maxCalls maxDepth
   putStrLn $ show skeletons
-  let opa = skeletonsToOpa skeletons
+  let opa = skeletonsToOpa False skeletons
   putStrLn $ show opa
   hWriteOpa opa stdout
 
@@ -93,7 +93,7 @@ genOpa :: String -> Int -> Int -> Int -> IO ()
 genOpa file nf maxCalls maxDepth = do
   gen <- newStdGen
   (skeletons, _) <- return $ genSkeletons gen nf maxCalls maxDepth
-  opa <- return $ skeletonsToOpa skeletons
+  opa <- return $ skeletonsToOpa False skeletons
   withFile file WriteMode (hWriteOpa opa)
 
 genBench :: String -> IO ()
@@ -105,7 +105,7 @@ genBench dir = do
           where genSingleOpa :: RandomGen g => g -> Int -> IO (g)
                 genSingleOpa gen' n = do
                   (skeletons, gen'') <- return $ genSkeletons gen' (maxCalls `div` 4) maxCalls 4
-                  opa <- return $ skeletonsToOpa skeletons
+                  opa <- return $ skeletonsToOpa False skeletons
                   withFile (dir </> (show maxCalls ++ "-" ++ show n ++ ".pomc"))
                     WriteMode (hWriteOpa opa)
                   return gen''

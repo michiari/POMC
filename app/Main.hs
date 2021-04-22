@@ -91,7 +91,7 @@ main = do
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 
-        runProg prog phi = runMC (programToOpa prog) phi
+        runProg prog phi = runMC (programToOpa False prog) phi
 
         addEndPrec precRels = noEndPR
                               ++ map (\p -> (End, p, Yield)) sl

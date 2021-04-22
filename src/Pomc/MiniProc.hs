@@ -68,11 +68,26 @@ data LowerState = LowerState { lsDPush :: Map (Word, Set (Prop Text)) DeltaTarge
                              , lsDPop :: Map (Word, Word) DeltaTarget
                              , lsFinfo :: Map Text FunctionInfo
                              , lsSid :: Word
+                             , lsLoopEntries :: [(Label, Word)]
                              } deriving Show
 
-sksToExtendedOpa :: [FunctionSkeleton] -> (LowerState, [Word], [Word])
-sksToExtendedOpa sks =
-  let lowerState = lowerFunction sksMap (LowerState M.empty M.empty M.empty M.empty 3) (head sks)
+sksToExtendedOpa :: Bool -> [FunctionSkeleton] -> (LowerState, [Word], [Word])
+sksToExtendedOpa False sks = (buildExtendedOpa sks, [0], [1]) -- Finite case
+sksToExtendedOpa True sks = -- Omega case
+  let lowerState = buildExtendedOpa sks
+      -- Add stuttering transitions
+      dPush = M.insert (1, makeInputSet [T.pack "stm"]) (States [(None, 1)]) (lsDPush lowerState)
+      dPop = M.insert (1, 1) (States [(None, 1)]) (lsDPop lowerState)
+
+      fins = 1 : (concatMap (map snd . fiEntry) $ M.elems (lsFinfo lowerState))
+               ++ map snd (lsLoopEntries lowerState)
+  in ( lowerState { lsDPush = dPush, lsDPop = dPop }
+     , [0]
+     , S.toList . S.fromList $ fins)
+
+buildExtendedOpa :: [FunctionSkeleton] -> LowerState
+buildExtendedOpa sks =
+  let lowerState = lowerFunction sksMap (LowerState M.empty M.empty M.empty M.empty 3 []) (head sks)
       sksMap = M.fromList $ map (\sk -> (skName sk, sk)) sks
       firstFname = skName $ head sks
       firstFinfo = fromJust $ M.lookup firstFname (lsFinfo lowerState)
@@ -87,13 +102,10 @@ sksToExtendedOpa sks =
         States . fiEntry . fromJust $ M.lookup fname (lsFinfo lowerState)
       resolveTarget x = x
       resolveAll deltaMap = M.map resolveTarget deltaMap
-  in ( lowerState { lsDPush = resolveAll dPush''
-                  , lsDShift = resolveAll $ lsDShift lowerState
-                  , lsDPop = resolveAll dPop'''
-                  }
-     , [0]
-     , [1]
-     )
+  in lowerState { lsDPush = resolveAll dPush''
+                , lsDShift = resolveAll $ lsDShift lowerState
+                , lsDPop = resolveAll dPop'''
+                }
 
 -- Thunk that links a list of states as the successors of the previous statement(s)
 type PredLinker = LowerState -> [(Label, Word)] -> LowerState
@@ -222,10 +234,12 @@ lowerStatement sks ls0 thisFinfo linkPred0 (IfThenElse guard thenBlock elseBlock
   in (ls2, linkPredITE)
 
 lowerStatement sks ls0 thisFinfo linkPred0 (While guard body) =
-  let linkPred1 lowerState succStates = linkPred0 (linkBody lowerState enterEdges) enterEdges
-        where enterEdges = case guard of
-                             Just bexp -> map (\(lbl, s) -> (combGuards bexp lbl, s)) succStates
-                             Nothing -> succStates
+  let linkPred1 lowerState0 succStates =
+        let enterEdges = case guard of
+                           Just bexp -> map (\(lbl, s) -> (combGuards bexp lbl, s)) succStates
+                           Nothing -> succStates
+            lowerState1 = linkPred0 (linkBody lowerState0 enterEdges) enterEdges
+        in lowerState1 { lsLoopEntries = lsLoopEntries lowerState1 ++ enterEdges }
 
       (ls1, linkBody) = lowerBlock sks ls0 thisFinfo linkPred1 body
       linkPredWhile lowerState succStates =
@@ -286,9 +300,9 @@ edInsert key vals m =
 allValuations :: Int -> [BitVector]
 allValuations nvars = B.bitVecs nvars ([0..(2^nvars - 1)] :: [Integer])
 
-programToOpa :: Program -> ExplicitOpa Word Text
-programToOpa (Program pvars sks) =
-  let (lowerState, ini, fin) = sksToExtendedOpa sks
+programToOpa :: Bool -> Program -> ExplicitOpa Word Text
+programToOpa omega (Program pvars sks) =
+  let (lowerState, ini, fin) = sksToExtendedOpa omega sks
       nvars = S.size pvars
       varLookup vname = fromJust $ M.lookup vname vmap
         where vmap = M.fromList $ zip (S.toList pvars) [0..nvars]
@@ -417,8 +431,8 @@ evalBoolExpr vidx vars (And lhs rhs) = evalBoolExpr vidx vars lhs && evalBoolExp
 evalBoolExpr vidx vars (Or lhs rhs) = evalBoolExpr vidx vars lhs || evalBoolExpr vidx vars rhs
 
 -- Generate a plain OPA directly (without variables)
-skeletonsToOpa :: [FunctionSkeleton] -> ExplicitOpa Word Text
-skeletonsToOpa sks = ExplicitOpa
+skeletonsToOpa :: Bool -> [FunctionSkeleton] -> ExplicitOpa Word Text
+skeletonsToOpa omega sks = ExplicitOpa
   { sigma = (miniProcSls, map (Prop . skName) sks)
   , precRel = miniProcPrecRel
   , initials = ini
@@ -427,7 +441,7 @@ skeletonsToOpa sks = ExplicitOpa
   , deltaShift = toListDelta $ lsDShift lowerState
   , deltaPop = toListDelta $ lsDPop lowerState
   }
-  where (lowerState, ini, fin) = sksToExtendedOpa sks
+  where (lowerState, ini, fin) = sksToExtendedOpa omega sks
         toListDelta deltaMap = map normalize $ M.toList deltaMap
           where normalize ((a, b), States ls) =
                   (a, b, S.toList . S.fromList $ map snd ls)

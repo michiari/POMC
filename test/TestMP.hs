@@ -68,7 +68,7 @@ makeTestCase filecont ((name, phi, _, _), expected) =
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          let opa = programToOpa prog
+          let opa = programToOpa False prog
           fst (modelCheckGen (fmap T.pack phi) opa) @?= expected
 
 
