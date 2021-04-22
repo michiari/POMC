@@ -165,7 +165,7 @@ expectedLargerRecBase :: [Bool]
 expectedLargerRecBase = [True, False, False, False, False, False,
                          True, False, False, False, False, False,
                          False, False, False, False, False, False,
-                         False, False, False, False
+                         False, False, False, False -- TODO: update this to add the expected result for the added testSat
                         ] 
 
 expectedLargerRecEval :: [Bool]

@@ -8,21 +8,22 @@ ap :: a -> Formula a
 ap = Atomic . Prop
 
 omegaFormulas :: [TestCase]
-omegaFormulas = chain_next
-  ++ contains_exc
+omegaFormulas = --chain_next
+  -- ++ contains_exc
   -- ++ data_access
-  ++ empty_frame
+  -- ++ empty_frame
   -- ++ exception_safety
-  ++ hier_down
-  ++ hier_insp
-  ++ hier_insp_exc
-  ++ hier_up
-  ++ normal_ret
-  ++ no_throw
+  -- ++ hier_down
+  -- ++ hier_insp
+  -- ++ hier_insp_exc
+  -- ++ hier_up
+  normal_ret
+  {-++ no_throw
   ++ stack_inspection
   ++ uninstall_han
   ++ until_exc
   ++ until_misc
+  -}
 
 chain_next :: [TestCase]
 chain_next =
@@ -151,17 +152,6 @@ hier_down =
     )
   ]
 
-hier_insp :: [TestCase]
-hier_insp =
-  [ ( "If procedure pb is called by a function, \
-      \the same function must later call perr after pb returns, \
-      \without calling pc in the meantime."
-    , Always $ (ap "call" `And` ap "pb") `Implies` (HUntil Up (Not . ap $ "pc") (ap "perr"))
-    , ["pb", "pc", "perr"]
-    , True
-    )
-  ]
-
 hier_insp_exc :: [TestCase]
 hier_insp_exc =
   [ ( "If an instance of function pc is terminated by an uncaught exception, \
@@ -169,6 +159,17 @@ hier_insp_exc =
       \Also, the same exception cannot terminate pa before pb."
     , Always $ (ap "pc" `And` XNext Up (ap "exc")) `Implies` (HSince Down (Not . ap $ "pa") (ap "pb"))
     , ["pa", "pb", "pc"]
+    , True
+    )
+  ]
+
+hier_insp :: [TestCase]
+hier_insp =
+  [ ( "If procedure pb is called by a function, \
+      \the same function must later call perr after pb returns, \
+      \without calling pc in the meantime."
+    , Always $ (ap "call" `And` ap "pb") `Implies` (HUntil Up (Not . ap $ "pc") (ap "perr"))
+    , ["pb", "pc", "perr"]
     , True
     )
   ]
@@ -200,7 +201,7 @@ hier_up =
 normal_ret :: [TestCase]
 normal_ret =
   [ ( "All calls have a matched return"
-    , Always $ ap "call" `Implies` XNext Down (ap "ret")
+    , Always $ (ap "call") `Implies` XNext Down (ap "ret")
     , ["e1"]
     , True
     ),
@@ -230,15 +231,15 @@ no_throw =
 stack_inspection :: [TestCase]
 stack_inspection =
   [ ( "If procedure `pa' is present into the stack when \
-      \procedure `pb' is called, `pb' never throws an exception."
-    , Always $ Not $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
+      \procedure `pb' is called, `pb' throws an exception."
+    , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
       `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
     , ["pa", "pb"]
     , True
     ),
     ( "If procedure `pa' is present into the stack when \
-      \procedure `pb' is called, `pb' or one of the functions it calls never throw an exception."
-    , Always $ Not $ (ap "call" `And` ap "pb" `And` (Since Down (ap "call") (ap "call" `And` ap "pa")))
+      \procedure `pb' is called, `pb' or one of the functions it calls throw an exception."
+    , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
       `Implies` (Until Down T (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
     , ["pa", "pb"]
     , True

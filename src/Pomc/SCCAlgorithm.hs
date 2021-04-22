@@ -205,7 +205,7 @@ discoverSummaryBody graph fr  =
   let containsSId SingleNode{node = n} = fst n == fr 
       containsSId SCComponent{nodes=ns} = Set.member fr . Set.map fst $ ns
       untilcond = \ident -> DHT.lookupApply (nodeToGraphNode graph) ident containsSId  
-      toEdges acc [x] = return acc 
+      toEdges acc [_] = return acc 
       toEdges acc (x:y:xs) = do 
                               es <- DHT.lookupApply (nodeToGraphNode graph) x $ Set.filter (\e -> to e == y) . edges
                               toEdges (Set.union acc es) (y:xs) 
@@ -252,7 +252,7 @@ insertSummary graph fromKey toKey  sb = do
 createComponent :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> Key state -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
 createComponent graph key areFinal = do
   gn <- DHT.lookup (nodeToGraphNode graph) key
-  debug ("Creating component for node: " ++ show gn) $ createComponentGn graph gn areFinal
+  debug ("Creating component for node: " ++ show gn ) $ createComponentGn graph gn areFinal
 
 createComponentGn :: (SatState state, Ord state, Hashable state, Show state) => Graph s state -> GraphNode state -> ([state] -> Bool) -> ST.ST s (Bool, Maybe (Int, Set Int))
 createComponentGn graph gn areFinal = 
@@ -291,7 +291,7 @@ merge graph idents areFinal =
   in do 
     newC <- freshNegId (c graph)
     newId <- freshPosId (idSeq graph)
-    gnsNodes <- DHT.lookupMap (nodeToGraphNode graph) idents gnNode
+    gnsNodes <- debug ("Merging graphNodes " ++ show idents ++ " into unique gn: " ++ show newId) $ DHT.lookupMap (nodeToGraphNode graph) idents gnNode
     gnsEdges <- DHT.lookupMap (nodeToGraphNode graph) idents edges
     let gnsNodesSet = Set.unions gnsNodes
         gnsEdgesSet = Set.unions gnsEdges

@@ -1445,12 +1445,15 @@ isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
 
 -- determine whether a state is final for a formula, for the omega case
 isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
-isFinalW bitenc phi@(Until dir _ h) s =   (not $ D.member bitenc (XNext dir phi) (stack s))
-                                        && (not $ D.member bitenc (XNext dir phi) (pending s))
-                                        && ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
-isFinalW bitenc phi@(XNext _ _) s      =   (not $ D.member bitenc phi (stack   s))
-                                        && (not $ D.member bitenc phi (pending s))
-                                        && (not $ D.member bitenc phi (current s))
+isFinalW bitenc phi@(Until dir _ h) s          =   (not $ D.member bitenc (XNext dir phi) (stack s))
+                                                && (not $ D.member bitenc (XNext dir phi) (pending s))
+                                                && ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
+isFinalW bitenc phi@(XNext _ _) s              =   (not $ D.member bitenc phi (stack   s))
+                                                && (not $ D.member bitenc phi (pending s))
+                                                && (not $ D.member bitenc phi (current s))
+isFinalW bitenc phi@(Eventually g) s           = D.member bitenc g (current s) || 
+                                                  (not $ D.member bitenc phi (pending s))
+                                                    && (not $ D.member bitenc phi (current s))
 isFinalW bitenc phi s = if future phi 
                         then (not $ D.member bitenc phi (pending s)) && (not $ D.member bitenc phi (current s))
                         else True
