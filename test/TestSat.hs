@@ -11,7 +11,7 @@ import EvalFormulas (ap)
 import qualified EvalFormulas (formulas)
 
 tests :: TestTree
-tests = testGroup "TestSat.hs Tests" [baseTests,evalTests]
+tests = testGroup "TestSat.hs Tests" [baseTests, evalTests]
 
 baseTests :: TestTree
 baseTests = testGroup "Sat Base Tests" $ map makeV2TestCase cases
@@ -22,7 +22,7 @@ evalTests = testGroup "Sat Eval Tests" $ map makeV2TestCase EvalFormulas.formula
 makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [StructPrecRel String], Bool)
              -> TestTree
 makeTestCase (name, phi, sls, als, prec, expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ isSatisfiableGen False phi (sls, als) prec @?= expected
+  testCase (name ++ " (" ++ show phi ++ ")") $ isSatisfiableGen True phi (sls, als) prec @?= expected
 
 makeV2TestCase :: (TestName, Formula String, [String], Bool) -> TestTree
 makeV2TestCase (name, phi, als, expected) =
@@ -77,7 +77,7 @@ cases =
                  `And` (PBack Up (Atomic . Prop $ "call") `And` (Atomic . Prop $ "pa"))))
     , ["pa"]
     , True
-    ), 
+    ),
     ( "Matched call 1"
     , (ap "call" `And` (XNext Down (ap "ret")))
     , []
@@ -121,11 +121,6 @@ cases =
     ( "XNext Down HNext Up"
     , (ap "call" `And` (XNext Down (HNext Up $ ap "pa")))
     , ["pa"]
-    , True
-    ),
-    ( "XNext Down HNext Up perr" --added
-    , (ap "call" `And` (XNext Down (HNext Up $ ap "perr")))
-    , ["perr"]
     , True
     ),
     ( "Call exc and pa in between"

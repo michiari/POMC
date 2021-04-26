@@ -20,7 +20,7 @@ import Pomc.Prec (StructPrecRel)
 import Pomc.PotlV2 (Formula(..), getProps)
 import Pomc.Check ( makeOpa)
 import Pomc.State(State(..))
-import Pomc.SatUtil(SatState(..),debug)
+import Pomc.SatUtil(SatState(..))
 import Pomc.Satisfiability (isEmpty, isEmptyOmega)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
@@ -82,12 +82,9 @@ modelCheck isOmega phi opa =
       cInitials = cartesian (initials opa) phiInitials
       -- new isFinal function for the cartesian product: both underlying opas must be in an acceptance state
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal T p
-      cIsFinalOmega states = let 
-                                results = map (\f -> (f,any (\(MCState _ p) -> phiIsFinal f p) states)) $ Set.toList cl
-                                nonAcc = filter (not . snd) results
-                                isAcc = (length nonAcc) == 0
-                             in (any (\(MCState q _) -> Set.member q $ Set.fromList $ finals opa) states) &&
-                             (debug ("Non accepted formulas: " ++ show nonAcc ++ "\nOverall condition: " ++ show isAcc) isAcc)
+      cIsFinalOmega states = (any (\(MCState q _) -> Set.member q $ Set.fromList $ finals opa) states) &&
+                             (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) $ Set.toList cl)
+  
 
       -- unwrap an object of type Maybe List
       maybeList Nothing = []

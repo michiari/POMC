@@ -83,10 +83,10 @@ simpleExc = ExplicitOpa
             }
 
 expectedSasBase :: [Bool]
-expectedSasBase = [True,  False, False, False, False, False,
-                   False, False, False, True,  True, False,
+expectedSasBase = [True, False, False, False, False, False,
+                   False, False, False, True, True, False,
                    True, False, True, False, False, False,
-                   True, False, False, False, False
+                   False, False, False, False
                   ]
 
 expectedSasEval :: [Bool]
@@ -95,7 +95,7 @@ expectedSasEval = [True, True, True, True,     -- chain_next
                    True,                       -- data_access
                    False, False, True,         -- empty_frame
                    True,                       -- exception_safety
-                   False, True, False, False,  -- hier_down
+                   False, False, False, False, -- hier_down
                    False,                      -- hier_insp
                    True,                       -- hier_insp_exc
                    True, True, False, False,   -- hier_up
@@ -165,8 +165,8 @@ expectedLargerRecBase :: [Bool]
 expectedLargerRecBase = [True, False, False, False, False, False,
                          True, False, False, False, False, False,
                          False, False, False, False, False, False,
-                         False, False, False, False -- TODO: update this to add the expected result for the added testSat
-                        ] 
+                         False, False, False, False
+                        ]
 
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval = [False, False, False, False, -- chain_next

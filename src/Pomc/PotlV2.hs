@@ -218,9 +218,8 @@ normalize f = case f of
                 HUntil dir g h     -> HUntil dir  (normalize g) (normalize h)
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)
                 Eventually g       -> Eventually (normalize g)
-                Always g           -> Always (normalize g)
+                Always g           -> Not . Eventually . normalize . Not $ g
                 AuxBack dir g      -> AuxBack dir (normalize g)
 
 instance NFData (Formula a) where 
   rnf formula = formula `seq` ()
-    

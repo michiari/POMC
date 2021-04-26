@@ -8,22 +8,22 @@ ap :: a -> Formula a
 ap = Atomic . Prop
 
 omegaFormulas :: [TestCase]
-omegaFormulas = --chain_next
-  -- ++ contains_exc
+omegaFormulas = chain_next
+  ++ contains_exc
   -- ++ data_access
-  -- ++ empty_frame
+  ++ empty_frame
   -- ++ exception_safety
-  -- ++ hier_down
-  -- ++ hier_insp
+  ++ hier_down
+  ++ hier_insp
   -- ++ hier_insp_exc
-  -- ++ hier_up
-  normal_ret
-  {-++ no_throw
+  ++ hier_up
+  ++ normal_ret
+  ++ no_throw
   ++ stack_inspection
   ++ uninstall_han
   ++ until_exc
   ++ until_misc
-  -}
+  
 
 chain_next :: [TestCase]
 chain_next =
@@ -236,14 +236,14 @@ stack_inspection =
       `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
     , ["pa", "pb"]
     , True
-    ),
+    ), -- modified
     ( "If procedure `pa' is present into the stack when \
       \procedure `pb' is called, `pb' or one of the functions it calls throw an exception."
     , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
       `Implies` (Until Down T (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
     , ["pa", "pb"]
     , True
-    )
+    ) -- modified
   ]
 
 uninstall_han :: [TestCase]
@@ -269,13 +269,13 @@ until_exc =
     , PNext Down $ PNext Down $ Until Up T (ap "exc")
     , ["pa", "pb", "pc", "perr"]
     , True
-    ),
-    ( "The third position is inside a function call which either is terminated by an exception, \
-      \or a handler that catches an exception, or keeps calling procedure 'pc'"
-    , PNext Down $ PNext Down $ Until Up T (ap "exc") `Or` (PNext Down $ Always $ ap "call" `And` ap "pc")
+    ){-,
+    ( "The third position is inside a function call terminated by an exception, \
+      \or a handler that catches an exception or pc is called indefinitely."
+    , PNext Down $ PNext Down $ (Until Up T (ap "exc")) `Or` (PNext Down $ Always $ ap "call" `And` ap "pc")
     , ["pa", "pb", "pc", "perr"]
-    , True -- added
-    ),
+    , True
+    )-}, --added
     ( "Each call to pc is enclosed into a handler-caught exception pair."
     , Always $ (ap "call" `And` ap "pc") `Implies`
       (Until Up T $ ap "exc" `And` (XBack Down $ ap "han"))

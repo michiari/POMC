@@ -1,5 +1,0 @@
-Script started on 2021-04-22 17:23:26+02:00 [TERM="xterm-256color" TTY="/dev/tty2" COLUMNS="120" LINES="30"]
-]0;francescopont@DESKTOP-6MBR7RP: /mnt/c/Users/ponti/Github/POMC[01;32mfrancescopont@DESKTOP-6MBR7RP[00m:[01;34m/mnt/c/Users/ponti/Github/POMC[00m$ exit
-exit
-
-Script done on 2021-04-22 17:23:31+02:00 [COMMAND_EXIT_CODE="0"]

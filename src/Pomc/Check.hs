@@ -51,7 +51,6 @@ import Control.Monad (guard, filterM)
 import qualified Data.Sequence as SQ
 
 import Data.Foldable (toList)
-import Control.DeepSeq(NFData(..), force)
 
 import qualified Debug.Trace as DT
 
@@ -471,11 +470,9 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuShiftPr)
                                      , (hbuCond,    hbuShiftPr)
                                      , (hbdCond,    hbdShiftPr)
-                                     , (alwCond,    alwShiftPr)
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr)
                                      , (pbCond, pbShiftFcr)
-                                     , (alwCond, alwShiftFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
                                      , (xndCond,    xndShiftFpr)
@@ -504,11 +501,9 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuPushPr2)
                                      , (hbuCond,    hbuPushPr)
                                      , (hbdCond,    hbdPushPr)
-                                     , (alwCond,    alwPushPr)
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr)
                                      , (pbCond, pbPushFcr)
-                                     , (alwCond, alwPushFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
                                      , (xndCond,    xndPushFpr)
@@ -536,8 +531,7 @@ deltaRules bitenc cl precFunc =
                                      ]
         ,
           -- future current rules
-          ruleGroupFcrs = resolve cl [(alwCond, alwPopFcr)
-                                     ]
+          ruleGroupFcrs = resolve cl []
 
         , ruleGroupFprs = resolve cl [ (const True, xrPopFpr)
                                      , (xndCond,    xndPopFpr)
@@ -1237,36 +1231,6 @@ deltaRules bitenc cl precFunc =
     hbdShiftPr = hbdPushPr
     --
 
-    --- Alw: Always g
-    maskAlw = D.suchThat bitenc checkAlw
-    checkAlw (Always _) = True
-    checkAlw _ = False
-    alwClos = S.filter checkAlw cl -- all Always g formulas in the closure
-
-    alwCond clos = not (null [f | f@(Always _) <- S.toList clos])
-
-    -- alwPushPr:: PrInfo -> Bool
-    alwPushPr info =
-      let pCurr = current $ prState info -- current holding formulas
-          pCurrAlwfs =  S.filter (\g -> D.member bitenc g pCurr) alwClos
-          alwArgfs = D.encode bitenc $
-                     S.map (\(Always g) -> g)  pCurrAlwfs
-
-          checkSet = D.intersect  pCurr alwArgfs
-      in alwArgfs == checkSet
-
-    -- alwShiftPr:: PrInfo -> Bool
-    alwShiftPr = alwPushPr
-
-    alwPushFcr info =
-      let pCurr = current $ fcrState info
-          fCurr = fcrFutureCurr info
-          pCurrAlwfs = D.intersect pCurr maskAlw
-          fCurrAlwfs = D.intersect fCurr maskAlw
-      in pCurrAlwfs == fCurrAlwfs
-    alwShiftFcr = alwPushFcr
-    alwPopFcr = alwPushFcr
-
 -----------------------------------------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------
@@ -1448,15 +1412,15 @@ isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
 isFinalW bitenc phi@(Until dir _ h) s          =   (not $ D.member bitenc (XNext dir phi) (stack s))
                                                 && (not $ D.member bitenc (XNext dir phi) (pending s))
                                                 && ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
-isFinalW bitenc phi@(XNext _ _) s              =   (not $ D.member bitenc phi (stack   s))
-                                                && (not $ D.member bitenc phi (pending s))
-                                                && (not $ D.member bitenc phi (current s))
-isFinalW bitenc phi@(Eventually g) s           = D.member bitenc g (current s) || 
-                                                  (not $ D.member bitenc phi (pending s))
-                                                    && (not $ D.member bitenc phi (current s))
-isFinalW bitenc phi s = if future phi 
-                        then (not $ D.member bitenc phi (pending s)) && (not $ D.member bitenc phi (current s))
-                        else True
+isFinalW bitenc phi@(XNext _ _) s              =  (not $ D.member bitenc phi (stack s)) && isFinalWFuture bitenc phi s
+isFinalW bitenc phi@(Eventually g) s           = (D.member bitenc g (current s)) || isFinalWFuture bitenc phi s
+isFinalW bitenc phi s = True
+                        
+
+isFinalWFuture :: BitEncoding -> Formula APType -> State -> Bool 
+isFinalWFuture bitenc phi s = (not $ D.member bitenc phi (pending s)) 
+                           && (not $ D.member bitenc phi (current s))
+
 
 -- determine whether a state is final, for the finite case
 isFinalF :: BitEncoding -> State -> Bool
@@ -1712,11 +1676,3 @@ stackCombs bitenc clos =
   let xns =  [f | f@(XNext _ _)   <- S.toList clos]
   in S.map (D.encode bitenc) $
      S.powerSet (S.fromList $ xns)
-
-
-
- 
-
-
-
-
