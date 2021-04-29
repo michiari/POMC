@@ -106,10 +106,15 @@ empty_frame =
     , ["pa", "pb", "pc", "perr"]
     , True
     ),
+    ( "First position contains an inner call with empty body"
+    , XNext Down $ PNext Down $ PBack Up $ ap "call"
+    , ["pa", "pb", "pc", "perr"]
+    , True
+    ),
     ( "First position does not contain an inner call with empty body"
     , Not $ XNext Down $ PNext Down $ PBack Up $ ap "call"
     , ["pa", "pb", "pc", "perr"]
-    , True
+    , True--added
     )
   ]
 
