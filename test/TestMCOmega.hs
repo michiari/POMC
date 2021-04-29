@@ -15,7 +15,10 @@ import qualified Data.Set as Set
 
 tests :: TestTree
 tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests,
-                                                  lRBaseTests, lREvalTests]
+                                                  lRBaseTests, lREvalTests,
+                                                  inspectionTest, overflowTest,
+                                                  jensenTests, jensenFullTests,
+                                                  stackExcTests, stackExcSwapTests]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA MC Base Tests" $
