@@ -173,14 +173,10 @@ makeBitEncoding clos =
 
 -- generate atoms from a bitEncoding, the closure of phi and the powerset of APs, excluded not valid sets
 -- we have to distinguish between the omega case and the finite case
--- the first Bool means isOmega
-genAtoms  :: Bool -> BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
-genAtoms True  bitenc clos inputSet = genAtoms' bitenc clos $ S.insert (S.singleton End) inputSet
-genAtoms False bitenc clos inputSet = genAtoms' bitenc clos $ S.insert (S.singleton End) inputSet
-
-genAtoms' :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
-genAtoms' bitenc clos validPropSets =
+genAtoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
+genAtoms bitenc clos inputSet =
   let 
+      validPropSets = S.insert (S.singleton End) inputSet
       -- Map the powerset of APs into a set of EncodedAtoms
       atomics = map (D.encodeInput bitenc) $ S.toList validPropSets
 
@@ -1479,7 +1475,7 @@ check phi sprs ts =
         -- generate an EncPrecFunc from a StructPrecRel
         (prec, sl) = fromStructEnc bitenc sprs
         -- generate all consistent subsets of cl
-        as = genAtoms False bitenc cl inputSet
+        as = genAtoms bitenc cl inputSet
         -- generate all possible pending obligations
         pcs = pendCombs bitenc cl
         -- generate all possible stack obligations for the omega case
@@ -1545,7 +1541,7 @@ fastcheck phi sprs ts =
         -- generate an EncPrecFunc from a StructPrecRel
         (prec, sl) = fromStructEnc bitenc sprs
         -- generate all consistent subsets of cl
-        as = genAtoms False bitenc cl inputSet
+        as = genAtoms bitenc cl inputSet
         -- generate all possible pending obligations
         pcs = pendCombs bitenc cl
         is = filter compInitial (initials  False nphi cl (as, bitenc))
@@ -1643,7 +1639,7 @@ makeOpa phi isOmega (sls, als) sprs = (bitenc
         -- generate an EncPrecFunc from a StructPrecRel
         (prec, _) = fromStructEnc bitenc sprs
         -- generate all consistent subsets of cl
-        as = genAtoms isOmega bitenc cl inputSet  
+        as = genAtoms bitenc cl inputSet  
         -- generate all possible pending obligations
         pcs = pendCombs bitenc cl 
         -- generate all possible stack obligations for the omega case
