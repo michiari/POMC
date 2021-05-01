@@ -44,14 +44,33 @@ import Data.Vector (Vector)
 
 import Data.Hashable
 
+import Data.Ord(Ordering)
+
 data Edge = Internal 
-  { from :: Int
-  ,  to  :: Int 
+  { to  :: Int 
   } | Summary 
-  { from :: Int
-  ,   to :: Int
+  { to :: Int
   ,  body :: Set (Edge) 
-  } deriving (Show, Eq, Ord)
+  } deriving (Show)
+
+
+instance Eq Edge where 
+  (Internal{to=to1}) ==  (Internal{to=to2}) = to1 ==  to2
+  (Internal{}) == (Summary{}) = False
+  (Summary{}) == (Internal{}) = False
+  (Summary{to=to1, body = b1}) == (Summary{to=to2, body=b2}) =
+    if (to1 /= to2 )
+      then False
+      else b1 == b2
+
+instance Ord Edge where 
+  compare (Internal{to=to1}) (Internal{to=to2}) = compare to1 to2
+  compare (Internal{}) (Summary{}) = compare 0 1 
+  compare (Summary{}) (Internal{}) = compare 1 0
+  compare (Summary{to=to1, body = b1}) (Summary{to=to2, body=b2}) =
+    if (compare to1 to2 /= EQ)
+      then compare to1 to2
+      else compare b1 b2
 
 data SummaryBody = SummaryBody 
   { firstNode :: Int
@@ -132,8 +151,8 @@ updateSummaryBody newId idents SummaryBody{firstNode = f, lastNode = l, bodyEdge
   let sub n = if Set.member n idents 
                 then newId 
                 else n
-      update Internal{from = f, to = t} = Internal{from = sub f, to = sub t}
-      update Summary{from = f, to =t, body = b} = Summary{from = sub f, to = sub t, body = Set.map update b}
+      update Internal{to = t} = Internal{ to = sub t}
+      update Summary{to =t, body = b} = Summary{to = sub t, body = Set.map update b}
   in SummaryBody{firstNode = sub f, lastNode= sub l, bodyEdges = Set.map update b}
 
 -- unsafe
@@ -226,7 +245,7 @@ insertInternal :: (SatState state, Eq state, Hashable state, Show state) => Grap
 insertInternal graph fromKey toKey  = do 
   fr <- DHT.lookupId (nodeToGraphNode graph) fromKey
   t  <- DHT.lookupId (nodeToGraphNode graph) toKey
-  let e = Internal (fromJust fr) (fromJust t)
+  let e = Internal (fromJust t)
       insertEdge x@SingleNode{edges = es}  = x{edges = Set.insert e es}
       insertEdge x@SCComponent{edges = es} = x{edges = Set.insert e es}
   DHT.modify (nodeToGraphNode graph) (fromJust fr) insertEdge
@@ -236,13 +255,8 @@ insertSummary :: (SatState state, Eq state, Hashable state, Show state) => Graph
 insertSummary graph fromKey toKey  sb = do 
   fr <- DHT.lookupId (nodeToGraphNode graph) fromKey
   t  <- DHT.lookupId (nodeToGraphNode graph) toKey
-  let summ =  Summary{from = fromJust fr, to = fromJust t, 
-                                                    body = Set.unions [
-                                                    bodyEdges sb
-                                                    , Set.singleton $ Internal {from = fromJust fr, to = firstNode sb}
-                                                    , Set.singleton $ Internal {from = lastNode sb,to =   fromJust t}]
-                                                    } 
-      e = Internal{from=(fromJust fr), to = firstNode sb}
+  let summ =  Summary{ to = fromJust t, body = bodyEdges sb } 
+      e = Internal{ to = firstNode sb}
       insertEdges x@SingleNode{edges = es}  = x{edges = Set.insert summ $ Set.insert e es}
       insertEdges x@SCComponent{edges = es} = x{edges = Set.insert summ $ Set.insert e es}
   DHT.modify (nodeToGraphNode graph) (fromJust fr) insertEdges
@@ -260,7 +274,7 @@ createComponentGn graph gn areFinal =
     toMerge [ident] = do 
       newC <- freshNegId (c graph)
       DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC  
-      let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> from e == ident && to e == ident) $ es
+      let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> to e == ident) $ es
           selfLoopOrGn SCComponent{}  = True 
       if selfLoopOrGn gn 
         then do 
@@ -300,8 +314,8 @@ merge graph idents areFinal =
         sub n = if Set.member n identsSet 
                   then newId
                   else n 
-        update Internal{from = f, to = t} = Internal{from = sub f, to = sub t}
-        update Summary{from = f, to =t, body = b} = Summary{from = sub f, to = sub t, body = Set.map update b } 
+        update Internal{ to = t} = Internal{ to = sub t}
+        update Summary{ to =t, body = b} = Summary{ to = sub t, body = Set.map update b } 
         updateGn x@SingleNode{edges = es}  = x{edges = Set.map update es}   
         updateGn x@SCComponent{edges = es} = x{edges = Set.map update es}     
     DHT.fuse (nodeToGraphNode graph) gnsNodesSet newId newgn;
@@ -316,9 +330,9 @@ isAccepting :: (SatState state, Ord state, Hashable state, Show state) => Graph 
 isAccepting graph ident areFinal = 
   let gnStates SingleNode{node = n} = Set.singleton . getState . fst $ n
       gnStates SCComponent{nodes= ns} = Set.map (getState . fst) ns
-      edgeGnIdents Internal{from=fr, to=t}          = Set.fromList [fr,t]
-      edgeGnIdents Summary{from= fr, to=t, body =b} = Set.union (Set.fromList [fr,t]) $ Set.unions (Set.map edgeGnIdents b)
-      selfEdges = Set.filter (\e -> from e == ident && to e == ident)
+      edgeGnIdents Internal{ to=t}          = Set.singleton t
+      edgeGnIdents Summary{to=t, body =b} = Set.union (Set.singleton t) $ Set.unions (Set.map edgeGnIdents b)
+      selfEdges = Set.filter (\e -> to e == ident)
   in do  
     edgeSet <- DHT.lookupApply (nodeToGraphNode graph) ident edges
     gnStatesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList . Set.unions . Set.map edgeGnIdents $ selfEdges edgeSet) gnStates
@@ -334,12 +348,7 @@ toCollapsePhase graph =
   let resolveSummary (fr, sb, key) = do  
         alrDir <- alreadyDiscovered graph key 
         ident <- DHT.lookupId (nodeToGraphNode graph) key
-        let summ = Summary{from = fr, to = fromJust ident, 
-                                                          body = Set.unions [
-                                                          bodyEdges sb
-                                                          , Set.singleton $ Internal {from = fr, to = firstNode sb}
-                                                          , Set.singleton $ Internal {from = lastNode sb,to =   fromJust ident}]
-                                                          }
+        let summ = Summary{ to = fromJust ident, body = bodyEdges sb}
             insertEdge x@SingleNode{edges = es}  = x{edges = Set.insert summ es}
             insertEdge x@SCComponent{edges = es} = x{edges = Set.insert summ es}
         DHT.modify (nodeToGraphNode graph) fr insertEdge

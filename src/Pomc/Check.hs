@@ -172,7 +172,6 @@ makeBitEncoding clos =
   in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
 -- generate atoms from a bitEncoding, the closure of phi and the powerset of APs, excluded not valid sets
--- we have to distinguish between the omega case and the finite case
 genAtoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
 genAtoms bitenc clos inputSet =
   let 
