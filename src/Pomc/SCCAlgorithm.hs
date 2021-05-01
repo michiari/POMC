@@ -44,33 +44,12 @@ import Data.Vector (Vector)
 
 import Data.Hashable
 
-import Data.Ord(Ordering)
-
 data Edge = Internal 
   { to  :: Int 
   } | Summary 
   { to :: Int
   ,  body :: Set (Edge) 
-  } deriving (Show)
-
-
-instance Eq Edge where 
-  (Internal{to=to1}) ==  (Internal{to=to2}) = to1 ==  to2
-  (Internal{}) == (Summary{}) = False
-  (Summary{}) == (Internal{}) = False
-  (Summary{to=to1, body = b1}) == (Summary{to=to2, body=b2}) =
-    if (to1 /= to2 )
-      then False
-      else b1 == b2
-
-instance Ord Edge where 
-  compare (Internal{to=to1}) (Internal{to=to2}) = compare to1 to2
-  compare (Internal{}) (Summary{}) = compare 0 1 
-  compare (Summary{}) (Internal{}) = compare 1 0
-  compare (Summary{to=to1, body = b1}) (Summary{to=to2, body=b2}) =
-    if (compare to1 to2 /= EQ)
-      then compare to1 to2
-      else compare b1 b2
+  } deriving (Show, Eq, Ord)
 
 data SummaryBody = SummaryBody 
   { firstNode :: Int
