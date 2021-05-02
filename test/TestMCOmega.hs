@@ -89,13 +89,13 @@ expectedSasBase :: [Bool]
 expectedSasBase = [True,  False, False, False, False, False,
                    False, False, False, False, False, False,
                    False, False, False, False, False, False,
-                   False, False, False, False, False
+                   False, False, False, False, False, False
                   ]
 
 expectedSasEval :: [Bool]
 expectedSasEval = [False, False, False, False, True,  -- chain_next        
                    False, False, False, True,         -- contains_exc      
-                   -- True,                            -- data_access
+                   True,                            -- data_access
                    False, False, False, False,         -- empty_frame       
                    -- True,                            -- exception_safety   
                    False, False, False, False,        -- hier_down
@@ -106,7 +106,7 @@ expectedSasEval = [False, False, False, False, True,  -- chain_next
                    True, True,                        -- no_throw            
                    False, False,                      -- stack_inspection    
                    False,                             -- uninstall_han       
-                   False, False, {-True,-} False,     -- until_exc           
+                   False, False, True, False,     -- until_exc           
                    False, False, False                -- until_misc          
                   ] 
 
@@ -171,13 +171,13 @@ expectedLargerRecBase :: [Bool]
 expectedLargerRecBase = [True, False, False, False, False, False,
                          True, False, False, False, False, False,
                          False, False, False, False, False, False,
-                         False, False, False, False, False
+                         False, False, False, False, False, False
                         ] 
 
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval = [False, False, False, False, False,  -- chain_next
                          False, False, False, False,         -- contains_exc
-                         -- True,                            -- data_access
+                         True,                            -- data_access
                          False, False, False, False,         -- empty_frame
                          -- True,                            -- exception_safety
                          False, False, False, False,        -- hier_down
@@ -188,7 +188,7 @@ expectedLargerRecEval = [False, False, False, False, False,  -- chain_next
                          False, False,                      -- no_throw
                          False, False,                      -- stack_inspection
                          False,                             -- uninstall_han
-                         False, False, {-False,-} False,         -- until_exc
+                         False, False, False, False,         -- until_exc
                          False, False, False                -- until_misc
                         ]
 

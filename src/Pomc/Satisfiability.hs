@@ -240,7 +240,7 @@ searchPhase areFinal globals delta  =
   let visit node = do
         alrDisc <- alreadyDiscovered (graph globals) node 
         if not alrDisc
-          then reachOmega areFinal globals delta node
+          then reachOmega areFinal globals delta Nothing node
           else return False
   in do 
     initials <- initialNodes $ graph globals
@@ -268,7 +268,7 @@ collapsePhase _ initials areFinal globals delta =
   let visit node = do 
         alrVis <- alreadyVisited (graph globals) node 
         if not alrVis
-          then visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal node
+          then visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal Nothing node
           else return False
   in do 
     newInitials <- toCollapsePhase $ graph globals
@@ -287,9 +287,10 @@ reachOmega :: (SatState state, Ord state, Hashable state, Show state)
                => ([state] -> Bool) 
                -> Globals s state 
                -> Delta state 
+               -> Maybe Edge
                -> (StateId state, Stack state) 
                -> ST.ST s Bool 
-reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ show (q,g) ++ "\n" ++ "state: " ++ showState (bitenc delta) (getSatState . getState $ q)) $ do 
+reachOmega areFinal globals delta e (q,g) = debug ("newReachOmegawithNode: " ++ show (q,g) ++ "\n" ++ "state: " ++ showState (bitenc delta) (getSatState . getState $ q)) $ do 
   let be = bitenc delta 
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
       qState = getState q 
@@ -304,7 +305,7 @@ reachOmega areFinal globals delta (q,g) = debug ("newReachOmegawithNode: " ++ sh
           reachOmegaPop globals delta (q,g) qState
 
         | otherwise = debug ("No transition found\n") $ return False
-  visitNode (graph globals) (q,g);
+  visitNode (graph globals) e (q,g);
   success <- cases
   if success
     then return True 
@@ -404,7 +405,7 @@ reachTransition body areFinal globals delta from to =
       insert True  =  insertSummary (graph globals) from to $ fromJust body
   in do 
     alrDisc <- alreadyDiscovered (graph globals) to
-    insert $ isJust body 
+    e <- insert $ isJust body 
     if alrDisc 
       then do 
         alrVis <- alreadyVisited (graph globals) to
@@ -412,8 +413,8 @@ reachTransition body areFinal globals delta from to =
           then do updateSCC (graph globals) to;
                   debug ("AlreadyVisitedNode: " ++ show to ++ "\n") $ return False 
           else debug ("AlreadyDisc but not alreadyVisitedNode: " ++ show to ++ "\n")
-             $ visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal to
-      else reachOmega areFinal globals delta to
+             $ visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal (Just e) to
+      else reachOmega areFinal globals delta (Just e) to
 
 updateSummaryBodies :: Globals s state -> Maybe (Int,Set Int) -> ST.ST s ()
 updateSummaryBodies _ Nothing = return  ()

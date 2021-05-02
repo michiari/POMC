@@ -10,7 +10,7 @@ ap = Atomic . Prop
 omegaFormulas :: [TestCase]
 omegaFormulas = chain_next
   ++ contains_exc
-  -- ++ data_access
+  ++ data_access
   ++ empty_frame
   -- ++ exception_safety
   ++ hier_down
@@ -274,13 +274,13 @@ until_exc =
     , PNext Down $ PNext Down $ Until Up T (ap "exc")
     , ["pa", "pb", "pc", "perr"]
     , True
-    ){-,
+    ),
     ( "The third position is inside a function call terminated by an exception, \
       \or a handler that catches an exception or pc is called indefinitely."
     , PNext Down $ PNext Down $ (Until Up T (ap "exc")) `Or` (PNext Down $ Always $ ap "call" `And` ap "pc")
     , ["pa", "pb", "pc", "perr"]
     , True
-    )-}, --added
+    ), --added
     ( "Each call to pc is enclosed into a handler-caught exception pair."
     , Always $ (ap "call" `And` ap "pc") `Implies`
       (Until Up T $ ap "exc" `And` (XBack Down $ ap "han"))
