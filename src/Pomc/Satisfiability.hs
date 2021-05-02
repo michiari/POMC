@@ -290,7 +290,7 @@ reachOmega :: (SatState state, Ord state, Hashable state, Show state)
                -> Maybe Edge
                -> (StateId state, Stack state) 
                -> ST.ST s Bool 
-reachOmega areFinal globals delta e (q,g) = debug ("newReachOmegawithNode: " ++ show (q,g) ++ "\n" ++ "state: " ++ showState (bitenc delta) (getSatState . getState $ q)) $ do 
+reachOmega areFinal globals delta e (q,g) = do 
   let be = bitenc delta 
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
       qState = getState q 
@@ -304,7 +304,7 @@ reachOmega areFinal globals delta e (q,g) = debug ("newReachOmegawithNode: " ++ 
         | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
           reachOmegaPop globals delta (q,g) qState
 
-        | otherwise = debug ("No transition found\n") $ return False
+        | otherwise = return False
   visitNode (graph globals) e (q,g);
   success <- cases
   if success
@@ -328,8 +328,7 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
   let doPush True _ = return True
       doPush False p = do
         SM.insert (suppStarts globals) q g
-        debug ( "push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n" ++ "}} --> to: q = " ++ show p ++ "\ng = " ++ show (Just (getSidProps (bitenc delta) q, q)))
-          $ reachTransition Nothing areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
+        reachTransition Nothing areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
     pushReached <- V.foldM' doPush False newStates
@@ -339,10 +338,7 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
       currentSuppEnds <- SM.lookup (wSuppEnds globals) q
       foldM (\acc (s, sb) -> if acc
                               then return True
-                              else debug ("Push (summary): q = " ++ show q
-                                   ++ "\ng = " ++ show g
-                                   ++ "\ns = " ++ show s) $
-                                  reachTransition (Just sb) areFinal globals delta (q,g) (s,g))
+                              else reachTransition (Just sb) areFinal globals delta (q,g) (s,g))
         False
         currentSuppEnds
 
@@ -357,9 +353,8 @@ reachOmegaShift :: (SatState state, Ord state, Hashable state, Show state)
            -> ST s Bool
 reachOmegaShift areFinal globals delta (q,g) qState qProps =
   let doShift True _ = return True
-      doShift False p =
-        debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n--> to: " ++ show p ++ "\ng = " ++ show (Just (qProps, (snd . fromJust $ g))) ++ "\n")
-          $ reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
+      doShift False p = 
+        reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
     V.foldM' doShift False newStates
@@ -376,9 +371,7 @@ reachOmegaPop globals delta (q,g) qState =
             closeSupports sb g'
               | isNothing g' ||
                 ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
-              = debug  ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n--> to: q = " ++ show p ++ "\ng = " ++ show g'
-                        ++ "\nDiscovered Summary: from q = " ++ show r ++ "\ng = " ++ show g' ++ "\n-----> to: q = " ++ show p ++ "\ng = " ++ show g' ++ "\n\n") 
-                $ discoverSummary (graph globals) (r,g') sb (p,g') -- do not explore this node, but store for later exploration, to ensure correctness of the Gabow algo                        
+              = discoverSummary (graph globals) (r,g') sb (p,g')                         
               | otherwise = return ()
         in do
           sb <- discoverSummaryBody (graph globals) r
@@ -411,9 +404,8 @@ reachTransition body areFinal globals delta from to =
         alrVis <- alreadyVisited (graph globals) to
         if alrVis 
           then do updateSCC (graph globals) to;
-                  debug ("AlreadyVisitedNode: " ++ show to ++ "\n") $ return False 
-          else debug ("AlreadyDisc but not alreadyVisitedNode: " ++ show to ++ "\n")
-             $ visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal (Just e) to
+                  return False 
+          else visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal (Just e) to
       else reachOmega areFinal globals delta (Just e) to
 
 updateSummaryBodies :: Globals s state -> Maybe (Int,Set Int) -> ST.ST s ()
