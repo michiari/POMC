@@ -89,7 +89,7 @@ expectedSasBase :: [Bool]
 expectedSasBase = [True,  False, False, False, False, False,
                    False, False, False, False, False, False,
                    False, False, False, False, False, False,
-                   False, False, False, False, False, False
+                   False, False, False, False, False
                   ]
 
 expectedSasEval :: [Bool]
@@ -97,7 +97,7 @@ expectedSasEval = [False, False, False, False, True,  -- chain_next
                    False, False, False, True,         -- contains_exc      
                    True,                            -- data_access
                    False, False, False, False,         -- empty_frame       
-                   -- True,                            -- exception_safety   
+                   True,                            -- exception_safety   
                    False, False, False, False,        -- hier_down
                    False,                             -- hier_insp
                    -- True,                            -- hier_insp_exc      
@@ -171,15 +171,15 @@ expectedLargerRecBase :: [Bool]
 expectedLargerRecBase = [True, False, False, False, False, False,
                          True, False, False, False, False, False,
                          False, False, False, False, False, False,
-                         False, False, False, False, False, False
-                        ] 
+                         False, False, False, False, False
+                        ]
 
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval = [False, False, False, False, False,  -- chain_next
                          False, False, False, False,         -- contains_exc
                          True,                            -- data_access
                          False, False, False, False,         -- empty_frame
-                         -- True,                            -- exception_safety
+                         True,                            -- exception_safety
                          False, False, False, False,        -- hier_down
                          False,                             -- hier_insp
                          -- False,                           -- hier_insp_exc

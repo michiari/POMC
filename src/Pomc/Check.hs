@@ -54,6 +54,8 @@ import Data.Foldable (toList)
 
 import qualified Debug.Trace as DT
 
+
+
 import GHC.Generics (Generic)
 
 import Data.Hashable
@@ -110,7 +112,7 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
       case f of
         T                  -> [f, Not f]
         Atomic _           -> [f, Not f]
-        Not g              -> closList g 
+        Not g              ->  closList g 
         Or g h             -> [f, Not f] ++ closList g ++ closList h
         And g h            -> [f, Not f] ++ closList g ++ closList h
         Xor g h            -> [f, Not f] ++ closList g ++ closList h
@@ -166,7 +168,7 @@ makeBitEncoding clos =
       -- Mapping between positive closure and bits
       pClosVec = pAtomicVec V.++ pFormulaVec
       --index function of BitEncoding
-      pClosLookup phi =  fromJust $ M.lookup phi pClosMap
+      pClosLookup phi = fromJust $ M.lookup phi pClosMap
         where pClosMap = pAtomicMap `M.union` M.map (V.length pAtomicVec +) pFormulaMap
 
   in D.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
@@ -465,9 +467,11 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuShiftPr)
                                      , (hbuCond,    hbuShiftPr)
                                      , (hbdCond,    hbdShiftPr)
+                                     , (alwCond,    alwShiftPr)
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnShiftFcr)
                                      , (pbCond, pbShiftFcr)
+                                     , (alwCond, alwShiftFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
                                      , (xndCond,    xndShiftFpr)
@@ -496,9 +500,11 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuPushPr2)
                                      , (hbuCond,    hbuPushPr)
                                      , (hbdCond,    hbdPushPr)
+                                     , (alwCond,    alwPushPr)
                                      ]
         , ruleGroupFcrs = resolve cl [ (pnCond, pnPushFcr)
                                      , (pbCond, pbPushFcr)
+                                     , (alwCond, alwPushFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
                                      , (xndCond,    xndPushFpr)
@@ -526,7 +532,7 @@ deltaRules bitenc cl precFunc =
                                      ]
         ,
           -- future current rules
-          ruleGroupFcrs = resolve cl []
+          ruleGroupFcrs = resolve cl [(alwCond, alwPopFcr)]
 
         , ruleGroupFprs = resolve cl [ (const True, xrPopFpr)
                                      , (xndCond,    xndPopFpr)
@@ -1226,13 +1232,41 @@ deltaRules bitenc cl precFunc =
     hbdShiftPr = hbdPushPr
     --
 
+    --- Alw: Always g
+    maskAlw = D.suchThat bitenc checkAlw
+    checkAlw (Always _) = True
+    checkAlw _ = False
+    alwClos = S.filter checkAlw cl -- all Always g formulas in the closure
+
+    alwCond clos = not (null [f | f@(Always _) <- S.toList clos])
+
+    -- alwPushPr:: PrInfo -> Bool
+    alwPushPr info =
+      let pCurr = current $ prState info -- current holding formulas
+          checkSet = D.encode bitenc $ 
+                     S.filter (\(Always g) -> not $ D.member bitenc g pCurr) alwClos
+          pCurrAlwfs = D.intersect pCurr maskAlw
+      in D.null $ D.intersect pCurrAlwfs checkSet
+
+    -- alwShiftPr:: PrInfo -> Bool
+    alwShiftPr = alwPushPr
+
+    alwPushFcr info =
+      let pCurr = current $ fcrState info
+          fCurr = fcrFutureCurr info
+          pCurrAlwfs = D.intersect pCurr maskAlw
+          fCurrAlwfs = D.intersect fCurr maskAlw
+      in pCurrAlwfs == fCurrAlwfs
+    alwShiftFcr = alwPushFcr
+    alwPopFcr = alwPushFcr
+
 -----------------------------------------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------
 -- present
 data PrInfo = PrInfo
   { prState     :: State -- current state
-  , prProps     :: Maybe (Input) -- Input is just a BitVector containing the current input: a set of AP ( note that L(opa) = PowerSet(AP))
+  , prProps     :: Maybe (Input) -- current input
   , prPopped    :: Maybe (State) -- state to pop
   , prNextProps :: Maybe (Input) -- next input
   }
@@ -1404,14 +1438,14 @@ isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
 
 -- determine whether a state is final for a formula, for the omega case
 isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
-isFinalW bitenc phi@(Until dir _ h) s          =   (not $ D.member bitenc (XNext dir phi) (stack s))
-                                                && (not $ D.member bitenc (XNext dir phi) (pending s))
-                                                && ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
-isFinalW bitenc phi@(XNext _ _) s              =  (not $ D.member bitenc phi (stack s)) && isFinalWFuture bitenc phi s
-isFinalW bitenc phi@(Eventually g) s           = (D.member bitenc g (current s)) || isFinalWFuture bitenc phi s
-isFinalW bitenc phi s = True
+isFinalW bitenc phi@(Until dir _ h) s  = (not $ D.member bitenc (XNext dir phi) (stack s))
+                                          && (not $ D.member bitenc (XNext dir phi) (pending s))
+                                          && ((not $ D.member bitenc phi  (current s)) || D.member bitenc h (current s))
+isFinalW bitenc phi@(XNext _ _) s      = (not $ D.member bitenc phi (stack s)) && isFinalWFuture bitenc phi s
+isFinalW bitenc phi@(Eventually g) s   = (D.member bitenc g (current s)) || isFinalWFuture bitenc phi s
+isFinalW bitenc phi@(Not (Always g)) s = (not $ D.member bitenc g (current s)) || isFinalWFuture bitenc phi s   
+isFinalW _ _ _ = True
                         
-
 isFinalWFuture :: BitEncoding -> Formula APType -> State -> Bool 
 isFinalWFuture bitenc phi s = (not $ D.member bitenc phi (pending s)) 
                            && (not $ D.member bitenc phi (current s))

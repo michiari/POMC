@@ -869,12 +869,6 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting Not Eventually"
-        , False
-        , Not $ Eventually (Atomic . Prop $ "thr")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-        )
       , ( "Rejecting Eventually"
         , False
         , Eventually (Atomic . Prop $ "thr")
@@ -936,13 +930,13 @@ unitTests = testGroup "Unit tests" [potlv2Tests1, potlv2Tests2]
         , map (S.singleton . Prop) ["call", "call"]
         )
       ]
-    -- this is for heavy tasks to test performances
+
     potlv2Tests2 = testGroup "PotlV2, Stack Trace Lang V2, second test group" $ map makeTestCase
-      [ ( "performance check"
-        , True
-        , formulaAfter [Down, Down, Down, Down, Down, Down] $  Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call", "call", "call" , "call", "call", "call", "call"]
+      [ ( "Rejecting Not Eventually"
+        , False
+        , Not $ Eventually (Atomic . Prop $ "ret")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "ret"]
         )
       ]
 
