@@ -12,18 +12,16 @@ module Pomc.SatUtil( SatState(..)
                    , initSIdGen
                    , wrapStates
                    , getSidProps
-           		   , debug
-           		   , freshPosId
-           		   , freshNegId 
-           		   ) where
+           		     , debug
+           		     , freshPosId
+           		     , freshNegId 
+           		     ) where
 
-import Pomc.Check ( EncPrecFunc)
 import Pomc.State(Input, State(..))
 import Pomc.Data (BitEncoding, extractInput)
 
 import Data.Maybe
 import qualified Control.Monad.ST as ST
-import Control.Monad (foldM, mapM)
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef') 
 
 import Data.Vector (Vector)

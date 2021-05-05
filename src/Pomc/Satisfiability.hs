@@ -16,9 +16,9 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.PotlV2(Formula(..))
 import Pomc.Check ( EncPrecFunc, makeOpa)
-import Pomc.State(Input, State(..), showState)
 import Pomc.PropConv (APType, convPropLabels)
-import Pomc.Data (BitEncoding, extractInput)
+import Pomc.State(Input)
+import Pomc.Data (BitEncoding)
 import Pomc.SatUtil
 import Pomc.SCCAlgorithm
 import Pomc.SetMap
@@ -29,7 +29,7 @@ import qualified Pomc.SetMap as SM
 import Control.Monad (foldM, forM_)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
+import Data.STRef (STRef)
 import Data.Maybe
 
 import Data.Set (Set)
@@ -212,15 +212,15 @@ isEmpty delta initials isFinal = not $
 ------------------------------------------------------------------------------------------
 isEmptyOmega  :: (SatState state, Ord state, Hashable state, Show state)
         => Delta state -- delta relation of an opa
-        -> [state] -- list of initial states of the opa
+        -> [state] -- list of initial states of the opba
         -> ([state] -> Bool) -- determine whether a list of states determine an accepting computation
         -> Bool 
-isEmptyOmega delta initials areFinal = not $
+isEmptyOmega delta initialOpbaStates areFinal = not $
   ST.runST (do
                newSig <- initSIdGen -- a variable to keep track of state to id relation
                emptySuppStarts <- SM.empty
                emptySuppEnds <- SM.empty
-               initialsId <- wrapStates newSig initials
+               initialsId <- wrapStates newSig initialOpbaStates
                initials <- V.mapM (\sId -> return (sId, Nothing)) initialsId
                gr <- newGraph initials
                let globals = WGlobals { sIdGen = newSig 
@@ -365,7 +365,7 @@ reachOmegaPop :: (SatState state, Ord state, Hashable state, Show state)
          -> (StateId state, Stack state)
          -> state
          -> ST s Bool
-reachOmegaPop globals delta (q,g) qState =
+reachOmegaPop globals delta (_,g) qState =
   let doPop p =
         let r = snd . fromJust $ g
             closeSupports sb g'
@@ -394,11 +394,11 @@ reachTransition :: (SatState state, Ord state, Hashable state, Show state)
                  -> (StateId state, Stack state)
                  -> ST s Bool
 reachTransition body areFinal globals delta from to = 
-  let insert False =  insertInternal (graph globals) from to
-      insert True  =  insertSummary (graph globals) from to $ fromJust body
+  let insertEdge False =  insertInternal (graph globals) from to
+      insertEdge True  =  insertSummary (graph globals) from to $ fromJust body
   in do 
     alrDisc <- alreadyDiscovered (graph globals) to
-    e <- insert $ isJust body 
+    e <- insertEdge $ isJust body 
     if alrDisc 
       then do 
         alrVis <- alreadyVisited (graph globals) to

@@ -54,8 +54,6 @@ import Data.Foldable (toList)
 
 import qualified Debug.Trace as DT
 
-
-
 import GHC.Generics (Generic)
 
 import Data.Hashable

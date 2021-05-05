@@ -16,10 +16,8 @@ module Pomc.SetMap ( SetMap
 import Prelude hiding (lookup)
 import Pomc.SatUtil
 import Control.Monad(mapM, mapM_)
-import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
-import Data.Maybe
+import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 
 import Data.Set (Set)
 import qualified Data.Set as Set

@@ -32,7 +32,6 @@ import Pomc.GStack(GStack)
 import qualified Pomc.GStack as GS
 
 import Control.Monad ( forM_, forM,foldM, mapM) 
-import Control.Monad.ST
 import qualified Control.Monad.ST as ST
 
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef') 
@@ -136,7 +135,7 @@ updateSummaryBody newId idents SummaryBody{firstNode = f, lastNode = l, bodyEdge
                 then newId 
                 else n
       update Internal{to = t} = Internal{ to = sub t}
-      update Summary{to =t, body = b} = Summary{to = sub t, body = Set.map update b}
+      update Summary{to =t, body = summB} = Summary{to = sub t, body = Set.map update summB}
   in SummaryBody{firstNode = sub f, lastNode= sub l, bodyEdges = Set.map update b}
 
 -- unsafe
@@ -172,9 +171,9 @@ alreadyDiscovered graph key = do
       inSet <- readSTRef (initials graph)
       return $ not $ Set.member (fromJust ident, True) inSet
     else do 
-      ident <- freshPosId $ idSeq graph
-      let sn = SingleNode{getgnId = ident,iValue = 0, node = key, edges = Set.empty}
-      DHT.insert (nodeToGraphNode graph) key ident sn;
+      newIdent <- freshPosId $ idSeq graph
+      let sn = SingleNode{getgnId = newIdent,iValue = 0, node = key, edges = Set.empty}
+      DHT.insert (nodeToGraphNode graph) key newIdent sn;
       return False
 
 -- unsafe
@@ -216,13 +215,13 @@ updateSCCInt :: (SatState state, Eq state, Hashable state, Show state)
                 => Graph s state 
                 -> Int 
                 -> ST.ST s ()
-updateSCCInt graph iValue =  do 
+updateSCCInt graph iVal =  do 
   topElemB <- GS.peek (bStack graph)
-  if (iValue  < 0) || (iValue  >=  topElemB) 
+  if (iVal  < 0) || (iVal  >=  topElemB) 
     then  return ()
     else do
       _ <- GS.pop (bStack graph);
-      updateSCCInt graph iValue
+      updateSCCInt graph iVal
 
 -- unsafe
 discoverSummaryBody :: (SatState state, Eq state, Hashable state, Show state) 
@@ -424,11 +423,11 @@ visitGraphFrom graph sbUpdater areFinal e gn  = do
   success <-  foldM (\acc nextEdge -> if acc
                                         then return True 
                                         else do 
-                                          gn <- DHT.lookupApply (nodeToGraphNode graph) (to nextEdge) id
-                                          if (iValue gn) == 0 
-                                            then visitGraphFrom graph sbUpdater areFinal (Just nextEdge) gn
+                                          nextGn <- DHT.lookupApply (nodeToGraphNode graph) (to nextEdge) id
+                                          if (iValue nextGn) == 0 
+                                            then visitGraphFrom graph sbUpdater areFinal (Just nextEdge) nextGn
                                             else  do 
-                                              updateSCCInt graph (iValue gn)
+                                              updateSCCInt graph (iValue nextGn)
                                               return False)                                          
                     False
                     (edges gn)
