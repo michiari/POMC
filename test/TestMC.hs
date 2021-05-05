@@ -2,11 +2,11 @@ module TestMC (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import OPMs (stlPrecRelV2, stlPrecV2sls)
 import qualified TestSat (cases)
 import EvalFormulas (ap, formulas)
 import Pomc.Prop (Prop(..))
-import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
-import Pomc.PotlV2 (Formula(..), Dir(..))
+import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (ExplicitOpa(..), modelCheckGen)
 
 import Data.Set (Set)
@@ -17,7 +17,8 @@ tests = testGroup "ModelChecking.hs Tests" [sasBaseTests, sasEvalTests,
                                             lRBaseTests, lREvalTests,
                                             inspectionTest, overflowTest,
                                             jensenTests, jensenFullTests,
-                                            stackExcTests, stackExcSwapTests]
+                                            stackExcTests, stackExcSwapTests,
+                                            synthBaseTests, synthEvalTests]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA MC Base Tests" $
@@ -27,6 +28,13 @@ sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
   map (makeTestCase simpleExc) (zip EvalFormulas.formulas expectedSasEval)
 
+synthBaseTests :: TestTree
+synthBaseTests = testGroup "SYNTH OPA: MC Base Tests" $
+  map (makeTestCase synth) (zip TestSat.cases expectedSasBase)
+
+synthEvalTests :: TestTree
+synthEvalTests = testGroup "SYNTH OPA MC Eval Tests" $
+  map (makeTestCase synth) (zip EvalFormulas.formulas expectedSasEval)
 
 lRBaseTests :: TestTree
 lRBaseTests = testGroup "LargerRec OPA MC Base Tests" $
@@ -41,7 +49,11 @@ makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
 makeTestCase opa ((name, phi, _, _), expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ modelCheckGen False phi opa @?= expected
+  let (sat, trace) = modelCheckGen phi opa
+      debugMsg False tr = "Expected True, got False. Counterexample:\n"
+        ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
+      debugMsg True _ = "Expected False, got True."
+  in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
 
 
 makeInputSet :: (Ord a) => [a] -> Set (Prop a)
@@ -507,7 +519,7 @@ jensenFull = ExplicitOpa
 
 
 stackExcTests :: TestTree
-stackExcTests = testGroup "Exception Safety Unsafe Stack" [stackExcConsistent
+stackExcTests = testGroup "Exception Safety Unsafe Stack" [ stackExcConsistent
                                                           , stackExcNeutral
                                                           , stackExcNeutralS]
 
@@ -520,7 +532,7 @@ stackExcConsistent = makeTestCase stackExc
                        `Or` XBack Up (ap "tainted"))
                 `And` XBack Up (ap "Stack::push(const T&)" `Or` ap "Stack::pop()")))
    , []
-   , True)
+   , False)
   , False)
 
 stackExcNeutral :: TestTree
@@ -870,3 +882,36 @@ stackExcSwap = ExplicitOpa
       , (75, 58, [59])
       ]
   }
+
+
+synth :: ExplicitOpa Word String
+synth = ExplicitOpa
+        { sigma = (stlPrecV2sls, map Prop ["pa", "pb", "pc", "perr"])
+        , precRel = stlPrecRelV2
+        , initials = [0]
+        , finals = [1]
+        , deltaPush =
+          [ (0,makeInputSet [ "call", "pa"],[6])
+          , (4,makeInputSet [ "exc"],[1])
+          , (6,makeInputSet [ "han"],[7])
+          , (7,makeInputSet [ "call", "pb"],[12])
+          , (10,makeInputSet [ "exc"],[1])
+          , (12,makeInputSet [ "call", "pc"],[15,17])
+          , (15,makeInputSet [ "exc"],[1])
+          , (17,makeInputSet [ "call", "pc"],[15,17])
+          , (21,makeInputSet [ "call", "perr"],[22])
+          , (24,makeInputSet [ "exc"],[1])
+          , (27,makeInputSet [ "call", "perr"],[22])
+          ]
+        , deltaShift =
+          [ (2,makeInputSet [ "pa", "ret"],[3])
+          , (4,makeInputSet [ "exc"],[5])
+          , (8,makeInputSet [ "pb", "ret"],[9])
+          , (10,makeInputSet [ "exc"],[11])
+          , (13,makeInputSet [ "pc", "ret"],[14])
+          , (15,makeInputSet [ "exc"],[16])
+          , (22,makeInputSet [ "perr", "ret"],[23])
+          , (24,makeInputSet [ "exc"],[25])
+          ]
+        , deltaPop = [(1,4,[1]),(1,10,[1]),(1,15,[1]),(1,24,[1]),(3,0,[1]),(5,6,[21]),(9,7,[2]),(10,7,[4]),(14,12,[8]),(14,17,[13]),(15,12,[10]),(15,17,[15]),(23,21,[27]),(23,27,[2]),(24,21,[4]),(24,27,[4])]
+        }

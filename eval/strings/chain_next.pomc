@@ -5,15 +5,15 @@
  * - all exceptions terminate more than one call.
  */
 
-prec = call < call, call = ret, call < han, call > exc,
-       ret > call,  ret > ret,  ret > han,  ret > exc,
-       han < call,  han > ret,  han < han,  han = exc,
-       exc > call,  exc > ret,  exc > han,  exc > exc;
-
 formulas = XNd perr,
            PNd (PNd (call And (XNu exc))),
            PNd (han And (XNd (exc And (XBu call)))),
            G (exc --> XBu call);
+
+prec = call < call, call = ret, call < han, call > exc,
+       ret > call,  ret > ret,  ret > han,  ret > exc,
+       han < call,  han > ret,  han < han,  han = exc,
+       exc > call,  exc > ret,  exc > han,  exc > exc;
 
 strings = call han call call call exc call ret call ret ret,
           (call pa) han (call pb) (call pc) (call pc) exc (call perr) (ret perr) (call perr) (ret perr) (ret pa),

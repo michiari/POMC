@@ -1,13 +1,11 @@
 {- |
    Module      : Pomc.Util
-   Copyright   : 2020 Davide Bergamaschi and Michele Chiari
+   Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Util ( unsafeLookup
-                 , lookupOrDefault
-                 , any'
+module Pomc.Util ( any'
                  , iff
                  , implies
                  , xor
@@ -16,23 +14,18 @@ module Pomc.Util ( unsafeLookup
                  , timeAction
                  , timeToString
                  , parMap
+                 , prettyTrace
                  ) where
 
+import Pomc.Prop (Prop(..))
+
+import qualified Data.Set as S
 import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
 import Control.Parallel.Strategies(using, parList, rdeepseq, rseq)
 import Control.DeepSeq(NFData(..))
 
 
-unsafeLookup :: Eq a => a -> [(a, b)] -> b
-unsafeLookup k al = case lookup k al of
-  Just v  ->  v
-  Nothing ->  error "Failed lookup!"
-
-lookupOrDefault :: Eq a => a -> [(a,b)] -> b -> b
-lookupOrDefault k al d = case lookup k al of
-  Just v  ->  v
-  Nothing ->  d
 
 any' :: Foldable t => (a -> Bool) -> t a -> Bool
 any' p = foldl' (\z x -> z || p x) False
@@ -67,3 +60,11 @@ timeToString = secs
 -- a map where the function is applied (with reduction to normal form) to all the elements of the list in parallel
 parMap :: (NFData b) => (a -> b) -> [a] -> [b]
 parMap f xs = map f xs `using` parList rdeepseq
+
+
+prettyTrace :: a -> a -> [(s, S.Set (Prop a))] -> [(s, [a])]
+prettyTrace end summary trace = map (\(q, b) -> (q, if S.null b
+                                                    then [summary]
+                                                    else map unprop $ S.toList b)) trace
+  where unprop End = end
+        unprop (Prop p) = p

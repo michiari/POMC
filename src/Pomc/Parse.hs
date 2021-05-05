@@ -2,29 +2,30 @@
 
 {- |
    Module      : Pomc.Parse
-   Copyright   : 2020 Davide Bergamaschi
+   Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari
    License     : MIT
-   Maintainer  : Davide Bergamaschi
+   Maintainer  : Michele Chiari
 -}
 
 module Pomc.Parse ( potlv2P
                   , checkRequestP
                   , spaceP
                   , CheckRequest(..)
+                  , includeP
                   ) where
 
-import Pomc.Prec (Prec(..), StructPrecRel, extractSLs)
+import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
-import qualified Pomc.PotlV2 as P2
-import Pomc.Example (stlPrecRelV2Text)
+import qualified Pomc.Potl as P
+import Pomc.MiniProc (Program)
+import Pomc.MiniProcParse (programP)
 import Pomc.ModelChecker (ExplicitOpa(..), extractALs)
 
 import Data.Void (Void)
-
-import Data.Text as T
-
+import Data.Text
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Maybe (isNothing, isJust, fromJust)
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -33,13 +34,14 @@ import Control.Monad.Combinators.Expr
 
 type Parser = Parsec Void Text
 
-type P2Formula = P2.Formula Text
+type PFormula = P.Formula Text
 type PropString = [Set (Prop Text)]
 
-data CheckRequest = CheckRequest { creqPrecRels :: [StructPrecRel Text]
-                                 , creqFormulas :: [P2Formula]
+data CheckRequest = CheckRequest { creqPrecRels :: Maybe [StructPrecRel Text]
+                                 , creqFormulas :: [PFormula]
                                  , creqStrings  :: Maybe [PropString]
                                  , creqOpa :: Maybe (ExplicitOpa Word Text)
+                                 , creqMiniProc :: Maybe Program
                                  }
 
 spaceP :: Parser ()
@@ -68,9 +70,9 @@ allPropChars = choice [ alphaNumChar
                       , char '_', char ';']
 
 propP :: Parser (Prop Text)
-propP = choice [ End           <$  symbolP "#"
-               , Prop . T.pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
-               , Prop . T.pack <$> quotesP (some allPropChars <?> "atomic proposition")
+propP = choice [ End         <$  symbolP "#"
+               , Prop . pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
+               , Prop . pack <$> quotesP (some allPropChars <?> "atomic proposition")
                ]
 
 propSetP :: Parser (Set (Prop Text))
@@ -93,15 +95,15 @@ precRelP = do sb1  <- propP
               sb2  <- propP
               return (sb1, sb2, prec)
 
-potlv2P :: Parser P2Formula
+potlv2P :: Parser PFormula
 potlv2P = makeExprParser termParser operatorTable
-  where atomicP :: Parser P2Formula
-        atomicP = P2.Atomic <$> propP
+  where atomicP :: Parser PFormula
+        atomicP = P.Atomic <$> propP
 
-        trueP :: Parser P2Formula
-        trueP = P2.T <$ symbolP "T"
+        trueP :: Parser PFormula
+        trueP = P.T <$ symbolP "T"
 
-        termParser :: Parser P2Formula
+        termParser :: Parser PFormula
         termParser = choice
           [ trueP
           , atomicP
@@ -112,52 +114,52 @@ potlv2P = makeExprParser termParser operatorTable
         binaryR name f = InfixR (f <$ symbolP name)
         prefix name f = Prefix (f <$ symbolP name)
 
-        operatorTable :: [[Operator Parser P2Formula]]
+        operatorTable :: [[Operator Parser PFormula]]
         operatorTable =
-          [ [ prefix "Not" P2.Not
-            , prefix "~"   P2.Not
+          [ [ prefix "Not" P.Not
+            , prefix "~"   P.Not
 
-            , prefix "PNd" (P2.PNext P2.Down)
-            , prefix "PNu" (P2.PNext P2.Up)
-            , prefix "PBd" (P2.PBack P2.Down)
-            , prefix "PBu" (P2.PBack P2.Up)
+            , prefix "PNd" (P.PNext P.Down)
+            , prefix "PNu" (P.PNext P.Up)
+            , prefix "PBd" (P.PBack P.Down)
+            , prefix "PBu" (P.PBack P.Up)
 
-            , prefix "XNd" (P2.XNext P2.Down)
-            , prefix "XNu" (P2.XNext P2.Up)
-            , prefix "XBd" (P2.XBack P2.Down)
-            , prefix "XBu" (P2.XBack P2.Up)
+            , prefix "XNd" (P.XNext P.Down)
+            , prefix "XNu" (P.XNext P.Up)
+            , prefix "XBd" (P.XBack P.Down)
+            , prefix "XBu" (P.XBack P.Up)
 
-            , prefix "HNd" (P2.HNext P2.Down)
-            , prefix "HNu" (P2.HNext P2.Up)
-            , prefix "HBd" (P2.HBack P2.Down)
-            , prefix "HBu" (P2.HBack P2.Up)
+            , prefix "HNd" (P.HNext P.Down)
+            , prefix "HNu" (P.HNext P.Up)
+            , prefix "HBd" (P.HBack P.Down)
+            , prefix "HBu" (P.HBack P.Up)
 
-            , prefix "Eventually" P2.Eventually
-            , prefix "F"          P2.Eventually
-            , prefix "Always" P2.Always
-            , prefix "G"      P2.Always
+            , prefix "Eventually" P.Eventually
+            , prefix "F"          P.Eventually
+            , prefix "Always" P.Always
+            , prefix "G"      P.Always
             ]
-          , [ binaryR "Ud" (P2.Until P2.Down)
-            , binaryR "Uu" (P2.Until P2.Up)
-            , binaryR "Sd" (P2.Since P2.Down)
-            , binaryR "Su" (P2.Since P2.Up)
+          , [ binaryR "Ud" (P.Until P.Down)
+            , binaryR "Uu" (P.Until P.Up)
+            , binaryR "Sd" (P.Since P.Down)
+            , binaryR "Su" (P.Since P.Up)
 
-            , binaryR "HUd" (P2.HUntil P2.Down)
-            , binaryR "HUu" (P2.HUntil P2.Up)
-            , binaryR "HSd" (P2.HSince P2.Down)
-            , binaryR "HSu" (P2.HSince P2.Up)
+            , binaryR "HUd" (P.HUntil P.Down)
+            , binaryR "HUu" (P.HUntil P.Up)
+            , binaryR "HSd" (P.HSince P.Down)
+            , binaryR "HSu" (P.HSince P.Up)
             ]
-          , [ binaryL "And" P2.And
-            , binaryL "&&"  P2.And
+          , [ binaryL "And" P.And
+            , binaryL "&&"  P.And
             ]
-          , [ binaryL "Or" P2.Or
-            , binaryL "||" P2.Or
-            , binaryL "Xor" P2.Xor
+          , [ binaryL "Or" P.Or
+            , binaryL "||" P.Or
+            , binaryL "Xor" P.Xor
             ]
-          , [ binaryR "Implies" P2.Implies
-            , binaryR "-->"     P2.Implies
-            , binaryR "Iff"  P2.Iff
-            , binaryR "<-->" P2.Iff
+          , [ binaryR "Implies" P.Implies
+            , binaryR "-->"     P.Implies
+            , binaryR "Iff"  P.Iff
+            , binaryR "<-->" P.Iff
             ]
           ]
 
@@ -187,7 +189,7 @@ deltaPopP = parensP deltaRel `sepBy1` symbolP ","
                       ps <- stateListP
                       return (q, s, ps)
 
-formulaSectionP :: Parser [P2Formula]
+formulaSectionP :: Parser [PFormula]
 formulaSectionP = do _ <- symbolP "formulas"
                      _ <- symbolP "="
                      formulas <- formulasP
@@ -206,10 +208,10 @@ stringSectionP = do _ <- symbolP "strings"
 precSectionP :: Parser [StructPrecRel Text]
 precSectionP = do _ <- symbolP "prec"
                   _ <- symbolP "="
-                  precRels <- (stlPrecRelV2Text <$ symbolP "Mcall") <|> precRelsP
+                  precRels <- precRelsP
                   _ <- symbolP ";"
                   return precRels
-  where precRelsP = precRelP `sepBy1` symbolP ","
+  where precRelsP = precRelP `sepBy1` symbolP "," >>= return . addEnd
 
 opaSectionP :: Parser (ExplicitOpa Word Text)
 opaSectionP = do
@@ -237,13 +239,22 @@ opaSectionP = do
   _ <- symbolP ";"
   return (ExplicitOpa ([], []) [] opaInitials opaFinals opaDeltaPush opaDeltaShift opaDeltaPop)
 
+progSectionP :: Parser Program
+progSectionP = do
+  _ <- symbolP "program"
+  _ <- symbolP ":"
+  programP
+
 checkRequestP :: Parser CheckRequest
 checkRequestP = do
-  prs <- precSectionP
   fs  <- formulaSectionP
+  prs <- optional precSectionP
   pss <- optional stringSectionP
   opa <- optional opaSectionP
-  return (CheckRequest prs fs pss (fullOpa opa prs))
+  prog <- optional progSectionP
+  if isNothing prs && (isJust pss || isJust opa)
+    then fail "If a string or an OPA is supplied, an OPM must also be specified."
+    else return (CheckRequest prs fs pss (fullOpa opa (fromJust prs)) prog)
 
 fullOpa :: Maybe (ExplicitOpa Word Text)
         -> [StructPrecRel Text]
@@ -263,3 +274,12 @@ fullOpa (Just opa) prs = Just $ ExplicitOpa
               (S.fromList (extractALs $ deltaPush opa) -- all the labels defined by the push relation
                `S.union` S.fromList (extractALs $ deltaShift opa)) -- all the labels defined by the shift relation
               `S.difference` (S.fromList sls) -- only normal labels, remove structural labels
+
+
+includeP :: Parser String
+includeP = do
+  _ <- symbolP "include"
+  _ <- symbolP "="
+  path <- quotesP . some $ anySingleBut '"'
+  _ <- symbolP ";"
+  return path

@@ -1,0 +1,14 @@
+formulas = ~ (T Ud (call And pb And HNu (T HUu (call And pb))));
+
+program:
+var foo;
+
+pa() {
+  foo = true;
+  while (foo) {
+    pb();
+    foo = false;
+  }
+}
+
+pb() {}

@@ -3,12 +3,12 @@
  * without calling pc in the meantime.
  */
 
+formulas = G ((call And pb) --> (~ pc) HUu perr);
+
 prec = call < call, call = ret, call < han, call > exc,
        ret > call,  ret > ret,  ret > han,  ret > exc,
        han < call,  han > ret,  han < han,  han = exc,
        exc > call,  exc > ret,  exc > han,  exc > exc;
-
-formulas = G ((call And pb) --> (~ pc) HUu perr);
 
 strings = call call ret (call pb) (ret pb) (call pb) (ret pb) (call perr) (ret perr) (call pc) (ret pc) ret,
           call call ret (call pb) (ret pb) (call pc) (ret pc) (call perr) (ret perr) (call pc) (ret pc) ret,

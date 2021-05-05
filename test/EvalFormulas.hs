@@ -1,6 +1,13 @@
+{- |
+   Module      : EvalFormulas
+   Copyright   : 2021 Michele Chiari
+   License     : MIT
+   Maintainer  : Michele Chiari
+-}
+
 module EvalFormulas (ap, formulas) where
 
-import Pomc.PotlV2 (Formula(..), Dir(..), Prop(..))
+import Pomc.Potl (Formula(..), Dir(..), Prop(..))
 
 type TestCase = (String, Formula String, [String], Bool)
 

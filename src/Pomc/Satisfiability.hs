@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Satisfiability
-   Copyright   : 2020 Michele Chiari
+   Copyright   : 2020-2021 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
@@ -10,21 +10,21 @@ module Pomc.Satisfiability ( Delta(..)
                            , isEmptyOmega
                            , isSatisfiable
                            , isSatisfiableGen
+                           , toInputTrace
+                           , showTrace
                            ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.PotlV2(Formula(..))
+import Pomc.Potl (Formula)
 import Pomc.Check ( EncPrecFunc, makeOpa)
 import Pomc.PropConv (APType, convPropLabels)
-import Pomc.State(Input)
-import Pomc.Data (BitEncoding)
+import Pomc.State(Input, State(..), showState, showAtom)
+import Pomc.Encoding (PropSet, BitEncoding, extractInput, decodeInput)
 import Pomc.SatUtil
 import Pomc.SCCAlgorithm
 import Pomc.SetMap
 import qualified Pomc.SetMap as SM
-
-
 
 import Control.Monad (foldM, forM_)
 import Control.Monad.ST (ST)
@@ -42,7 +42,6 @@ import qualified Data.HashTable.Class as H
 import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-
 
 -- global variables in the algorithms
 data Globals s state = FGlobals
@@ -66,38 +65,77 @@ data Delta state = Delta
   , deltaPop :: state -> state -> [state] -- deltapop relation
   }
 
--- implementation of the reachability algorithm, as described in the notes
+-- Begin debugging stuff
+data TraceType = Push | Shift | Pop | Summary | Found deriving (Eq, Show)
+type TraceId state = [(TraceType, StateId state, Stack state)]
+type Trace state = [(TraceType, state, Maybe (Input, state))]
+
+unIdTrace :: TraceId state -> Trace state
+unIdTrace trace =
+  map (\(moveType, q, g) ->
+         (moveType, getState q, fmap (\(b, r) -> (b, getState r)) g)) trace
+
+toInputTrace :: (SatState state) => BitEncoding -> Trace state -> [(state, PropSet)]
+toInputTrace be trace = foldr foldInput [] trace
+  where foldInput (moveType, q, _) rest
+          | moveType == Push || moveType == Shift =
+            (q, stateToInput q) : rest
+          | moveType == Summary =
+            (q, Set.empty) : rest
+          | moveType == Found =
+            (q, Set.singleton End) : rest
+          | otherwise = rest
+        stateToInput q =
+          (decodeInput be) . (extractInput be) . current . getSatState $ q
+
+showTrace :: (SatState state, Show state, Show a)
+          => BitEncoding
+          -> (APType -> a)
+          -> Trace state
+          -> String
+showTrace be transAP trace = concatMap showMove trace
+  where showMove (moveType, q, g) =
+          show moveType     ++ ":\nRaw State:\n" ++
+          show q ++ "\nCheck State:\n" ++
+          showState be transAP (getSatState q) ++ "\nStack:\n" ++
+          showStack g ++ "\n\n"
+        showStack (Just (b, r)) =
+          showAtom be transAP b ++ "\n" ++
+          show r ++ "\n" ++
+          showState be transAP (getSatState r)
+        showStack Nothing = "Bottom"
+-- End debugging stuff
+
 reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool) -- is the state as desired?
-      -> (Stack state-> Bool) -- is the stack as desired?
-      -> Globals s state -- global variables of the algorithm
+      -> (Stack state -> Bool) -- is the stack as desired?
+      -> Globals s state -- globals variables of the algorithm 
       -> Delta state -- delta relation of the opa
       -> StateId state -- current state
-      -> Stack state -- stack symbol
-      -> ST s Bool
-reach isDestState isDestStack globals delta q g = do
+      -> Stack state -- current stack symbol
+      -> TraceId state
+      -> ST s (Bool, TraceId state)
+reach isDestState isDestStack globals delta q g trace = do
   alreadyVisited <- SM.member (visited globals) q g
   if alreadyVisited
-    then return False 
+    then return (False, [])
     else do
-    debug ("Visiting: " ++ show q ++ "\ng = " ++ show g ++ "\n\n\n" ) $ SM.insert (visited globals) q g 
-    let be = bitenc delta
-        qProps = getSidProps be q -- atomic propositions holding in the state (the input)
-        qState = getState q 
+    SM.insert (visited globals) q g
+    let qState = getState q
+        precRel = (prec delta) (fst . fromJust $ g) (current . getSatState $ qState)
         cases
-          | (isDestState q) && (isDestStack g) =
-            debug ("End: q = " ++ show q ++ "\ng = " ++ show g ++ "\n\n\n") $ return True
+          | (isDestState q) && (isDestStack g) = return (True, (Found, q, g) : trace)
 
-          | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) =
-            reachPush isDestState isDestStack globals delta q g qState qProps
+          | (isNothing g) || precRel == Just Yield =
+            reachPush isDestState isDestStack globals delta q g qState trace
 
-          | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) =
-            reachShift isDestState isDestStack globals delta q g qState qProps
+          | precRel == Just Equal =
+            reachShift isDestState isDestStack globals delta q g qState trace
 
-          | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
-            reachPop isDestState isDestStack globals delta q g qState
+          | precRel == Just Take =
+            reachPop isDestState isDestStack globals delta q g qState trace
 
-          | otherwise = return False
+          | otherwise = return (False, [])
     cases
 
 
@@ -109,28 +147,25 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
           -> StateId state
           -> Stack state
           -> state
-          -> Input
-          -> ST s Bool
-reachPush isDestState isDestStack globals delta q g qState qProps =
-  let doPush True _ = return True
-      doPush False p = do
+          -> TraceId  state
+          -> ST s (Bool, TraceId state)
+reachPush isDestState isDestStack globals delta q g qState trace =
+  let qProps = getStateProps (bitenc delta) qState
+      doPush res@(True, _) _ = return res
+      doPush (False, _) p = do
         SM.insert (suppStarts globals) q g
-        debug ("Push: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-          reach isDestState isDestStack globals delta p (Just (getSidProps (bitenc delta) q, q))
+        reach isDestState isDestStack globals delta p (Just (qProps, q)) ((Push, q, g) : trace)
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
-    pushReached <- V.foldM' doPush False newStates
+    res@(pushReached, _) <- V.foldM' doPush (False, []) newStates
     if pushReached
-      then return True
+      then return res
       else do
       currentSuppEnds <- SM.lookup (suppEnds globals) q
-      foldM (\acc s -> if acc
-                       then return True
-                       else debug ("Push (summary): q = " ++ show q
-                                   ++ "\ng = " ++ show g
-                                   ++ "\ns = " ++ show s) $
-                            reach isDestState isDestStack globals delta s g)
-        False
+      foldM (\acc s -> if fst acc
+                       then return acc
+                       else reach isDestState isDestStack globals delta s g ((Summary, q, g) : trace))
+        (False, [])
         currentSuppEnds
 
 
@@ -142,16 +177,16 @@ reachShift :: (SatState state, Eq state, Hashable state, Show state)
            -> StateId state
            -> Stack state
            -> state
-           -> Input
-           -> ST s Bool
-reachShift isDestState isDestStack globals delta q g qState qProps =
-  let doShift True _ = return True
-      doShift False p =
-        debug ("Shift: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-        reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g)))
+           -> TraceId state
+           -> ST s (Bool, TraceId state)
+reachShift isDestState isDestStack globals delta q g qState trace =
+  let qProps = getStateProps (bitenc delta) qState
+      doShift res@(True, _) _ = return res
+      doShift (False, _) p =
+        reach isDestState isDestStack globals delta p (Just (qProps, (snd . fromJust $ g))) ((Shift, q, g) : trace)
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
-    V.foldM' doShift False newStates
+    V.foldM' doShift (False, []) newStates
 
 
 reachPop :: (SatState state, Eq state, Hashable state, Show state)
@@ -162,51 +197,52 @@ reachPop :: (SatState state, Eq state, Hashable state, Show state)
          -> StateId state
          -> Stack state
          -> state
-         -> ST s Bool
-reachPop isDestState isDestStack globals delta q g qState =
-  let doPop True _ = return True
-      doPop False p =
+         -> TraceId state
+         -> ST s (Bool, TraceId state)
+reachPop isDestState isDestStack globals delta q g qState trace =
+  let doPop res@(True, _) _ = return res
+      doPop (False, _) p =
         let r = snd . fromJust $ g
-            closeSupports True _ = return True
-            closeSupports False g'
+            closeSupports res@(True, _) _ = return res
+            closeSupports (False, _) g'
               | isNothing g' ||
-                ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
-              = debug ("Pop: q = " ++ show q ++ "\ng = " ++ show g ++ "\n") $
-                reach isDestState isDestStack globals delta p g'
-              | otherwise = return False
+                ((prec delta) (fst . fromJust $ g') (current . getSatState . getState $ r)) == Just Yield
+              = reach isDestState isDestStack globals delta p g' ((Pop, q, g) : trace)
+              | otherwise = return (False, [])
         in do
           SM.insert (suppEnds globals) r p
           currentSuppStarts <- SM.lookup (suppStarts globals) r
-          foldM closeSupports False currentSuppStarts
+          foldM closeSupports (False, []) currentSuppStarts
+
   in do
     newStates <- wrapStates (sIdGen globals) $
                  (deltaPop delta) qState (getState . snd . fromJust $ g)
-    V.foldM' doPop False newStates
+    V.foldM' doPop (False, []) newStates
 
 -- check the emptiness of the Language expressed by an automaton
 isEmpty :: (SatState state, Eq state, Hashable state, Show state)
-        => Delta state -- delta relation of an opa
+        => Delta state -- delta relation of the opa
         -> [state] -- list of initial states of the opa
         -> (state -> Bool) -- determine whether a state is final
-        -> Bool
-isEmpty delta initials isFinal = not $
-  ST.runST (do
-               newSig <- initSIdGen -- a variable to keep track of state to id relation
-               emptyVisited <- SM.empty
-               emptySuppStarts <- SM.empty
-               emptySuppEnds <- SM.empty
-               let globals = FGlobals { sIdGen = newSig -- a variable to keep track of state to id realtion
-                                     , visited = emptyVisited
-                                     , suppStarts = emptySuppStarts
-                                     , suppEnds = emptySuppEnds
-                                     }
-                 in do
-                 initialsId <- wrapStates newSig initials
-                 foldM (\acc q -> if acc
-                                  then return True
-                                  else (reach (isFinal . getState) isNothing globals delta q Nothing))
-                   False
-                   initialsId)
+        -> (Bool, Trace state)
+isEmpty delta initials isFinal =
+  let (accepting, trace) = ST.runST $ do
+        newSig <- initSIdGen
+        emptyVisited <- emptySM
+        emptySuppStarts <- emptySM
+        emptySuppEnds <- emptySM
+        let globals = Globals { sIdGen = newSig
+                              , visited = emptyVisited
+                              , suppStarts = emptySuppStarts
+                              , suppEnds = emptySuppEnds
+                              }
+        initialsId <- wrapStates newSig initials
+        foldM (\acc q -> if fst acc
+                         then return acc
+                         else reach (isFinal . getState) isNothing globals delta q Nothing [])
+          (False, [])
+          initialsId
+  in (not accepting, unIdTrace $ reverse trace)
 
 
 ------------------------------------------------------------------------------------------
@@ -214,8 +250,8 @@ isEmptyOmega  :: (SatState state, Ord state, Hashable state, Show state)
         => Delta state -- delta relation of an opa
         -> [state] -- list of initial states of the opba
         -> ([state] -> Bool) -- determine whether a list of states determine an accepting computation
-        -> Bool 
-isEmptyOmega delta initialOpbaStates areFinal = not $
+        -> (Bool, Trace state)
+isEmptyOmega delta initialOpbaStates areFinal = (not $
   ST.runST (do
                newSig <- initSIdGen -- a variable to keep track of state to id relation
                emptySuppStarts <- SM.empty
@@ -229,7 +265,7 @@ isEmptyOmega delta initialOpbaStates areFinal = not $
                                       , graph = gr
                                       }
                 in searchPhase areFinal globals delta
-            )
+            ), [])
 
 searchPhase :: (SatState state, Ord state, Hashable state, Show state) 
                   => ([state] -> Bool)
@@ -418,29 +454,31 @@ isSatisfiable :: Bool
               -> Formula APType
               -> ([Prop APType], [Prop APType])
               -> [StructPrecRel APType]
-              -> Bool
+              -> (Bool, [PropSet])
 isSatisfiable isOmega phi ap sprs =
   let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) = makeOpa phi isOmega ap sprs
       delta = Delta
         { bitenc = be
         , prec = precf
-        , deltaPush = dPush
-        , deltaShift = dShift
+        , deltaPush = (\q _ -> dPush q Nothing)
+        , deltaShift = (\q _ -> dShift q Nothing)
         , deltaPop = dPop
         }
       isFinalOmega states = all (\f -> any (isFinal f) states) $ Set.toList cl
-  in if isOmega 
-        then not $ isEmptyOmega delta initials isFinalOmega
-        else not $ isEmpty delta initials (isFinal T)
+      (empty, trace) = if isOmega 
+        				then isEmptyOmega delta initials isFinalOmega
+        				else isEmpty delta initials (isFinal T)
 
-
+  in (not empty, map snd $ toInputTrace be trace)
+ 
 -- parametric with respect the type of the propositions
-isSatisfiableGen :: ( Ord a)
+isSatisfiableGen :: (Ord a)
                  => Bool 
                  -> Formula a
                  -> ([Prop a], [Prop a])
                  -> [StructPrecRel a]
-                 -> Bool
+                 -> (Bool, [Set (Prop a)])
 isSatisfiableGen isOmega phi ap precf =
-  let (tphi, tap, tprecr) = convPropLabels phi ap precf
-  in isSatisfiable isOmega tphi tap tprecr
+  let (tphi, tap, tprecr, transInv) = convPropLabels phi ap precf
+      (sat, trace) = isSatisfiable isOmega tphi tap tprecr
+  in (sat, map (Set.map (fmap transInv)) trace)

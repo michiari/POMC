@@ -27,12 +27,13 @@ def exec_bench(fname):
 
     time_match = time_pattern.search(raw_stdout)
     mem_match = mem_pattern.search(raw_stderr)
-    result_match = result_pattern.search(raw_stdout)
+    result_match = [r[0] for r in result_pattern.findall(raw_stdout)]
     states_match = states_pattern.search(raw_stdout)
     memgc_match = memgc_pattern.search(raw_stderr)
+    result = 'False' if 'False' in result_match else 'True'
     return (int(states_match.group(1)), float(time_match.group(1)),
             int(mem_match.group(1)), int(memgc_match.group(1)),
-            result_match.group(1))
+            result)
 
 def iter_bench(fname, iters):
     get_column = lambda rows, i: [r[i] for r in rows]

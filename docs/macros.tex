@@ -1,0 +1,166 @@
+%% Logical operators
+% Next and Back
+\newcommand*{\lnext}{\ocircle}
+\newcommand*{\lanext}{\ocircle_{\chi}}
+\newcommand*{\lgnext}[1]{\ocircle^{#1}}
+%\newcommand*{\lganext}[1]{\ocircle_{\chi}^{#1}}
+\newcommand*{\lganext}[1]{\chi_{F}^{#1}}
+\newcommand*{\lback}{\circleddash}
+\newcommand*{\laback}{\circleddash_{\chi}}
+\newcommand*{\lgback}[1]{\circleddash^{#1}}
+%\newcommand*{\lgaback}[1]{\circleddash_{\chi}^{#1}}
+\newcommand*{\lgaback}[1]{\chi_{P}^{#1}}
+\newcommand*{\lhynext}{\lgnext{\lessdot}_H}
+\newcommand*{\lhyback}{\lgback{\lessdot}_H}
+\newcommand*{\lhtnext}{\lgnext{\gtrdot}_H}
+\newcommand*{\lhtback}{\lgback{\gtrdot}_H}
+\newcommand*{\lthrnext}{\mathit{CallThr}}
+
+% Until and Since
+\newcommand*{\lguntil}[4]{#3 \mathbin{\mathcal{U}^{#1}_{#2}} #4}
+\newcommand*{\luntil}[3]{#2 \mathbin{\mathcal{U}^{#1}} #3}
+\newcommand*{\lluntil}[2]{\luntil{}{#1}{#2}}
+\newcommand*{\lgsince}[4]{#3 \mathbin{\mathcal{S}^{#1}_{#2}} #4}
+\newcommand*{\lsince}[3]{#2 \mathbin{\mathcal{S}^{#1}} #3}
+\newcommand*{\llsince}[2]{\lsince{}{#1}{#2}}
+\newcommand*{\lhyuntil}[2]{\lguntil{\lessdot}{H}{#1}{#2}}
+\newcommand*{\lhysince}[2]{\lgsince{\lessdot}{H}{#1}{#2}}
+\newcommand*{\lhtuntil}[2]{\lguntil{\gtrdot}{H}{#1}{#2}}
+\newcommand*{\lhtsince}[2]{\lgsince{\gtrdot}{H}{#1}{#2}}
+\newcommand*{\lcallsince}{\mathit{Scall}}
+\newcommand*{\lfuntil}[3]{#2 \mathbin{\mathcal{U}(#1)} #3}
+
+% Globally
+\newcommand*{\lglob}[1]{\square^{#1}}
+\newcommand*{\lpglob}[1]{\boxminus^{#1}}
+\newcommand*{\llglob}{\square}
+\newcommand*{\llpglob}{\boxminus}
+\newcommand*{\lhyglob}{\lglob{\lessdot}_H}
+\newcommand*{\lhypglob}{\lpglob{\lessdot}_H}
+\newcommand*{\lhtglob}{\lglob{\gtrdot}_H}
+\newcommand*{\lhuglob}{\lglob{u}_H}
+\newcommand*{\lhupglob}{\lpglob{u}_H}
+
+% Eventually
+\newcommand*{\leven}[1]{\Diamond^{#1}}
+\newcommand*{\lleven}{\Diamond}
+\newcommand*{\lhyeven}{\leven{\uparrow}}
+\newcommand*{\lhteven}{\leven{\downarrow}}
+
+%% New POTL
+\newcommand*{\ldnext}{\lnext^d}
+\newcommand*{\lunext}{\lnext^u}
+\newcommand*{\ldback}{\lback^d}
+\newcommand*{\luback}{\lback^u}
+\newcommand*{\lcnext}[1]{\chi_F^{#1}}
+\newcommand*{\lcdnext}{\lcnext{d}}
+\newcommand*{\lcunext}{\lcnext{u}}
+\newcommand*{\lcback}[1]{\chi_P^{#1}}
+\newcommand*{\lcdback}{\lcback{d}}
+\newcommand*{\lcuback}{\lcback{u}}
+\newcommand*{\lcduntil}[2]{{#1} \mathbin{\mathcal{U}_\chi^d} {#2}}
+\newcommand*{\lcdsince}[2]{{#1} \mathbin{\mathcal{S}_\chi^d} {#2}}
+\newcommand*{\lcuuntil}[2]{{#1} \mathbin{\mathcal{U}_\chi^u} {#2}}
+\newcommand*{\lcusince}[2]{{#1} \mathbin{\mathcal{S}_\chi^u} {#2}}
+\newcommand*{\lhnext}[1]{\lnext_H^{#1}}
+\newcommand*{\lhback}[1]{\lback_H^{#1}}
+\newcommand*{\lhdnext}{\lhnext{d}}
+\newcommand*{\lhdback}{\lhback{d}}
+\newcommand*{\lhduntil}[2]{{#1} \mathbin{\mathcal{U}_H^d} {#2}}
+\newcommand*{\lhdsince}[2]{{#1} \mathbin{\mathcal{S}_H^d} {#2}}
+\newcommand*{\lhunext}{\lhnext{u}}
+\newcommand*{\lhuback}{\lhback{u}}
+\newcommand*{\lhuuntil}[2]{{#1} \mathbin{\mathcal{U}_H^u} {#2}}
+\newcommand*{\lhusince}[2]{{#1} \mathbin{\mathcal{S}_H^u} {#2}}
+
+%% OP Relations
+\newcommand*{\chain}{\chi}
+\newcommand*{\fchain}{\overrightarrow{\chi}}
+\newcommand*{\bchain}{\overleftarrow{\chi}}
+
+%% Misc
+\newcommand*{\powset}[1]{{\mathcal{P}(#1)}}
+\newcommand*{\lsucc}{\operatorname{succ}}
+\newcommand*{\prf}{\pi}
+\newcommand*{\pr}{\mathrel{\prf}}
+
+%% Model Checking
+\newcommand*{\clos}[1]{\operatorname{Cl}({#1})}
+\newcommand*{\closaux}[1]{\operatorname{Cl}_\mathit{aux}({#1})}
+\newcommand*{\atoms}[1]{\operatorname{Atoms}({#1})}
+\newcommand*{\fprop}[1]{\mathrm{q}_{(#1)}}
+
+%% Translation to XPath
+\newcommand*{\ra}{\operatorname{Rcc}}
+\newcommand*{\invtau}{\tau^{-1}_{AP}}
+\newcommand*{\first}{\operatorname{first}}
+\newcommand*{\last}{\operatorname{last}}
+\newcommand*{\rchild}{R_\Downarrow}
+\newcommand*{\rsibl}{R_\Rightarrow}
+\newcommand*{\rparen}{R_\Uparrow}
+\newcommand*{\rlsibl}{R_\Leftarrow}
+\newcommand*{\uotrees}{\mathcal{T}}
+\newcommand*{\xuntil}{$\mathcal{X}_\mathit{until}$}
+
+%% Example labels
+\newcommand*{\lcall}{\mathbf{call}}
+\newcommand*{\lret}{\mathbf{ret}}
+\newcommand*{\lhandle}{\mathbf{han}}
+\newcommand*{\lthrow}{\mathbf{exc}}
+\newcommand*{\lstmt}{\mathbf{stm}}
+
+%% Old stuff from old papers
+\newcommand{\mrk}[1]{{#1}'}
+\newcommand{\oldstack}[3]{%
+{\ifthenelse{\equal{#1}{1}}{%
+\mrk{#2}
+}%
+{#2}}_{#3}%
+}
+\newcommand{\stack}[3]{%
+[%
+{\ifthenelse{\equal{#1}{1}}{%
+\mrk{#2}
+}%
+{#2}}
+{\ifthenelse{\equal{#1}{0}}{\ }{} }
+{#3}%
+]%
+}
+
+\newcommand{\tstack}[2]{%
+[#1,\ #2]%
+}
+\newcommand{\tconfig}[3]{\langle #1, \ #2, \ #3 \rangle}
+\DeclareRobustCommand{\newvdash}{\shortmid\joinrel\relbar\joinrel\relbar}
+\newcommand{\transition}[1]{\stackrel {{#1}} \vdash}
+\newcommand{\powerset}{\mathcal{P}}
+
+% per i cammini dell'automa
+\newcommand{\va}[1]{\stackrel{#1}{\longrightarrow}}
+\newcommand{\vshift}[1]{\stackrel{#1}{\dashrightarrow}}
+\newcommand{\ourpath}[1]{\stackrel{#1}{\leadsto}}
+\newcommand{\flush}[1]{\stackrel{#1}{\Longrightarrow}}
+
+\newcommand{\nont}[4]{\langle^{#1} #2, #3 {}^{#4} \rangle}
+\newcommand{\ochain}[3]{{}^{#1}[ #2 ]{}^{#3}}
+
+%%% AUTOMA
+\newcommand{\config}[3]{\langle #1, \allowbreak #2, \allowbreak #3 \rangle}
+\newcommand{\symb}[1]{\mathop{smb}(#1)}
+\newcommand{\state}[1]{\mathop{st}(#1)}
+\newcommand{\markd}[1]{\mathop{marked}(#1)}
+\newcommand{\tp}[1]{\mathop{top}(#1)}
+\newcommand{\inpt}[1]{\mathop{input}(#1)}
+
+
+%%% AUTOMA DETERMINIZZATO
+\newcommand{\stpair}[2]{( {#1},{#2} )} % coppie di stati
+\newcommand{\pair}[2]{\langle {#1},{#2}\rangle} % coppia (simbolo, set di stati)
+
+
+\newcommand{\der}[1]{ \stackrel {{#1}} \Rightarrow}
+\newcommand{\derh}[1]{ \stackrel {[{#1}]} \Rightarrow}
+\newcommand{\comp}[1]{ \stackrel {{#1}} \vdash }
+\newcommand{\comph}[1]{ \stackrel {[{#1}]} \vdash }
+

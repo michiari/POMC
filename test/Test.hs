@@ -6,6 +6,7 @@ import qualified TestSat     (tests)
 import qualified TestSatOmega(tests)
 import qualified TestMC      (tests)
 import qualified TestMCOmega (tests)
+import qualified TestMP    (tests)
 
 main :: IO ()
 main = defaultMain tests
