@@ -23,7 +23,7 @@ evalTests = testGroup "Sat Eval Tests" $ map makeV2TestCase EvalFormulas.formula
 makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [StructPrecRel String], Bool)
              -> TestTree
 makeTestCase (name, phi, sls, als, prec, expected) =
-  let (sat, trace) = isSatisfiableGen phi (sls, als) prec
+  let (sat, trace) = isSatisfiableGen False phi (sls, als) prec
       debugMsg False _ = "Expected SAT, got UNSAT."
       debugMsg True tr = "Expected UNSAT, got SAT. Trace:\n" ++ show (map S.toList tr)
   in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)

@@ -821,6 +821,18 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
+      , ( "Rejecting Not Eventually"
+        , False
+        , Not $ Eventually (Atomic . Prop $ "thr")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Accepting Eventually"
+        , True
+        , Eventually $ Not (Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
       , ( "Testing boundaries with XNext"
         , True
         , XNext Up T
@@ -948,13 +960,31 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , True
         , Not . Always . Atomic . Prop $ "call"
         , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Rejecting Not Always "
+      , ( "Rejecting Not Always"
         , False
-        , Not . Always . Atomic . Prop $ "call"
+        ,  Not . Always .  Atomic . Prop $ "call"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      ,( "Rejecting Not Always"
+        , False
+        ,  Not . Always .  Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Accepting Eventually"
+        , True
+        , Eventually $ Not (Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      ,  ( "Accepting Not Always"
+        , True
+        , Not . Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret"]
         )
       ]
 

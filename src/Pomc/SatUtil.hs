@@ -18,7 +18,7 @@ module Pomc.SatUtil( SatState(..)
            		     ) where
 
 import Pomc.State(Input, State(..))
-import Pomc.Data (BitEncoding, extractInput)
+import Pomc.Encoding (BitEncoding, extractInput)
 
 import Data.Maybe
 import qualified Control.Monad.ST as ST

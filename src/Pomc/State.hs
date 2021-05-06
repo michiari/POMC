@@ -11,21 +11,23 @@ module Pomc.State (
                     State(..)
                   , Input
                   , Atom
-                  , showStates
                   , showState
                   , showFormulaSet
-                  , showAtoms
+                  , showAtom
                   , showPendCombs
                   ) where
 
-import Pomc.Data (EncodedSet, FormulaSet, BitEncoding, EncodedAtom(..))
-import qualified Pomc.Data as D
+import Pomc.Encoding (EncodedSet, FormulaSet, BitEncoding)
+import qualified Pomc.Encoding as E
+import Pomc.PropConv (APType)
+import Pomc.Potl (Formula(..), Dir(..), negative)
+
 import Data.Set (Set)
 import qualified Data.Set as S
 import GHC.Generics (Generic)
 import Data.Hashable
 import Data.BitVector (BitVector)
-import Pomc.PotlV2 (Formula(..), Dir(..), negative)
+
 import Control.DeepSeq(NFData(..), deepseq)
 
 type Input = EncodedSet
@@ -48,62 +50,49 @@ data State = FState
 } deriving (Generic, Ord, Eq)
 
 instance Hashable State
+
 instance Show State where
-  show  (FState current pending mustPush mustShift afterPop)  = "\n{ C: "  ++ show current  ++
-                                                               "\n, P: "  ++ show pending   ++
-                                                               "\n, XL: " ++ show mustPush  ++
-                                                               "\n, X=: " ++ show mustShift  ++
-                                                               "\n, XR: " ++ show afterPop ++
-                                                               "\n}"
-  show (WState current pending instack mustPush mustShift afterPop)  = "\n{ C: "  ++ show current  ++
-                                                                       "\n, P: "  ++ show pending   ++
-                                                                       "\n, S: "  ++ show instack   ++
-                                                                       "\n, XL: " ++ show mustPush  ++
-                                                                       "\n, X=: " ++ show mustShift  ++
-                                                                       "\n, XR: " ++ show afterPop ++
-                                                                       "\n}"                        
+  show (FState c p xl xe xr) = "\n{ C: "  ++ show c  ++
+                              "\n, P: "  ++ show p  ++
+                              "\n, XL: " ++ show xl ++
+                              "\n, X=: " ++ show xe ++
+                              "\n, XR: " ++ show xr ++
+                              "\n}"
+  show (WState c p s xl xe xr) = "\n{ C: "  ++ show c  ++
+                                "\n, P: "  ++ show p  ++
+                                "\n, S: "  ++ show s  ++
+                                "\n, XL: " ++ show xl ++
+                                "\n, X=: " ++ show xe ++
+                                "\n, XR: " ++ show xr ++
+                                "\n}"
 
 -- to allow parallelism
 instance NFData State where
   rnf (FState current pending _ _ _) = current `deepseq` pending `deepseq` ()
   rnf (WState current pending stack _ _ _) = current `deepseq` pending `deepseq` stack `deepseq` ()
 
-showStates :: BitEncoding -> [State]  -> String
-showStates bitenc = unlines . map (showState bitenc)
-
-showFormulaSet :: FormulaSet -> String
-showFormulaSet fset = let fs = S.toList fset
-                          posfs = filter (not . negative) fs
-                          negfs = filter (negative) fs
-                      in show (posfs ++ negfs)
-
-showAtom :: BitEncoding -> Atom -> String
-showAtom bitenc atom = "FS: " ++ showFormulaSet (D.decode bitenc atom) ++ "\t\tES: " ++ show atom
-
-showAtoms :: BitEncoding -> [Atom] -> String
-showAtoms bitenc = unlines . map (showAtom bitenc)
-
 showPendCombs :: Set (EncodedSet, Bool, Bool, Bool) -> String
 showPendCombs = unlines . map show . S.toList
 
-showState :: BitEncoding -> State -> String
-showState bitenc (FState current pending mustPush mustShift afterPop)  = "\n{ C: "  ++ showAtom bitenc  current  ++
-                                                                           "\n, P: "  ++ showAtom bitenc  pending   ++
-                                                                           "\n, XL: " ++ show  mustPush  ++
-                                                                           "\n, X=: " ++ show mustShift  ++
-                                                                           "\n, XR: " ++ show afterPop ++
-                                                                           "\n}"
-showState bitenc (WState current pending instack mustPush mustShift afterPop)  = "\n{ C: "  ++ showAtom bitenc  current  ++
-                                                                       "\n, P: "  ++ showAtom bitenc  pending   ++
-                                                                       "\n, S: "  ++ showAtom bitenc  instack   ++
-                                                                       "\n, input: " ++ showAtom  bitenc (D.extractInput bitenc current) ++
-                                                                       "\n, XL: " ++ show mustPush  ++
-                                                                       "\n, X=: " ++ show mustShift  ++
-                                                                       "\n, XR: " ++ show afterPop ++
-                                                                       "\n}"     
+showFormulaSet :: (Show a) => (APType -> a) -> FormulaSet -> String
+showFormulaSet transAP fset =
+  let fs = S.toList fset
+      posfs = filter (not . negative) fs
+      negfs = filter (negative) fs
+  in show $ map (fmap transAP) (posfs ++ negfs)
+
+showAtom :: (Show a) => BitEncoding -> (APType -> a) -> Atom -> String
+showAtom bitenc transAP atom =
+  "FS: " ++ showFormulaSet transAP (E.decode bitenc atom) ++ "\t\tES: " ++ show atom
 
 
 
 
-
-    
+showState :: (Show a) => BitEncoding -> (APType -> a) -> State -> String
+showState bitenc transAP (FState c p xl xe xr) =
+  "{ C: "    ++ showAtom bitenc transAP c  ++
+  "\n, P: "  ++ showAtom bitenc transAP p  ++
+  "\n, XL: " ++ show xl                    ++
+  "\n, X=: " ++ show xe                    ++
+  "\n, XR: " ++ show xr                    ++
+  "\n}" 

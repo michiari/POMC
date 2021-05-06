@@ -17,10 +17,10 @@ module Pomc.Encoding ( EncodedSet
                      , singleton
                      , empty
                      , generateFormulas
-                     , null
+                     , Pomc.Encoding.null
                      , member
-                     , any
-                     , filter
+                     , Pomc.Encoding.any
+                     , Pomc.Encoding.filter
                      , suchThat
                      , intersect
                      , union

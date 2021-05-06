@@ -5,10 +5,11 @@ import Test.Tasty.HUnit
 import Pomc.Satisfiability (isSatisfiableGen)
 import Pomc.Prec (StructPrecRel)
 import Pomc.Prop (Prop(..))
-import Pomc.PotlV2 (Formula(..), Dir(..))
-import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
+import Pomc.Potl (Formula(..), Dir(..))
+import OPMs (stlPrecRelV2, stlPrecV2sls)
 import EvalFormulas (ap)
 import qualified OmegaEvalFormulas (omegaFormulas)
+import qualified Data.Set as S
 
 tests :: TestTree
 tests = testGroup "TestSatOmega.hs Tests" [baseTests]
@@ -22,7 +23,10 @@ evalTests = testGroup "OmegaSat Eval Tests" $ map makeV2TestCase OmegaEvalFormul
 makeTestCase :: (TestName, Formula String, [Prop String], [Prop String], [StructPrecRel String], Bool)
              -> TestTree
 makeTestCase (name, phi, sls, als, prec, expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ isSatisfiableGen True phi (sls, als) prec @?= expected
+  let (sat, trace) = isSatisfiableGen True phi (sls, als) prec
+      debugMsg False _ = "Expected SAT, got UNSAT."
+      debugMsg True tr = "Expected UNSAT, got SAT. Trace:\n" ++ show (map S.toList tr)
+  in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
 
 makeV2TestCase :: (TestName, Formula String, [String], Bool) -> TestTree
 makeV2TestCase (name, phi, als, expected) =
@@ -30,7 +34,13 @@ makeV2TestCase (name, phi, als, expected) =
 
 cases :: [(String, Formula String, [String], Bool)]
 cases =
-  [ ( "First Call"
+  [ 
+    ( "Not Always call"
+    , Not $ Always $ ap $ "call"
+    , []
+    , True
+    ),
+    ( "First Call"
     , Atomic . Prop $ "call"
     , []
     , True

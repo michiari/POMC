@@ -27,10 +27,10 @@ import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
 import qualified Pomc.Encoding as E (PropSet, encodeInput)
 #ifndef NDEBUG
-import Pomc.Satisfiability (SatState(..), isEmpty, toInputTrace, showTrace)
+import Pomc.Satisfiability (toInputTrace, showTrace)
 import qualified Debug.Trace as DBG
 #else
-import Pomc.Satisfiability (SatState(..), isEmpty, toInputTrace)
+import Pomc.Satisfiability (toInputTrace)
 #endif
 
 import Data.Set (Set)
@@ -90,7 +90,7 @@ modelCheck isOmega phi opa =
       essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
       -- generate the OPA associated to the negation of the input formula
-      (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop) =
+      (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
         makeOpa (Not phi) isOmega (fst $ sigma opa, getProps phi) (precRel opa)
 
       -- compute the cartesian product between the initials of the two opas
@@ -127,7 +127,7 @@ modelCheck isOmega phi opa =
                }
       (sat, trace) = if isOmega
                       then isEmptyOmega cDelta cInitials cIsFinalOmega
-                      else isEmpty cDelta cInitials cIsFinalisEmpty cDelta cInitials cIsFinal
+                      else isEmpty cDelta cInitials cIsFinal 
 #ifndef NDEBUG
   in DBG.trace (showTrace bitenc transInv trace)
 #else

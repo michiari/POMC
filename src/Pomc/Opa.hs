@@ -124,13 +124,6 @@ augRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             t   = head tokens' -- safe due to laziness
             recurse = any' (run' precf' adshift adpush adpop isFinal')
 
-interChunks :: Int -> [a] -> V.Vector [a]
-interChunks nchunks xs = interChunks' (V.generate nchunks (const [])) 0 xs
-  where interChunks' vec _ [] = vec
-        interChunks' vec i (y:ys) = interChunks'
-                                      (vec V.// [(i,y:(vec V.! i))])
-                                      ((i + 1) `mod` nchunks)
-                                      ys
 
 -- same as AugRun, but with some parallelim
 parAugRun :: (NFData s, NFData t)
@@ -162,9 +155,9 @@ parAugRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
                       -- Undefined precedence relation: reject
                       Nothing    -> False
                       -- Stack top yields to next token: push
-                      Just Yield -> recurse (push dpush conf) 
+                      Just Yield -> recurse (push dpush conf)
                       -- Stack top has same precedence as next token: shift
-                      Just Equal -> recurse (shift dshift conf) 
+                      Just Equal -> recurse (shift dshift conf)
                       -- Stack top takes precedence on next token: pop
                       Just Take  -> recurse (pop dpop conf)
       where lookahead = safeTail tokens' >>= safeHead
@@ -172,8 +165,8 @@ parAugRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             dpush  = adpush  lookahead
             dpop   = adpop   lookahead
             top = head stack  --
-            t   = head tokens -- safe due to laziness
-            recurse = any id . parMap (run' precf' adshift adpush adpop isFinal') 
+            t   = head tokens' -- safe due to laziness
+            recurse = any id . parMap (run' precf' adshift adpush adpop isFinal')
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]

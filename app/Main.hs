@@ -81,7 +81,7 @@ main = do
                             , "\nInput OPA state count: ", show $ countStates opa
                             , "\nResult:  "
                             ])
-             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckGen phi opa
+             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckGen False phi opa
                                                      putStr $ show s
                                                      return (s, t)
              if sat

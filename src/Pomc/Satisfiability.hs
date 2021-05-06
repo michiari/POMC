@@ -16,7 +16,7 @@ module Pomc.Satisfiability ( Delta(..)
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.Potl (Formula)
+import Pomc.Potl (Formula(..))
 import Pomc.Check ( EncPrecFunc, makeOpa)
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.State(Input, State(..), showState, showAtom)
@@ -228,10 +228,10 @@ isEmpty :: (SatState state, Eq state, Hashable state, Show state)
 isEmpty delta initials isFinal =
   let (accepting, trace) = ST.runST $ do
         newSig <- initSIdGen
-        emptyVisited <- emptySM
-        emptySuppStarts <- emptySM
-        emptySuppEnds <- emptySM
-        let globals = Globals { sIdGen = newSig
+        emptyVisited <- SM.empty
+        emptySuppStarts <- SM.empty
+        emptySuppEnds <- SM.empty
+        let globals = FGlobals { sIdGen = newSig
                               , visited = emptyVisited
                               , suppStarts = emptySuppStarts
                               , suppEnds = emptySuppEnds

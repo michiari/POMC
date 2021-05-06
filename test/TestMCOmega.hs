@@ -6,8 +6,8 @@ import qualified TestSatOmega (cases)
 import EvalFormulas (ap)
 import OmegaEvalFormulas(omegaFormulas)
 import Pomc.Prop (Prop(..))
-import Pomc.Example (stlPrecRelV2, stlPrecV2sls)
-import Pomc.PotlV2 (Formula(..), Dir(..))
+import OPMs (stlPrecRelV2, stlPrecV2sls)
+import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (ExplicitOpa(..), modelCheckGen)
 
 import Data.Set (Set)
@@ -15,10 +15,7 @@ import qualified Data.Set as Set
 
 tests :: TestTree
 tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests,
-                                                  lRBaseTests, lREvalTests,
-                                                  inspectionTest, overflowTest,
-                                                  jensenTests, jensenFullTests,
-                                                  stackExcTests, stackExcSwapTests]
+                                                  lRBaseTests, lREvalTests]
 
 sasBaseTests :: TestTree
 sasBaseTests = testGroup "SAS OPA MC Base Tests" $
@@ -37,12 +34,18 @@ lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
   map (makeTestCase largerRec) (zip OmegaEvalFormulas.omegaFormulas expectedLargerRecEval)
 
+
+
+-- finite model checking case
 makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
 makeTestCase opa ((name, phi, _, _), expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ modelCheckGen True phi opa @?= expected
-
+  let (sat, trace) = modelCheckGen True phi opa
+      debugMsg False tr = "Expected True, got False. Counterexample:\n"
+        ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
+      debugMsg True _ = "Expected False, got True."
+  in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
 
 makeInputSet :: (Ord a) => [a] -> Set (Prop a)
 makeInputSet ilst = Set.fromList $ map Prop ilst
@@ -86,7 +89,7 @@ simpleExc = ExplicitOpa
             }
 
 expectedSasBase :: [Bool]
-expectedSasBase = [True,  False, False, False, False, False,
+expectedSasBase = [True,  True,  False, False, False, False, False,
                    False, False, False, False, False, False,
                    False, False, False, False, False, False,
                    False, False, False, False, False
@@ -95,9 +98,9 @@ expectedSasBase = [True,  False, False, False, False, False,
 expectedSasEval :: [Bool]
 expectedSasEval = [False, False, False, False, True,  -- chain_next        
                    False, False, False, True,         -- contains_exc      
-                   True,                            -- data_access
+                   --True,                            -- data_access
                    False, False, False, False,         -- empty_frame       
-                   True,                            -- exception_safety   
+                   -- True,                            -- exception_safety   
                    False, False, False, False,        -- hier_down
                    False,                             -- hier_insp
                    -- True,                            -- hier_insp_exc      
@@ -168,7 +171,7 @@ largerRec = ExplicitOpa
             }
 
 expectedLargerRecBase :: [Bool]
-expectedLargerRecBase = [True, False, False, False, False, False,
+expectedLargerRecBase = [False, True,  False, False, False, False, False,
                          True, False, False, False, False, False,
                          False, False, False, False, False, False,
                          False, False, False, False, False
@@ -177,9 +180,9 @@ expectedLargerRecBase = [True, False, False, False, False, False,
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval = [False, False, False, False, False,  -- chain_next
                          False, False, False, False,         -- contains_exc
-                         True,                            -- data_access
+                         -- True,                            -- data_access
                          False, False, False, False,         -- empty_frame
-                         True,                            -- exception_safety
+                         -- True,                            -- exception_safety
                          False, False, False, False,        -- hier_down
                          False,                             -- hier_insp
                          -- False,                           -- hier_insp_exc
