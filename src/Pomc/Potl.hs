@@ -200,7 +200,6 @@ normalize f = case f of
                 Atomic _           -> f
                 Not (Not g)        -> normalize g
                 Not (Always g)     -> Eventually . normalize . Not $ g
-                --Not (Eventually g) -> Always . normalize . Not $ g
                 Not g              -> Not (normalize g)
                 Or g h             -> Or  (normalize g) (normalize h)
                 And g h            -> And (normalize g) (normalize h)
@@ -218,7 +217,7 @@ normalize f = case f of
                 HUntil dir g h     -> HUntil dir  (normalize g) (normalize h)
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)
                 Eventually g       -> Eventually (normalize g)
-                Always g           -> Not . Eventually . normalize . Not $ g--Always (normalize g)
+                Always g           -> Not . Eventually . normalize . Not $ g
                 AuxBack dir g      -> AuxBack dir (normalize g)
 
 instance NFData (Formula a) where 

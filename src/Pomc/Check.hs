@@ -114,7 +114,6 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
         HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
         HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
         Eventually g       -> [f, Not f] ++ closList g 
-        Always g           -> [f, Not f] ++ closList g
         AuxBack _ g        -> [f, Not f] ++ closList g
 
 
@@ -425,10 +424,8 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuShiftPr)
                                      , (hbuCond,    hbuShiftPr)
                                      , (hbdCond,    hbdShiftPr)
-                                     , (alwCond,    alwShiftPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (alwCond, alwShiftFcr) 
-                                     , (evCond,   evShiftFcr)   
+        , ruleGroupFcrs = resolve cl [ (evCond,   evShiftFcr) 
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
                                      , (xndCond,    xndShiftFpr)
@@ -460,10 +457,8 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuPushPr2)
                                      , (hbuCond,    hbuPushPr)
                                      , (hbdCond,    hbdPushPr)
-                                     , (alwCond,    alwPushPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (alwCond, alwPushFcr) 
-                                     , (evCond,   evPushFcr)  
+        , ruleGroupFcrs = resolve cl [ (evCond,   evPushFcr)  
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
                                      , (xndCond,    xndPushFpr)
@@ -492,8 +487,7 @@ deltaRules bitenc cl precFunc =
                                      , (xnuCond,    xnuPopPr)
                                      , (hnuCond,    hnuPopPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [(alwCond, alwPopFcr)
-                                     ,(evCond,   evPopFcr)  
+        , ruleGroupFcrs = resolve cl [ (evCond,   evPopFcr)  
                                      ]
         , ruleGroupFprs = resolve cl [ (const True, xrPopFpr)
                                      , (xndCond,    xndPopFpr)
@@ -1181,38 +1175,6 @@ deltaRules bitenc cl precFunc =
     hbdShiftPr = hbdPushPr
     --
 
-    -- Alw: Always g --
-    maskAlw = E.suchThat bitenc checkAlw
-    checkAlw (Always _) = True
-    checkAlw _ = False
-    alwClos = S.filter checkAlw cl -- all Always g formulas in the closure
-
-    alwCond :: FormulaSet -> Bool
-    alwCond clos = not (null [f | f@(Always _) <- S.toList clos])
-
-    alwPushPr :: PrInfo -> Bool
-    alwPushPr info =
-      let pCurr = current $ prState info -- current holding formulas
-          pCurrAlwfs = E.intersect pCurr maskAlw
-          checkSet = E.encode bitenc $ 
-                     S.filter (\(Always g) -> not $ E.member bitenc g pCurr) alwClos
-          
-      in E.null $ E.intersect pCurrAlwfs checkSet
-
-    alwShiftPr :: PrInfo -> Bool
-    alwShiftPr = alwPushPr
-
-    alwPushFcr :: FcrInfo -> Bool
-    alwPushFcr info =
-      let pCurr = current $ fcrState info
-          fCurr = fcrFutureCurr info
-          pCurrAlwfs = E.intersect pCurr maskAlw
-          fCurrAlwfs = E.intersect fCurr maskAlw
-      in pCurrAlwfs == fCurrAlwfs
-    alwShiftFcr = alwPushFcr
-    alwPopFcr = alwPushFcr
-
-
     -- Ev: Eventually g --
     maskEv = E.suchThat bitenc checkEv
     checkEv (Eventually _) = True
@@ -1439,10 +1401,6 @@ isFinalF bitenc s =
     maskXbu = E.suchThat bitenc checkXbu
     checkXbu (XBack Up _) = True
     checkXbu _ = False
-
-    maskAlw = E.suchThat bitenc checkAlw
-    checkAlw (Always _) = True
-    checkAlw _ = False
 
     currFset = current s
     currPend = pending s
