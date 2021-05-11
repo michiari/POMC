@@ -1379,13 +1379,11 @@ isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
 isFinalW bitenc phi@(Until dir _ h) s  = (not $ E.member bitenc (XNext dir phi) (stack s))
                                           && (not $ E.member bitenc (XNext dir phi) (pending s))
                                           && ((not $ E.member bitenc phi  (current s)) || E.member bitenc h (current s))
-isFinalW bitenc phi@(XNext _ _) s      = (not $ E.member bitenc phi (stack s)) && isFinalWFuture bitenc phi s
-isFinalW bitenc phi@(Eventually g) s   = (E.member bitenc g (current s)) || isFinalWFuture bitenc phi s
+isFinalW bitenc phi@(XNext _ _) s      = (not $ E.member bitenc phi (stack s)) 
+                                          && (not $ E.member bitenc phi (pending s)) 
+                                          && (not $ E.member bitenc phi (current s))
+isFinalW bitenc phi@(Eventually g) s   = (E.member bitenc g (current s)) || (not $ E.member bitenc phi (current s))
 isFinalW _ _ _ = True
-                        
-isFinalWFuture :: BitEncoding -> Formula APType -> State -> Bool 
-isFinalWFuture bitenc phi s = (not $ E.member bitenc phi (pending s)) 
-                           && (not $ E.member bitenc phi (current s))
 
 -- given a BitEncoding and a state, determine whether it's final
 isFinalF :: BitEncoding -> State -> Bool

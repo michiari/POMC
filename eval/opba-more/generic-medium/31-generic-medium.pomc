@@ -1,0 +1,4 @@
+formulas = G ((call And pb) --> (~ pc) HUu perr);
+include = "../../Mcall.inc";
+
+include = "opa.inc";

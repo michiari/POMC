@@ -14,11 +14,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 tests :: TestTree
-tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests,
-                                                  lRBaseTests, lREvalTests,
-                                                  inspectionTest, jensenTests, 
-                                                  jensenFullTests, stackExcTests,
-                                                  stackExcSwapTests
+tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests
                                                   ]
 
 sasBaseTests :: TestTree
@@ -38,9 +34,6 @@ lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
   map (makeTestCase largerRec) (zip OmegaEvalFormulas.omegaFormulas expectedLargerRecEval)
 
-
-
--- finite model checking case
 makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
@@ -107,7 +100,7 @@ expectedSasEval = [False, False, False, False, True,  -- chain_next
                    True,                            -- exception_safety   
                    False, False, False, False,        -- hier_down
                    False,                             -- hier_insp
-                   -- True,                            -- hier_insp_exc      
+                   True,                            -- hier_insp_exc      
                    False, False, False, False,        -- hier_up
                    False, False,                      -- normal_ret          
                    True, True,                        -- no_throw            

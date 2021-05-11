@@ -81,7 +81,7 @@ main = do
                             , "\nInput OPA state count: ", show $ countStates opa
                             , "\nResult:  "
                             ])
-             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckGen False phi opa
+             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckGen True phi opa
                                                      putStr $ show s
                                                      return (s, t)
              if sat
@@ -91,7 +91,7 @@ main = do
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 
-        runProg prog phi = runMC (programToOpa False prog) phi
+        runProg prog phi = runMC (programToOpa True prog) phi
 
         addEndPrec precRels = noEndPR
                               ++ map (\p -> (End, p, Yield)) sl

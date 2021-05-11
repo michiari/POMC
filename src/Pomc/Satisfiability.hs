@@ -245,6 +245,7 @@ isEmpty delta initials isFinal =
   in (not accepting, unIdTrace $ reverse trace)
 
 
+-- The omega case does not print counterexamples at the moment
 ------------------------------------------------------------------------------------------
 isEmptyOmega  :: (SatState state, Ord state, Hashable state, Show state)
         => Delta state -- delta relation of an opa

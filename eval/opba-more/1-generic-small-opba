@@ -1,5 +1,3 @@
-prec = Mcall;
-
 formulas = XNd perr,
            PNd (PNd (call And (XNu exc))),
            PNd (han And (XNd (exc And (XBu call)))),
@@ -8,15 +6,18 @@ formulas = XNd perr,
            T Ud exc,
            PNd (PNd (T Ud exc)),
            ~ (T Ud exc),
-           ~ (T Up exc),
+           ~ (T Uu exc),
+           G ((call And pa And ((~ ret) Ud WRx)) --> XNu exc),
            PNd (PBu call),
            PNd (PNd (PNd (PBu call))),
            XNd (PNd (PBu call)),
            ~ (XNd (PNd (PBu call))),
+           G ((call And pa And (PNu exc Or XNu exc)) --> (PNu eb Or XNu eb)),
            F (HNd pb),
            F (HBd pb),
            F (pa And (call HUd pc)),
            F (pc And (call HSd pa)),
+           G ((pc And (XNu exc)) --> ((~ pa) HSd pb)),
            G ((call And pb) --> (~ pc) HUu perr),
            F (HNu perr),
            F (HBu perr),
@@ -31,7 +32,7 @@ formulas = XNd perr,
            G ((call And pa) --> ~ (PNu exc Or XNu exc)),
            G (exc --> ~ (PBu (call And pa) Or XBu (call And pa))),
            G ((call And pb And (T Sd (call And pa))) --> (PNu exc Or XNu exc)),
-           G ((call And pb And (T Sd (call And pa))) --> ( T Ud (PNu exc Or XNu exc)),
+           G ((call And pb And (T Sd (call And pa))) --> ( T Ud (PNu exc Or XNu exc))),
            G (han --> XNu ret),
            T Uu exc,
            PNd (PNd (T Uu exc)),
@@ -40,55 +41,32 @@ formulas = XNd perr,
            call Ud (ret And perr),
            XNd (call And ((call Or exc) Su pb)),
            PNd (PNd ((call Or exc) Uu ret));
-
+           
+include = "../Mcall.inc";
 
 opa:
   initials = 0;
-  finals = 2,8,10;
+  finals = (4 10);
   deltaPush =
-    (0,  (call pa),    1),
-    (1,  (call pb),    2),
-    (2,  (call pc),    3),
-    (2,  (han),        4),
-    (3,  (call pb),    2),
-    (4,  (call pc),    3),
-    (7,  (exc eb),     8),
-    (9,  (call perr),  10),
-    (10, (call perr),  10),
-    (15, (han),        19),
-    (19, (call pc),    3),
-    (23, (call perr),  10),
-    (8,  (call),       8);
+    (0,  (call pa),   1),
+    (1,  (han),       2),
+    (2,  (call pb),   3),
+    (3,  (call pc),   4),
+    (4,  (call pc),   4),
+    (6,  (call perr), 7),
+    (8,  (call perr), 7),
+    (10, (call),     10);
   deltaShift =
-    (9,  (exc),      9),
-    (10, (ret perr), 11),
-    (12, (ret perr), 11),
-    (13, (ret pb),   14),
-    (16, (ret pc),   17),
-    (20, (exc),      23),
-    (21, (ret pa),   22),
-    (8,  (ret),      8);
-
+    (4, (exc),       5),
+    (7, (ret perr),  7),
+    (9, (ret pa),   11),
+    (10, (ret),     10);
   deltaPop =
-    (3,   2,  5),
-    (3,   4,  9),
-    (3,  19, 20),
-    (5,   1,  6),
-    (5,   3, 18),
-    (6,   0,  7),
-    (8,   7,  8),
-    (9,   2,  9),
-    (11, 10, 12),
-    (11,  9, 13),
-    (11, 23, 21),
-    (14,  1, 15),
-    (14,  3, 16),
-    (17,  4, 17),
-    (17,  2, 13),
-    (17, 19, 21),
-    (18,  2,  5),
-    (18,  4,  9),
-    (18, 19, 20),
-    (22,  0,  8),
-    (23, 15, 23),
-    (8,   8,  8);
+    (4, 2, 4),
+    (4, 3, 4),
+    (4, 4, 4),
+    (5, 1, 6),
+    (7, 6, 8),
+    (7, 8, 9),
+    (11, 0, 10),
+    (10, 0, 10);
