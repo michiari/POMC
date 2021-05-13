@@ -1,56 +1,74 @@
-# This example simulates a buggy implementation of the Quicksort procedure
-# (shown at the end of the file). The procedure may get stuck in an infinite
-# loop under certain conditions. Thus, a call the procedure is not guaranteed
-# to terminate.
-# 
-# Moped can find a corresponding error trace with the invocation:
-#	moped quicksort_error.pds "<>main1" -t
+formulas = F (call And someOtherCode);
+
+program:
+var leftGEQTright, ahiGTpiv, loLEQThi, loEQleft, hiEQright;
+
+main() {
+	leftGEQTright = false;
+	qs();
+	someOtherCode();
+}
+
+qs() {
+	if (leftGEQTright) {
+	} else {
+		ahiGTpiv = false;
+		loLEQThi = !leftGEQTright; 
+		loEQleft = true;
+		hiEQright = true;
+		qsw();
+		if (hiEQright) {
+			leftGEQTright = false;
+			qs(); 
+		}else {
+			if (loEQleft) {
+				leftGEQTright = false; 
+				qs();
+			} else {
+				leftGEQTright = false;
+				qs(); 
+				leftGEQTright = false;
+				qs();
+			}
+		}
+	}
+}
+
+qsw() {
+	if (loLEQThi) {
+		qsif();
+	} else { }
+}
 
 
-define N 3	# number of bits used to represent each integer variable
+qsif() {
+	if (ahiGTpiv) {
+		qrandomahiGTpiv();
+		qrandomloLEQThi();
+		hiEQright = false;
+	} else {
+		qrandomahiGTpiv();
+		qrandomloLEQThi();
+		loEQleft = false;
+	}
+	qsw();
+}
 
-local(qs0,qs1,qs2,qs3) int left(N), lo(N), hi(N), right(N);
-
-(q <main0>)
-
-q <main0> --> q <qs0 main1>
-q <main1> --> q <main1>
-
-q <qs0> --> q <>		"reject"  (left >= right)
-q <qs0> --> q <qs1>		"init" (left < right & left' = left & right' = right
-					      & lo' = left & hi' = right)
-q <qs1> --> q <qs1>		"decrease hi"
-				(lo <= hi & (hi != right | lo != left)
-					      & lo' = lo & hi' = hi-1
-					      & left' = left & right' = right)
-q <qs1> --> q <qs1>		"increase lo"
-				(lo <= hi & lo' = lo+1 & hi' = hi
-					      & left' = left & right' = right)
-q <qs1> --> q <qs0 qs2>		"left recursive call"
-				(lo > hi & left' = left & right' = hi
-					      & lo'' = lo & right'' = right)
-q <qs2> --> q <qs0 qs3>		"right recursive call"
-				(left' = lo & right' = right)
-q <qs3> --> q <>
+qrandomahiGTpiv() {
+	if (*) {
+		ahiGTpiv = true;
+	} else {
+		ahiGTpiv = false;
+	}	
+}
 
 
-# Corresponding procedure in C syntax:
-#
-# void qs(int left,int right)
-# {
-#     int lo,hi,piv,tmp;
-#
-#     if (left >= right) return;
-#     piv = a[right]; lo = left; hi = right;
-#     while (lo <= hi)
-#     {
-#         if (a[hi] > piv) hi--;
-#         else
-#         {
-#             tmp = a[lo], a[lo] = a[hi], a[hi] = tmp;
-#             lo++;
-#         }
-#     }
-#     qs(left,hi);
-#     qs(lo,right);
-# }
+qrandomloLEQThi() {
+	if (*) {
+		loLEQThi = true;
+	} else {
+		loLEQThi = false;
+	}
+}
+
+someOtherCode(){}
