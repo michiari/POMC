@@ -15,7 +15,7 @@ omegaFormulas = chain_next
   ++ exception_safety
   ++ hier_down
   ++ hier_insp
-  ++ hier_insp_exc
+  -- ++ hier_insp_exc
   ++ hier_up
   ++ normal_ret
   ++ no_throw

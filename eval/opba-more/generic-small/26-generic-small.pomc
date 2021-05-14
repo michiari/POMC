@@ -1,4 +1,4 @@
-formulas = F (HNd pb);
+formulas = F (pa And (call HUd pc));
 include = "../../Mcall.inc";
 
 include = "opa.inc";

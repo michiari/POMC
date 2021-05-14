@@ -1,4 +1,4 @@
-formulas = PNd (PNd (PNd call));
+formulas = G (call --> Not (PNu exc));
 include = "../../Mcall.inc";
 
 include = "opa.inc";

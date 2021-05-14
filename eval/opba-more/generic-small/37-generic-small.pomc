@@ -1,4 +1,4 @@
-formulas = PNd (PNd call);
+formulas = G (call --> XNd ret);
 include = "../../Mcall.inc";
 
 include = "opa.inc";

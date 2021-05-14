@@ -14,7 +14,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 tests :: TestTree
-tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests
+tests = testGroup "ModelChecking.hs Omega Tests" [ sasEvalTests
                                                   ]
 
 sasBaseTests :: TestTree
