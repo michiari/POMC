@@ -15,14 +15,12 @@ module Pomc.DoubleHashTable( DoubleHashTable
                            , lookupMap
                            , modify
                            , modifyAll
-                           , freshPosId
                            ) where
 import Prelude hiding (lookup)
 import Control.Monad (forM_, forM)
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.Maybe
-import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -31,19 +29,15 @@ import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
-import qualified Data.Vector.Mutable as MV
-import Data.Vector (Vector)
-import qualified Data.Vector as V
-
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
-type DoubleHashTable s k v = (HashTable s k Int, STRef s (MV.MVector s v) , STRef s ([Int], Int))
+type DoubleHashTable s k v = (HashTable s k Int, HashTable s Int v)
 
 empty  :: ST.ST s (DoubleHashTable s k v)
 empty = do
   ht1 <- BH.new 
-  vect <- MV
+  ht2 <- BH.new 
   return (ht1,ht2)
 
 lookupId :: (Eq k, Hashable k) => DoubleHashTable s k v -> k -> ST.ST s (Maybe Int)
@@ -100,10 +94,3 @@ modify (_, ht2) ident f = do
 
 modifyAll :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> (v -> v) -> ST.ST s ()
 modifyAll (_, ht2) f = H.mapM_ (\(k,v) -> BH.insert ht2 k (f v)) ht2
-
-
-freshPosId :: STRef s Int -> ST.ST s Int
-freshPosId idSeq = do
-  curr <- readSTRef idSeq
-  modifySTRef' idSeq (+1);
-  return $ curr

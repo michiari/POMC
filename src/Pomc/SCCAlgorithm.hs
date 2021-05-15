@@ -27,7 +27,6 @@ module Pomc.SCCAlgorithm ( Graph
                          ) where
 
 import Pomc.SatUtil
-import Pomc.DoubleHashTable(freshPosId)
 import qualified  Pomc.DoubleHashTable as DHT
 import Pomc.GStack(GStack)
 import qualified Pomc.GStack as GS
