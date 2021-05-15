@@ -74,6 +74,15 @@ data GraphNode state = SCComponent
 instance (Show state) => Show (GraphNode  state) where
   show gn =  show $ getgnId gn 
 
+instance Eq (GraphNode state) where
+  p == q = getgnId p == getgnId q
+
+instance  Ord (GraphNode state) where
+  compare p q = compare (getgnId p) (getgnId q)
+
+instance Hashable (GraphNode state) where
+  hashWithSalt salt s = hashWithSalt salt $ (getgnId s) 
+
 type Key state = (StateId state, Stack state)
 type Value state = GraphNode state
 
@@ -289,13 +298,16 @@ createComponentGn graph gn areFinal =
     toMerge [ident] = do 
       newC <- freshNegId (c graph)
       DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC  
-      let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> to e == ident) $ es
-          selfLoopOrGn SCComponent{}  = True 
-      if selfLoopOrGn gn 
+      let isScc SingleNode{}  = False
+          isScc SCComponent{} = True
+          selfLoop SingleNode{edges =es} = not . Set.null . Set.filter (\e -> to e == ident) $ es 
+      if isScc gn 
         then do 
           isA <- isAccepting graph ident areFinal
           return (isA, Nothing)
-        else return $ (False, Nothing)
+        else if selfLoop gn 
+              then merge graph [ident] areFinal
+              else return $ (False, Nothing)
     toMerge idents = merge graph idents areFinal
     findComponents acc = do 
       sSize <- GS.size $ sStack graph

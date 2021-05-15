@@ -12,10 +12,10 @@ omegaFormulas = chain_next
   ++ contains_exc
   ++ data_access
   ++ empty_frame
-  ++ exception_safety
+  -- ++ exception_safety
   ++ hier_down
   ++ hier_insp
-  ++ hier_insp_exc
+  -- ++ hier_insp_exc
   ++ hier_up
   ++ normal_ret
   ++ no_throw
