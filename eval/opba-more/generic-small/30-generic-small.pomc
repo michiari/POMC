@@ -1,4 +1,4 @@
-formulas = F (HBu perr);
+formulas = G ((pc And (XNu exc)) --> ((~ pa) HSd pb));
 include = "../../Mcall.inc";
 
 include = "opa.inc";

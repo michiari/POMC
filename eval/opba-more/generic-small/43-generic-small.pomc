@@ -1,4 +1,4 @@
-formulas = G (han --> XNu ret);
+formulas = G (exc --> ~ (PBu (call And pa) Or XBu (call And pa)));
 include = "../../Mcall.inc";
 
 include = "opa.inc";

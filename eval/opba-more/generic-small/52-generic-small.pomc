@@ -1,4 +1,4 @@
-formulas = G (call --> XNd ret);
+formulas = XNd (call And ((call Or exc) Su pb));
 include = "../../Mcall.inc";
 
 include = "opa.inc";
