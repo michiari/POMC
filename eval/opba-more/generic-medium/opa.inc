@@ -1,6 +1,6 @@
 opa:
   initials = 0;
-  finals = (2 8 10);
+  finals = 2,8,10;
   deltaPush =
     (0,  (call pa),    1),
     (1,  (call pb),    2),
