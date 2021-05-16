@@ -298,16 +298,13 @@ createComponentGn graph gn areFinal =
     toMerge [ident] = do 
       newC <- freshNegId (c graph)
       DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC  
-      let isScc SingleNode{}  = False
-          isScc SCComponent{} = True
-          selfLoop SingleNode{edges =es} = not . Set.null . Set.filter (\e -> to e == ident) $ es 
-      if isScc gn 
+      let let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> to e == ident) $ es
+          selfLoopOrGn SCComponent{}  = True 
+      if selfLoopOrGn gn 
         then do 
           isA <- isAccepting graph ident areFinal
           return (isA, Nothing)
-        else if selfLoop gn 
-              then merge graph [ident] areFinal
-              else return $ (False, Nothing)
+        else return $ (False, Nothing)
     toMerge idents = merge graph idents areFinal
     findComponents acc = do 
       sSize <- GS.size $ sStack graph
