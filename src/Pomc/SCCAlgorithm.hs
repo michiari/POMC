@@ -298,7 +298,7 @@ createComponentGn graph gn areFinal =
     toMerge [ident] = do 
       newC <- freshNegId (c graph)
       DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC  
-      let let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> to e == ident) $ es
+      let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> to e == ident) $ es
           selfLoopOrGn SCComponent{}  = True 
       if selfLoopOrGn gn 
         then do 
