@@ -1,0 +1,182 @@
+formulas = 	F (ret And main);
+
+program:
+var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, exc1;
+
+main() {
+	leftGTright = false;
+	leftEQTright = false;
+	exc1 = false;
+	qs();
+}
+
+qs() {
+	if (leftGTright || leftEQTright) {
+	} else {
+		loEQThi = false;
+		loLThi = true;
+		loEQTleft = true;
+		hiEQTright = true;
+		eqEQTlo = true;
+		eqEQTleft = true;
+		firstIteration();
+		while (loLThi || loEQThi) { 
+			qsif();
+		}
+
+		if (loEQTleft){
+			leftGTright = false;
+			leftEQTright = false;
+			exc1 = false;
+			qs();
+		} else { 
+			if (hiEQTright && eqEQTlo) {
+				leftGTright = false;
+				leftEQTright = false;
+				exc1 = false;
+				qs();
+			} else {
+				if (hiEQTright && eqEQTleft) {
+				} else {
+					if (hiEQTright) {
+						randomleftLEQTright();
+						qs2();
+					} else {
+						if (eqEQTleft) {
+							randomleftLEQTright();
+							qs2();
+						} else {
+							if (eqEQTlo) {
+								leftGTright = false;
+								leftEQTright = false;
+								qs2();
+							} else {}
+						} 
+					}
+				}
+			}
+		}
+	}
+}
+
+firstIteration() {
+	eqEQTlo = false;
+	shiftloLEQThi();
+	loEQTleft = false;
+}
+
+qsif() {
+	if (*) {
+		shiftloLEQThi();
+		if (hiEQTright) {
+			hiEQTright = false;
+		} else {}
+	} else {
+		if (*) {
+			if (eqEQTlo){
+				eqEQTlo = false;
+			} else {}
+		} else {
+			if (eqEQTleft){
+				eqEQTleft = false;
+			} else {}
+		}
+		shiftloLEQThi();
+		if (loEQTleft) {
+			loEQTleft = false;
+		} else {}		
+	}
+}
+
+
+
+shiftloLEQThi() {
+	if (exc1) {
+		if (loEQThi) {
+			loEQThi = false;
+			loLThi = false;					
+		} else {
+			loEQThi = true;
+			loLThi = false;
+		}
+	} else { exc1 = true;}
+}
+
+randomleftLEQTright(){
+	if (*){
+		leftGTright = false;
+		leftEQTright = false;
+	} else {
+		leftGTright = false;
+		leftEQTright = true;
+	}
+}
+
+qs2() {
+	if (leftGTright || leftEQTright) {
+	} else {
+		loEQThi = false;
+		loLThi = true;
+		loEQTleft = true;
+		hiEQTright = true;
+		eqEQTlo = true;
+		eqEQTleft = true;
+		firstIteration2();
+		while (loLThi || loEQThi) { 
+			qsif2();
+		}
+
+		if (loEQTleft){
+			leftGTright = false;
+			leftEQTright = false;
+			qs2();
+		} else { 
+			if (hiEQTright && (eqEQTlo)) {
+				leftGTright = false;
+				leftEQTright = false;
+				qs2();
+			} else {}
+		}
+	}
+}
+
+qsif2() {
+	if (*) {
+		shiftloLEQThi2();
+		if (hiEQTright) {
+			hiEQTright = false;
+		} else {}
+	} else {
+		if (*) {
+			if (eqEQTlo){
+				eqEQTlo = false;
+			} else {}
+		} else {
+			if (eqEQTleft){
+				eqEQTleft = false;
+			} else {}
+		}
+		shiftloLEQThi2();
+		if (loEQTleft) {
+			loEQTleft = false;
+		} else {}		
+	}
+}
+
+
+
+firstIteration2() {
+	eqEQTlo = false;
+	shiftloLEQThi2();
+	loEQTleft = false;
+}
+
+shiftloLEQThi2() {
+	if (loEQThi) {
+		loEQThi = false;
+		loLThi = false;					
+	} else {
+		loEQThi = true;
+		loLThi = false;
+	}
+}

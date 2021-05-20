@@ -1,0 +1,67 @@
+formulas = 	F (ret And main);
+
+
+program:
+var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright;
+
+main() {
+	leftGTright = false;
+	leftEQTright = false;
+	qs2();
+}
+
+qs2() {
+	if (leftGTright || leftEQTright) {
+	} else {
+		loEQThi = false;
+		loLThi = true;
+		loEQTleft = true;
+		hiEQTright = true;
+		while (loLThi || loEQThi) { 
+			qsif2();
+		}
+
+		if (loEQTleft){
+			leftGTright = true;
+			leftEQTright = false;
+			qs2();
+			leftGTright = false;
+			leftEQTright = false;
+			qs2();			
+		} else {
+			if (hiEQTright){
+				leftGTright = false;
+				leftEQTright = false;
+				qs2();	
+				leftGTright = true;
+				leftEQTright = false;
+				qs2();
+			} else {}
+		}
+	}
+}
+
+qsif2() {
+	if (*) {
+		shiftloLEQThi2();
+		if (hiEQTright) {
+			hiEQTright = false;
+		} else {}
+	} else {
+		shiftloLEQThi2();
+		if (loEQTleft) {
+			loEQTleft = false;
+		} else {}		
+	}
+}
+
+
+shiftloLEQThi2() {
+	if (loEQThi) {
+		loEQThi = false;
+		loLThi = false;					
+	} else {
+		loEQThi = true;
+		loLThi = false;
+	}
+}

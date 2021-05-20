@@ -1,0 +1,97 @@
+formulas = 	G ( (call And accessValues) --> (~ maybeNull) Or (XBd han));
+
+program:
+var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, maybeNull;
+
+main() {
+	leftGTright = false;
+	leftEQTright = false;
+	maybeNull = true;
+	try {
+		qs2();
+	} catch {
+		maybeNull = false;
+		someOtherCode();
+		qs2();
+	}
+
+	
+}
+
+qs2() {
+	accessValues();
+	if (leftGTright || leftEQTright) {
+	} else {
+		loEQThi = false;
+		loLThi = true;
+		loEQTleft = true;
+		hiEQTright = true;
+		eqEQTlo = true;
+		eqEQTleft = true;
+		firstIteration2();
+		while (loLThi || loEQThi) { 
+			qsif2();
+		}
+
+		if (loEQTleft){
+			leftGTright = false;
+			leftEQTright = false;
+			qs2();
+		} else { 
+			if (hiEQTright && (eqEQTlo)) {
+				leftGTright = false;
+				leftEQTright = false;
+				qs2();
+			} else {}
+		}
+	}
+}
+
+qsif2() {
+	if (*) {
+		shiftloLEQThi2();
+		if (hiEQTright) {
+			hiEQTright = false;
+		} else {}
+	} else {
+		if (*) {
+			if (eqEQTlo){
+				eqEQTlo = false;
+			} else {}			
+		} else {
+			if (eqEQTleft){
+				eqEQTleft = false;
+			} else {}
+		}
+		shiftloLEQThi2();
+		if (loEQTleft) {
+			loEQTleft = false;
+		} else {}		
+	}
+}
+
+
+
+firstIteration2() {
+	eqEQTlo = false;
+	shiftloLEQThi2();
+	loEQTleft = false;
+}
+
+shiftloLEQThi2() {
+	if (loEQThi) {
+		loEQThi = false;
+		loLThi = false;					
+	} else {
+		loEQThi = true;
+		loLThi = false;
+	}
+}
+
+accessValues() {
+	if (*) {
+		throw;
+	} else {}
+}
+
+someOtherCode() {}
