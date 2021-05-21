@@ -1,4 +1,5 @@
-formulas = 	G ( (call And accessValues) --> (~ maybeNull) Or (XBd han));
+formulas = 	G ( (call And accessValues) --> (~ maybeNull) Or (Sd T han)), 
+			F (ret And main);
 
 program:
 var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, maybeNull;
@@ -11,7 +12,6 @@ main() {
 		qs2();
 	} catch {
 		maybeNull = false;
-		someOtherCode();
 		qs2();
 	}
 
@@ -134,5 +134,3 @@ accessValues() {
 		throw;
 	} else {}
 }
-
-someOtherCode() {}
