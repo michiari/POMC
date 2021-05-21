@@ -1,4 +1,5 @@
-formulas = 	F (ret And main);
+formulas = 	F (ret And main),	
+			XNd (ret And main);
 
 
 program:

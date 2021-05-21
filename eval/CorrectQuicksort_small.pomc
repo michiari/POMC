@@ -1,5 +1,4 @@
-formulas = 	F (ret And main),
-			XNd (ret And main);
+formulas = 	F (ret And main);
 
 program:
 var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, exc1;
@@ -24,6 +23,7 @@ qs() {
 		while (loLThi || loEQThi) { 
 			qsif();
 		}
+
 		if (loEQTleft){
 			leftGTright = true;
 			leftEQTright = false;
@@ -33,7 +33,7 @@ qs() {
 			exc1 = false;
 			qs();
 		} else { 
-			if (hiEQTright && eqEQTlo) {
+			if (hiEQTright && (eqEQTlo)) {
 				leftGTright = false;
 				leftEQTright = false;
 				exc1 = false;
@@ -51,7 +51,7 @@ qs() {
 					qs();
 				} else {
 					if (hiEQTright) {
-						randomleftLEQTright();
+						randomloLEQThi();
 						qs2();
 						leftGTright = true;
 						leftEQTright = false;
@@ -61,15 +61,11 @@ qs() {
 							leftGTright = true;
 							leftEQTright = false;
 							qs();
-							randomleftLEQTright();
+							randomloLEQThi();
 							qs2();
 						} else {
 							if (eqEQTlo) {
-								leftGTright = false;
-								leftEQTright = false;
-								qs2();
-								leftGTright = false;
-								leftEQTright = true;
+								randomloLEQThi();
 								qs2();
 							} else {}
 						} 
@@ -77,59 +73,6 @@ qs() {
 				}
 			}
 		}
-	}
-}
-
-firstIteration() {
-	eqEQTlo = false;
-	shiftloLEQThi();
-	loEQTleft = false;
-}
-
-qsif() {
-	if (*) {
-		shiftloLEQThi();
-		if (hiEQTright) {
-			hiEQTright = false;
-		} else {}
-	} else {
-		if (*) {
-			if (eqEQTlo){
-				eqEQTlo = false;
-			} else {}
-		} else {
-			if (eqEQTleft){
-				eqEQTleft = false;
-			} else {}
-		}
-		shiftloLEQThi();
-		if (loEQTleft) {
-			loEQTleft = false;
-		} else {}		
-	}
-}
-
-
-
-shiftloLEQThi() {
-	if (exc1) {
-		if (loEQThi) {
-			loEQThi = false;
-			loLThi = false;					
-		} else {
-			loEQThi = true;
-			loLThi = false;
-		}
-	} else { exc1 = true;}
-}
-
-randomleftLEQTright(){
-	if (*){
-		leftGTright = false;
-		leftEQTright = false;
-	} else {
-		leftGTright = false;
-		leftEQTright = true;
 	}
 }
 
@@ -146,6 +89,7 @@ qs2() {
 		while (loLThi || loEQThi) { 
 			qsif2();
 		}
+
 		if (loEQTleft){
 			leftGTright = true;
 			leftEQTright = false;
@@ -154,7 +98,7 @@ qs2() {
 			leftEQTright = false;
 			qs2();
 		} else { 
-			if (hiEQTright && eqEQTlo) {
+			if (hiEQTright && (eqEQTlo)) {
 				leftGTright = false;
 				leftEQTright = false;
 				qs2();
@@ -196,9 +140,38 @@ qs2() {
 							} else {}
 						} 
 					}
-				}				
+				}
 			}
 		}
+	}
+}
+
+firstIteration() {
+	eqEQTlo = false;
+	shiftloLEQThi();
+	loEQTleft = false;
+}
+
+qsif() {
+	if (*) {
+		shiftloLEQThi();
+		if (hiEQTright) {
+			hiEQTright = false;
+		} else {}
+	} else {
+		if (*) {
+			if (eqEQTleft){
+				eqEQTleft = false;
+			} else {}
+		} else {
+			if (eqEQTlo){
+				eqEQTlo = false;
+			} else {}
+		}
+		shiftloLEQThi();
+		if (loEQTleft) {
+			loEQTleft = false;
+		} else {}		
 	}
 }
 
@@ -210,12 +183,12 @@ qsif2() {
 		} else {}
 	} else {
 		if (*) {
-			if (eqEQTlo){
-				eqEQTlo = false;
-			} else {}
-		} else {
 			if (eqEQTleft){
 				eqEQTleft = false;
+			} else {}
+		} else {
+			if (eqEQTlo){
+				eqEQTlo = false;
 			} else {}
 		}
 		shiftloLEQThi2();
@@ -224,8 +197,6 @@ qsif2() {
 		} else {}		
 	}
 }
-
-
 
 firstIteration2() {
 	eqEQTlo = false;
@@ -237,6 +208,28 @@ shiftloLEQThi2() {
 	if (loEQThi) {
 		loEQThi = false;
 		loLThi = false;					
+	} else {
+		loEQThi = true;
+		loLThi = false;
+	}
+}
+
+shiftloLEQThi() {
+	if (exc1) {
+		if (loEQThi) {
+			loEQThi = false;
+			loLThi = false;					
+		} else {
+			loEQThi = true;
+			loLThi = false;
+		}
+	} else { exc1 = true;}
+}
+
+randomloLEQThi(){
+	if (*){
+		loEQThi = false;
+		loLThi = true;	
 	} else {
 		loEQThi = true;
 		loLThi = false;
