@@ -1,4 +1,4 @@
-formulas = 	~ (call And main);
+formulas = 	F (ret And main And (~ aleftGTright));
 
 program:
 var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, aleftGTaright, aleftEQaright;
