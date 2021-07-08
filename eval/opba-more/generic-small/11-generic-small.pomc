@@ -1,4 +1,4 @@
-formulas = XNd perr;
+formulas = PNd (PBu call);
 include = "../../Mcall.inc";
 
-include = "opa.inc";
+include = "opba.inc";

@@ -14,6 +14,7 @@ module Pomc.Util ( any'
                  , timeAction
                  , timeToString
                  , parMap
+                 , parMapChunk
                  , prettyTrace
                  ) where
 
@@ -22,9 +23,8 @@ import Pomc.Prop (Prop(..))
 import qualified Data.Set as S
 import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
-import Control.Parallel.Strategies(using, parList, rdeepseq, rseq)
+import Control.Parallel.Strategies(using, parList, parListChunk, rdeepseq, rseq, Strategy)
 import Control.DeepSeq(NFData(..))
-
 
 
 any' :: Foldable t => (a -> Bool) -> t a -> Bool
@@ -61,6 +61,8 @@ timeToString = secs
 parMap :: (NFData b) => (a -> b) -> [a] -> [b]
 parMap f xs = map f xs `using` parList rdeepseq
 
+parMapChunk :: (NFData b) => Int -> (a -> b) -> [a] -> [b]
+parMapChunk n f xs = map f xs `using` parListChunk n rdeepseq
 
 prettyTrace :: a -> a -> [(s, S.Set (Prop a))] -> [(s, [a])]
 prettyTrace end summary trace = map (\(q, b) -> (q, if S.null b

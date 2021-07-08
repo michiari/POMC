@@ -1,4 +1,4 @@
-formulas = G ((call And pb) --> (~ pc) HUu perr);
+formulas = G (call --> Not (PNu exc));
 include = "../../Mcall.inc";
 
-include = "opa.inc";
+include = "opba.inc";

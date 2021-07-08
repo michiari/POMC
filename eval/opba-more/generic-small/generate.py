@@ -45,11 +45,11 @@ formulas = [
     "XNd (call And ((call Or exc) Su pb))",
     "PNd (PNd ((call Or exc) Uu ret))" ]
 
-n = 11
+n = 1
 for form in formulas:
     with open(str(n) + '-generic-small.pomc', 'w') as f:
         f.write('formulas = ' + form + ';\n')
         f.write('include = "../../Mcall.inc";\n\n')
-        f.write('include = "opa.inc";')
+        f.write('include = "opba.inc";')
     n += 1
 

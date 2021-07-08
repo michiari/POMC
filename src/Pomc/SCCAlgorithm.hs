@@ -46,12 +46,18 @@ import Data.Maybe(catMaybes)
 
 import Data.Hashable
 
+import Control.DeepSeq(NFData(..), deepseq)
+
 data Edge = Internal 
   { to  :: Int 
   } | Summary 
   { to :: Int
   ,  body :: Set (Edge) 
   } deriving (Show, Eq, Ord)
+
+instance NFData Edge where
+  rnf (Internal t) = t `deepseq` ()
+  rnf (Summary t b)= t `deepseq` b `deepseq` ()
 
 data SummaryBody = SummaryBody 
   { firstNode :: Int
@@ -70,6 +76,10 @@ data GraphNode state = SCComponent
   , node     :: (StateId state, Stack state)
   , edges    :: Set Edge
   } 
+
+instance (NFData state) => NFData (GraphNode state) where
+  rnf (SCComponent i iVal ns es) = i `deepseq` iVal `deepseq` ns `deepseq` es `deepseq` ()
+  rnf (SingleNode  i iVal n es)  = i `deepseq` iVal `deepseq` n  `deepseq` es `deepseq` ()
 
 instance (Show state) => Show (GraphNode  state) where
   show gn =  show $ getgnId gn 
@@ -96,7 +106,7 @@ data Graph s state = Graph
   , summaries       :: STRef s (Set (Int, SummaryBody, Key state))
   }
 
-newGraph :: (SatState state, Eq state, Hashable state, Show state) 
+newGraph :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
             => Vector (Key state) 
             -> ST.ST s (Graph s state)
 newGraph iniNodes = do
@@ -139,7 +149,7 @@ updateSummaryBody newId idents SummaryBody{firstNode = f, lastNode = l, bodyEdge
   in SummaryBody{firstNode = sub f, lastNode= sub l, bodyEdges = Set.map update b}
 
 -- unsafe
-initialNodes :: (SatState state, Eq state, Hashable state, Show state) 
+initialNodes :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                 =>  Graph s state 
                 -> ST.ST s (Set (Key state))
 initialNodes graph = 
@@ -152,7 +162,7 @@ initialNodes graph =
     return $ Set.unions gnNodesList
 
 -- unsafe
-alreadyVisited :: (SatState state, Eq state, Hashable state, Show state) 
+alreadyVisited :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                   => Graph s state 
                   -> Key state 
                   -> ST.ST s Bool 
@@ -160,7 +170,7 @@ alreadyVisited graph k = do
   graphNode <- DHT.lookup (nodeToGraphNode graph) k
   return $ (iValue graphNode) /= 0
 
-alreadyDiscovered :: (SatState state, Eq state, Hashable state, Show state) 
+alreadyDiscovered :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                      => Graph s state 
                      -> Key state 
                      -> ST.ST s Bool 
@@ -177,7 +187,7 @@ alreadyDiscovered graph key = do
       return False
 
 -- unsafe
-visitNode :: (SatState state, Eq state, Hashable state, Show state) 
+visitNode :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
               => Graph s state 
               -> Maybe Edge 
               -> Key state 
@@ -187,7 +197,7 @@ visitNode graph e key = do
   visitGraphNode graph e gn 
   
 
-visitGraphNode :: (SatState state, Eq state, Hashable state, Show state) 
+visitGraphNode :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                   => Graph s state 
                   -> Maybe Edge 
                   -> GraphNode state 
@@ -203,7 +213,7 @@ visitGraphNode graph e gn = do
   GS.push (bStack graph) sSize
 
 --unsafe
-updateSCC :: (SatState state, Eq state, Hashable state, Show state) 
+updateSCC :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
               => Graph s state 
               -> Key state 
               -> ST.ST s ()
@@ -211,7 +221,7 @@ updateSCC graph key = do
   gn <- DHT.lookup (nodeToGraphNode graph) key
   updateSCCInt graph (iValue gn) 
 
-updateSCCInt :: (SatState state, Eq state, Hashable state, Show state) 
+updateSCCInt :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                 => Graph s state 
                 -> Int 
                 -> ST.ST s ()
@@ -224,7 +234,7 @@ updateSCCInt graph iVal =  do
       updateSCCInt graph iVal
 
 -- unsafe
-discoverSummaryBody :: (SatState state, Eq state, Hashable state, Show state) 
+discoverSummaryBody :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                         => Graph s state 
                         -> StateId state 
                         -> ST.ST s SummaryBody
@@ -238,7 +248,7 @@ discoverSummaryBody graph fr  =
     return $ SummaryBody{firstNode =  snd . head $ b, lastNode = snd . last $ b, bodyEdges = mapToEdges b}
 
 -- unsafe 
-discoverSummary :: (SatState state, Eq state, Hashable state, Show state) 
+discoverSummary :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                     => Graph s state -> Key state 
                     -> SummaryBody 
                     -> Key state 
@@ -248,7 +258,7 @@ discoverSummary graph fr b t = do
   modifySTRef' (summaries graph) $ Set.insert (getgnId gnFrom, b, t)
 
 -- unsafe
-insertInternal :: (SatState state, Eq state, Hashable state, Show state) 
+insertInternal :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                   => Graph s state 
                   -> Key state 
                   -> Key state 
@@ -263,7 +273,7 @@ insertInternal graph fromKey toKey  = do
   return e
 
 -- unsafe
-insertSummary :: (SatState state, Eq state, Hashable state, Show state) 
+insertSummary :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                   => Graph s state 
                   -> Key state 
                   -> Key state 
@@ -279,7 +289,7 @@ insertSummary graph fromKey toKey  sb = do
   DHT.modify (nodeToGraphNode graph) (fromJust fr) insertEdges
   return e
                                            
-createComponent :: (SatState state, Ord state, Hashable state, Show state) 
+createComponent :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
                     => Graph s state 
                     -> Key state 
                     -> ([state] -> Bool) 
@@ -288,7 +298,7 @@ createComponent graph key areFinal = do
   gn <- DHT.lookup (nodeToGraphNode graph) key
   createComponentGn graph gn areFinal
 
-createComponentGn :: (SatState state, Ord state, Hashable state, Show state) 
+createComponentGn :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
                       => Graph s state 
                       -> GraphNode state 
                       -> ([state] -> Bool) 
@@ -321,7 +331,7 @@ createComponentGn graph gn areFinal =
         findComponents Set.empty 
       else return $ (False, Nothing) 
 
-merge :: (SatState state, Ord state, Hashable state, Show state) 
+merge :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
           => Graph s state  
           -> [Int] 
           -> ([state] -> Bool) 
@@ -351,10 +361,10 @@ merge graph idents areFinal =
     modifySTRef' (summaries graph) $ Set.map $ \(f,sb,t) -> (sub f, updateSummaryBody newId identsSet sb,t)
     modifySTRef' (initials graph)  $ Set.map $ \(n,b) -> (sub n,b)
     isA <- isAccepting graph newId areFinal
-    return (isA, Just $ (newId, identsSet))
+    return (isA, Just (newId, identsSet))
 
 -- not safe
-isAccepting :: (SatState state, Ord state, Hashable state, Show state) 
+isAccepting :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
                 => Graph s state 
                 -> Int 
                 -> ([state] -> Bool) 
@@ -370,12 +380,12 @@ isAccepting graph ident areFinal =
     gnStatesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList . Set.unions . Set.map edgeGnIdents $ selfEdges edgeSet) gnStates
     return $ areFinal . Set.toList . Set.unions $ gnStatesList
     
-summariesSize :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Int
+summariesSize :: (NFData state, SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Int
 summariesSize graph = do
   summ <- readSTRef $ summaries graph
   return $ Set.size summ
 
-toCollapsePhase :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s (Set (Int,Bool))
+toCollapsePhase :: (NFData state, SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s (Set (Int,Bool))
 toCollapsePhase graph = 
   let resolveSummary (fr, sb, key) = do  
         alrDir <- alreadyDiscovered graph key 
@@ -392,14 +402,14 @@ toCollapsePhase graph =
     modifySTRef' (initials graph) $ Set.map $ \(ident, _) -> (ident,True)
     return $ Set.fromList newInitials
 
-toSearchPhase :: (SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Set (Int,Bool)) -> ST.ST s ()
+toSearchPhase :: (NFData state, SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Set (Int,Bool)) -> ST.ST s ()
 toSearchPhase graph newInitials = do 
   DHT.modifyAll (nodeToGraphNode graph) resetgnIValue
   writeSTRef (initials graph) newInitials;
   writeSTRef (summaries graph) Set.empty
 
 --unsafe
-visitGraphFromKey :: (SatState state, Ord state, Hashable state, Show state) 
+visitGraphFromKey :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
                       => Graph s state 
                       -> (Maybe(Int, Set Int) -> ST.ST s ()) 
                       -> ([state] -> Bool) 
@@ -411,7 +421,7 @@ visitGraphFromKey graph sbUpdater areFinal e key = do
   visitGraphFrom graph sbUpdater areFinal e gn 
 
 -- unsafe
-visitGraphFrom :: (SatState state, Ord state, Hashable state, Show state) 
+visitGraphFrom :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
                   => Graph s state 
                   -> (Maybe(Int, Set Int) 
                   -> ST.ST s ()) -> ([state] -> Bool) 

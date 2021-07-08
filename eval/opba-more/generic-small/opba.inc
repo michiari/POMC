@@ -1,4 +1,4 @@
-opa:  initials = 0;
+opba:  initials = 0;
       finals = (4 10);
       deltaPush =
         (0,  (call pa),   1),

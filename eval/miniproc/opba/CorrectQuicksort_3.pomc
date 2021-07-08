@@ -225,8 +225,6 @@ qsif2() {
 	}
 }
 
-
-
 firstIteration2() {
 	eqEQTlo = false;
 	shiftloLEQThi2();

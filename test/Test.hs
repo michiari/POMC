@@ -6,10 +6,10 @@ import qualified TestSat     (tests)
 import qualified TestSatOmega(tests)
 import qualified TestMC      (tests)
 import qualified TestMCOmega (tests)
-import qualified TestMP    (tests)
+import qualified TestMP      (tests)
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [TestMCOmega.tests]
+tests = testGroup "Tests" [TestSat.tests]

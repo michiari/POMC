@@ -1385,7 +1385,7 @@ isFinalW bitenc phi@(XNext _ _) s      = (not $ E.member bitenc phi (stack s))
 isFinalW bitenc phi@(Eventually g) s   = (E.member bitenc g (current s)) || (not $ E.member bitenc phi (current s))
 isFinalW _ _ _ = True
 
--- given a BitEncoding and a state, determine whether it's final
+-- given a BitEncoding and a state, determine whether the state is final
 isFinalF :: BitEncoding -> State -> Bool
 isFinalF bitenc s =
   not (mustPush s) -- xe can be instead accepted, as if # = #

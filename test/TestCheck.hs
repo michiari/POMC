@@ -974,12 +974,6 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "call", "call"]
         )
-      , ( "Accepting Eventually"
-        , True
-        , Eventually $ Not (Atomic . Prop $ "call")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-        )
       ,  ( "Accepting Not Always"
         , True
         , Not . Always . Atomic . Prop $ "call"

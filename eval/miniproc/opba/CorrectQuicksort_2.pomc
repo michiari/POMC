@@ -23,7 +23,8 @@ qs2() {
 		while (loLThi || loEQThi) { 
 			qsif2();
 		}
-		if (loEQTleft){
+		
+		if (loEQTleft){ 
 			leftGTright = true;
 			leftEQTright = false;
 			qs2();
@@ -31,7 +32,7 @@ qs2() {
 			leftEQTright = false;
 			qs2();
 		} else { 
-			if (hiEQTright && eqEQTlo) {
+			if (hiEQTright && eqEQTlo) { 
 				leftGTright = false;
 				leftEQTright = false;
 				qs2();
@@ -39,7 +40,7 @@ qs2() {
 				leftEQTright = false;
 				qs2();
 			} else {
-				if (hiEQTright && eqEQTleft) {
+				if (hiEQTright && eqEQTleft) { 
 					leftGTright = true;
 					leftEQTright = false;
 					qs2();
@@ -47,7 +48,7 @@ qs2() {
 					leftEQTright = false;
 					qs2();
 				} else {
-					if (hiEQTright) {
+					if (hiEQTright) { 
 						leftGTright = false;
 						leftEQTright = true;
 						qs2();
@@ -55,7 +56,7 @@ qs2() {
 						leftEQTright = false;
 						qs2();
 					} else {
-						if (eqEQTleft) {
+						if (eqEQTleft) { 
 							leftGTright = true;
 							leftEQTright = false;
 							qs2();
@@ -63,7 +64,7 @@ qs2() {
 							leftEQTright = true;
 							qs2();
 						} else {
-							if (eqEQTlo) {
+							if (eqEQTlo) { 
 								leftGTright = false;
 								leftEQTright = true;
 								qs2();
@@ -101,10 +102,6 @@ qsif2() {
 		} else {}		
 	}
 }
-
-
-
-			
 
 firstIteration2() {
 	eqEQTlo = false;

@@ -52,7 +52,7 @@ lookup smref stateid = do
     then MV.unsafeRead sm sid
     else return Set.empty
 
--- check whether a couple (StateId, Stack) iha already been visited checking the presence of the Stack in the Set at StateId position
+-- check the presence of the Stack in the Set at StateId position
 member :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s Bool
 member smref stateid val = do
   vset <- lookup smref stateid

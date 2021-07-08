@@ -28,6 +28,8 @@ import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
+import Control.DeepSeq(NFData(..), deepseq)
+
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
@@ -59,7 +61,6 @@ fuse (ht1, ht2) keySet ident value = do
                             );
   BH.insert ht2 ident value
 
-
 -- not safe
 lookup :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> k -> ST.ST s v
 lookup (ht1, ht2) key = do
@@ -68,22 +69,23 @@ lookup (ht1, ht2) key = do
   return $ fromJust value
 
 -- not safe
-lookupApply :: (Show v, Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> w) ->ST.ST s w
+lookupApply :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> w) ->ST.ST s w
 lookupApply (_,ht2) ident f = do 
-    value <- BH.lookup ht2 ident        
-    return $ f . fromJust $ value
+  value <- BH.lookup ht2 ident        
+  return $ f . fromJust $ value
 
 -- not safe
-lookupMap :: (Show v, Eq k, Hashable k) => (DoubleHashTable s k v) -> [Int] -> (v -> w) ->ST.ST s [w]
+lookupMap :: (Eq k, Hashable k, NFData v, NFData w) => (DoubleHashTable s k v) -> [Int] -> (v -> w) ->ST.ST s [w]
 lookupMap (_,ht2) idents f =   do 
-    values <- forM idents $ BH.lookup ht2         
-    return $ map (f . fromJust) values
+  values <- forM idents $ BH.lookup ht2         
+  return $ map (f . fromJust) values
 
---unsafe
+--not safe
 modify :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> v) -> ST.ST s ()
 modify (_, ht2) ident f = do 
   value <- BH.lookup ht2 ident 
   BH.insert ht2 ident $ f . fromJust $ value
 
 modifyAll :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> (v -> v) -> ST.ST s ()
-modifyAll (_, ht2) f = H.mapM_ (\(k,v) -> BH.insert ht2 k (f v)) ht2
+modifyAll (_, ht2) f = do 
+  H.mapM_ (\(k,v) -> BH.insert ht2 k (f v)) ht2

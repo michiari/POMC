@@ -85,9 +85,6 @@ showAtom :: (Show a) => BitEncoding -> (APType -> a) -> Atom -> String
 showAtom bitenc transAP atom =
   "FS: " ++ showFormulaSet transAP (E.decode bitenc atom) ++ "\t\tES: " ++ show atom
 
-
-
-
 showState :: (Show a) => BitEncoding -> (APType -> a) -> State -> String
 showState bitenc transAP (FState c p xl xe xr) =
   "{ C: "    ++ showAtom bitenc transAP c  ++
