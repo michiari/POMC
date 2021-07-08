@@ -91,7 +91,7 @@ instance  Ord (GraphNode state) where
   compare p q = compare (getgnId p) (getgnId q)
 
 instance Hashable (GraphNode state) where
-  hashWithSalt salt s = hashWithSalt salt $ (getgnId s) 
+  hashWithSalt salt s = getgnId s
 
 type Key state = (StateId state, Stack state)
 type Value state = GraphNode state
