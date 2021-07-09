@@ -1,12 +1,12 @@
-formulas = 	F (ret And main And (~ aleftGTright));
+formulas = 	F (ret And main),
+			XNd (ret And main);
 
 program:
-var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, aleftGTaright, aleftEQaright;
+var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft;
 
 main() {
 	leftGTright = false;
 	leftEQTright = false;
-	randomInput();
 	qs2();
 }
 
@@ -23,7 +23,7 @@ qs2() {
 		while (loLThi || loEQThi) { 
 			qsif2();
 		}
-
+		
 		if (loEQTleft){ 
 			leftGTright = true;
 			leftEQTright = false;
@@ -80,35 +80,32 @@ qs2() {
 	}
 }
 
-qsif2() { 
-	if ((! aleftGTaright) && (! aleftEQaright)) {
+qsif2() {
+	if (*) {
 		shiftloLEQThi2();
 		if (hiEQTright) {
 			hiEQTright = false;
 		} else {}
 	} else {
-		if (! loEQThi){
-			swapElements();
-		} else {}
-		
-		if (aleftGTaright) {
-			if (! eqEQTlo){
-					swapElements();
+		if (*) {
+			if (eqEQTlo){
+				eqEQTlo = false;
 			} else {}
-			eqEQTleft = false;
 		} else {
-			eqEQTlo = false;
+			if (eqEQTleft){
+				eqEQTleft = false;
+			} else {}
 		}
-
 		shiftloLEQThi2();
-		loEQTleft = false;		
+		if (loEQTleft) {
+			loEQTleft = false;
+		} else {}		
 	}
 }
 
 firstIteration2() {
 	eqEQTlo = false;
 	shiftloLEQThi2();
-	swapElements();
 	loEQTleft = false;
 }
 
@@ -119,27 +116,5 @@ shiftloLEQThi2() {
 	} else {
 		loEQThi = true;
 		loLThi = false;
-	}
-}
-
-randomInput() {
-	if (*) {
-		aleftGTaright = true;
-		aleftEQaright = false;
-	} else {
-		if (*) {
-			aleftGTaright = false;
-			aleftEQaright = true;
-		} else {
-			aleftGTaright = false;
-			aleftEQaright = false;
-		}
-	}
-}
-
-swapElements() {
-	if (aleftEQaright) {
-	} else {
-		aleftGTaright = !aleftGTaright;
 	}
 }
