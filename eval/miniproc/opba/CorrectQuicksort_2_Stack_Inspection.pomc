@@ -1,10 +1,17 @@
-formulas = 	G ( (call And accessValues) --> (hasParsed) Or (Sd T han)), 
+formulas = 	G ((call And qs) --> ~ (PNu exc Or XNu exc)),
+			G ( (call And accessValues) --> (hasParsed) Or (T Sd han )), 
+			G ((call And main And (PNu exc Or XNu exc)) --> ((PNu (exc And hasParsed)) Or XNu (exc And hasParsed))),
 			F (ret And main),
-			XNd (ret And main),
-			F (~ aleftGTright),
-			XNd (~ aleftGTright),
-			XNd (ret And main And (~ aleftGTright)),
-			F (ret And main And (~ aleftGTright));
+			XNu (ret And main), 
+			F (~ aleftGTright Uu (~ T)),
+			XNu (~ aleftGTright),
+			(F (ret And main)) Or (XNu (exc And hasParsed)),
+			(XNu (ret And main)) Or (XNu (exc And hasParsed)), 
+			(F (~ aleftGTright Uu (~ T))) Or (XNu (exc And hasParsed)),
+			(XNu (~ aleftGTright)) Or (XNu (exc And hasParsed)),
+			(F (ret And main And (~ aleftGTright))) Or (XNu (exc And hasParsed)),
+			(XNd (ret And main And (~ aleftGTright))) Or (XNu (exc And hasParsed));
+			
 
 program:
 var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, aleftGTaright, aleftEQaright, hasParsed;
@@ -159,9 +166,7 @@ swapElements() {
 }
 
 accessValues(){
-	if (! hasParsed){
-		if (*){
-			throw;
-		} else {}
-	}
+	if (*){
+		throw;
+	} else {}
 }

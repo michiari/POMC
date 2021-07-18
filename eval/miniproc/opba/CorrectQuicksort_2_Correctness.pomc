@@ -1,9 +1,10 @@
 formulas = 	F (ret And main),
-			XNd (ret And main),
-			F (~ aleftGTright),
-			XNd (~ aleftGTright),
-			XNd (ret And main And (~ aleftGTright)),
-			F (ret And main And (~ aleftGTright));
+			XNu (ret And main),
+			F (~ aleftGTright Uu (~ T)),
+			XNu (~ aleftGTright),
+			F (ret And main And (~ aleftGTright)),
+			XNu (ret And main And (~ aleftGTright));
+			
 
 program:
 var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, aleftGTaright, aleftEQaright;
