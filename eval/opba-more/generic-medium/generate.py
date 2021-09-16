@@ -43,7 +43,8 @@ formulas = [
     "G (call And pc --> (T Uu (exc And XBd han)))",
     "call Ud (ret And perr)",
     "XNd (call And ((call Or exc) Su pb))",
-    "PNd (PNd ((call Or exc) Uu ret))" ]
+    "PNd (PNd ((call Or exc) Uu ret))",
+    "PNd (PNd ((T Uu exc) Or (PNd (G (call And pc)))))" ]
 
 n = 1
 for form in formulas:

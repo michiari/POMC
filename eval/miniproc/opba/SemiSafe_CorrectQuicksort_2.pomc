@@ -1,20 +1,18 @@
-formulas = 	G ((call And main) --> ~ (PNu exc Or XNu exc)), 
-			G ((call And qs2) --> ~ (PNu exc Or XNu exc)), 
-			G ( (call And accessValues) --> (hasParsed) Or (T Sd han )), 
-			((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed))), 
-			((PNu exc) Or (XNu exc)) --> ((PNu (exc And ~ aleftGTaright)) Or (XNu (exc And ~ aleftGTaright))), 
-			F (ret And main),
+formulas = 	F (ret And main),
 			XNu (ret And main), 
 			F ( G (~ aleftGTaright)),
-			XNu (~ aleftGTaright),
-			(F (ret And main)) Or (XNu (exc And hasParsed)),
+			XNu (~ aleftGTaright), 
+			G ((call And main) --> ~ (PNu exc Or XNu exc)), 
+			G ((call And qs2) --> ~ (PNu exc Or XNu exc)), 
+			((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed))), 
+			((PNu exc) Or (XNu exc)) --> ((PNu (exc And ~ aleftGTaright)) Or (XNu (exc And ~ aleftGTaright))), 
+			G ( (call And accessValues) --> (hasParsed) Or (T Sd han )), 
+			(F (ret And main)) Or (XNu (exc And hasParsed)), 
 			(XNu (ret And main)) Or (XNu (exc And hasParsed)), 
-			(F ( G (~ aleftGTaright))) Or (XNu (exc And hasParsed)),
-			(XNu (~ aleftGTaright)) Or (XNu (exc And hasParsed)),
-			(F (ret And main And (~ aleftGTaright))) Or (XNu (exc And hasParsed)),
-			(XNu (ret And main And (~ aleftGTaright))) Or (XNu (exc And hasParsed));
+			(F ( G (~ aleftGTaright))) Or (XNu (exc And hasParsed)), 
+			(XNu (~ aleftGTaright)) Or (XNu (exc And hasParsed)), 
+			(F (ret And main And (~ aleftGTaright))) Or (XNu (exc And hasParsed));
 			
-
 program:
 var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, aleftGTaright, aleftEQaright, hasParsed;
 

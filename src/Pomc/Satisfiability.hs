@@ -452,7 +452,7 @@ updateSummaryBodies _ Nothing = return  ()
 updateSummaryBodies globals (Just (newId,oldIds)) = SM.modifyAll (wSuppEnds globals) $ \(sid, sb) -> (sid, updateSummaryBody newId oldIds sb)
 
 -------------------------------------------------------------
--- given a formula, build the fopa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
+-- given a formula, build the opa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
 isSatisfiable :: Bool
               -> Formula APType
               -> ([Prop APType], [Prop APType])

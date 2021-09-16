@@ -249,7 +249,8 @@ discoverSummaryBody graph fr  =
 
 -- unsafe 
 discoverSummary :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
-                    => Graph s state -> Key state 
+                    => Graph s state 
+                    -> Key state 
                     -> SummaryBody 
                     -> Key state 
                     -> ST.ST s ()

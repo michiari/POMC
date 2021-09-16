@@ -111,7 +111,6 @@ modelCheck isOmega phi opa =
       maybeList (Just l) = l
 
       -- generate the delta relation of the input opa
-      -- TODO: why do we have to intersect with the essentialAP
       makeDeltaMapI delta = Map.fromListWith (++) $
         map (\(q', b', ps) -> ((q', E.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
             delta

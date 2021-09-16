@@ -1,6 +1,6 @@
 formulas = 	F (ret And main),
 			XNu (ret And main),
-			F ( G (~ aleftGTright)),,
+			F ( G (~ aleftGTright)),
 			XNu (~ aleftGTright),
 			F (ret And main And (~ aleftGTright)),
 			XNu (ret And main And (~ aleftGTright));
