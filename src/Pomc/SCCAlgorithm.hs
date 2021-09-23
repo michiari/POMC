@@ -31,7 +31,7 @@ import qualified  Pomc.DoubleHashTable as DHT
 import Pomc.GStack(GStack)
 import qualified Pomc.GStack as GS
 
-import Control.Monad ( forM_, forM,foldM, mapM) 
+import Control.Monad ( forM_,foldM) 
 import qualified Control.Monad.ST as ST
 
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef') 
@@ -91,7 +91,7 @@ instance  Ord (GraphNode state) where
   compare p q = compare (getgnId p) (getgnId q)
 
 instance Hashable (GraphNode state) where
-  hashWithSalt salt s = getgnId s
+  hashWithSalt _ s = getgnId s
 
 type Key state = (StateId state, Stack state)
 type Value state = GraphNode state
@@ -242,6 +242,7 @@ discoverSummaryBody graph fr  =
   let containsSId SingleNode{node = n} = fst n == fr 
       containsSId SCComponent{nodes=ns} = Set.member fr . Set.map fst $ ns
       untilcond = \(_,ident) -> DHT.lookupApply (nodeToGraphNode graph) ident containsSId   
+      mapToEdges [] = Set.empty
       mapToEdges (_:xs) = Set.fromList . catMaybes .  map fst $ xs                 
   in do  
     b <- GS.allUntil (sStack graph) untilcond
