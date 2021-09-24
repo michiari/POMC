@@ -187,7 +187,7 @@ expectedLargerRecEval = [False, False, False, False, False,  -- chain_next
                          True,                            -- exception_safety
                          False, False, False, False,        -- hier_down
                          False,                             -- hier_insp
-                         -- False,                           -- hier_insp_exc
+                         False,                           -- hier_insp_exc
                          False, False, False, False,        -- hier_up
                          False, False,                      -- normal_ret
                          False, False,                      -- no_throw

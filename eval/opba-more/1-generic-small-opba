@@ -45,7 +45,7 @@ formulas = XNd perr,
            
 include = "../Mcall.inc";
 
-opba:
+opa:
   initials = 0;
   finals = (4 10);
   deltaPush =

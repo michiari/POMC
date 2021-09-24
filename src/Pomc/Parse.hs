@@ -215,7 +215,7 @@ precSectionP = do _ <- symbolP "prec"
 
 opaSectionP :: Parser (ExplicitOpa Word Text)
 opaSectionP = do
-  _ <- symbolP "opba"
+  _ <- symbolP "opa"
   _ <- symbolP ":"
   _ <- symbolP "initials"
   _ <- symbolP "="

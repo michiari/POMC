@@ -13,7 +13,7 @@ import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.MiniProc (programToOpa)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.Util (safeHead, timeAction, timeToString, prettyTrace)
+import Pomc.Util (safeHeads, timeAction, timeToString, prettyTrace)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
@@ -36,10 +36,13 @@ import Control.Monad
 main :: IO ()
 main = do
   args <- getArgs
-  fname <- case safeHead args of
-             (Just "--help") -> exitHelp
-             (Just fname)    -> return fname
-             Nothing         -> exitHelp
+  (fname, isOmega) <- case safeHeads args of
+                         (Just "--help", _) -> exitHelp
+                         (Just fname, Just "--finite")   -> return (fname, False)
+                         (Just fname, Just "--infinite") -> return (fname, True)
+                         (Just fname, Nothing) -> return (fname, True) -- omega is the default case
+                         _ -> exitHelp
+
   fcontent <- readFile fname
   prepcontent <- preprocess fname fcontent
 
@@ -56,11 +59,11 @@ main = do
                    Nothing -> return []
 
   mcTimes <- case creqOpa creq of
-               Just opa -> forM phis (runMC opa)
+               Just opa -> forM phis (runMC isOmega opa)
                Nothing -> return []
 
   progTime <- case creqMiniProc creq of
-                Just prog -> forM phis (runProg prog)
+                Just prog -> forM phis (runProg isOmega prog)
                 Nothing -> return []
 
   let totalTime = sum stringTimes + sum mcTimes + sum progTime
@@ -76,12 +79,12 @@ main = do
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 
-        runMC opa phi =
+        runMC isOmega opa phi =
           do putStr (concat [ "\nModel Checking\nFormula: ", show phi
                             , "\nInput OPA state count: ", show $ countStates opa
                             , "\nResult:  "
                             ])
-             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckGen True phi opa
+             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckGen isOmega phi opa
                                                      putStr $ show s
                                                      return (s, t)
              if sat
@@ -91,7 +94,7 @@ main = do
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 
-        runProg prog phi = runMC (programToOpa True prog) phi
+        runProg isOmega prog phi = runMC isOmega (programToOpa isOmega prog) phi
 
         addEndPrec precRels = noEndPR
                               ++ map (\p -> (End, p, Yield)) sl
@@ -108,7 +111,7 @@ main = do
 
 exitHelp :: IO a
 exitHelp = do progName <- getProgName
-              die ("USAGE:    " ++ progName ++ " FILE")
+              die ("USAGE:    " ++ progName ++ " -- FILE [--finite]")
 
 
 preprocess :: String -> T.Text -> IO T.Text
