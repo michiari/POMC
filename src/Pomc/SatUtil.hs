@@ -62,7 +62,7 @@ instance Ord (StateId state) where
   compare p q = compare (getId p) (getId q)
 
 instance Hashable (StateId state) where
-  hashWithSalt salt s = getId s
+  hashWithSalt _ s = getId s
 
 instance (NFData state) => NFData (StateId state) where 
   rnf (StateId i s) = i `deepseq` s `deepseq` ()

@@ -46,15 +46,3 @@ pop (gsref, lenref)  = do
 
 size :: GStack s v -> ST.ST s Int
 size (_, lenref) = readSTRef lenref
-
--- get all the elements on the stack until a certain (monadic) condition holds (without popping them)
-allUntil :: GStack s v -> (v -> ST.ST s Bool)  -> ST.ST s [v]
-allUntil (gsref,_) cond = 
-  let recurse acc (x:xs) = do 
-        condEval <- cond x 
-        if condEval 
-          then return acc 
-          else recurse (x:acc) xs 
-  in do 
-  gs <- readSTRef gsref 
-  recurse [] gs

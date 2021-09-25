@@ -54,7 +54,7 @@ data Globals s state = FGlobals
   } | WGlobals 
   { sIdGen :: SIdGen s state
   , suppStarts :: STRef s (SetMap s (Stack state))
-  , wSuppEnds :: STRef s (SetMap s (StateId state, SummaryBody)) 
+  , wSuppEnds :: STRef s (SetMap s (StateId state)) 
   , graph :: Graph s state 
   }  
 
@@ -279,7 +279,7 @@ searchPhase areFinal globals delta  =
   let visit node = do
         alrDisc <- alreadyDiscovered (graph globals) node 
         if not alrDisc
-          then reachOmega areFinal globals delta Nothing node
+          then reachOmega areFinal globals delta node
           else return False
   in do 
     initials <- initialNodes $ graph globals
@@ -307,7 +307,7 @@ collapsePhase _ initials areFinal globals delta =
   let visit node = do 
         alrVis <- alreadyVisited (graph globals) node 
         if not alrVis
-          then visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal Nothing node
+          then visitGraphFromKey (graph globals) areFinal node
           else return False
   in do 
     newInitials <- toCollapsePhase $ graph globals
@@ -326,10 +326,9 @@ reachOmega :: (NFData state, SatState state, Ord state, Hashable state, Show sta
                => ([state] -> Bool) 
                -> Globals s state 
                -> Delta state 
-               -> Maybe Edge
                -> (StateId state, Stack state) 
                -> ST.ST s Bool 
-reachOmega areFinal globals delta e (q,g) = do 
+reachOmega areFinal globals delta (q,g) = do 
   let be = bitenc delta 
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
       qState = getState q 
@@ -344,14 +343,11 @@ reachOmega areFinal globals delta e (q,g) = do
           reachOmegaPop globals delta (q,g) qState
 
         | otherwise = return False
-  visitNode (graph globals) e (q,g);
+  visitNode (graph globals) (q,g);
   success <- cases
   if success
     then return True 
-    else do 
-      result <- createComponent (graph globals) (q,g) areFinal
-      updateSummaryBodies globals $ snd result
-      return $ fst result
+    else createComponent (graph globals) (q,g) areFinal
 
 
 
@@ -367,7 +363,7 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
   let doPush True _ = return True
       doPush False p = do
         SM.insert (suppStarts globals) q g
-        reachTransition Nothing areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
+        reachTransition False areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
     pushReached <- V.foldM' doPush False newStates
@@ -375,9 +371,9 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
       then return True
       else do
       currentSuppEnds <- SM.lookup (wSuppEnds globals) q
-      foldM (\acc (s, sb) -> if acc
+      foldM (\acc s          -> if acc
                               then return True
-                              else reachTransition (Just sb) areFinal globals delta (q,g) (s,g))
+                              else reachTransition True areFinal globals delta (q,g) (s,g))
         False
         currentSuppEnds
 
@@ -393,7 +389,7 @@ reachOmegaShift :: (NFData state, SatState state, Ord state, Hashable state, Sho
 reachOmegaShift areFinal globals delta (q,g) qState qProps =
   let doShift True _ = return True
       doShift False p = 
-        reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
+        reachTransition False areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
     V.foldM' doShift False newStates
@@ -407,16 +403,15 @@ reachOmegaPop :: (NFData state, SatState state, Ord state, Hashable state, Show 
 reachOmegaPop globals delta (_,g) qState =
   let doPop p =
         let r = snd . fromJust $ g
-            closeSupports sb g'
+            closeSupports  g'
               | isNothing g' ||
                 ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
-              = discoverSummary (graph globals) (r,g') sb (p,g')                         
+              = discoverSummary (graph globals) (r,g') (p,g')                         
               | otherwise = return ()
         in do
-          sb <- discoverSummaryBody (graph globals) r
-          SM.insert (wSuppEnds globals) r (p,sb)
+          SM.insert (wSuppEnds globals) r p
           currentSuppStarts <- SM.lookup (suppStarts globals) r
-          forM_ currentSuppStarts (closeSupports sb)
+          forM_ currentSuppStarts closeSupports
   in do
     newStates <- wrapStates (sIdGen globals) $
                  (deltaPop delta) qState (getState . snd . fromJust $ g)
@@ -425,31 +420,27 @@ reachOmegaPop globals delta (_,g) qState =
 
 
 reachTransition :: (NFData state, SatState state, Ord state, Hashable state, Show state)
-                 => Maybe SummaryBody
+                 => Bool
                  -> ([state] -> Bool)
                  -> Globals s state
                  -> Delta state
                  -> (StateId state, Stack state)
                  -> (StateId state, Stack state)
                  -> ST s Bool
-reachTransition body areFinal globals delta from to = 
+reachTransition isSummary areFinal globals delta from to = 
   let insertEdge False =  insertInternal (graph globals) from to
-      insertEdge True  =  insertSummary (graph globals) from to $ fromJust body
+      insertEdge True  =  insertSummary (graph globals) from to
   in do 
     alrDisc <- alreadyDiscovered (graph globals) to
-    e <- insertEdge $ isJust body 
+    insertEdge isSummary 
     if alrDisc 
       then do 
         alrVis <- alreadyVisited (graph globals) to
         if alrVis 
           then do updateSCC (graph globals) to;
                   return False 
-          else visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal (Just e) to
-      else reachOmega areFinal globals delta (Just e) to
-
-updateSummaryBodies :: Globals s state -> Maybe (Int,Set Int) -> ST.ST s ()
-updateSummaryBodies _ Nothing = return  ()
-updateSummaryBodies globals (Just (newId,oldIds)) = SM.modifyAll (wSuppEnds globals) $ \(sid, sb) -> (sid, updateSummaryBody newId oldIds sb)
+          else visitGraphFromKey (graph globals) areFinal to
+      else reachOmega areFinal globals delta to
 
 -------------------------------------------------------------
 -- given a formula, build the opa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)

@@ -18,8 +18,7 @@ tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests,
                                                    lRBaseTests, lREvalTests, 
                                                    inspectionTest, overflowTest,
                                                    jensenTests, jensenFullTests, 
-                                                   stackExcTests, stackExcSwapTests,
-                                                   synthBaseTests, synthEvalTests
+                                                   stackExcTests, stackExcSwapTests
                                                   ]
 
 sasBaseTests :: TestTree
@@ -29,7 +28,6 @@ sasBaseTests = testGroup "SAS OPA MC Base Tests" $
 sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
   map (makeTestCase simpleExc) (zip OmegaEvalFormulas.omegaFormulas expectedSasEval)
-
 
 lRBaseTests :: TestTree
 lRBaseTests = testGroup "LargerRec OPA MC Base Tests" $
@@ -100,12 +98,12 @@ expectedSasBase = [True,  True,  False, False, False, False, False,
 expectedSasEval :: [Bool]
 expectedSasEval = [False, False, False, False, True,  -- chain_next        
                    False, False, False, True,         -- contains_exc      
-                   True,                            -- data_access
+                   --True,                            -- data_access
                    False, False, False, False,         -- empty_frame       
-                   True,                            -- exception_safety   
+                   --True,                            -- exception_safety   
                    False, False, False, False,        -- hier_down
                    False,                             -- hier_insp
-                   True,                            -- hier_insp_exc      
+                   --True,                            -- hier_insp_exc      
                    False, False, False, False,        -- hier_up
                    False, False,                      -- normal_ret          
                    True, True,                        -- no_throw            
@@ -182,12 +180,12 @@ expectedLargerRecBase = [False, True,  False, False, False, False, False,
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval = [False, False, False, False, False,  -- chain_next
                          False, False, False, False,         -- contains_exc
-                         True,                            -- data_access
+                         --True,                            -- data_access
                          False, False, False, False,         -- empty_frame
-                         True,                            -- exception_safety
+                         --True,                            -- exception_safety
                          False, False, False, False,        -- hier_down
                          False,                             -- hier_insp
-                         False,                           -- hier_insp_exc
+                         --False,                           -- hier_insp_exc
                          False, False, False, False,        -- hier_up
                          False, False,                      -- normal_ret
                          False, False,                      -- no_throw

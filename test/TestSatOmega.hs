@@ -12,7 +12,7 @@ import qualified OmegaEvalFormulas (omegaFormulas)
 import qualified Data.Set as S
 
 tests :: TestTree
-tests = testGroup "TestSatOmega.hs Tests" [baseTests, evalTests]
+tests = testGroup "TestSatOmega.hs Tests" [baseTests]
 
 baseTests :: TestTree
 baseTests = testGroup "OmegaSat Base Tests" $ map makeV2TestCase cases
