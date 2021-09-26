@@ -38,8 +38,6 @@ import qualified Data.Set as Set
 
 import Data.Vector (Vector) 
 
-import Data.Maybe(catMaybes)
-
 import Data.Hashable
 
 import Control.DeepSeq(NFData(..), deepseq)
@@ -220,7 +218,7 @@ discoverSummary :: (NFData state, SatState state, Eq state, Hashable state, Show
                     -> ST.ST s ()
 discoverSummary graph fr t = do 
   gnFrom <- DHT.lookup (nodeToGraphNode graph) fr 
-  modifySTRef' (summaries graph) $ Set.insert (getgnId gnFrom,  t)
+  modifySTRef' (summaries graph) $ Set.insert (getgnId gnFrom, t)
 
 -- unsafe
 insertInternal :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
@@ -267,27 +265,20 @@ createComponentGn :: (NFData state, SatState state, Ord state, Hashable state, S
 createComponentGn graph gn areFinal = 
   let 
     toMerge [ident] = do 
-      newC <- freshNegId (c graph)
-      DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC  
-      let selfLoopOrGn SingleNode{edges =es} = not . Set.null . Set.filter (\e -> to e == ident) $ es
-          selfLoopOrGn SCComponent{}  = True 
-      if selfLoopOrGn gn 
-        then isAccepting graph ident areFinal
-        else return False
+      newC <- freshNegId (c graph);
+      DHT.modify (nodeToGraphNode graph) ident $ setgnIValue newC;
+      return False;
     toMerge idents = merge graph idents areFinal
-    findComponents acc = do 
+    cond = do 
       sSize <- GS.size $ sStack graph
-      if (iValue gn) > sSize
-        then toMerge $ Set.toList acc
-        else do
-          popped <- GS.pop $ sStack graph
-          findComponents (Set.insert popped acc)  
+      return $ (iValue gn) > sSize
   in do
     topB <- GS.peek (bStack graph) 
     if  (iValue gn) == topB
       then do 
         _ <- GS.pop (bStack graph)
-        findComponents Set.empty 
+        idents <- GS.popUntil (sStack graph) cond 
+        toMerge idents
       else return False
 
 merge :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
@@ -314,30 +305,13 @@ merge graph idents areFinal =
         update Internal{ to = t} = Internal{ to = sub t}
         update Summary{ to =t} = Summary{ to = sub t} 
         updateGn x@SingleNode{edges = es}  = x{edges = Set.map update es}   
-        updateGn x@SCComponent{edges = es} = x{edges = Set.map update es}     
+        updateGn x@SCComponent{edges = es} = x{edges = Set.map update es}  
+        gnStates = Set.map (getState . fst) gnsNodesSet
     DHT.fuse (nodeToGraphNode graph) gnsNodesSet newId newgn;
-    DHT.modifyAll (nodeToGraphNode graph) updateGn
+    DHT.modifyAll (nodeToGraphNode graph) updateGn;
     modifySTRef' (summaries graph) $ Set.map $ \(f,t) -> (sub f,t);
     modifySTRef' (initials graph)  $ Set.map $ \(n,b) -> (sub n,b);
-    isAccepting graph newId areFinal
-
-
--- not safe
-isAccepting :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
-                => Graph s state 
-                -> Int 
-                -> ([state] -> Bool) 
-                -> ST.ST s Bool
-isAccepting graph ident areFinal = 
-  let gnStates SingleNode{node = n} = Set.singleton . getState . fst $ n
-      gnStates SCComponent{nodes= ns} = Set.map (getState . fst) ns
-      edgeGnIdents Internal{ to=t} = Set.singleton t
-      edgeGnIdents Summary{to=t} = Set.singleton t
-      selfEdges = Set.filter (\e -> to e == ident)
-  in do  
-    edgeSet <- DHT.lookupApply (nodeToGraphNode graph) ident edges
-    gnStatesList <- DHT.lookupMap (nodeToGraphNode graph) (Set.toList . Set.unions . Set.map edgeGnIdents $ selfEdges edgeSet) gnStates
-    return $ areFinal . Set.toList . Set.unions $ gnStatesList
+    return $ areFinal . Set.toList $ gnStates
     
 summariesSize :: (NFData state, SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Int
 summariesSize graph = do

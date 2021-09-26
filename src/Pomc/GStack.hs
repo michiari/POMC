@@ -11,7 +11,7 @@ module Pomc.GStack ( GStack
                    , pop
                    , size
                    , new
-                   , allUntil
+                   , popUntil
                    ) where
 
 import Control.Monad.ST (ST)
@@ -46,3 +46,15 @@ pop (gsref, lenref)  = do
 
 size :: GStack s v -> ST.ST s Int
 size (_, lenref) = readSTRef lenref
+
+popUntil :: GStack s v -> ST.ST s Bool -> ST.ST s [v]
+popUntil gs cond = 
+  let recurse acc = do 
+        condEval <- cond  
+        if condEval 
+          then return acc  
+          else do 
+            x <- pop gs 
+            recurse (x:acc)
+  in recurse []
+

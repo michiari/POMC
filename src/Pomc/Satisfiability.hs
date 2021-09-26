@@ -54,7 +54,7 @@ data Globals s state = FGlobals
   } | WGlobals 
   { sIdGen :: SIdGen s state
   , suppStarts :: STRef s (SetMap s (Stack state))
-  , wSuppEnds :: STRef s (SetMap s (StateId state)) 
+  , suppEnds :: STRef s (SetMap s (StateId state)) 
   , graph :: Graph s state 
   }  
 
@@ -264,7 +264,7 @@ isEmptyOmega delta initialOpbaStates areFinal = (not $
                gr <- newGraph initials
                let globals = WGlobals { sIdGen = newSig 
                                       , suppStarts = emptySuppStarts
-                                      , wSuppEnds = emptySuppEnds 
+                                      , suppEnds = emptySuppEnds 
                                       , graph = gr
                                       }
                 in searchPhase areFinal globals delta
@@ -349,8 +349,6 @@ reachOmega areFinal globals delta (q,g) = do
     then return True 
     else createComponent (graph globals) (q,g) areFinal
 
-
-
 reachOmegaPush :: (NFData state, SatState state, Ord state, Hashable state, Show state)
           => ([state] -> Bool)
           -> Globals s state
@@ -370,7 +368,7 @@ reachOmegaPush areFinal globals delta (q,g) qState qProps =
     if pushReached
       then return True
       else do
-      currentSuppEnds <- SM.lookup (wSuppEnds globals) q
+      currentSuppEnds <- SM.lookup (suppEnds globals) q
       foldM (\acc s          -> if acc
                               then return True
                               else reachTransition True areFinal globals delta (q,g) (s,g))
@@ -409,7 +407,7 @@ reachOmegaPop globals delta (_,g) qState =
               = discoverSummary (graph globals) (r,g') (p,g')                         
               | otherwise = return ()
         in do
-          SM.insert (wSuppEnds globals) r p
+          SM.insert (suppEnds globals) r p
           currentSuppStarts <- SM.lookup (suppStarts globals) r
           forM_ currentSuppStarts closeSupports
   in do
