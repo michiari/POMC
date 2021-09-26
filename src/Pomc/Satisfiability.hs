@@ -425,20 +425,17 @@ reachTransition :: (NFData state, SatState state, Ord state, Hashable state, Sho
                  -> (StateId state, Stack state)
                  -> (StateId state, Stack state)
                  -> ST s Bool
-reachTransition isSummary areFinal globals delta from to = 
-  let insertEdge False =  insertInternal (graph globals) from to
-      insertEdge True  =  insertSummary (graph globals) from to
-  in do 
-    alrDisc <- alreadyDiscovered (graph globals) to
-    insertEdge isSummary 
-    if alrDisc 
-      then do 
-        alrVis <- alreadyVisited (graph globals) to
-        if alrVis 
-          then do updateSCC (graph globals) to;
-                  return False 
-          else visitGraphFromKey (graph globals) areFinal to
-      else reachOmega areFinal globals delta to
+reachTransition isSummary areFinal globals delta from to = do 
+  alrDisc <- alreadyDiscovered (graph globals) to
+  insertEdge (graph globals) from to isSummary
+  if alrDisc 
+    then do 
+      alrVis <- alreadyVisited (graph globals) to
+      if alrVis 
+        then do updateSCC (graph globals) to;
+                return False 
+        else visitGraphFromKey (graph globals) areFinal to
+    else reachOmega areFinal globals delta to
 
 -------------------------------------------------------------
 -- given a formula, build the opa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)

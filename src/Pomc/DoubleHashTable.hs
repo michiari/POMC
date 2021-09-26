@@ -13,6 +13,7 @@ module Pomc.DoubleHashTable( DoubleHashTable
                            , lookupApply
                            , lookupMap
                            , modify
+                           , multModify
                            , modifyAll
                            ) where
 import Prelude hiding (lookup)
@@ -85,6 +86,12 @@ modify :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> Int -> (v -> v) -> ST
 modify (_, ht2) ident f = do 
   value <- BH.lookup ht2 ident 
   BH.insert ht2 ident $ f . fromJust $ value
+
+multModify :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> [Int] -> (v -> v) -> ST.ST s ()
+multModify (_, ht2) idents f = forM_ idents $ \ident -> 
+  do 
+    value <- BH.lookup ht2 ident 
+    BH.insert ht2 ident $ f . fromJust $ value
 
 modifyAll :: (Eq k, Hashable k) => (DoubleHashTable s k v) -> (v -> v) -> ST.ST s ()
 modifyAll (_, ht2) f = do 
