@@ -15,10 +15,11 @@ module Pomc.SatUtil( SatState(..)
            		     , debug
            		     , freshPosId
            		     , freshNegId 
+                   , decode
            		     ) where
 
 import Pomc.State(Input, State(..))
-import Pomc.Encoding (BitEncoding, extractInput)
+import Pomc.Encoding (BitEncoding, extractInput, nat)
 
 import Data.Maybe
 import qualified Control.Monad.ST as ST
@@ -129,3 +130,7 @@ freshNegId idSeq = do
   curr <- readSTRef idSeq
   modifySTRef' idSeq (+(-1));
   return $ curr
+
+decode :: (StateId state, Stack state) -> (Int,Int,Int)
+decode (s1, Nothing) = (getId s1, 0, 0)
+decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)

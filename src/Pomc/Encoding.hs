@@ -30,6 +30,7 @@ module Pomc.Encoding ( EncodedSet
                      , decodeInput
                      , encodeInput
                      , inputSuchThat
+                     , Pomc.Encoding.nat
                      ) where
 
 import Pomc.Potl
@@ -196,3 +197,6 @@ inputSuchThat bitenc predicate = EncodedAtom $ BV.fromBits bitList
 -- list of all set bits in a BitVector
 listBits :: BitVector -> [Int]
 listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v
+
+nat :: EncodedAtom -> Int 
+nat (EncodedAtom bv) = fromInteger . BV.nat $ bv
