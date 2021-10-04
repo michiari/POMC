@@ -14,7 +14,6 @@ module Pomc.SetMap ( SetMap
                    ) where
 
 import Prelude hiding (lookup)
-import Pomc.SatUtil
 import Control.Monad(mapM, mapM_)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
@@ -28,34 +27,32 @@ import qualified Data.Vector.Mutable as MV
 type SetMap s v = MV.MVector s (Set v)
 
 -- insert a state into the SetMap
-insert :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s ()
-insert smref stateid val = do
+insert :: (Ord v) => STRef s (SetMap s v) -> Int -> v -> ST.ST s ()
+insert smref idx val = do
   sm <- readSTRef smref
   let len = MV.length sm
-      sid = getId stateid
-  if sid < len
-    then MV.unsafeModify sm (Set.insert val) sid
-    else let newLen = computeLen len sid
-             computeLen size idx | idx < size = size
-                                 | otherwise = computeLen (size*2) idx
+  if idx < len
+    then MV.unsafeModify sm (Set.insert val) idx
+    else let newLen = computeLen len idx
+             computeLen size newIdx | newIdx < size = size
+                                 | otherwise = computeLen (size*2) newIdx
          in do { grown <- MV.grow sm (newLen-len)
                ; mapM_ (\i -> MV.unsafeWrite grown i Set.empty) [len..(newLen-1)]
-               ; MV.unsafeModify grown (Set.insert val) sid
+               ; MV.unsafeModify grown (Set.insert val) idx
                ; writeSTRef smref grown
                }
 
-lookup :: STRef s (SetMap s v) -> StateId state -> ST.ST s (Set v)
-lookup smref stateid = do
+lookup :: STRef s (SetMap s v) -> Int -> ST.ST s (Set v)
+lookup smref idx = do
   sm <- readSTRef smref
-  let sid = getId stateid
-  if sid < MV.length sm
-    then MV.unsafeRead sm sid
+  if idx < MV.length sm
+    then MV.unsafeRead sm idx
     else return Set.empty
 
 -- check the presence of the Stack in the Set at StateId position
-member :: (Ord v) => STRef s (SetMap s v) -> StateId state -> v -> ST.ST s Bool
-member smref stateid val = do
-  vset <- lookup smref stateid
+member :: (Ord v) => STRef s (SetMap s v) -> Int -> v -> ST.ST s Bool
+member smref idx val = do
+  vset <- lookup smref idx
   return $ val `Set.member` vset
 
 modifyAll :: (Ord v) => STRef s (SetMap s v) -> (v -> v) -> ST.ST s ()

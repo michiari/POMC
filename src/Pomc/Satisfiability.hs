@@ -39,7 +39,6 @@ import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
-import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 
@@ -118,11 +117,11 @@ reach :: (NFData state, SatState state, Eq state, Hashable state, Show state)
       -> TraceId state
       -> ST s (Bool, TraceId state)
 reach isDestState isDestStack globals delta q g trace = do
-  alreadyVisited <- SM.member (visited globals) q g
+  alreadyVisited <- SM.member (visited globals) (getId q) g
   if alreadyVisited
     then return (False, [])
     else do
-    SM.insert (visited globals) q g
+    SM.insert (visited globals) (getId q) g
     let qState = getState q
         precRel = (prec delta) (fst . fromJust $ g) (current . getSatState $ qState)
         cases
@@ -155,7 +154,7 @@ reachPush isDestState isDestStack globals delta q g qState trace =
   let qProps = getStateProps (bitenc delta) qState
       doPush res@(True, _) _ = return res
       doPush (False, _) p = do
-        SM.insert (suppStarts globals) q g
+        SM.insert (suppStarts globals) (getId q) g
         reach isDestState isDestStack globals delta p (Just (qProps, q)) ((Push, q, g) : trace)
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
@@ -163,7 +162,7 @@ reachPush isDestState isDestStack globals delta q g qState trace =
     if pushReached
       then return res
       else do
-      currentSuppEnds <- SM.lookup (suppEnds globals) q
+      currentSuppEnds <- SM.lookup (suppEnds globals) (getId q)
       foldM (\acc s -> if fst acc
                        then return acc
                        else reach isDestState isDestStack globals delta s g ((Summary, q, g) : trace))
@@ -212,8 +211,8 @@ reachPop isDestState isDestStack globals delta q g qState trace =
               = reach isDestState isDestStack globals delta p g' ((Pop, q, g) : trace)
               | otherwise = return (False, [])
         in do
-          SM.insert (suppEnds globals) r p
-          currentSuppStarts <- SM.lookup (suppStarts globals) r
+          SM.insert (suppEnds globals) (getId r) p
+          currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
           foldM closeSupports (False, []) currentSuppStarts
 
   in do
@@ -360,18 +359,18 @@ reachOmegaPush :: (NFData state, SatState state, Ord state, Hashable state, Show
 reachOmegaPush areFinal globals delta (q,g) qState qProps =
   let doPush True _ = return True
       doPush False p = do
-        SM.insert (suppStarts globals) q g
-        reachTransition False areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
+        SM.insert (suppStarts globals) (getId q) g
+        reachTransition areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
     pushReached <- V.foldM' doPush False newStates
     if pushReached
       then return True
       else do
-      currentSuppEnds <- SM.lookup (suppEnds globals) q
+      currentSuppEnds <- SM.lookup (suppEnds globals) (getId q)
       foldM (\acc s          -> if acc
                               then return True
-                              else reachTransition True areFinal globals delta (q,g) (s,g))
+                              else reachTransition areFinal globals delta (q,g) (s,g))
         False
         currentSuppEnds
 
@@ -387,7 +386,7 @@ reachOmegaShift :: (NFData state, SatState state, Ord state, Hashable state, Sho
 reachOmegaShift areFinal globals delta (q,g) qState qProps =
   let doShift True _ = return True
       doShift False p = 
-        reachTransition False areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
+        reachTransition areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
     V.foldM' doShift False newStates
@@ -407,8 +406,8 @@ reachOmegaPop globals delta (_,g) qState =
               = discoverSummary (graph globals) (r,g') (p,g')                         
               | otherwise = return ()
         in do
-          SM.insert (suppEnds globals) r p
-          currentSuppStarts <- SM.lookup (suppStarts globals) r
+          SM.insert (suppEnds globals) (getId r) p
+          currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
           forM_ currentSuppStarts closeSupports
   in do
     newStates <- wrapStates (sIdGen globals) $
@@ -418,16 +417,15 @@ reachOmegaPop globals delta (_,g) qState =
 
 
 reachTransition :: (NFData state, SatState state, Ord state, Hashable state, Show state)
-                 => Bool
-                 -> ([state] -> Bool)
+                 => ([state] -> Bool)
                  -> Globals s state
                  -> Delta state
                  -> (StateId state, Stack state)
                  -> (StateId state, Stack state)
                  -> ST s Bool
-reachTransition isSummary areFinal globals delta from to = do 
+reachTransition areFinal globals delta from to = do 
   alrDisc <- alreadyDiscovered (graph globals) to
-  insertEdge (graph globals) from to isSummary
+  insertEdge (graph globals) from to 
   if alrDisc 
     then do 
       alrVis <- alreadyVisited (graph globals) to
