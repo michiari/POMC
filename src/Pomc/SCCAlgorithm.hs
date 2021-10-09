@@ -245,11 +245,16 @@ createComponentGn :: (NFData state, SatState state, Ord state, Hashable state, S
 createComponentGn graph gn areFinal = 
   let 
     toMerge [ident] = do 
-      newC <- freshNegId (c graph);
-      THT.modify (nodeToGraphNode graph) ident $ setgnIValue newC;
-      return False;
+      cond <- identCond ident
+      if cond
+        then merge graph [ident] areFinal
+        else do 
+          newC <- freshNegId (c graph);
+          THT.modify (nodeToGraphNode graph) ident $ setgnIValue newC;
+          return False;
     toMerge idents = merge graph idents areFinal
-    cond = do 
+    identCond ident = THT.lookupApply (nodeToGraphNode graph) ident $ (Set.member ident) . edges 
+    stackCond = do 
       sSize <- GS.size $ sStack graph
       return $ (iValue gn) > sSize
   in do
@@ -257,8 +262,8 @@ createComponentGn graph gn areFinal =
     if  (iValue gn) == topB
       then do 
         _ <- GS.pop (bStack graph)
-        idents <- GS.popUntil (sStack graph) cond 
-        toMerge idents
+        idents <- GS.popUntil (sStack graph) stackCond 
+        toMerge idents 
       else return False
 
 merge :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
