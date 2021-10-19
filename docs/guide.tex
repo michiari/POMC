@@ -121,13 +121,13 @@ If invoked with no arguments, it executes POMC on all input files in the current
 working directory. E.g.,
 \begin{verbatim}
 $ cd ~/path/to/POMC-sources/eval
-$ ./mcbench.py opa
+$ ./mcbench.py opa-cav
 \end{verbatim}
-evaluates all \verb|*.pomc| files in directory \verb|~/path/to/POMC-sources/eval/opa|.
+evaluates all \verb|*.pomc| files in directory \verb|~/path/to/POMC-sources/eval/opa-cav|.
 The script can also be invoked with POMC files as its arguments,
 which are then evaluated. E.g.,
 \begin{verbatim}
-$ cd ~/path/to/POMC-sources/eval/opa
+$ cd ~/path/to/POMC-sources/eval/opa-cav
 $ ./mcbench.py 1-generic-small.pomc 2-generic-medium.pomc
 \end{verbatim}
 executes POMC on files \verb|1-generic-small.pomc| and \verb|2-generic-medium.pomc|.
@@ -463,7 +463,7 @@ The experiments were executed on a laptop with a 2.2 GHz Intel processor
 and 15 GiB of RAM, running Ubuntu GNU/Linux 20.04.
 
 
-\subsection{Directory \texttt{opa}}
+\subsection{Directory \texttt{opa-cav}}
 \label{sec:exp-opa}
 
 This directory contains a few programs modeled as OPA,
@@ -473,7 +473,7 @@ If you wish to repeat such experiments, you may run the following
 commands:
 \begin{verbatim}
 $ cd ~/path/to/POMC-sources/eval
-$ ./mcbench.py opa
+$ ./mcbench.py opa-cav
 \end{verbatim}
 
 \begin{table}
@@ -824,3 +824,8 @@ Note that $\mathcal{A}_P$ has size exponential in $|I_P|$ in the worst case, but
 
 
 \end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% End:

@@ -1,0 +1,4 @@
+formulas = G ((call And pb And (call Sd (call And pa))) --> (PNu exc Or XNu exc));
+include = "../../Mcall.inc";
+
+include = "program.inc";
