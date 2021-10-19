@@ -24,7 +24,7 @@ import Pomc.Prop (Prop(..))
 import qualified Data.Set as S
 import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
-import Control.Parallel.Strategies(using, parList, parListChunk, rdeepseq, rseq, Strategy)
+import Control.Parallel.Strategies (using, parList, parListChunk, rdeepseq)
 import Control.DeepSeq(NFData(..))
 
 

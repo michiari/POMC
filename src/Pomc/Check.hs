@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
-
 {- |
    Module      : Pomc.Check
    Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
@@ -20,9 +18,9 @@ module Pomc.Check ( -- * Checking functions
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.Opa (run, augRun, parAugRun)
+import Pomc.Opa (run, parAugRun)
 import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, future)
-import Pomc.Util (safeHead, xor, implies, iff, parMap)
+import Pomc.Util (safeHead, xor, implies, iff)
 import Pomc.Encoding (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
 import qualified Pomc.Encoding as E
 import Pomc.PropConv (APType, convPropTokens)
@@ -39,9 +37,6 @@ import Control.Monad (guard, filterM, foldM)
 
 import qualified Data.Sequence as SQ
 import Data.Foldable (toList)
-
-import GHC.Generics (Generic)
-import Data.Hashable
 
 -- Function that, given two atoms or input symbols,
 -- returns the precedence relation between them
@@ -115,6 +110,7 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
         HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
         Eventually g       -> [f, Not f] ++ closList g
         AuxBack _ g        -> [f, Not f] ++ closList g
+        Always _           -> error "Always formulas must be transformed to Eventually formulas."
 
 
 -- given a formula closure, generate a bitEncoding
@@ -1353,10 +1349,10 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                           in all ($ info) fsrs
 
     wfstates = if (pvalid)
-                then [WState curr pend stack xl xe xr | curr <- vas,
-                                                        pc@(pend, xl, xe, xr) <- vpcs,
-                                                        stack <- vscs,
-                                                        valid curr pc]
+                then [WState curr pend st xl xe xr | curr <- vas,
+                                                     pc@(pend, xl, xe, xr) <- vpcs,
+                                                     st <- vscs,
+                                                     valid curr pc]
                 else []
       -- all future rules must be satisfied
       where makeInfo curr pendComb = FrInfo { frState          = state,

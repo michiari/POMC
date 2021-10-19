@@ -19,9 +19,8 @@ module Pomc.Opa ( -- * Run functions
 import Pomc.Prec (Prec(..))
 import Pomc.Util (any', safeHead, safeTail, parMap)
 
-import Control.Parallel.Strategies(NFData(..))
+import Control.Parallel.Strategies(NFData)
 import GHC.Generics (Generic)
-import qualified Data.Vector as V
 
 data Opa s t = Opa
     { alphabet   :: [t]

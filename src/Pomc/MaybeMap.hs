@@ -16,7 +16,6 @@ module Pomc.MaybeMap ( MaybeMap
                      ) where
 
 import Prelude hiding (lookup)
-import Control.Monad(mapM_)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 

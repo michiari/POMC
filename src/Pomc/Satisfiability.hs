@@ -17,7 +17,7 @@ module Pomc.Satisfiability ( Delta(..)
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Potl (Formula(..))
-import Pomc.Check ( EncPrecFunc, makeOpa)
+import Pomc.Check (EncPrecFunc, makeOpa)
 import Pomc.PropConv (APType, convPropLabels)
 import Pomc.State(Input, State(..), showState, showAtom)
 import Pomc.Encoding (PropSet, BitEncoding, extractInput, decodeInput)
@@ -31,18 +31,13 @@ import Control.Monad.ST (ST)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef)
 import Data.Maybe
-
 import Data.Set (Set)
 import qualified Data.Set as Set
-
 import Data.Hashable
-import qualified Data.HashTable.ST.Basic as BH
-import qualified Data.HashTable.Class as H
-
-import Data.Vector (Vector)
 import qualified Data.Vector as V
 
-import Control.DeepSeq(NFData(..), deepseq)
+import Control.DeepSeq(NFData(..))
+
 
 -- global variables in the algorithms
 data Globals s state = FGlobals
@@ -117,8 +112,8 @@ reach :: (NFData state, SatState state, Eq state, Hashable state, Show state)
       -> TraceId state
       -> ST s (Bool, TraceId state)
 reach isDestState isDestStack globals delta q g trace = do
-  alreadyVisited <- SM.member (visited globals) (getId q) g
-  if alreadyVisited
+  previouslyVisited <- SM.member (visited globals) (getId q) g
+  if previouslyVisited
     then return (False, [])
     else do
     SM.insert (visited globals) (getId q) g
@@ -454,11 +449,11 @@ isSatisfiable isOmega phi ap sprs =
         , deltaPop = dPop
         }
       isFinalOmega states = all (\f -> any (isFinal f) states) $ Set.toList cl
-      (empty, trace) = if isOmega
-        				then isEmptyOmega delta initials isFinalOmega
-        				else isEmpty delta initials (isFinal T)
+      (emptyRes, trace) = if isOmega
+                          then isEmptyOmega delta initials isFinalOmega
+                          else isEmpty delta initials (isFinal T)
 
-  in (not empty, map snd $ toInputTrace be trace)
+  in (not emptyRes, map snd $ toInputTrace be trace)
 
 -- parametric with respect the type of the propositions
 isSatisfiableGen :: (Ord a)

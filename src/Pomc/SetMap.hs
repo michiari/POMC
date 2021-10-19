@@ -14,7 +14,6 @@ module Pomc.SetMap ( SetMap
                    ) where
 
 import Prelude hiding (lookup)
-import Control.Monad(mapM, mapM_)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 

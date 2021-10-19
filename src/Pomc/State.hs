@@ -19,15 +19,14 @@ module Pomc.State ( State(..)
 import Pomc.Encoding (EncodedSet, FormulaSet, BitEncoding)
 import qualified Pomc.Encoding as E
 import Pomc.PropConv (APType)
-import Pomc.Potl (Formula(..), Dir(..), negative)
+import Pomc.Potl (negative)
 
 import Data.Set (Set)
 import qualified Data.Set as S
 import GHC.Generics (Generic)
 import Data.Hashable
-import Data.BitVector (BitVector)
 
-import Control.DeepSeq(NFData(..), deepseq)
+import Control.DeepSeq (NFData(..), deepseq)
 
 type Input = EncodedSet
 type Atom = EncodedSet
@@ -42,7 +41,7 @@ data State = FState
 } | WState
   { current    :: Atom -- Bit Vector representing the formulas and AP holding in this state
   , pending    :: EncodedSet -- Bit Vector representing temporal obligations holding in the current state
-  , stack      :: EncodedSet -- BitVector representing  instack temporal obligations holding in current state
+  , stack      :: EncodedSet -- Bit Vector representing instack temporal obligations holding in current state
   , mustPush   :: !Bool
   , mustShift  :: !Bool
   , afterPop   :: !Bool
@@ -67,8 +66,8 @@ instance Show State where
 
 -- to allow parallelism
 instance NFData State where
-  rnf (FState current pending _ _ _) = current `deepseq` pending `deepseq` ()
-  rnf (WState current pending stack _ _ _) = current `deepseq` pending `deepseq` stack `deepseq` ()
+  rnf (FState curr pend _ _ _) = curr `deepseq` pend `deepseq` ()
+  rnf (WState curr pend instack _ _ _) = curr `deepseq` pend `deepseq` instack `deepseq` ()
 
 showPendCombs :: Set (EncodedSet, Bool, Bool, Bool) -> String
 showPendCombs = unlines . map show . S.toList
@@ -88,6 +87,14 @@ showState :: (Show a) => BitEncoding -> (APType -> a) -> State -> String
 showState bitenc transAP (FState c p xl xe xr) =
   "{ C: "    ++ showAtom bitenc transAP c  ++
   "\n, P: "  ++ showAtom bitenc transAP p  ++
+  "\n, XL: " ++ show xl                    ++
+  "\n, X=: " ++ show xe                    ++
+  "\n, XR: " ++ show xr                    ++
+  "\n}"
+showState bitenc transAP (WState c p st xl xe xr) =
+  "{ C: "    ++ showAtom bitenc transAP c  ++
+  "\n, P: "  ++ showAtom bitenc transAP p  ++
+  "\n, ST: " ++ showAtom bitenc transAP st ++
   "\n, XL: " ++ show xl                    ++
   "\n, X=: " ++ show xe                    ++
   "\n, XR: " ++ show xr                    ++

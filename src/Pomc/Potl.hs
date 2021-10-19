@@ -26,7 +26,7 @@ module Pomc.Potl ( Dir(..)
 import Pomc.Prop (Prop(..))
 import Data.List (nub,uncons)
 import GHC.Generics (Generic)
-import Control.DeepSeq(NFData(..), force)
+import Control.DeepSeq(NFData(..))
 
 import Data.Hashable
 

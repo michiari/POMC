@@ -23,12 +23,10 @@ import Pomc.Encoding (BitEncoding, extractInput, nat)
 
 import Data.Maybe
 import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
+import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-
-import Debug.Trace (trace)
 
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
