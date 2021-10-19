@@ -12,6 +12,8 @@
 \usepackage{subcaption}
 \usepackage[colorlinks]{hyperref}
 
+\usepackage{todonotes}
+
 \input{macros}
 
 \title{POMC User's Guide}
@@ -727,10 +729,85 @@ $ stack test
 \section*{Acknowledgements}
 
 We are grateful to Davide Bergamaschi for developing an early prototype of this tool,
-and to Francesco Pontiggia for implementing a few performance optimizations.
+and to Francesco Pontiggia for implementing the model checking algorithms
+for infinite words and performance optimizations.
 
 
 \bibliographystyle{abbrv}
 \bibliography{pomc}
+
+\appendix
+\section{From MiniProc to OPA}
+
+A MiniProc program can be converted to an equivalent OPA or $\omega$OPBA.
+This is done in two stages: first, we build an \emph{extended} OPA whose transitions are labeled with Boolean expressions and assignments; then, we convert such OPA to a normal one, ready for model checking.
+
+\subsection{Extended OPA}
+Given a MiniProc program $P$ and the set $I_P$ of identifiers in $P$,
+we call $L_P = \mathit{BExp}_P \cup \mathit{Ass}_P$ the set of labels on $P$,
+where $\mathit{BExp}_P$ and $\mathit{Ass}_P$ are resp.\ the sets of Boolean expressions and assignments on $I_P$.
+We build the extended OPA
+\[\mathcal{A}^E_P = (\Sigma_P, \allowbreak M_\lcall, \allowbreak Q^E_P, \allowbreak \{q_0\}, \allowbreak \{q_f\}, \allowbreak \delta^E_P)\]
+with $\Sigma_P = \Sigma_\lcall \cup L_P$.
+$Q_P$ and $\delta^E_P$ are built inductively on the program structure.
+For each statement $s$ in $P$, we define the set of entry state/label pairs $\mathit{En}_s \subseteq Q_P \times L_P$.
+Each entry state is labeled with an element form either $\mathit{BExp}_P$ or $\mathit{Ass}_P$, but not both.
+\begin{description}
+\item[Functions]
+For each function $f$ in $P$ we define a set of entry states $\mathit{En}_f = \mathit{En}_s$, where $s$ is the first statement in the function's body; we also add transitions and states $q^l_f \vshift{\lret \ f} q^r_f$, to which we link the last statement in $f$,
+and $q^t_f \vshift{\lthrow} q^e_f$, which implements \texttt{throw} statements.
+
+\item[Function Call]
+For a call $s$ to function $f$, we add $q_s \va{\lcall \ f \ l} q$ for all $(q, l) \in \mathit{En}_f$, and $q^t_f \flush{q_s} q^t_{f'}$, where $f'$ is the function containing $s$.
+Let $s'$ be the successor of $s$: we add $q^r_f \flush{q_s \ l} q$ for all $(q, l) \in \mathit{En}_s$.
+
+\item[Assignments]
+For each assignment $s$ we add $q_s \va{\lstmt \ s}{q_s}$, and set $\mathit{En}_s = \mathit{Ex}_s = \{(q_s, \top)\}$. Let $s'$ be the successor of $s$: we add $q_s \flush{(q_s, l)} q$ for all $(q, l) \in \mathit{En}_s$.
+
+\item[If-then-else]
+For each statement $s$ of the form \texttt{if} $b_s$ \texttt{then \{} $s_1; \dots; s_n$ \texttt{\} else \{} $s_{n+1}; \dots; s_m$ \texttt{\}}
+we have $\mathit{En}_s = \{(q, b_s \land l) \mid (q, l) \in \mathit{En}_{s_1}\} \cup \{(q, \neg b_s \land l) \mid (q, l) \in \mathit{En}_{s_{n+1}}\}$.
+
+\item[While]
+For a statement $s$ of the form \texttt{while} $b_s$ \texttt{\{} $s_1; \dots; s_n$ \texttt{\}} we set $\mathit{En}_s = \{(q, b_s \land l) \mid (q, l) \in \mathit{En}_{s_1}\} \cup \{(q, \neg b_s \land l) \mid (q, l) \in \mathit{En}_{s_{n+1}}\}$, where $s_{n+1}$ is the successor of $s$.
+Also, both $s_{n+1}$ and $s$ itself are considered as successors of $s_n$, and their entry sets are merged.
+
+\item[Throw]
+For a \texttt{throw} statement $s$ in a function $f$ we just set $\mathit{En}_s = \{(q^t_f, \top)\}$.
+
+\item[Try-Catch]
+For a statement $s$ in function $f$ of the form \texttt{try \{} $s_1; \dots; s_n$ \texttt{\} catch \{} $s_{n+1}; \dots; s_m$ \texttt{\}},
+we add a new state $q_s$ and set $\mathit{En}_s = \{(q_s, \top)\}$, and a push transition $q_s \va{\lhandle \ l} q$ for each $(q, l) \in \mathit{En}_{s_1}$ that installs the handler.
+We first deal with the case when an exception is caught.
+We add pop transitions $q^e_f \flush{q_s \ l} q$ for each $(q, l) \in \mathit{En}_{s_{n+1}}$ that pop the handler when an exception is thrown in the try block, and pass the execution flow to the catch block.
+Then, statement $s_m$ is linked to the entry states of $s'$, the first statement after $s$ (how this is done depends on what kind of statement $s_m$ is).
+For the case when no exception is thrown, we add a shift transition that simulates a dummy \texttt{throw} statement $t$ after $s_n$, to uninstall the handler.
+When lowering $s_n$, we consider $t$ as its next statement, add states $q_t$ and $q'_t$, and set $\mathit{En}_t = \{(q_t, \top)\}$.
+Then we add $q_t \vshift{\lthrow \ \mathit{dummy}} q'_t$, and $q'_t \flush{q_s \ l} q$ for all $(q, l) \in \mathit{En}_{s'}$, which pop the handler and continue the execution with the first statement after $s$.
+\end{description}
+
+Finally, if $f_0$ is the first function listed in the MiniProc program, we add transitions $q_0 \va{\lcall \ f_0 \ l} q$ for all $(q, l) \in \mathit{En}_{f_0}$, and $q^r_{f_0} \flush{q_0} q_f$.
+
+\subsection{From extended OPA to OPA}
+We expand states of $\mathcal{A}^E_P$ with all possible variable valuations, to obtain OPA
+\[\mathcal{A}_P = (\Sigma_\lcall \times I_P, M_\lcall, Q_P, \{q_0\} \times \{0, 1\}^{|I_P|}, \{q_f\} \times \{0, 1\}^{|I_P|}, \delta_P),\]
+where $Q_P \subseteq Q^E_P \times \{0, 1\}^{|I_P|}$.
+Each state is a pair $(q, v)$ with $q \in Q^E_P$ and $v$ is a bitvector representing a possible valuation of variables that hold in $q$.
+By $v \models l$ we mean that the variable valuation $v \in \{0, 1\}^{|I_P|}$ satisfies Boolean expression $l \in \mathit{BExp}_P$; if $l = (x := e) \in \mathit{Ass}_P$ with $x \in I_P$ and $e \in \mathit{BExp}_P$ we mean $v \models x \iff e$. By $\operatorname{vars}(v)$ we denote the set of variables satisfied by $v \in \{0, 1\}^{|I_P|}$.
+We define $Q_P := \bigcup_{i \in \mathbb{N}} Q_P^i$ inductively through the following equations:
+\begin{align*}
+  &Q_P^0 := \{q_0\} \times \{0, 1\}^{|I_P|} \\
+  &Q_P^{n+1} := \{(q, v) \mid q' \in Q_P^n, \ (q', a \ l, q) \in \delta^E_P, \ v \models l\}
+\end{align*}
+This is implemented through a depth-first visit of $\mathcal{A}^E_P$, from which we derive
+\begin{align*}
+  \delta_P :=
+    & \{q \va{a \ \operatorname{vars(v)}} q' \mid q \va{a \ l} q' \in \delta^E_P, \ q, q' \in Q_P\} \\
+    & \cup \{q \vshift{a \ \operatorname{vars(v)}} q' \mid q \vshift{a \ l} q' \in \delta^E_P, \ q, q' \in Q_P\} \\
+    & \cup \{q \flush{p} q' \mid q \flush{p \ l} q' \in \delta^E_P, \ q, q', p \in Q_P\}
+\end{align*}
+Note that $\mathcal{A}_P$ has size exponential in $|I_P|$ in the worst case, but not in general, since only reachable variable assignments are considered.
+
+
 
 \end{document}
