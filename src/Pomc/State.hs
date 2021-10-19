@@ -7,8 +7,7 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.State ( 
-                    State(..)
+module Pomc.State ( State(..)
                   , Input
                   , Atom
                   , showState
@@ -32,21 +31,21 @@ import Control.DeepSeq(NFData(..), deepseq)
 
 type Input = EncodedSet
 type Atom = EncodedSet
-                                    
+
 -- a OPA state for both the finite and the infinite case
 data State = FState
   { current    :: Atom -- Bit Vector representing the formulas and AP holding in this state
   , pending    :: EncodedSet -- Bit Vector representing temporal obligations holding in the current state
   , mustPush   :: !Bool
   , mustShift  :: !Bool
-  , afterPop    :: !Bool
+  , afterPop   :: !Bool
 } | WState
   { current    :: Atom -- Bit Vector representing the formulas and AP holding in this state
   , pending    :: EncodedSet -- Bit Vector representing temporal obligations holding in the current state
   , stack      :: EncodedSet -- BitVector representing  instack temporal obligations holding in current state
   , mustPush   :: !Bool
   , mustShift  :: !Bool
-  , afterPop    :: !Bool
+  , afterPop   :: !Bool
 } deriving (Generic, Ord, Eq)
 
 instance Hashable State
@@ -92,4 +91,4 @@ showState bitenc transAP (FState c p xl xe xr) =
   "\n, XL: " ++ show xl                    ++
   "\n, X=: " ++ show xe                    ++
   "\n, XR: " ++ show xr                    ++
-  "\n}" 
+  "\n}"

@@ -198,5 +198,5 @@ inputSuchThat bitenc predicate = EncodedAtom $ BV.fromBits bitList
 listBits :: BitVector -> [Int]
 listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v
 
-nat :: EncodedAtom -> Int 
+nat :: EncodedAtom -> Int
 nat (EncodedAtom bv) = fromInteger . BV.nat $ bv

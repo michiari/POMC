@@ -12,18 +12,18 @@ module Pomc.SatUtil( SatState(..)
                    , initSIdGen
                    , wrapStates
                    , getSidProps
-           		     , debug
-           		     , freshPosId
-           		     , freshNegId 
+                   , debug
+                   , freshPosId
+                   , freshNegId
                    , decode
-           		     ) where
+                   ) where
 
 import Pomc.State(Input, State(..))
 import Pomc.Encoding (BitEncoding, extractInput, nat)
 
 import Data.Maybe
 import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef') 
+import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -36,7 +36,7 @@ import qualified Data.HashTable.Class as H
 
 import Control.DeepSeq(NFData(..), deepseq)
 
---  a basic open-addressing hashtable using linear probing
+-- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
 
@@ -65,7 +65,7 @@ instance Ord (StateId state) where
 instance Hashable (StateId state) where
   hashWithSalt _ s = getId s
 
-instance (NFData state) => NFData (StateId state) where 
+instance (NFData state) => NFData (StateId state) where
   rnf (StateId i s) = i `deepseq` s `deepseq` ()
 
 -- a type to keep track of state to id relation
@@ -81,7 +81,7 @@ initSIdGen = do
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }
 
--- wrap a State into the StateId data type and into the ST monad, and update accordingly SidGen 
+-- wrap a State into the StateId data type and into the ST monad, and update accordingly SidGen
 wrapState :: (Eq state, Hashable state)
           => SIdGen s state
           -> state
@@ -98,7 +98,7 @@ wrapState sig q = do
     H.insert (stateToId sig) q newQwrapped
     return newQwrapped
 
---wrap a list of states into the ST monad, giving to each of them a unique ID
+-- wrap a list of states into the ST monad, giving to each of them a unique ID
 wrapStates :: (Eq state, Hashable state)
            => SIdGen s state -- keep track of state to id relation
            -> [state]
@@ -109,7 +109,7 @@ wrapStates sig states = do
 
 
 -- Stack symbol: (input token, state) || Bottom if empty stack
-type Stack state = Maybe (Input, StateId state) 
+type Stack state = Maybe (Input, StateId state)
 
 -- get atomic propositions holding in a state
 getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
@@ -117,7 +117,7 @@ getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
 
 debug :: String -> a -> a
 debug _ x = x
---debug msg r = trace msg r 
+--debug msg r = trace msg r
 
 freshPosId :: STRef s Int -> ST.ST s Int
 freshPosId idSeq = do

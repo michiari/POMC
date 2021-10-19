@@ -122,9 +122,6 @@ instance Functor Formula where
                   AuxBack dir g  -> AuxBack dir (fmap func g)
 
 
-
-
-
 --get all the atomic propositions used by a formula, removing duplicates
 getProps :: (Eq a) => Formula a -> [Prop a]
 getProps formula = nub $ collectProps formula
@@ -220,5 +217,5 @@ normalize f = case f of
                 Always g           -> Not . Eventually . normalize . Not $ g
                 AuxBack dir g      -> AuxBack dir (normalize g)
 
-instance NFData (Formula a) where 
+instance NFData (Formula a) where
   rnf formula = formula `seq` ()

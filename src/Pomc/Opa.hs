@@ -137,7 +137,7 @@ parAugRun :: (NFData s, NFData t)
           -> Bool
 parAugRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
   let ics = (map (\i -> Config i [] tokens) ini)
-      results = parMap (run' precf augDeltaShift augDeltaPush augDeltaPop isFinal) ics              
+      results = parMap (run' precf augDeltaShift augDeltaPush augDeltaPop isFinal) ics
   in any id results
   where
     run' precf' adshift adpush adpop isFinal' conf@(Config s stack tokens')

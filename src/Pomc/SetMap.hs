@@ -2,7 +2,7 @@
    Module      : Pomc.SetMap
    Copyright   : 2021 Michele Chiari
    License     : MIT
-   Maintainer  : Michele Chiari,Francesco Pontiggia
+   Maintainer  : Michele Chiari, Francesco Pontiggia
 -}
 
 module Pomc.SetMap ( SetMap
@@ -56,12 +56,12 @@ member smref idx val = do
   return $ val `Set.member` vset
 
 modifyAll :: (Ord v) => STRef s (SetMap s v) -> (v -> v) -> ST.ST s ()
-modifyAll smref f = do 
+modifyAll smref f = do
   sm <- readSTRef smref
-  mapM_ (MV.unsafeModify sm $ Set.map f) [0..((MV.length sm) -1)] 
+  mapM_ (MV.unsafeModify sm $ Set.map f) [0..((MV.length sm) -1)]
 
 -- an empty Set Map, an array of sets
 empty :: ST.ST s (STRef s (SetMap s v))
 empty = do
   sm <- MV.replicate 4 Set.empty
-  newSTRef sm 
+  newSTRef sm

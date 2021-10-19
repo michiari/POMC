@@ -56,7 +56,7 @@ data ExplicitOpa s a = ExplicitOpa
 -- a specific type for the model checker state: the parametric s is for the input OPA, the second field is for the generated opa from the input formula
 data MCState s = MCState s State deriving (Generic, Eq, Show, Ord)
 
-instance NFData (MCState s) where 
+instance NFData (MCState s) where
   rnf (MCState _ s2) = s2 `deepseq` ()
 
 instance Hashable s => Hashable (MCState s)
@@ -104,7 +104,7 @@ modelCheck isOmega phi opa =
       cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal T p
       cIsFinalOmega states = (any (\(MCState q _) -> Set.member q $ Set.fromList $ finals opa) states) &&
                              (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) $ Set.toList cl)
-  
+
 
       -- unwrap an object of type Maybe List
       maybeList Nothing = []
@@ -131,7 +131,7 @@ modelCheck isOmega phi opa =
                }
       (sat, trace) = if isOmega
                       then isEmptyOmega cDelta cInitials cIsFinalOmega
-                      else isEmpty cDelta cInitials cIsFinal 
+                      else isEmpty cDelta cInitials cIsFinal
 #ifndef NDEBUG
   in DBG.trace (showTrace bitenc transInv trace)
 #else
@@ -146,7 +146,7 @@ modelCheckGen :: (Ord s, Hashable s, Show s, Ord a, Show a)
 #else
 modelCheckGen :: (Ord s, Hashable s, Show s, Ord a)
 #endif
-              => Bool 
+              => Bool
               -> Formula a
               -> ExplicitOpa s a
               -> (Bool, [(s, Set (Prop a))])
@@ -184,7 +184,3 @@ countStates opa =
       popStates = foldl (\set (q, r, ps) -> set `Set.union` (Set.fromList (q : r : ps)))
                   shiftStates (deltaPop opa)
   in Set.size $ popStates `Set.union` (Set.fromList $ initials opa ++ finals opa)
-
-
-
-

@@ -47,15 +47,15 @@ import Control.DeepSeq(NFData(..), deepseq)
 -- global variables in the algorithms
 data Globals s state = FGlobals
   { sIdGen :: SIdGen s state
-  , visited :: STRef s (SetMap s (Stack state)) 
+  , visited :: STRef s (SetMap s (Stack state))
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (SetMap s (StateId state))
-  } | WGlobals 
+  } | WGlobals
   { sIdGen :: SIdGen s state
   , suppStarts :: STRef s (SetMap s (Stack state))
-  , suppEnds :: STRef s (SetMap s (StateId state)) 
-  , graph :: Graph s state 
-  }  
+  , suppEnds :: STRef s (SetMap s (StateId state))
+  , graph :: Graph s state
+  }
 
 -- a type for the delta relation, parametric with respect to the type of the state
 data Delta state = Delta
@@ -110,7 +110,7 @@ showTrace be transAP trace = concatMap showMove trace
 reach :: (NFData state, SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool) -- is the state as desired?
       -> (Stack state -> Bool) -- is the stack as desired?
-      -> Globals s state -- globals variables of the algorithm 
+      -> Globals s state -- global variables of the algorithm
       -> Delta state -- delta relation of the opa
       -> StateId state -- current state
       -> Stack state -- current stack symbol
@@ -261,77 +261,77 @@ isEmptyOmega delta initialOpbaStates areFinal = (not $
                initialsId <- wrapStates newSig initialOpbaStates
                initials <- V.mapM (\sId -> return (sId, Nothing)) initialsId
                gr <- newGraph initials
-               let globals = WGlobals { sIdGen = newSig 
+               let globals = WGlobals { sIdGen = newSig
                                       , suppStarts = emptySuppStarts
-                                      , suppEnds = emptySuppEnds 
+                                      , suppEnds = emptySuppEnds
                                       , graph = gr
                                       }
                 in searchPhase areFinal globals delta
             ), [])
 
-searchPhase :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
+searchPhase :: (NFData state, SatState state, Ord state, Hashable state, Show state)
                   => ([state] -> Bool)
-                  -> Globals s state 
-                  -> Delta state 
+                  -> Globals s state
+                  -> Delta state
                   -> ST.ST s Bool
-searchPhase areFinal globals delta  = 
+searchPhase areFinal globals delta  =
   let visit node = do
-        alrDisc <- alreadyDiscovered (graph globals) node 
+        alrDisc <- alreadyDiscovered (graph globals) node
         if not alrDisc
           then reachOmega areFinal globals delta node
           else return False
-  in do 
+  in do
     initials <- initialNodes $ graph globals
     detected <- foldM (\acc node -> if acc
                                       then return True
-                                      else visit node) 
+                                      else visit node)
                       False
                       initials
-    if detected 
-      then return True 
-      else do 
+    if detected
+      then return True
+      else do
         size <- summariesSize $ graph globals
         collapsePhase size initials areFinal globals delta
-        
 
-collapsePhase :: (NFData state, SatState state, Ord state, Hashable state, Show state) 
-                  => Int 
+
+collapsePhase :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+                  => Int
                   -> Set (StateId state, Stack state)
                   -> ([state] -> Bool)
-                  -> Globals s state 
-                  -> Delta state 
-                  -> ST.ST s Bool 
+                  -> Globals s state
+                  -> Delta state
+                  -> ST.ST s Bool
 collapsePhase 0 _ _ _ _ = return False
-collapsePhase _ initials areFinal globals delta = 
-  let visit node = do 
-        alrVis <- alreadyVisited (graph globals) node 
+collapsePhase _ initials areFinal globals delta =
+  let visit node = do
+        alrVis <- alreadyVisited (graph globals) node
         if not alrVis
           then visitGraphFromKey (graph globals) areFinal node
           else return False
-  in do 
+  in do
     newInitials <- toCollapsePhase $ graph globals
     detected <- foldM (\acc node -> if acc
                                         then return True
-                                        else visit node) 
+                                        else visit node)
                       False
                       initials
-    if detected 
-      then return True 
-      else do 
+    if detected
+      then return True
+      else do
         toSearchPhase (graph globals) (newInitials);
         searchPhase areFinal globals delta
 
 reachOmega :: (NFData state, SatState state, Ord state, Hashable state, Show state)
-               => ([state] -> Bool) 
-               -> Globals s state 
-               -> Delta state 
-               -> (StateId state, Stack state) 
-               -> ST.ST s Bool 
-reachOmega areFinal globals delta (q,g) = do 
-  let be = bitenc delta 
+               => ([state] -> Bool)
+               -> Globals s state
+               -> Delta state
+               -> (StateId state, Stack state)
+               -> ST.ST s Bool
+reachOmega areFinal globals delta (q,g) = do
+  let be = bitenc delta
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
-      qState = getState q 
-      cases 
+      qState = getState q
+      cases
         | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) =
           reachOmegaPush areFinal globals delta (q,g) qState qProps
 
@@ -345,7 +345,7 @@ reachOmega areFinal globals delta (q,g) = do
   visitNode (graph globals) (q,g);
   success <- cases
   if success
-    then return True 
+    then return True
     else createComponent (graph globals) (q,g) areFinal
 
 reachOmegaPush :: (NFData state, SatState state, Ord state, Hashable state, Show state)
@@ -385,7 +385,7 @@ reachOmegaShift :: (NFData state, SatState state, Ord state, Hashable state, Sho
            -> ST s Bool
 reachOmegaShift areFinal globals delta (q,g) qState qProps =
   let doShift True _ = return True
-      doShift False p = 
+      doShift False p =
         reachTransition areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
@@ -403,7 +403,7 @@ reachOmegaPop globals delta (_,g) qState =
             closeSupports  g'
               | isNothing g' ||
                 ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
-              = discoverSummary (graph globals) (r,g') (p,g')                         
+              = discoverSummary (graph globals) (r,g') (p,g')
               | otherwise = return ()
         in do
           SM.insert (suppEnds globals) (getId r) p
@@ -423,20 +423,22 @@ reachTransition :: (NFData state, SatState state, Ord state, Hashable state, Sho
                  -> (StateId state, Stack state)
                  -> (StateId state, Stack state)
                  -> ST s Bool
-reachTransition areFinal globals delta from to = do 
+reachTransition areFinal globals delta from to = do
   alrDisc <- alreadyDiscovered (graph globals) to
-  insertEdge (graph globals) from to 
-  if alrDisc 
-    then do 
+  insertEdge (graph globals) from to
+  if alrDisc
+    then do
       alrVis <- alreadyVisited (graph globals) to
-      if alrVis 
+      if alrVis
         then do updateSCC (graph globals) to;
-                return False 
+                return False
         else visitGraphFromKey (graph globals) areFinal to
     else reachOmega areFinal globals delta to
 
 -------------------------------------------------------------
--- given a formula, build the opa associated with the formula and check the emptiness of the language expressed by the OPA (mainly used for testing)
+-- given a formula, build the opa associated with the formula
+-- and check the language expressed by the OPA for emptiness
+-- (mainly used for testing)
 isSatisfiable :: Bool
               -> Formula APType
               -> ([Prop APType], [Prop APType])
@@ -452,15 +454,15 @@ isSatisfiable isOmega phi ap sprs =
         , deltaPop = dPop
         }
       isFinalOmega states = all (\f -> any (isFinal f) states) $ Set.toList cl
-      (empty, trace) = if isOmega 
+      (empty, trace) = if isOmega
         				then isEmptyOmega delta initials isFinalOmega
         				else isEmpty delta initials (isFinal T)
 
   in (not empty, map snd $ toInputTrace be trace)
- 
+
 -- parametric with respect the type of the propositions
 isSatisfiableGen :: (Ord a)
-                 => Bool 
+                 => Bool
                  -> Formula a
                  -> ([Prop a], [Prop a])
                  -> [StructPrecRel a]
