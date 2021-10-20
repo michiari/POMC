@@ -29,7 +29,7 @@ sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
   map (makeTestCase simpleExc) (zip EvalFormulas.formulas expectedSasEval)
 
 synthBaseTests :: TestTree
-synthBaseTests = testGroup "SYNTH OPA: MC Base Tests" $
+synthBaseTests = testGroup "SYNTH OPA MC Base Tests" $
   map (makeTestCase synth) (zip TestSat.cases expectedSasBase)
 
 synthEvalTests :: TestTree
@@ -116,7 +116,7 @@ expectedSasEval = [True, True, True, True,     -- chain_next
                    True, True,                 -- stack_inspection
                    False,                      -- uninstall_han
                    False, True, True,          -- until_exc
-                   True, True, False           -- until_misc
+                   True, True, True            -- until_misc
                   ]
 
 largerRec :: ExplicitOpa Word String

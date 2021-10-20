@@ -96,7 +96,7 @@ expectedSasEval = [True, True, True, True,     -- chain_next
                    True, True,                 -- stack_inspection
                    False,                      -- uninstall_han
                    False, True, True,          -- until_exc
-                   True, True, False           -- until_misc
+                   True, True, True            -- until_misc
                   ]
 
 sasMPSource :: T.Text
