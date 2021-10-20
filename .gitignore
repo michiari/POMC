@@ -1,7 +1,7 @@
-.stack-work/
+.stack-work
 *~
 session.vim
 pomc.cabal
 stack.yaml.lock
-
+dist
 /references

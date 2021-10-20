@@ -1,0 +1,4 @@
+formulas = PNd (han And (XNd (exc And (XBu call))));
+include = "../../Mcall.inc";
+
+include = "program.inc";

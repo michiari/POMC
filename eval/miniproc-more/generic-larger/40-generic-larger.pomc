@@ -1,0 +1,4 @@
+formulas = PNd (PNd (PNd (T Uu exc)));
+include = "../../Mcall.inc";
+
+include = "program.inc";

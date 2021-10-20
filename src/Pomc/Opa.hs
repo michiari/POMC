@@ -17,11 +17,10 @@ module Pomc.Opa ( -- * Run functions
                 ) where
 
 import Pomc.Prec (Prec(..))
-import Pomc.Util (any', safeHead, safeTail)
+import Pomc.Util (any', safeHead, safeTail, parMap)
 
-import Control.Parallel.Strategies
+import Control.Parallel.Strategies(NFData)
 import GHC.Generics (Generic)
-import qualified Data.Vector as V
 
 data Opa s t = Opa
     { alphabet   :: [t]
@@ -34,6 +33,7 @@ data Opa s t = Opa
     , deltaPop   :: s -> s -> [s]
     }
 
+-- a configuration of a opa
 data Config s t = Config
     { confState :: s
     , confStack :: [(t, s)]
@@ -44,14 +44,15 @@ runOpa :: (Eq s) => Opa s t -> [t] -> Bool
 runOpa (Opa _ precf _ ini fin dshift dpush dpop) tokens =
   run precf ini (`elem` fin) dshift dpush dpop tokens
 
-run :: (t -> t -> Maybe Prec)
-    -> [s]
-    -> (s -> Bool)
-    -> (s -> t -> [s])
-    -> (s -> t -> [s])
-    -> (s -> s -> [s])
-    -> [t]
-    -> Bool
+-- run some tokens over an OPA and check acceptance
+run :: (t -> t -> Maybe Prec) -- precedence relation
+    -> [s] -- list of initial states
+    -> (s -> Bool) -- is a state final?
+    -> (s -> t -> [s]) -- deltaShift (non deterministic)
+    -> (s -> t -> [s]) -- deltaPush
+    -> (s -> s -> [s]) -- deltaPop
+    -> [t] -- input tokens
+    -> Bool --is the string accepted?
 run precf ini isFinal dShift dPush dPop tokens =
   any'
     (run' precf dShift dPush dPop isFinal)
@@ -81,6 +82,7 @@ run precf ini isFinal dShift dPush dPop tokens =
             t   = head tokens' -- safe due to laziness
             recurse = any' (run' precf' dshift dpush dpop isFinal')
 
+-- run some tokens over an OPA and check acceptance, but use the lookahead for early discard of non accepting computations
 augRun :: (t -> t -> Maybe Prec)
        -> [s]
        -> (s -> Bool)
@@ -121,21 +123,8 @@ augRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             t   = head tokens' -- safe due to laziness
             recurse = any' (run' precf' adshift adpush adpop isFinal')
 
-parAny :: (t -> Bool) -> [t] -> Bool
-parAny p xs = runEval $ parAny' p xs
-  where parAny' _ [] = return False
-        parAny' p' (y:ys) = do py <- rpar (p' y)
-                               pys <- parAny' p' ys
-                               return (py || pys)
 
-interChunks :: Int -> [a] -> V.Vector [a]
-interChunks nchunks xs = interChunks' (V.generate nchunks (const [])) 0 xs
-  where interChunks' vec _ [] = vec
-        interChunks' vec i (y:ys) = interChunks'
-                                      (vec V.// [(i,y:(vec V.! i))])
-                                      ((i + 1) `mod` nchunks)
-                                      ys
-
+-- same as AugRun, but with some parallelim
 parAugRun :: (NFData s, NFData t)
           => (t -> t -> Maybe Prec)
           -> [s]
@@ -147,11 +136,8 @@ parAugRun :: (NFData s, NFData t)
           -> Bool
 parAugRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
   let ics = (map (\i -> Config i [] tokens) ini)
-      nchunks = min 128 (length ics)
-      chunks = V.toList $ interChunks nchunks ics
-      process = runEval . rdeepseq .
-                  any' (run' precf augDeltaShift augDeltaPush augDeltaPop isFinal)
-  in parAny process chunks
+      results = parMap (run' precf augDeltaShift augDeltaPush augDeltaPop isFinal) ics
+  in any id results
   where
     run' precf' adshift adpush adpop isFinal' conf@(Config s stack tokens')
       -- No more input and empty stack: accept / reject
@@ -178,8 +164,8 @@ parAugRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
             dpush  = adpush  lookahead
             dpop   = adpop   lookahead
             top = head stack  --
-            t   = head tokens -- safe due to laziness
-            recurse = any' (run' precf' adshift adpush adpop isFinal')
+            t   = head tokens' -- safe due to laziness
+            recurse = any id . parMap (run' precf' adshift adpush adpop isFinal')
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]

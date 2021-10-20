@@ -1,0 +1,47 @@
+program:
+main() {
+       pa();
+       try {
+           pa();
+           pb();
+       } catch {
+           perr();
+       }
+}
+
+pa() {
+     pc();
+     pd();
+     if (*) {
+        pa();
+     } else {}
+}
+
+pb() {
+     try {
+         pe();
+     } catch {
+         perr();
+     }
+}
+
+pc() {
+     if (*) {
+        pa();
+     } else {
+        pe();
+     }
+}
+
+pd() {
+     pc();
+     pa();
+}
+
+pe() {
+     if (*) {
+        throw;
+     } else {}
+}
+
+perr() {}

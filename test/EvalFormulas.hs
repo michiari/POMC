@@ -281,7 +281,7 @@ until_misc =
     , True
     ),
     ( "From the third position, it is possible to reach a return, possibly of another function."
-    , PNext Down $ PNext Down $ Until Up (ap "call" `Or` ap "ret") (ap "ret")
+    , PNext Down $ PNext Down $ Until Up (ap "call" `Or` ap "exc") (ap "ret")
     , ["pa", "pb", "pc", "perr"]
     , True
     )

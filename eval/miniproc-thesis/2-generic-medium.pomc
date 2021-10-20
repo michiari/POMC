@@ -1,0 +1,39 @@
+formulas = G ((call And pb And (T Sd (call And pa))) --> (PNu exc Or XNu exc));
+
+include = "../Mcall.inc";
+
+program:
+pa() {
+  pb();
+  try {
+    pc();
+  } catch {
+    perr();
+  }
+}
+
+pb() {
+  if (*) {
+    pc();
+  } else {
+    try {
+      pc();
+    } catch {
+      perr();
+    }
+  }
+}
+
+pc() {
+  if (*) {
+    pb();
+  } else {
+    throw;
+  }
+}
+
+perr() {
+  if (*) {
+    perr();
+  } else {}
+}

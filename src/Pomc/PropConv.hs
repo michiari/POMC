@@ -36,7 +36,7 @@ convPropTokens phi precr tokens =
       ttokens = map (\t -> Set.map (\p -> fmap trans p) t) tokens -- convert input tokens to APType
   in (tphi, tprec, ttokens)
 
--- convert generic props into APType props
+-- convert generic props of a language into APType props
 convPropLabels :: (Ord a)
               => Formula a -- input formula phi
               -> ([Prop a], [Prop a]) -- (structural labels, other APs)
@@ -46,7 +46,7 @@ convPropLabels phi (sls, als) precr =
   let (tphi, tprec, trans, index) = convAP phi precr (sls ++ als)
   in (tphi, (map (fmap trans) sls, map (fmap trans) als), tprec, index)
 
--- convert generic props into APType props
+-- convert generic props into APType props, and return a function which maps a generic prop into the correspondant APType
 convAP :: (Ord a)
        => Formula a -- input formula phi
        -> [StructPrecRel a] -- OPM
@@ -60,7 +60,6 @@ convAP phi precr other =
 
       -- map APs to their APType value
       trans p = fromJust $ Map.lookup p apMap
-
       apVec = V.fromList $ allProps
       index i = apVec V.! ((fromIntegral i) - 1) -- index 0 is reserved for End
   in ( fmap trans phi

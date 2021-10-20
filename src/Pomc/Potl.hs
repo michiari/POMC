@@ -26,6 +26,7 @@ module Pomc.Potl ( Dir(..)
 import Pomc.Prop (Prop(..))
 import Data.List (nub,uncons)
 import GHC.Generics (Generic)
+import Control.DeepSeq(NFData(..))
 
 import Data.Hashable
 
@@ -121,9 +122,6 @@ instance Functor Formula where
                   AuxBack dir g  -> AuxBack dir (fmap func g)
 
 
-
-
-
 --get all the atomic propositions used by a formula, removing duplicates
 getProps :: (Eq a) => Formula a -> [Prop a]
 getProps formula = nub $ collectProps formula
@@ -216,5 +214,8 @@ normalize f = case f of
                 HUntil dir g h     -> HUntil dir  (normalize g) (normalize h)
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)
                 Eventually g       -> Eventually (normalize g)
-                Always g           -> Always (normalize g)--Not . Eventually . normalize . Not $ g-- --
+                Always g           -> Not . Eventually . normalize . Not $ g
                 AuxBack dir g      -> AuxBack dir (normalize g)
+
+instance NFData (Formula a) where
+  rnf formula = formula `seq` ()

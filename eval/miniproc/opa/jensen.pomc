@@ -1,0 +1,82 @@
+formulas = G ((call And rawrd) --> Not (T Sd (call And (Not Prd) And (Not rawrd)))),
+           G ((call And rawrd) --> Not (T Sd (call And (Not Pcp) And (Not rawrd)))),
+           G ((call And rawwr) --> Not (T Sd (call And (Not Pwr) And (Not rawwr)))),
+           G ((call And rawwr) --> Not (T Sd (call And (Not Pdb) And (Not rawwr))));
+
+program:
+var P_cp, P_db, P_rd, P_wr, CP;
+
+main() {
+  P_cp = true;
+  P_db = true;
+  P_rd = true;
+  P_wr = true;
+  CP = false;
+  spender();
+
+  P_cp = false;
+  P_db = false;
+  P_rd = false;
+  P_wr = false;
+  clyde();
+}
+
+spender() {
+  account.canpay();
+  if (P_cp) {
+    account.debit();
+  } else {}
+
+  if (*) {
+    spender();
+  } else {}
+}
+
+clyde() {
+  account.debit();
+  if (*) {
+    clyde();
+  } else {}
+}
+
+account.canpay() {
+  if (P_cp) {
+    read();
+    CP = true;
+  } else {
+    throw;
+  }
+}
+
+account.debit() {
+  if (P_db) {
+    account.canpay();
+    if (CP) {
+      write();
+      CP = false;
+    } else {
+      throw;
+    }
+  } else {
+    throw;
+  }
+}
+
+read() {
+  if (P_rd) {
+    raw_read();
+  } else {
+    throw;
+  }
+}
+
+write() {
+  if (P_wr) {
+    raw_write();
+  } else {
+    throw;
+  }
+}
+
+raw_read() {}
+raw_write() {}

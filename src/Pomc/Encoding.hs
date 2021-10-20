@@ -6,7 +6,6 @@
    License     : MIT
    Maintainer  : Michele Chiari
 -}
-
 module Pomc.Encoding ( EncodedSet
                      , FormulaSet
                      , PropSet
@@ -31,6 +30,7 @@ module Pomc.Encoding ( EncodedSet
                      , decodeInput
                      , encodeInput
                      , inputSuchThat
+                     , Pomc.Encoding.nat
                      ) where
 
 import Pomc.Potl
@@ -42,6 +42,7 @@ import Data.Bits (Bits(..))
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 import Data.Hashable
+import Control.DeepSeq(NFData(..))
 
 
 type EncodedSet = EncodedAtom
@@ -68,6 +69,9 @@ newBitEncoding fetch_ index_ width_ propBits_ =
 
 -- an encoded atom is just a bitset
 newtype EncodedAtom = EncodedAtom BitVector deriving (Eq, Ord, Show)
+
+instance NFData EncodedAtom where
+  rnf (EncodedAtom vect) = vect `seq` ()
 
 instance Hashable EncodedAtom where
   hashWithSalt salt (EncodedAtom bv) = hashWithSalt salt $ BV.nat bv
@@ -193,3 +197,6 @@ inputSuchThat bitenc predicate = EncodedAtom $ BV.fromBits bitList
 -- list of all set bits in a BitVector
 listBits :: BitVector -> [Int]
 listBits v = snd $ BV.foldr (\b (i, l) -> if b then (i+1, i:l) else (i+1, l)) (0, []) v
+
+nat :: EncodedAtom -> Int
+nat (EncodedAtom bv) = fromInteger . BV.nat $ bv

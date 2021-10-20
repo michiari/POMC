@@ -16,11 +16,12 @@ import Control.Monad
 tests :: TestTree
 tests = testGroup "Check.hs tests" [unitTests, propTests]
 
+-- only for the finite case
 unitTests :: TestTree
 unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
   where
     -- Takes a list of tuples like:
-    --   (name, expected check result, checkable phi, prec func, input)
+    --   (name, expected check result, phi, prec func, input)
     makeTestCase (name, expected, phi, prec, ts) =
       case expected of
         False -> testCase name $ not (fastcheckGen phi prec ts) @? rejectFail
@@ -221,6 +222,12 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["han", "call", "thr"]
         )
+      , ( "Accepting XNext Down -- v2" 
+        , True
+        , XNext Down (Atomic $ Prop "ret")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
       , ( "Rejecting Not XNext Down"
         , False
         , Not $ XNext Down (Atomic $ Prop "thr")
@@ -420,8 +427,7 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      ---------------------- XBack operator -------------------------------------------------------------------------
-      ,( "Accepting PBack Down [Down]"
+      , ( "Accepting PBack Down [Down]"
         , True
         , PNext Down (PBack Down (Atomic $ Prop "call"))
         , stlPrecRelV1
@@ -451,12 +457,7 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "ret"]
         )
-      , ( "Accepting XNext Down"
-        , True
-        , XNext Down (Atomic $ Prop "ret")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "ret"]
-        )
+      ---------------------- XBack operator -------------------------------------------------------------------------
       , ( "Rejecting Not XBack Down through the Yield relation"
         , False
         , formulaAfter [Down, Up] $ Not (XBack Down (Atomic $ Prop "han"))
@@ -814,59 +815,23 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Rejecting Not Eventually"
-        , False
-        , Not $ Eventually (Atomic . Prop $ "thr")
-        , stlPrecRelV1
-        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
-        )
       , ( "Rejecting Eventually"
         , False
         , Eventually (Atomic . Prop $ "thr")
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "ret"]
         )
-      , ( "Accepting Always -- v0"
+      , ( "Rejecting Not Eventually"
+        , False
+        , Not $ Eventually (Atomic . Prop $ "thr")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Accepting Eventually"
         , True
-        , Always . Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call"]
-        )
-      ,( "Accepting Always"
-        , True
-        , Always . Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call"]
-        )
-      , ( "Accepting Always -- v2"
-        , True
-        , Always $ Or (Atomic . Prop $ "call") (Atomic . Prop $ "ret")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
-        )
-      , ( "Rejecting Always"
-        , False
-        , Always . Atomic . Prop $ "call"
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "han", "call"]
-        )
-      , ( "Rejecting Always --v2"
-        , False
-        , Always $ Or (Atomic . Prop $ "call") (PNext Down $ Atomic . Prop $ "ret")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
-        )
-      , ( "Rejecting Always --v3"
-        , False
-        , Always $ Or (Atomic . Prop $ "ret") (PBack Down $ Atomic . Prop $ "call")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "ret", "ret"]
-        )
-      , ( "Rejecting Always --v4"
-        , False
-        , Always $ Or (Atomic . Prop $ "ret") (PBack Up $ Atomic . Prop $ "call")
-        , stlPrecRelV2
-        , map (S.singleton . Prop) ["call", "ret", "ret"]
+        , Eventually $ Not (Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
       , ( "Testing boundaries with XNext"
         , True
@@ -919,6 +884,12 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc"]
         )
+      , ( "Accepting HUntil Down -- v1"
+        , True
+        , PNext Down (HUntil Down T (Atomic . Prop $ "call"))
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["han", "call", "call", "call", "exc", "ret"]
+        )
       , ( "Accepting Eventually"
         , True
         , Eventually . Atomic . Prop $ "ret"
@@ -931,11 +902,83 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "han", "exc"]
         )
-      , ( "Accepting HUntil Down"
-        , True
-        , PNext Down (HUntil Down T (Atomic . Prop $ "call"))
+      , ( "rejecting Not Eventually"
+        , False
+        , Not . Eventually . Atomic . Prop $ "ret"
         , stlPrecRelV2
-        , map (S.singleton . Prop) ["han", "call", "call", "call", "exc", "ret"]
+        , map (S.singleton . Prop) ["call", "han", "exc", "ret"]
+        )
+      , ( "Accepting Not Eventually"
+        , True
+        , Not . Eventually . Atomic . Prop $ "ret"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Accepting Always"
+        , True
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Accepting Always -- v1"
+        , True
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call"]
+        )
+      , ( "Accepting Always -- v2"
+        , True
+        , Always $ Or (Atomic . Prop $ "call") (Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
+        )
+      , ( "Rejecting Always"
+        , False
+        , Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "han", "call"]
+        )
+      , ( "Rejecting Always --v2"
+        , False
+        , Always $ Or (Atomic . Prop $ "call") (PNext Down $ Atomic . Prop $ "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call", "ret", "ret"]
+        )
+      , ( "Rejecting Always --v3"
+        , False
+        , Always $ Or (Atomic . Prop $ "ret") (PBack Down $ Atomic . Prop $ "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret", "ret"]
+        )
+      , ( "Rejecting Always --v4"
+        , False
+        , Always $ Or (Atomic . Prop $ "ret") (PBack Up $ Atomic . Prop $ "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret", "ret"]
+        )
+      , ( "Accepting Not Always"
+        , True
+        , Not . Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "Rejecting Not Always"
+        , False
+        ,  Not . Always .  Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      ,( "Rejecting Not Always"
+        , False
+        ,  Not . Always .  Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      ,  ( "Accepting Not Always"
+        , True
+        , Not . Always . Atomic . Prop $ "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "ret"]
         )
       ]
 

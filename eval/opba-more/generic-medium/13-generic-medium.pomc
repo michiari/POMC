@@ -1,0 +1,4 @@
+formulas = XNd (PNd (PBu call));
+include = "../../Mcall.inc";
+
+include = "opba.inc";

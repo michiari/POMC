@@ -29,7 +29,7 @@ sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
   map (makeTestCase simpleExc) (zip EvalFormulas.formulas expectedSasEval)
 
 synthBaseTests :: TestTree
-synthBaseTests = testGroup "SYNTH OPA: MC Base Tests" $
+synthBaseTests = testGroup "SYNTH OPA MC Base Tests" $
   map (makeTestCase synth) (zip TestSat.cases expectedSasBase)
 
 synthEvalTests :: TestTree
@@ -44,12 +44,12 @@ lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
   map (makeTestCase largerRec) (zip EvalFormulas.formulas expectedLargerRecEval)
 
-
+-- finite model checking case
 makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
 makeTestCase opa ((name, phi, _, _), expected) =
-  let (sat, trace) = modelCheckGen phi opa
+  let (sat, trace) = modelCheckGen False phi opa
       debugMsg False tr = "Expected True, got False. Counterexample:\n"
         ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
       debugMsg True _ = "Expected False, got True."
@@ -116,7 +116,7 @@ expectedSasEval = [True, True, True, True,     -- chain_next
                    True, True,                 -- stack_inspection
                    False,                      -- uninstall_han
                    False, True, True,          -- until_exc
-                   True, True, False           -- until_misc
+                   True, True, True            -- until_misc
                   ]
 
 largerRec :: ExplicitOpa Word String

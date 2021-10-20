@@ -269,10 +269,10 @@ fullOpa (Just opa) prs = Just $ ExplicitOpa
                          , deltaShift = deltaShift opa
                          , deltaPop = deltaPop opa
                          }
-  where sls = extractSLs prs -- structural labels
+  where sls = extractSLs prs  -- structural labels
         als = S.toList $
-              (S.fromList (extractALs $ deltaPush opa)
-               `S.union` S.fromList (extractALs $ deltaShift opa))
+              (S.fromList (extractALs $ deltaPush opa) -- all the labels defined by the push relation
+               `S.union` S.fromList (extractALs $ deltaShift opa)) -- all the labels defined by the shift relation
               `S.difference` (S.fromList sls) -- only normal labels, remove structural labels
 
 

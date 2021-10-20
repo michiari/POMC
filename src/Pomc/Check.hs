@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
-
 {- |
    Module      : Pomc.Check
    Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
@@ -14,37 +12,31 @@ module Pomc.Check ( -- * Checking functions
                   , fastcheckGen
                     -- * Checking helpers
                   , closure
-                    -- * Printing
-                  , showAtom
-                  , showState
                   , EncPrecFunc
-                  , Input
-                  , Atom
-                  , State(..)
                   , makeOpa
                   ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.Opa (run, augRun)
+import Pomc.Opa (run, parAugRun)
 import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, future)
 import Pomc.Util (safeHead, xor, implies, iff)
 import Pomc.Encoding (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
 import qualified Pomc.Encoding as E
 import Pomc.PropConv (APType, convPropTokens)
+import Pomc.State(State(..), Input, Atom)
 
 import Data.Maybe (fromJust, fromMaybe, isNothing)
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Vector as V
+
 import Data.List (foldl', sortOn)
 import qualified Data.HashMap.Strict as M
 import Control.Monad (guard, filterM, foldM)
+
 import qualified Data.Sequence as SQ
 import Data.Foldable (toList)
-
-import GHC.Generics (Generic)
-import Data.Hashable
 
 -- Function that, given two atoms or input symbols,
 -- returns the precedence relation between them
@@ -67,62 +59,16 @@ fromStructEnc bitenc sprs = (\s1 s2 -> M.lookup (structLabel s1, structLabel s2)
         -- encode a single atomic proposition into an EncodedAtom
         encodeProp = E.encodeInput bitenc . S.singleton
 
-
-type Input = EncodedSet
-type Atom = EncodedSet
-
--- an OPA state
-data State = State
-    { current   :: Atom -- BitVector representing formulas and AP holding in the present state
-    , pending   :: EncodedSet -- BitVector representing temporal obligations holding in the current state
-    , mustPush  :: !Bool
-    , mustShift :: !Bool
-    , afterPop  :: !Bool
-    } deriving (Generic, Ord, Eq)
-
-instance Hashable State
-
--- Begin debugging stuff
-showFormulaSet :: (Show a) => (APType -> a) -> FormulaSet -> String
-showFormulaSet transAP fset =
-  let fs = S.toList fset
-      posfs = filter (not . negative) fs
-      negfs = filter (negative) fs
-  in show $ map (fmap transAP) (posfs ++ negfs)
-
-showAtom :: (Show a) => BitEncoding -> (APType -> a) -> Atom -> String
-showAtom bitenc transAP atom =
-  "FS: " ++ showFormulaSet transAP (E.decode bitenc atom) ++ "\t\tES: " ++ show atom
-
-instance Show State where
-  show (State c p xl xe xr) = "\n{ C: "  ++ show c  ++
-                              "\n, P: "  ++ show p  ++
-                              "\n, XL: " ++ show xl ++
-                              "\n, X=: " ++ show xe ++
-                              "\n, XR: " ++ show xr ++
-                              "\n}"
-
-showState :: (Show a) => BitEncoding -> (APType -> a) -> State -> String
-showState bitenc transAP (State c p xl xe xr) =
-  "{ C: "    ++ showAtom bitenc transAP c  ++
-  "\n, P: "  ++ showAtom bitenc transAP p  ++
-  "\n, XL: " ++ show xl                    ++
-  "\n, X=: " ++ show xe                    ++
-  "\n, XR: " ++ show xr                    ++
-  "\n}"
--- End debugging stuff
-
-
--- given a Bit Encoding, a set of all currently holding formulas and AP,
--- and the input APs, determine whether the input APs are satisfied by fset
+-- given a Bit Encoding, a set of holding formulas and AP,
+-- and the input APs, determine whether the input APs are satisfied by the future holding formulas
 compProps :: BitEncoding -> EncodedSet -> Input -> Bool
 compProps bitenc fset pset = E.extractInput bitenc fset == pset
 
 
 -- generate a closure (phi = input formula, otherProps = AP set of the language)
 closure :: Formula APType -> [Prop APType] -> FormulaSet
-closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : otherProps)
-                             phiClos  = closList phi
+closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : otherProps)
+                              phiClos  = closList phi
                          in S.fromList (propClos ++ phiClos)
   where
     xbuExpr g = [AuxBack Down g , Not $ AuxBack Down g]
@@ -135,13 +81,12 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
     huuExpr g h = [XBack Down T , Not (XBack Down T) , T , Not T , HNext Up (HUntil Up g h) , Not $ HNext Up (HUntil Up g h)]
     hsdExpr g h = [XNext Up T   , Not (XNext Up T)   , T , Not T , HBack Down (HSince Down g h) , Not $ HBack Down (HSince Down g h)] ++ hbdExpr (HSince Down g h)
     hsuExpr g h = [XBack Down T , Not (XBack Down T) , T , Not T , HBack Up (HSince Up g h) , Not $ HBack Up (HSince Up g h)]
-    evExpr    g = [PNext Up (Eventually g), Not $ PNext Up (Eventually g), PNext Down (Eventually g), Not $ PNext Down (Eventually g)]
 
     closList f =
       case f of
         T                  -> [f, Not f]
         Atomic _           -> [f, Not f]
-        Not g              -> [f] ++ closList g
+        Not g              -> closList g
         Or g h             -> [f, Not f] ++ closList g ++ closList h
         And g h            -> [f, Not f] ++ closList g ++ closList h
         Xor g h            -> [f, Not f] ++ closList g ++ closList h
@@ -163,13 +108,13 @@ closure phi otherProps = let propClos = concatMap (closList . Atomic) (End : oth
         HUntil Up g h      -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
         HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
         HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
-        Eventually g       -> [f, Not f] ++ closList g ++ evExpr  g
-        Always g           -> [f, Not f] ++ closList g
+        Eventually g       -> [f, Not f] ++ closList g
         AuxBack _ g        -> [f, Not f] ++ closList g
+        Always _           -> error "Always formulas must be transformed to Eventually formulas."
 
 
 -- given a formula closure, generate a bitEncoding
-makeBitEncoding :: FormulaSet -> BitEncoding
+makeBitEncoding ::  FormulaSet -> BitEncoding
 makeBitEncoding clos =
   let
       -- positive formulas
@@ -193,6 +138,7 @@ makeBitEncoding clos =
       unwrapProp (Atomic (Prop n)) = fromIntegral n
       unwrapProp _ = error "Not a Prop!"
 
+
       -- Mapping between positive closure and bits
       pClosVec = pAtomicVec V.++ pFormulaVec
       --index function of BitEncoding
@@ -204,8 +150,8 @@ makeBitEncoding clos =
 -- generate atoms from a bitEncoding, the closure of phi and the powerset of APs, excluded not valid sets
 genAtoms :: BitEncoding -> FormulaSet -> Set (PropSet) -> [Atom]
 genAtoms bitenc clos inputSet =
-  let validPropSets = S.insert (S.singleton End) inputSet
-
+  let
+      validPropSets = S.insert (S.singleton End) inputSet
       -- Map the powerset of APs into a set of EncodedAtoms
       atomics = map (E.encodeInput bitenc) $ S.toList validPropSets
 
@@ -224,7 +170,6 @@ genAtoms bitenc clos inputSet =
         , onlyif (not . null $ [f | f@(HUntil Up _ _)    <- cl]) (hierUntilUpCons bitenc clos)
         , onlyif (not . null $ [f | f@(HSince Down  _ _) <- cl]) (hierSinceDownCons bitenc clos)
         , onlyif (not . null $ [f | f@(HSince Up _ _)    <- cl]) (hierSinceUpCons bitenc clos)
-        , onlyif (not . null $ [f | f@(Eventually _)     <- cl]) (evCons bitenc clos)
         ]
         where onlyif cond f = if cond then f else const True
               cl = S.toList clos
@@ -413,20 +358,6 @@ hierSinceUpCons bitenc clos set = not (E.any bitenc consSet set)
         consSet f@(HSince Up g h) = not $ present f g h
         consSet _ = False
 
--- consistency check for (Eventually g)
-evCons :: BitEncoding -> FormulaSet -> EncodedSet -> Bool
-evCons bitenc clos set = not (E.any bitenc consSet set)
-                         &&
-                         null [f | f@(Eventually g) <- S.toList clos,
-                                present f g &&
-                                not (E.member bitenc f set)]
-  where present ev g =
-          (E.member bitenc g set) ||
-          (E.member bitenc (PNext Up ev) set) ||
-          (E.member bitenc (PNext Down ev) set)
-        consSet f@(Eventually g) = not $ present f g
-        consSet _ = False
-
 -- given the BitEncoding and the closure of phi,
 -- generate all possible combinations of pending obligations + (mustPush, mustShift, afterPop)
 pendCombs :: BitEncoding -> FormulaSet -> Set (EncodedSet, Bool, Bool, Bool)
@@ -445,8 +376,8 @@ pendCombs bitenc clos =
   in foldl' S.union S.empty $ map combs pendSets
 
 -- given phi, the closure of phi, the set of consistent atoms and the bitencoding, generate all the initial states
-initials :: Formula APType -> FormulaSet -> ([Atom], BitEncoding) -> [State]
-initials phi clos (atoms, bitenc) =
+initials :: Bool -> Formula APType -> FormulaSet -> ([Atom], BitEncoding) -> [State]
+initials isOmega phi clos (atoms, bitenc) =
   let compatible atom = let set = atom
                             checkPb (PBack {}) = True
                             checkPb _ = False
@@ -461,15 +392,17 @@ initials phi clos (atoms, bitenc) =
       compAtoms = filter compatible atoms
       xndfSet = S.fromList  [f | f@(XNext Down _) <- S.toList clos]
   -- list comprehension with all the states that are compatible and the powerset of all possible future obligations
-  in [State phia (E.encode bitenc phip) True False False | phia <- compAtoms,
-                                                           phip <- S.toList (S.powerSet xndfSet)]
+  -- for the Omega case, there are no stack obligations in the initial states
+  in if (isOmega)
+      then [WState phia (E.encode bitenc phip) (E.empty bitenc) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
+      else [FState phia (E.encode bitenc phip) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
 
 -- return all deltaRules b satisfying condition (i -> Bool) on i (a closure)
 resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
 
 -- given a BitEncoding, the closure of phi, and the precedence function, generate all Rule groups: (shift rules, push rules, pop rules)
-deltaRules :: BitEncoding -> FormulaSet -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
+deltaRules ::  BitEncoding -> FormulaSet -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
 deltaRules bitenc cl precFunc =
   let
       -- SHIFT RULES
@@ -487,9 +420,9 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuShiftPr)
                                      , (hbuCond,    hbuShiftPr)
                                      , (hbdCond,    hbdShiftPr)
-                                     , (alwCond,    alwShiftPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (alwCond, alwShiftFcr) ]
+        , ruleGroupFcrs = resolve cl [ (evCond,   evShiftFcr)
+                                     ]
         , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
                                      , (xndCond,    xndShiftFpr)
                                      , (xnuCond,    xnuShiftFpr)
@@ -504,6 +437,7 @@ deltaRules bitenc cl precFunc =
                                      , (pnCond,     pnShiftFr)
                                      , (pbCond,     pbShiftFr)
                                      ]
+        , ruleGroupFsrs = resolve cl [(xnCond,   xnShiftFsr)]
         }
       -- PUSH RULES
       pushGroup = RuleGroup
@@ -519,9 +453,9 @@ deltaRules bitenc cl precFunc =
                                      , (hnuCond,    hnuPushPr2)
                                      , (hbuCond,    hbuPushPr)
                                      , (hbdCond,    hbdPushPr)
-                                     , (alwCond,    alwPushPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (alwCond, alwPushFcr) ]
+        , ruleGroupFcrs = resolve cl [ (evCond,   evPushFcr)
+                                     ]
         , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
                                      , (xndCond,    xndPushFpr)
                                      , (xnuCond,    xnuPushFpr)
@@ -536,6 +470,8 @@ deltaRules bitenc cl precFunc =
                                      , (pnCond,     pnPushFr)
                                      , (pbCond,     pbPushFr)
                                      ]
+        , ruleGroupFsrs = resolve cl [(xnCond, xnPushFsr1)
+                                     ,(xnCond, xnPushFsr2)]
         }
       -- POP RULES
       popGroup = RuleGroup
@@ -547,10 +483,8 @@ deltaRules bitenc cl precFunc =
                                      , (xnuCond,    xnuPopPr)
                                      , (hnuCond,    hnuPopPr)
                                      ]
-        ,
-          -- future current rules
-          ruleGroupFcrs = resolve cl [ (alwCond, alwPopFcr) ]
-
+        , ruleGroupFcrs = resolve cl [ (evCond,   evPopFcr)
+                                     ]
         , ruleGroupFprs = resolve cl [ (const True, xrPopFpr)
                                      , (xndCond,    xndPopFpr)
                                      , (xnuCond,    xnuPopFpr)
@@ -565,7 +499,8 @@ deltaRules bitenc cl precFunc =
                                      , (hbdCond,    hbdPopFpr2)
                                      , (hbdCond,    hbdPopFpr3)
                                      ]
-        , ruleGroupFrs  = resolve cl [ (hbuCond, hbuPopFr) ]
+        , ruleGroupFrs  = resolve cl [(hbuCond, hbuPopFr)]
+        , ruleGroupFsrs = resolve cl [(xnCond,  xnPopFsr)]
         }
   in (shiftGroup, pushGroup, popGroup)
   where
@@ -612,7 +547,6 @@ deltaRules bitenc cl precFunc =
 
     propShiftPr :: PrInfo -> Bool
     propShiftPr = propPushPr
-
 
     -- PN rules --
     pnCond :: FormulaSet -> Bool
@@ -702,6 +636,43 @@ deltaRules bitenc cl precFunc =
 
     pbShiftFr = pbPushFr
 
+    --rules for the omega case
+    --XN: XNext _
+    --get a mask with all XNext _ formulas set to one
+    maskXn = E.suchThat bitenc checkXn
+    checkXn (XNext _ _) = True
+    checkXn _ = False
+
+    xnCond clos = not (null [f | f@(XNext _ _) <- S.toList clos])
+
+    -- rules only for the omega case, safe due to haskell laziness
+    -- stack sets can contain only XNext _ formulas, so there is need to intersect pPend with maskxn, and use xnCond
+    -- note that stack
+    -- xnPush1 :: FsrInfo -> Bool
+    xnPushFsr1 info  =
+      let pPend = pending $ fsrState info
+          pPendXnfs = E.intersect pPend maskXn
+          fStack = fsrFutureStack info
+      in E.intersect pPendXnfs fStack == pPendXnfs
+
+    -- xnPush2 :: FsrInfo -> Bool
+    xnPushFsr2 info  =
+      let pStack = stack $ fsrState info
+          fStack = fsrFutureStack info
+      in E.intersect pStack fStack == pStack
+
+    -- xnShiftFsr :: FsrInfo -> Bool
+    xnShiftFsr = xnPushFsr2
+
+    -- xnPopFsr :: FsrInfo -> Bool
+    xnPopFsr info =
+      let pStack= stack $ fsrState info
+          ppStack = stack $ fromJust (fsrPopped info)
+          fStack = fsrFutureStack info
+          checkSet = E.intersect pStack ppStack
+      in  E.intersect checkSet fStack == checkSet
+    -- end of rules for the omega case
+
     -- XND: XNext Down --
     -- get a mask with all XNext Down formulas set to one
     maskXnd = E.suchThat bitenc checkXnd
@@ -762,8 +733,8 @@ deltaRules bitenc cl precFunc =
 
       in pCheckList == pPendXndfs -- XNext Down g is a current pending obligation iff g holds in the current state
 
-
-    -- XNU: XNext Up --
+    --
+    -- XNU: XNext Up
     -- get a mask with all XNext Up formulas set to one
     maskXnu = E.suchThat bitenc checkXnu
     checkXnu (XNext Up _) = True
@@ -809,7 +780,7 @@ deltaRules bitenc cl precFunc =
     xnuShiftPr :: PrInfo -> Bool
     xnuShiftPr = xnuPopPr
 
-    -----------------------------------------------------------------------------
+    --
     -- XBD: XBack Down
     -- get a mask with all XBack Down set to one
     maskXbd = E.suchThat bitenc checkXbd
@@ -854,8 +825,8 @@ deltaRules bitenc cl precFunc =
     xbdShiftFpr :: FprInfo -> Bool
     xbdShiftFpr = xbdPushFpr
 
-    -----------------------------------------------------------------------------
-    -- XBU: XBack Up --
+    --
+    -- XBU: XBack Up
     -- a mask with all XBack Up formulas set to True
     maskXbu = E.suchThat bitenc checkXbu
     checkXbu (XBack Up _) = True
@@ -905,8 +876,8 @@ deltaRules bitenc cl precFunc =
          then  pPendXbufs == fPendXbufs
          else  fPendXbufs == checkSet
 
-    -----------------------------------------------------------------------------
-    -- ABD: AuxBack Down --
+    --
+    -- ABD: AuxBack Down
     maskAbd = E.suchThat bitenc checkAbd
     checkAbd (AuxBack Down _) = True
     checkAbd _ = False
@@ -952,8 +923,8 @@ deltaRules bitenc cl precFunc =
     abdShiftFpr :: FprInfo -> Bool
     abdShiftFpr = abdPushFpr
 
-    -----------------------------------------------------------------------------
-    -- HNU: HNext Up --
+    --
+    -- HNU: HNext Up
     -- a mask with all HNext Up formulas set to one
     maskHnu = E.suchThat bitenc checkHnu
     checkHnu (HNext Up _) = True
@@ -1010,8 +981,8 @@ deltaRules bitenc cl precFunc =
           pPendHnufs = E.intersect pPend maskHnu -- current HNext Up pending formuals
       in E.null pCurrHnufs && E.null pPendHnufs -- no pending or holding HNext Up formulas are allowed when shifting
 
-    -----------------------------------------------------------------------------
-    -- HBU: HBack Up --
+    --
+    -- HBU: HBack Up
     -- a mask with all XBack Up formulas set to one
     maskHbu = E.suchThat bitenc checkHbu
     checkHbu (HBack Up _) = True
@@ -1200,56 +1171,52 @@ deltaRules bitenc cl precFunc =
     hbdShiftPr = hbdPushPr
     --
 
-    -- Alw: Always g --
-    maskAlw = E.suchThat bitenc checkAlw
-    checkAlw (Always _) = True
-    checkAlw _ = False
-    alwClos = S.filter checkAlw cl -- all Always g formulas in the closure
+    -- Ev: Eventually g --
+    maskEv = E.suchThat bitenc checkEv
+    checkEv (Eventually _) = True
+    checkEv _ = False
+    evClos = S.filter checkEv cl -- all Eventually g formulas in the closure
 
-    alwCond :: FormulaSet -> Bool
-    alwCond clos = not (null [f | f@(Always _) <- S.toList clos])
+    evCond :: FormulaSet -> Bool
+    evCond clos = not (null [f | f@(Eventually _) <- S.toList clos])
 
-    alwPushPr :: PrInfo -> Bool
-    alwPushPr info =
-      let pCurr = current $ prState info -- current holding formulas
-          pCurrAlwHoldingfs =  S.filter (\g -> E.member bitenc g pCurr) alwClos
-          alwArgfs = E.encode bitenc $
-                     S.map (\(Always g) -> g)  pCurrAlwHoldingfs
-
-          checkSet = E.intersect  pCurr alwArgfs
-      in alwArgfs == checkSet
-
-    alwShiftPr :: PrInfo -> Bool
-    alwShiftPr = alwPushPr
-
-    alwPushFcr :: FcrInfo -> Bool
-    alwPushFcr info =
+    evPushFcr :: FcrInfo -> Bool
+    evPushFcr info =
       let pCurr = current $ fcrState info
           fCurr = fcrFutureCurr info
-          pCurrAlwfs = E.intersect pCurr maskAlw
-          fCurrAlwfs = E.intersect fCurr maskAlw
-      in pCurrAlwfs == fCurrAlwfs
-    alwShiftFcr = alwPushFcr
-    alwPopFcr = alwPushFcr
-
+          pCurrEvfs = E.intersect pCurr maskEv
+          pCheckSet = E.encode bitenc $
+                      S.filter (\(Eventually g) -> E.member bitenc g pCurr) evClos
+          fCheckSet = E.encode bitenc $
+                      S.filter (\ev -> E.member bitenc ev fCurr) evClos
+          checkSet = E.union pCheckSet fCheckSet
+      in pCurrEvfs ==  checkSet
+    evShiftFcr = evPushFcr
+    evPopFcr info =
+      let pCurr = current $ fcrState info
+          fCurr = fcrFutureCurr info
+          pCurrEvfs = E.intersect pCurr maskEv
+          fCheckSet = E.encode bitenc $
+                      S.filter (\ev -> E.member bitenc ev fCurr) evClos
+      in pCurrEvfs ==  fCheckSet
 ---------------------------------------------------------------------------------
 -- present
 data PrInfo = PrInfo
   { prState     :: State -- current state
-  , prProps     :: Maybe (Input) -- Input is a BitVector-encoded set of AP (note that L(OPA) is in PowerSet(AP))
+  , prProps     :: Maybe (Input) -- current input
   , prPopped    :: Maybe (State) -- state to pop
   , prNextProps :: Maybe (Input) -- next input
   }
 -- future current
-data FcrInfo = FcrInfo
-  { fcrState      :: State -- current state
+data FcrInfo  = FcrInfo
+  { fcrState      :: State-- current state
   , fcrProps      :: Maybe (Input) -- input
   , fcrPopped     :: Maybe (State) -- state to pop
   , fcrFutureCurr :: Atom -- future current holding formulas
   , fcrNextProps  :: Maybe (Input) -- next input
   }
 -- future pending
-data FprInfo = FprInfo
+data FprInfo  = FprInfo
   { fprState          :: State -- current state
   , fprProps          :: Maybe (Input) -- input
   , fprPopped         :: Maybe (State)  -- state to pop
@@ -1266,19 +1233,31 @@ data FrInfo = FrInfo
   , frNextProps      :: Maybe (Input) -- next input
   }
 
-type PresentRule       = (PrInfo  -> Bool)
-type FutureCurrentRule = (FcrInfo -> Bool)
-type FuturePendingRule = (FprInfo -> Bool)
-type FutureRule        = (FrInfo  -> Bool)
+-- future stack
+data FsrInfo = FsrInfo
+  { fsrState          :: State -- current state
+  , fsrProps          :: Maybe (Input) -- input
+  , fsrPopped         :: Maybe (State)  -- state to pop
+  , fsrFutureStack    :: EncodedSet -- future stack obligations (set of formulas to satisfy)
+  , fsrNextProps      :: Maybe (Input) -- next input
+  }
 
-data RuleGroup = RuleGroup { ruleGroupPrs  :: [PresentRule      ]
-                           , ruleGroupFcrs :: [FutureCurrentRule]
-                           , ruleGroupFprs :: [FuturePendingRule]
-                           , ruleGroupFrs  :: [FutureRule       ]
+type PresentRule         = (PrInfo    -> Bool)
+type FutureCurrentRule   = (FcrInfo   -> Bool)
+type FuturePendingRule   = (FprInfo   -> Bool)
+type FutureRule          = (FrInfo    -> Bool)
+type FutureStackRule     = (FsrInfo   -> Bool)
+
+
+data RuleGroup = RuleGroup { ruleGroupPrs    :: [PresentRule       ]
+                           , ruleGroupFcrs   :: [FutureCurrentRule ]
+                           , ruleGroupFprs   :: [FuturePendingRule ]
+                           , ruleGroupFrs    :: [FutureRule        ]
+                           , ruleGroupFsrs   :: [FutureStackRule   ]
                            }
 
 
-augDeltaRules :: BitEncoding -> FormulaSet -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
+augDeltaRules ::  BitEncoding -> FormulaSet -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
 augDeltaRules bitenc cl prec =
   let (shiftrg, pushrg, poprg) = deltaRules bitenc cl prec
       augShiftRg = shiftrg {ruleGroupFcrs = lookaheadFcr : ruleGroupFcrs shiftrg}
@@ -1293,19 +1272,23 @@ augDeltaRules bitenc cl prec =
 
 -- delta relation of the OPA
 delta :: RuleGroup -- rules (shiftRules if we are building deltaShift, ...)
-      -> [Atom] -- BitVectors which represent all consistent subsets of the closure of phi
+      -> [Atom] -- BitVectors which represent all consistent subsets of the closure of phi, alis all the states
       -> Set (EncodedSet, Bool, Bool, Bool) -- set of future obligations
+      -> Set (EncodedSet) -- set of instack obligations for the omega case
       -> State -- current state
       -> Maybe Input -- current input (a set of AP)
       -> Maybe State -- for deltaPop, input state (the state on the stack we are popping)
-      -> Maybe Input -- future input
+      -> Maybe Input -- future input (for fast functions)
       -> [State]
-delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
+delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
+  | (FState {}) <- state = fstates
+  | (WState {}) <- state = wfstates
   where
     prs  = ruleGroupPrs  rgroup -- present rules
     fcrs = ruleGroupFcrs rgroup -- future current rules
     fprs = ruleGroupFprs rgroup -- future pending rules
     frs  = ruleGroupFrs  rgroup -- future rules
+    fsrs = ruleGroupFsrs rgroup -- future stack rules
 
     -- all present rules must be satisfied by the current state
     pvalid = all ($ info) prs
@@ -1328,18 +1311,18 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
                         then atoms
                         else [current state] -- during pops, the current set cannot change
     -- all future pending rules must be satisfied
-    vpcs = S.toList . S.filter valid $ pcombs
-      where makeInfo pendComb = FprInfo { fprState          = state,
-                                          fprProps          = mprops,
-                                          fprPopped         = mpopped,
-                                          fprFuturePendComb = pendComb,
-                                          fprNextProps      = mnextprops
-                                        }
-            valid pcomb = let info = makeInfo pcomb
+    vpcs =  S.toList . S.filter valid $ pcombs
+      where makeFprInfo pendComb = FprInfo { fprState          = state,
+                                             fprProps          = mprops,
+                                             fprPopped         = mpopped,
+                                             fprFuturePendComb = pendComb,
+                                             fprNextProps      = mnextprops
+                                           }
+            valid pcomb = let info = makeFprInfo pcomb
                           in all ($ info) fprs
 
     fstates = if (pvalid)
-              then [State curr pend xl xe xr | curr <- vas
+              then [FState curr pend xl xe xr | curr <- vas
                                              , pc@(pend, xl, xe, xr) <- vpcs
                                              , valid curr pc]
               else []
@@ -1353,14 +1336,58 @@ delta rgroup atoms pcombs state mprops mpopped mnextprops = fstates
                                             }
             valid curr pcomb = let info = makeInfo curr pcomb
                                in all ($ info) frs
+    --omega case
+    -- all future stack rules must be satisfied
+    vscs = S.toList . S.filter valid $ scombs
+      where makeFsrInfo stackComb = FsrInfo {fsrState           = state,
+                                             fsrProps           = mprops,
+                                             fsrPopped          = mpopped,
+                                             fsrFutureStack     = stackComb,
+                                             fsrNextProps       = mnextprops
+                                            }
+            valid scomb = let info = makeFsrInfo scomb
+                          in all ($ info) fsrs
 
--- given a BitEncoding and a state, determine whether it's final
-isFinal :: BitEncoding -> State -> Bool
-isFinal bitenc s =
+    wfstates = if (pvalid)
+                then [WState curr pend st xl xe xr | curr <- vas,
+                                                     pc@(pend, xl, xe, xr) <- vpcs,
+                                                     st <- vscs,
+                                                     valid curr pc]
+                else []
+      -- all future rules must be satisfied
+      where makeInfo curr pendComb = FrInfo { frState          = state,
+                                              frProps          = mprops,
+                                              frPopped         = mpopped,
+                                              frFutureCurr     = curr,
+                                              frFuturePendComb = pendComb,
+                                              frNextProps      = mnextprops
+                                            }
+            valid curr pcomb = let info = makeInfo curr pcomb
+                               in all ($ info) frs
+
+-- given a BitEncoding, a state formula, determine whether the state is final
+isFinal :: BitEncoding ->  Formula APType -> State  -> Bool
+isFinal bitenc _   s@(FState {}) = isFinalF bitenc s
+isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
+
+-- determine whether a state is final for a formula, for the omega case
+isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
+isFinalW bitenc phi@(Until dir _ h) s  = (not $ E.member bitenc (XNext dir phi) (stack s))
+                                          && (not $ E.member bitenc (XNext dir phi) (pending s))
+                                          && ((not $ E.member bitenc phi  (current s)) || E.member bitenc h (current s))
+isFinalW bitenc phi@(XNext _ _) s      = (not $ E.member bitenc phi (stack s))
+                                          && (not $ E.member bitenc phi (pending s))
+                                          && (not $ E.member bitenc phi (current s))
+isFinalW bitenc phi@(Eventually g) s   = (E.member bitenc g (current s)) || (not $ E.member bitenc phi (current s))
+isFinalW _ _ _ = True
+
+-- given a BitEncoding and a state, determine whether the state is final
+isFinalF :: BitEncoding -> State -> Bool
+isFinalF bitenc s =
   not (mustPush s) -- xe can be instead accepted, as if # = #
   && (not . E.null $ E.intersect currFset maskEnd)
   && (E.null $ E.intersect currFset maskFuture)
-  && currPend == (E.intersect currPend mask)
+  && currPend == (E.intersect currPend maskXbu)
   where
     maskEnd = E.singleton bitenc (Atomic End)
     maskFuture = E.suchThat bitenc future
@@ -1369,15 +1396,9 @@ isFinal bitenc s =
     checkXbu (XBack Up _) = True
     checkXbu _ = False
 
-    maskAlw = E.suchThat bitenc checkAlw
-    checkAlw (Always _) = True
-    checkAlw _ = False
-
     currFset = current s
     currPend = pending s
-    mask = E.union maskXbu maskAlw
-    -- only XBack Up and Always formulas are allowed
-
+    -- only XBack Up formulas are allowed in pending part of final states
 
 ---------------------------------------------------------------------------------
 check :: Formula APType
@@ -1388,36 +1409,45 @@ check phi sprs ts =
   run
     prec
     is
-    (isFinal bitenc)
-    (deltaShift as pcs shiftRules)
-    (deltaPush  as pcs pushRules)
-    (deltaPop   as pcs popRules)
+    (isFinalF bitenc)
+    (deltaShift as pcs scs shiftRules)
+    (deltaPush  as pcs scs pushRules)
+    (deltaPop   as pcs scs popRules)
     encTs
   where nphi = normalize phi
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
         inputSet = foldl' (flip S.insert) S.empty ts
         encTs = map (E.encodeInput bitenc) ts
 
+        -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
+        -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
+        -- generate an EncPrecFunc from a StructPrecRel
         (prec, sl) = fromStructEnc bitenc sprs
+        -- generate all consistent subsets of cl
         as = genAtoms bitenc cl inputSet
+        -- generate all possible pending obligations
         pcs = pendCombs bitenc cl
-        is = initials nphi cl (as, bitenc)
+        -- generate all possible stack obligations for the omega case
+        scs = stackCombs bitenc cl
+        -- generate initial states
+        is = initials False nphi cl (as, bitenc)
+        -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
-
-        deltaShift atoms pcombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+        deltaShift atoms pcombs scombs rgroup state props = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                                 (Just props) Nothing Nothing
-
-        deltaPush atoms pcombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+        -- generate the deltaShift relation ( state and props are the parameters of the function)
+        deltaPush atoms pcombs scombs rgroup state props = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                                 (Just props) Nothing Nothing
-
-        deltaPop atoms pcombs rgroup state popped = fstates
-          where fstates = delta rgroup atoms pcombs state
+        -- generate the deltaPop relation ( state and popped are the parameters of the function)
+        deltaPop atoms pcombs scombs rgroup state popped = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                                 Nothing (Just popped) Nothing
 
+-- checkGen is just check, but parametric in the type of atomic propositions
 checkGen :: (Ord a, Show a)
          => Formula a
          -> [StructPrecRel a]
@@ -1428,32 +1458,38 @@ checkGen phi precr ts =
   in check tphi tprecr tts
 
 
-
+-- fastCheck uses the next input to generate less future states
 fastcheck :: Formula APType -- the input formula phi
           -> [StructPrecRel APType] -- OPM
           -> [PropSet] -- input tokens
           -> Bool
 fastcheck phi sprs ts =
-  augRun
+  parAugRun
     prec
     is
-    (isFinal bitenc)
-    (augDeltaShift as pcs shiftRules)
-    (augDeltaPush  as pcs pushRules)
-    (augDeltaPop   as pcs popRules)
+    (isFinalF bitenc)
+    (augDeltaShift as pcs scs shiftRules)
+    (augDeltaPush  as pcs scs pushRules)
+    (augDeltaPop   as pcs scs popRules)
     encTs
   where nphi = normalize phi
-
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
         inputSet = foldl' (flip S.insert) S.empty ts
         encTs = map (E.encodeInput bitenc) ts
 
+        -- generate the closure of the normalized input formula
         cl = closure nphi tsprops
+        -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
+        -- generate all possible stack obligations for the omega case
+        scs = stackCombs bitenc cl
+        -- generate an EncPrecFunc from a StructPrecRel
         (prec, sl) = fromStructEnc bitenc sprs
+        -- generate all consistent subsets of cl
         as = genAtoms bitenc cl inputSet
+        -- generate all possible pending obligations
         pcs = pendCombs bitenc cl
-        is = filter compInitial (initials nphi cl (as, bitenc))
+        is = filter compInitial (initials  False nphi cl (as, bitenc))
         (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl prec
 
         compInitial s = fromMaybe True $
@@ -1463,18 +1499,19 @@ fastcheck phi sprs ts =
                               Just npset -> npset
                               Nothing    -> E.encodeInput bitenc $ S.singleton End
 
-        augDeltaShift atoms pcombs rgroup lookahead state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+        augDeltaShift atoms pcombs scombs rgroup lookahead state props = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                           (Just props) Nothing (Just . laProps $ lookahead)
 
-        augDeltaPush atoms pcombs rgroup lookahead state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+        augDeltaPush atoms pcombs scombs rgroup lookahead state props = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                           (Just props) Nothing (Just . laProps $ lookahead)
 
-        augDeltaPop atoms pcombs rgroup lookahead state popped = fstates
-          where fstates = delta rgroup atoms pcombs state
+        augDeltaPop atoms pcombs scombs rgroup lookahead state popped = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                           Nothing (Just popped) (Just . laProps $ lookahead)
 
+-- fastcheckGen is just fastcheck, but parametric in the type of formula
 fastcheckGen :: ( Ord a, Show a)
              => Formula a -- the input formula phi
              -> [StructPrecRel a] -- OPM
@@ -1484,27 +1521,29 @@ fastcheckGen phi precr ts =
   let (tphi, tprecr, tts) = convPropTokens phi precr ts
   in fastcheck tphi tprecr tts
 
-
 ---------------------------------------------------------------------------------
 --- generate an OPA corresponding to a POTL formula
 makeOpa ::  Formula APType -- the input formula
+        -> Bool -- is it opba?
         -> ([Prop APType], [Prop APType]) -- AP (structural labels, all other propositions in phi)
         -> [StructPrecRel APType]  -- OPM
         -> (BitEncoding -- data for encoding and decoding between bitsets and formulas and props
            , EncPrecFunc -- OPM on bitsets
            , [State] -- initial states
-           , State -> Bool -- isFinal
+           , Formula APType -> State -> Bool -- isFinal
            , State -> Maybe Input -> [State] -- deltaPush
            , State -> Maybe Input -> [State] -- deltaShift
            , State -> State -> [State] -- deltaPop
+           , FormulaSet -- closure
            )
-makeOpa phi (sls, als) sprs = (bitenc
+makeOpa phi isOmega (sls, als) sprs = (bitenc
                               , prec
                               , is
                               , isFinal bitenc
-                              , deltaPush  as pcs pushRules      -- apply PushRules
-                              , deltaShift as pcs shiftRules     -- apply ShiftRules
-                              , deltaPop   as pcs popRules       -- apply PopRules
+                              , deltaPush  as pcs scs pushRules      -- apply PushRules
+                              , deltaShift as pcs scs shiftRules     -- apply ShiftRules
+                              , deltaPop   as pcs scs popRules       -- apply PopRules
+                              , cl
                               )
   where
         -- remove double negations
@@ -1515,7 +1554,7 @@ makeOpa phi (sls, als) sprs = (bitenc
         -- generate the powerset of AP, ech time taking a prop from the structural list
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
         -- generate the closure of the normalized input formulas
-        cl = closure nphi tsprops
+        cl =   closure nphi tsprops
         -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
         -- generate an EncPrecFunc from a StructPrecRel
@@ -1524,19 +1563,33 @@ makeOpa phi (sls, als) sprs = (bitenc
         as = genAtoms bitenc cl inputSet
         -- generate all possible pending sets
         pcs = pendCombs bitenc cl
+        -- generate all possible stack obligations for the omega case
+        scs = stackCombs bitenc cl
         -- generate initial states
-        is = initials nphi cl (as, bitenc)
+        is = initials isOmega nphi cl (as, bitenc)
+
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
         -- generate the deltaPush function (state and props are its parameters)
-        deltaPush atoms pcombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+        deltaPush atoms pcombs scombs rgroup state props = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                                 props Nothing Nothing
         -- generate the deltaShift function (state and props are its parameters)
-        deltaShift atoms pcombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs state
+        deltaShift atoms pcombs scombs rgroup state props = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                                 props Nothing Nothing
         -- generate the deltaPop function (state and popped are its parameters)
-        deltaPop atoms pcombs rgroup state popped = fstates
-          where fstates = delta rgroup atoms pcombs state
+        deltaPop atoms pcombs scombs rgroup state popped = fstates
+          where fstates = delta rgroup atoms pcombs scombs state
                                 Nothing (Just popped) Nothing
+
+
+--------------------------------------------------------------------------------
+------------ OMEGA CASE --------------------------------------------------------
+-- given the BitEncoding and the closure of phi,
+-- generate all possible combinations of instack obligations
+stackCombs :: BitEncoding -> FormulaSet -> Set (EncodedSet)
+stackCombs bitenc clos =
+  let xns =  [f | f@(XNext _ _)   <- S.toList clos]
+  in S.map (E.encode bitenc) $
+     S.powerSet (S.fromList $ xns)

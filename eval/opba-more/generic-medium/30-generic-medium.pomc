@@ -1,0 +1,4 @@
+formulas = G (call --> XNd ret);
+include = "../../Mcall.inc";
+
+include = "opba.inc";

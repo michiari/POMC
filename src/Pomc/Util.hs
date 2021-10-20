@@ -10,9 +10,12 @@ module Pomc.Util ( any'
                  , implies
                  , xor
                  , safeHead
+                 , safeHeads
                  , safeTail
                  , timeAction
                  , timeToString
+                 , parMap
+                 , parMapChunk
                  , prettyTrace
                  ) where
 
@@ -21,6 +24,8 @@ import Pomc.Prop (Prop(..))
 import qualified Data.Set as S
 import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
+import Control.Parallel.Strategies (using, parList, parListChunk, rdeepseq)
+import Control.DeepSeq(NFData(..))
 
 
 any' :: Foldable t => (a -> Bool) -> t a -> Bool
@@ -39,6 +44,11 @@ safeHead :: [a] -> Maybe a
 safeHead [] = Nothing
 safeHead (x:_) = Just x
 
+safeHeads :: [a] -> (Maybe a, Maybe a)
+safeHeads [] = (Nothing, Nothing)
+safeHeads [x] = (Just x, Nothing)
+safeHeads (x:y:_) = (Just x, Just y)
+
 safeTail :: [a] -> Maybe [a]
 safeTail [] = Nothing
 safeTail (_:xs) = Just xs
@@ -52,6 +62,13 @@ timeAction action = do initializeTime
 
 timeToString :: Double -> String
 timeToString = secs
+
+-- a map where the function is applied (with reduction to normal form) to all the elements of the list in parallel
+parMap :: (NFData b) => (a -> b) -> [a] -> [b]
+parMap f xs = map f xs `using` parList rdeepseq
+
+parMapChunk :: (NFData b) => Int -> (a -> b) -> [a] -> [b]
+parMapChunk n f xs = map f xs `using` parListChunk n rdeepseq
 
 prettyTrace :: a -> a -> [(s, S.Set (Prop a))] -> [(s, [a])]
 prettyTrace end summary trace = map (\(q, b) -> (q, if S.null b
