@@ -14,12 +14,15 @@ import Pomc.MiniProc
 import Data.Void (Void)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Map (Map)
+import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
+import qualified Data.BitVector as BV
 
 type Parser = Parsec Void Text
 
@@ -35,37 +38,60 @@ identifierP = (label "identifier") . L.lexeme spaceP $ do
   rest <- many $ choice [alphaNumChar, char '_', char '.', char ':', char '=', char '~']
   return $ T.pack (first:rest)
 
-boolLiteralP :: Parser Bool
-boolLiteralP = (True <$ symbolP "true") <|> (False <$ symbolP "false")
+boolLiteralP :: Parser IntValue
+boolLiteralP = (BV.fromBool True <$ symbolP "true") <|> (BV.fromBool False <$ symbolP "false")
 
-boolExprP :: Parser BoolExpr
-boolExprP = makeExprParser termP opTable
-  where termP :: Parser BoolExpr
+variableLookup :: Map Text Variable -> Text -> Parser Variable
+variableLookup varmap vname = case M.lookup vname varmap of
+                                Just var -> return var
+                                Nothing  -> fail $ "Undeclared identifier: " ++ show vname
+
+exprP :: Map Text Variable -> Parser Expr
+exprP varmap = makeExprParser termP opTable
+  where termP :: Parser Expr
         termP = choice
           [ fmap Literal boolLiteralP
-          , fmap Term identifierP
-          , between (symbolP "(") (symbolP ")") boolExprP
+          , fmap Term $ identifierP >>= variableLookup varmap
+          , between (symbolP "(") (symbolP ")") (exprP varmap)
           ]
 
         opTable = [ [ Prefix (Not <$ symbolP "!") ]
                   , [ InfixL (Or  <$ symbolP "||") ]
                   , [ InfixL (And <$ symbolP "&&") ]
+                  , [ InfixL (Eq  <$ symbolP "==") ] -- TODO: add more comparisons, fix precedence
+                  , [ InfixL (Lt  <$ symbolP "<")  ]
+                  , [ InfixL (Leq <$ symbolP "<=") ]
+                  , [ InfixL (Add <$ symbolP "+") ]
+                  , [ InfixL (Sub <$ symbolP "-") ]
+                  , [ InfixL (Mul <$ symbolP "*") ]
+                  , [ InfixL (Div <$ symbolP "/") ]
+                  , [ InfixL (Rem <$ symbolP "%") ]
                   ]
 
-declsP :: Parser (Set Identifier)
-declsP = do
-  _ <- symbolP "var"
+typeP :: Parser Int
+typeP = (label "identifier") . L.lexeme spaceP $
+        choice [ (1 <$ symbolP "bool")
+               , char 'u' *> L.decimal
+               ]
+
+declP :: Parser [Variable]
+declP = try $ do
+  width <- typeP
   ids <- sepBy1 identifierP (symbolP ",")
   _ <- symbolP ";"
-  return $ S.fromList ids
+  return $ map (\name -> Variable width name) ids
 
-assP :: Parser Statement
-assP = try $ do
+declsP :: Parser (Set Variable)
+declsP = (S.fromList . concat) <$> many declP
+
+assP :: Map Text Variable -> Parser Statement
+assP varmap = try $ do
   lhs <- identifierP
   _ <- symbolP "="
-  rhs <- boolExprP
+  rhs <- exprP varmap
   _ <- symbolP ";"
-  return $ Assignment lhs rhs
+  var <- variableLookup varmap lhs
+  return $ Assignment var rhs
 
 callP :: Parser Statement
 callP = try $ do
@@ -74,94 +100,100 @@ callP = try $ do
   _ <- symbolP ";"
   return $ Call fname
 
-tryCatchP :: Parser Statement
-tryCatchP = do
+tryCatchP :: Map Text Variable -> Parser Statement
+tryCatchP varmap = do
   _ <- symbolP "try"
-  tryBlock <- blockP
+  tryBlock <- blockP varmap
   _ <- symbolP "catch"
-  catchBlock <- blockP
+  catchBlock <- blockP varmap
   return $ TryCatch tryBlock catchBlock
 
-iteP :: Parser Statement
-iteP = do
+iteP :: Map Text Variable -> Parser Statement
+iteP varmap = do
   _ <- symbolP "if"
   _ <- symbolP "("
-  guard <- ((Nothing <$ symbolP "*") <|> fmap Just boolExprP)
+  guard <- ((Nothing <$ symbolP "*") <|> fmap Just (exprP varmap))
   _ <- symbolP ")"
-  thenBlock <- blockP
+  thenBlock <- blockP varmap
   _ <- symbolP "else"
-  elseBlock <- blockP
+  elseBlock <- blockP varmap
   return $ IfThenElse guard thenBlock elseBlock
 
-whileP :: Parser Statement
-whileP = do
+whileP :: Map Text Variable -> Parser Statement
+whileP varmap = do
   _ <- symbolP "while"
   _ <- symbolP "("
-  guard <- ((Nothing <$ symbolP "*") <|> fmap Just boolExprP)
+  guard <- ((Nothing <$ symbolP "*") <|> fmap Just (exprP varmap))
   _ <- symbolP ")"
-  body <- blockP
+  body <- blockP varmap
   return $ While guard body
 
 throwP :: Parser Statement
 throwP = symbolP "throw" >> symbolP ";" >> return Throw
 
-stmtP :: Parser Statement
-stmtP = choice [ assP
-               , callP
-               , tryCatchP
-               , iteP
-               , whileP
-               , throwP
-               ] <?> "statement"
+stmtP :: Map Text Variable -> Parser Statement
+stmtP varmap = choice [ assP varmap
+                      , callP
+                      , tryCatchP varmap
+                      , iteP varmap
+                      , whileP varmap
+                      , throwP
+                      ] <?> "statement"
 
-blockP :: Parser [Statement]
-blockP = try $ do
+blockP :: Map Text Variable -> Parser [Statement]
+blockP varmap = try $ do
   _ <- symbolP "{"
-  stmts <- many stmtP
+  stmts <- many (stmtP varmap)
   _ <- symbolP "}"
   return stmts
 
-functionP :: Parser FunctionSkeleton
-functionP = do
+functionP :: Map Text Variable -> Parser FunctionSkeleton
+functionP varmap = do
   fname <- identifierP
   _ <- symbolP "()"
-  stmts <- blockP
+  stmts <- blockP varmap
   return $ FunctionSkeleton fname (parseModules fname) stmts
 
 programP :: Parser Program
 programP = do
   spaceP
-  decls <- optional . try $ declsP
-  sks <- some functionP
+  declSet <- declsP
+  let varmap = M.fromList $ map (\var -> (varName var, var)) (S.toAscList declSet)
+  sks <- some $ functionP varmap
   eof
-  let declSet = case decls of
-                  Just s -> s
-                  Nothing -> S.empty
-      p = Program declSet sks
-      undeclVars = undeclaredVars p
+  let p = Program declSet sks
       undeclFuns = undeclaredFuns p
-  if S.null undeclVars && S.null undeclFuns
+  if S.null undeclFuns
     then return p
-    else fail $ "Undeclared identifier(s): " ++ show (S.toList undeclVars ++ S.toList undeclFuns)
+    else fail $ "Undeclared identifier(s): " ++
+         show (S.toList undeclFuns)
 
-undeclaredVars :: Program -> Set Identifier
+undeclaredVars :: Program -> Set Variable
 undeclaredVars p = S.difference actualVars (pVars p)
-  where gatherBExprVars :: BoolExpr -> Set Identifier
-        gatherBExprVars (Literal _) = S.empty
-        gatherBExprVars (Term v) = S.singleton v
-        gatherBExprVars (Not bexpr) = gatherBExprVars bexpr
-        gatherBExprVars (And lhs rhs) = gatherBExprVars lhs `S.union` gatherBExprVars rhs
-        gatherBExprVars (Or lhs rhs) = gatherBExprVars lhs `S.union` gatherBExprVars rhs
+  where gatherExprVars :: Expr -> Set Variable
+        gatherExprVars (Literal _) = S.empty
+        gatherExprVars (Term v) = S.singleton v
+        gatherExprVars (Not bexpr) = gatherExprVars bexpr
+        gatherExprVars (And lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Or lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Add lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Sub lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Mul lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Div lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Rem lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Eq lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Lt lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+        gatherExprVars (Leq lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
 
-        gatherVars :: Statement -> Set Identifier
-        gatherVars (Assignment v rhs) = S.insert v $ gatherBExprVars rhs
+        gatherVars :: Statement -> Set Variable
+        gatherVars (Assignment v rhs) = S.insert v $ gatherExprVars rhs
         gatherVars (Call _) = S.empty
         gatherVars (TryCatch tryb catchb) = gatherBlockVars tryb `S.union` gatherBlockVars catchb
         gatherVars (IfThenElse (Just g) thenb elseb) =
-          gatherBExprVars g `S.union` gatherBlockVars thenb `S.union` gatherBlockVars elseb
+          gatherExprVars g `S.union` gatherBlockVars thenb `S.union` gatherBlockVars elseb
         gatherVars (IfThenElse Nothing thenb elseb) =
           gatherBlockVars thenb `S.union` gatherBlockVars elseb
-        gatherVars (While (Just g) body) = gatherBExprVars g `S.union` gatherBlockVars body
+        gatherVars (While (Just g) body) = gatherExprVars g `S.union` gatherBlockVars body
         gatherVars (While Nothing body) = gatherBlockVars body
         gatherVars Throw = S.empty
 
@@ -172,11 +204,11 @@ undeclaredVars p = S.difference actualVars (pVars p)
           foldl (\gathered sk ->
                    gathered `S.union` (gatherBlockVars . skStmts $ sk)) S.empty (pSks p)
 
-undeclaredFuns :: Program -> Set Identifier
+undeclaredFuns :: Program -> Set Text
 undeclaredFuns p = S.difference usedFuns declaredFuns
   where declaredFuns = S.fromList $ map skName (pSks p)
 
-        gatherFuns :: Statement -> Set Identifier
+        gatherFuns :: Statement -> Set Text
         gatherFuns (Assignment _ _) = S.empty
         gatherFuns (Call fname) = S.singleton fname
         gatherFuns (TryCatch tryb catchb) = gatherBlockFuns tryb `S.union` gatherBlockFuns catchb

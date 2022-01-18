@@ -197,7 +197,7 @@ expectedSimpleThenEval = [False, False, False, False, -- chain_next
 
 simpleThenSource :: T.Text
 simpleThenSource = T.pack [r|
-var foo;
+bool foo;
 
 pa() {
   foo = true;
@@ -245,7 +245,7 @@ expectedSimpleElseEval = [False, False, False, False, -- chain_next
 
 simpleElseSource :: T.Text
 simpleElseSource = T.pack [r|
-var foo;
+bool foo;
 
 pa() {
   foo = false;
@@ -278,7 +278,7 @@ singleWhile = makeTestCase simpleWhileSource
 
 simpleWhileSource :: T.Text
 simpleWhileSource = T.pack [r|
-var foo;
+bool foo;
 
 pa() {
   foo = true;
@@ -321,7 +321,7 @@ exprsPd = makeTestCase exprsSource
 
 exprsSource :: T.Text
 exprsSource = T.pack [r|
-var foo, bar;
+bool foo, bar;
 
 pa() {
   foo = true;
@@ -529,7 +529,7 @@ jensenWrDb = makeTestCase jensen
 
 jensen :: T.Text
 jensen = T.pack [r|
-var P_cp, P_db, P_rd, P_wr, CP;
+bool P_cp, P_db, P_rd, P_wr, CP;
 
 main() {
   P_cp = true;
@@ -638,7 +638,7 @@ stackUnsafeNeutrality = makeTestCase stackUnsafeSource
 
 stackUnsafeSource :: T.Text
 stackUnsafeSource = T.pack [r|
-var tainted;
+bool tainted;
 
 main() {
   tainted = false;
@@ -775,7 +775,7 @@ stackSafeNeutrality = makeTestCase stackSafeSource
 
 stackSafeSource :: T.Text
 stackSafeSource = T.pack [r|
-var tainted, full;
+bool tainted, full;
 
 main() {
   tainted = false;

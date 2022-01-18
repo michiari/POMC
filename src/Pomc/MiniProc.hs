@@ -8,8 +8,9 @@
 module Pomc.MiniProc ( Program(..)
                      , FunctionSkeleton(..)
                      , Statement(..)
-                     , Identifier
-                     , BoolExpr(..)
+                     , Variable(..)
+                     , IntValue
+                     , Expr(..)
                      , FunctionName
                      , programToOpa
                      , skeletonsToOpa
@@ -31,23 +32,34 @@ import qualified Data.BitVector as B
 
 -- Intermediate representation for MiniProc programs
 type FunctionName = Text
-type Identifier = Text
-data BoolExpr = Literal Bool
-              | Term Identifier
-              | Not BoolExpr
-              | And BoolExpr BoolExpr
-              | Or BoolExpr BoolExpr deriving Show
-data Statement = Assignment Identifier BoolExpr
+data Variable = Variable { varWidth :: Int
+                         , varName :: Text
+                         } deriving (Show, Eq, Ord)
+type IntValue = BitVector
+data Expr = Literal IntValue
+          | Term Variable
+          | Not Expr
+          | And Expr Expr
+          | Or Expr Expr
+          | Add Expr Expr
+          | Sub Expr Expr
+          | Mul Expr Expr
+          | Div Expr Expr
+          | Rem Expr Expr
+          | Eq Expr Expr
+          | Lt Expr Expr
+          | Leq Expr Expr deriving Show
+data Statement = Assignment Variable Expr
                | Call FunctionName
                | TryCatch [Statement] [Statement]
-               | IfThenElse (Maybe BoolExpr) [Statement] [Statement]
-               | While (Maybe BoolExpr) [Statement]
+               | IfThenElse (Maybe Expr) [Statement] [Statement]
+               | While (Maybe Expr) [Statement]
                | Throw deriving Show
 data FunctionSkeleton = FunctionSkeleton { skName :: FunctionName
                                          , skModules :: [FunctionName]
                                          , skStmts :: [Statement]
                                          } deriving Show
-data Program = Program { pVars :: Set Identifier
+data Program = Program { pVars :: Set Variable
                        , pSks :: [FunctionSkeleton]
                        } deriving Show
 
@@ -55,7 +67,7 @@ data Program = Program { pVars :: Set Identifier
 -- Generation of the Extended OPA
 
 -- Data structures
-data Label = None | Assign Identifier BoolExpr | Guard BoolExpr deriving Show
+data Label = None | Assign Variable Expr | Guard Expr deriving Show
 data DeltaTarget = EntryStates Text | States [(Label, Word)] deriving Show
 
 data FunctionInfo = FunctionInfo { fiEntry :: [(Label, Word)]
@@ -252,7 +264,7 @@ lowerStatement sks ls0 thisFinfo linkPred0 (While guard body) =
 lowerStatement _ lowerState thisFinfo linkPred Throw =
   (linkPred lowerState [(None, fiThrow thisFinfo)], (\ls _ -> ls))
 
-combGuards :: BoolExpr -> Label -> Label
+combGuards :: Expr -> Label -> Label
 combGuards bexp1 None = Guard bexp1
 combGuards bexp1 (Guard bexp2) = Guard (bexp1 `And` bexp2)
 combGuards _ (Assign _ _) = error "Cannot combine Guard with Assignment label."
@@ -281,13 +293,13 @@ lowerBlock sks lowerState thisFinfo linkPred block =
 -- Conversion of the Extended OPA to a plain OPA
 
 -- Data structures
-type VarState = (Word, BitVector)
+type VarValuation = Map Variable IntValue
+type VarState = (Word, VarValuation)
 data ExpandData = ExpandData { edDPush :: Map (VarState, Set (Prop Text)) [VarState]
                              , edDShift :: Map (VarState, Set (Prop Text)) [VarState]
-                             , edDPop :: Map (VarState, VarState) [VarState]
+                             , edDPop :: Map (VarState, Word) [VarState]
                              , edVisited :: Set VarState
                              } deriving Show
-type VarLookup = Identifier -> Int
 
 edInsert :: (Ord k) => k -> [v] -> Map k [v] -> Map k [v]
 edInsert _ [] m = m
@@ -296,21 +308,18 @@ edInsert key vals m =
     Nothing      -> M.insert key vals m
     Just oldVals -> M.insert key (oldVals ++ vals) m
 
--- All possible valuations of nvars variables
-allValuations :: Int -> [BitVector]
-allValuations nvars = B.bitVecs nvars ([0..(2^nvars - 1)] :: [Integer])
+initialValuation :: Set Variable -> VarValuation
+initialValuation pvars = M.fromSet (\idf -> B.zeros $ varWidth idf) pvars
 
 programToOpa :: Bool -> Program -> ExplicitOpa Word Text
 programToOpa omega (Program pvars sks) =
   let (lowerState, ini, fin) = sksToExtendedOpa omega sks
-      nvars = S.size pvars
-      varLookup vname = fromJust $ M.lookup vname vmap
-        where vmap = M.fromList $ zip (S.toList pvars) [0..nvars]
-      eInitials = [(sid, bv) | sid <- ini, bv <- allValuations nvars]
-      eFinals = [(sid, bv) | sid <- fin, bv <- allValuations nvars]
+      eInitials = [(sid, initVal) | sid <- ini]
+        where initVal = initialValuation pvars
       ed0 = ExpandData M.empty M.empty M.empty S.empty
-      ed1 = foldr (visitState lowerState varLookup) ed0 eInitials
-      ed2 = varsToLabels pvars varLookup ed1
+      ed1 = foldr (visitState lowerState) ed0 eInitials
+      ed2 = varsToLabels ed1
+      eFinals = filter (\vst -> fst vst `elem` fin) $ S.toList $ edVisited ed2
 
       remap :: VarState -> Word -> Map VarState Word -> (Word, Word, Map VarState Word)
       remap s count smap =
@@ -329,11 +338,13 @@ programToOpa omega (Program pvars sks) =
                 in ((sidp, lbl, sidqs):acc, count'', smap'')
       remapPop delta oldCount oldSmap =
         foldr remapOne ([], oldCount, oldSmap) (M.toList delta)
-        where remapOne ((p, st), qs) (acc, count, smap) =
+        where remapOne ((p, stlsid), qs) (acc, count, smap) =
                 let (sidp, count', smap') = remap p count smap
                     (sidqs, count'', smap'') = remapList qs count' smap'
-                    (sidst, count''', smap''') = remap st count'' smap''
-                in ((sidp, sidst, sidqs):acc, count''', smap''')
+                    stackVarStates = filter (\vs -> fst vs == stlsid) $ S.toList (edVisited ed2)
+                    (stackSids, count''', smap''') = remapList stackVarStates count'' smap''
+                    newTransitions = map (\sidst -> (sidp, sidst, sidqs)) stackSids
+                in (newTransitions ++ acc, count''', smap''')
 
       (rInitials, count0, smap0) = remapList eInitials 0 M.empty
       (rFinals, count1, smap1) = remapList eFinals count0 smap0
@@ -343,7 +354,7 @@ programToOpa omega (Program pvars sks) =
 
       allProps = map (Prop . skName) sks
                  ++ concatMap ((map Prop) . skModules) sks
-                 ++ map Prop (S.toList pvars)
+                 ++ map (Prop . varName) (S.toList pvars)
   in ExplicitOpa
      { sigma = (miniProcSls, allProps)
      , precRel = miniProcPrecRel
@@ -354,81 +365,86 @@ programToOpa omega (Program pvars sks) =
      , deltaPop = rDPop
      }
 
-varsToLabels :: Set Identifier -> VarLookup -> ExpandData -> ExpandData
-varsToLabels pvars vidx expandData =
+varsToLabels :: ExpandData -> ExpandData
+varsToLabels expandData =
   expandData { edDPush = addProps $ edDPush expandData
              , edDShift = addProps $ edDShift expandData
              }
   where stateToPropSet :: VarState -> Set (Prop Text)
-        stateToPropSet (_, bv) = S.map Prop $ S.filter (\v -> bv B.@. vidx v) pvars
+        stateToPropSet (_, vval) =
+          S.fromList $ map (Prop . varName . fst) $ filter (toBool . snd) $ M.toAscList vval
 
         addProps :: Map (VarState, Set (Prop Text)) [VarState]
                  -> Map (VarState, Set (Prop Text)) [VarState]
         addProps delta = M.mapKeysWith (++) (\(s, lbl) -> (s, lbl `S.union` stateToPropSet s)) delta
 
-visitState :: LowerState -> VarLookup -> VarState -> ExpandData -> ExpandData
-visitState lowerState vidx s@(sid, svars) expandData
+visitState :: LowerState -> VarState -> ExpandData -> ExpandData
+visitState lowerState s@(sid, svval) expandData
   | s `S.member` edVisited expandData = expandData
   | otherwise =
     let ed0 = expandData { edVisited = S.insert s (edVisited expandData) }
         filterStates ((src, _), _) = src == sid
         pushSucc = filter filterStates (M.toList . lsDPush $ lowerState)
-        ed1 = foldl (visitEdges svars updatePush lowerState vidx) ed0 pushSucc
+        ed1 = foldl (visitEdges svval updatePush lowerState) ed0 pushSucc
           where updatePush ed srcLbl dst =
                   ed { edDPush = edInsert srcLbl [dst] (edDPush ed) }
         shiftSucc = filter filterStates (M.toList . lsDShift $ lowerState)
-        ed2 = foldl (visitEdges svars updateShift lowerState vidx) ed1 shiftSucc
+        ed2 = foldl (visitEdges svval updateShift lowerState) ed1 shiftSucc
           where updateShift ed srcLbl dst =
                   ed { edDShift = edInsert srcLbl [dst] (edDShift ed) }
         popSucc = filter filterStates (M.toList . lsDPop $ lowerState)
-        ed3 = foldl (visitEdges svars updatePop lowerState vidx) ed2 popSucc
-          where updatePop ed (src, stsid) dst =
-                  let dPop' = foldl
-                              (\dPop bv -> edInsert (src, (stsid, bv)) [dst] dPop)
-                              (edDPop ed)
-                              (allValuations (B.size svars))
-                  in ed { edDPop = dPop' }
+        ed3 = foldl (visitEdges svval updatePop lowerState) ed2 popSucc
+          where updatePop ed srcSid dst =
+                  ed { edDPop = edInsert srcSid [dst] (edDPop ed) }
     in ed3
 
-visitEdges :: BitVector
+visitEdges :: VarValuation
            -> (ExpandData -> (VarState, a) -> VarState -> ExpandData)
            -> LowerState
-           -> VarLookup
            -> ExpandData
            -> ((Word, a), DeltaTarget)
            -> ExpandData
-visitEdges vars updateDelta ls vidx expandData ((src, lbl), (States dsts)) =
+visitEdges vval updateDelta ls expandData ((src, lbl), (States dsts)) =
   foldl visitDst expandData dsts
   where visitDst ed0 ld =
           let (ed1, maybeNewDst) = caseDst ed0 ld
           in case maybeNewDst of
-               Just newDst -> visitState ls vidx newDst ed1
+               Just newDst -> visitState ls newDst ed1
                Nothing     -> ed1
 
         caseDst :: ExpandData -> (Label, Word) -> (ExpandData, Maybe VarState)
-        caseDst ed (None, dst) = (updateDelta ed ((src, vars), lbl) newDst, Just newDst)
-          where newDst = (dst, vars)
+        caseDst ed (None, dst) = (updateDelta ed ((src, vval), lbl) newDst, Just newDst)
+          where newDst = (dst, vval)
         caseDst ed (Assign lhs rhs, dst) =
-          let index = vidx lhs
-              newVars = if evalBoolExpr vidx vars rhs
-                        then B.setBit vars index
-                        else vars B..&. (B.complement $ B.zeros (B.size vars) B..|. B.bit index)
-                             -- B.clearBit is buggy
-              newDst = (dst, newVars)
-          in (updateDelta ed ((src, vars), lbl) newDst, Just newDst)
+          let newVVal = M.insert lhs (evalExpr vval rhs) vval
+              newDst = (dst, newVVal)
+          in (updateDelta ed ((src, vval), lbl) newDst, Just newDst)
         caseDst ed (Guard g, dst)
-          | evalBoolExpr vidx vars g =
-            let newDst = (dst, vars)
-            in (updateDelta ed ((src, vars), lbl) newDst, Just newDst)
+          | toBool $ evalExpr vval g =
+              let newDst = (dst, vval)
+              in (updateDelta ed ((src, vval), lbl) newDst, Just newDst)
           | otherwise = (ed, Nothing)
-visitEdges _ _ _ _ _ (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
+visitEdges _ _ _ _ (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
 
-evalBoolExpr :: VarLookup -> BitVector -> BoolExpr -> Bool
-evalBoolExpr _ _ (Literal val) = val
-evalBoolExpr vidx vars (Term var) = vars B.@. vidx var
-evalBoolExpr vidx vars (Not bexpr) = not $ evalBoolExpr vidx vars bexpr
-evalBoolExpr vidx vars (And lhs rhs) = evalBoolExpr vidx vars lhs && evalBoolExpr vidx vars rhs
-evalBoolExpr vidx vars (Or lhs rhs) = evalBoolExpr vidx vars lhs || evalBoolExpr vidx vars rhs
+evalExpr :: VarValuation -> Expr -> IntValue
+evalExpr _ (Literal val) = val
+evalExpr vval (Term var) = vval M.! var
+evalExpr vval (Not bexpr) = B.fromBool . not . toBool $ evalExpr vval bexpr
+evalExpr vval (And lhs rhs) =
+  B.fromBool $ (toBool $ evalExpr vval lhs) && (toBool $ evalExpr vval rhs)
+evalExpr vval (Or lhs rhs) =
+  B.fromBool $ (toBool $ evalExpr vval lhs) || (toBool $ evalExpr vval rhs)
+evalExpr vval (Add lhs rhs) = evalExpr vval lhs + evalExpr vval rhs
+evalExpr vval (Sub lhs rhs) = evalExpr vval lhs - evalExpr vval rhs
+evalExpr vval (Mul lhs rhs) = evalExpr vval lhs * evalExpr vval rhs
+evalExpr vval (Div lhs rhs) = evalExpr vval lhs `div` evalExpr vval rhs
+evalExpr vval (Rem lhs rhs) = evalExpr vval lhs `mod` evalExpr vval rhs
+evalExpr vval (Eq lhs rhs) = B.fromBool $ evalExpr vval lhs == evalExpr vval rhs
+evalExpr vval (Lt lhs rhs) = B.fromBool $ evalExpr vval lhs < evalExpr vval rhs
+evalExpr vval (Leq lhs rhs) = B.fromBool $ evalExpr vval lhs <= evalExpr vval rhs
+
+toBool :: IntValue -> Bool
+toBool v = B.nat v /= 0
 
 -- Generate a plain OPA directly (without variables)
 skeletonsToOpa :: Bool -> [FunctionSkeleton] -> ExplicitOpa Word Text
