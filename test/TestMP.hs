@@ -25,6 +25,7 @@ tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
                                    , generic
                                    , jensenTests
                                    , stackTests
+                                   , intTests
                                    ]
 
 sasBaseTests :: TestTree
@@ -921,4 +922,46 @@ _::operator_new() {
   } else {}
 }
 _::operator_delete() {}
+|]
+
+
+intTests :: TestTree
+intTests = testGroup "Int Variables Tests" [ u8ArithExc, u8ArithRet, u8ArithaHolds ]
+
+u8ArithExc :: TestTree
+u8ArithExc = makeTestCase u8ArithSrc
+  (("Throws."
+   , Until Up T (ap "exc")
+   , []
+   , True)
+  , True)
+
+u8ArithRet :: TestTree
+u8ArithRet = makeTestCase u8ArithSrc
+  (("Terminates normally."
+   , Until Up T (ap "ret")
+   , []
+   , False)
+  , False)
+
+u8ArithaHolds :: TestTree
+u8ArithaHolds = makeTestCase u8ArithSrc
+  (("Variable a is non-zero at the end."
+   , XNext Up (ap "a")
+   , []
+   , True)
+  , True)
+
+u8ArithSrc :: T.Text
+u8ArithSrc = T.pack [r|
+u8 a, b, c;
+
+main() {
+  a = 4u8;
+  b = 5u8;
+  c = a * b;
+  if (c / 5u8 <= a) {
+    throw;
+  } else { }
+}
 |]

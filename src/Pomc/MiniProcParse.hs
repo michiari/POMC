@@ -41,6 +41,14 @@ identifierP = (label "identifier") . L.lexeme spaceP $ do
 boolLiteralP :: Parser IntValue
 boolLiteralP = (BV.fromBool True <$ symbolP "true") <|> (BV.fromBool False <$ symbolP "false")
 
+literalP :: Parser IntValue
+literalP = boolLiteralP <|> unsignedLiteralP
+  where unsignedLiteralP = try $ L.lexeme spaceP $ do
+          value <- L.decimal :: Parser Integer
+          _ <- char 'u'
+          width <- L.decimal :: Parser Int
+          return $ BV.bitVec width value
+
 variableLookup :: Map Text Variable -> Text -> Parser Variable
 variableLookup varmap vname = case M.lookup vname varmap of
                                 Just var -> return var
@@ -50,22 +58,25 @@ exprP :: Map Text Variable -> Parser Expr
 exprP varmap = makeExprParser termP opTable
   where termP :: Parser Expr
         termP = choice
-          [ fmap Literal boolLiteralP
+          [ fmap Literal literalP
           , fmap Term $ identifierP >>= variableLookup varmap
           , between (symbolP "(") (symbolP ")") (exprP varmap)
           ]
 
         opTable = [ [ Prefix (Not <$ symbolP "!") ]
-                  , [ InfixL (Or  <$ symbolP "||") ]
-                  , [ InfixL (And <$ symbolP "&&") ]
-                  , [ InfixL (Eq  <$ symbolP "==") ] -- TODO: add more comparisons, fix precedence
-                  , [ InfixL (Lt  <$ symbolP "<")  ]
-                  , [ InfixL (Leq <$ symbolP "<=") ]
-                  , [ InfixL (Add <$ symbolP "+") ]
-                  , [ InfixL (Sub <$ symbolP "-") ]
+                  , [ InfixL (Div <$ symbolP "/")
+                    , InfixL (Rem <$ symbolP "%")
+                    ]
                   , [ InfixL (Mul <$ symbolP "*") ]
-                  , [ InfixL (Div <$ symbolP "/") ]
-                  , [ InfixL (Rem <$ symbolP "%") ]
+                  , [ InfixL (Add <$ symbolP "+")
+                    , InfixL (Sub <$ symbolP "-")
+                    ]
+                  , [ InfixL (Eq  <$ symbolP "==") -- TODO: add more comparisons
+                    , InfixL (Leq <$ (try $ symbolP "<="))
+                    , InfixL (Lt  <$ (try $ symbolP "<"))
+                    ]
+                  , [ InfixL (And <$ symbolP "&&") ]
+                  , [ InfixL (Or  <$ symbolP "||") ]
                   ]
 
 typeP :: Parser Int
