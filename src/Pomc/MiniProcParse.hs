@@ -24,6 +24,75 @@ import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
 import qualified Data.BitVector as BV
 
+
+type TypedValue = (IntValue, Type)
+data TypedExpr = TLiteral TypedValue
+               | TTerm Variable
+               -- Boolean operations
+               | TNot TypedExpr
+               | TAnd TypedExpr TypedExpr
+               | TOr TypedExpr TypedExpr
+               -- Arithmetic operations
+               | TAdd TypedExpr TypedExpr
+               | TSub TypedExpr TypedExpr
+               | TMul TypedExpr TypedExpr
+               | TDiv TypedExpr TypedExpr
+               | TRem TypedExpr TypedExpr
+               -- Comparisons
+               | TEq TypedExpr TypedExpr
+               | TLt TypedExpr TypedExpr
+               | TLeq TypedExpr TypedExpr
+               deriving Show
+
+-- Convert a TypedExpr to an Expr by inserting appropriate casts
+insertCasts :: TypedExpr -> (Expr, Type)
+insertCasts (TLiteral (v, t)) = (Literal v, t)
+insertCasts (TTerm v) = (Term v, varType v)
+-- All Boolean operators return a single bit
+insertCasts (TNot te) = let (e0, _) = insertCasts te
+                        in (Not e0, UInt 1)
+insertCasts (TAnd te0 te1) = let (e0, _) = insertCasts te0
+                                 (e1, _) = insertCasts te1
+                             in (And e0 e1, UInt 1)
+insertCasts (TOr te0 te1) = let (e0, _) = insertCasts te0
+                                (e1, _) = insertCasts te1
+                            in (Or e0 e1, UInt 1)
+insertCasts (TAdd te0 te1) = evalBinOp Add Add te0 te1
+insertCasts (TSub te0 te1) = evalBinOp Sub Sub te0 te1
+insertCasts (TMul te0 te1) = evalBinOp Mul Mul te0 te1
+insertCasts (TDiv te0 te1) = evalBinOp SDiv UDiv te0 te1
+insertCasts (TRem te0 te1) = evalBinOp SRem URem te0 te1
+insertCasts (TEq  te0 te1) = evalBinOp Eq Eq te0 te1
+insertCasts (TLt  te0 te1) = evalBinOp SLt ULt te0 te1
+insertCasts (TLeq te0 te1) = evalBinOp SLeq ULeq te0 te1
+
+evalBinOp :: (Expr -> Expr -> a)
+          -> (Expr -> Expr -> a)
+          -> TypedExpr
+          -> TypedExpr
+          -> (a, Type)
+evalBinOp sop uop te0 te1 = let (e0, t0) = insertCasts te0
+                                (e1, t1) = insertCasts te1
+                                t2 = commonType t0 t1
+                                bop = if isSigned t2 then sop else uop
+                            in (bop (addCast t0 t2 e0) (addCast t1 t2 e1), t2)
+
+addCast :: Type -> Type -> Expr -> Expr
+addCast ts td e | ws == wd = e
+                | ws > wd = Trunc wd e
+                | isSigned ts = SExt (wd - ws) e
+                | otherwise = UExt (wd - ws) e
+  where ws = typeWidth ts
+        wd = typeWidth td
+
+untypeExpr :: TypedExpr -> Expr
+untypeExpr = fst . insertCasts
+
+untypeExprWithCast :: Type -> TypedExpr -> Expr
+untypeExprWithCast dt te = let (ex, st) = insertCasts te
+                           in addCast st dt ex
+
+
 type Parser = Parsec Void Text
 
 spaceP :: Parser ()
@@ -38,59 +107,67 @@ identifierP = (label "identifier") . L.lexeme spaceP $ do
   rest <- many $ choice [alphaNumChar, char '_', char '.', char ':', char '=', char '~']
   return $ T.pack (first:rest)
 
-boolLiteralP :: Parser IntValue
-boolLiteralP = (BV.fromBool True <$ symbolP "true") <|> (BV.fromBool False <$ symbolP "false")
+boolLiteralP :: Parser TypedValue
+boolLiteralP = ((BV.fromBool True, UInt 1) <$ symbolP "true")
+               <|> ((BV.fromBool False, UInt 1) <$ symbolP "false")
 
-literalP :: Parser IntValue
-literalP = boolLiteralP <|> unsignedLiteralP
-  where unsignedLiteralP = try $ L.lexeme spaceP $ do
-          value <- L.decimal :: Parser Integer
-          _ <- char 'u'
-          width <- L.decimal :: Parser Int
-          return $ BV.bitVec width value
+literalP :: Parser TypedValue
+literalP = boolLiteralP <|> intLiteralP
+  where intLiteralP = try $ L.lexeme spaceP $ do
+          value <- L.signed spaceP (L.lexeme spaceP L.decimal) :: Parser Integer
+          ty <- intTypeP
+          if value < 0 && not (isSigned ty)
+            then fail "Negative literal declared unsigned"
+            else return (BV.bitVec (typeWidth ty) value, ty)
 
 variableLookup :: Map Text Variable -> Text -> Parser Variable
 variableLookup varmap vname = case M.lookup vname varmap of
                                 Just var -> return var
                                 Nothing  -> fail $ "Undeclared identifier: " ++ show vname
 
-exprP :: Map Text Variable -> Parser Expr
-exprP varmap = makeExprParser termP opTable
-  where termP :: Parser Expr
+typedExprP :: Map Text Variable -> Parser TypedExpr
+typedExprP varmap = makeExprParser termP opTable
+  where termP :: Parser TypedExpr
         termP = choice
-          [ fmap Literal literalP
-          , fmap Term $ identifierP >>= variableLookup varmap
-          , between (symbolP "(") (symbolP ")") (exprP varmap)
+          [ fmap TLiteral literalP
+          , fmap TTerm $ identifierP >>= variableLookup varmap
+          , between (symbolP "(") (symbolP ")") (typedExprP varmap)
           ]
 
-        opTable = [ [ Prefix (Not <$ symbolP "!") ]
-                  , [ InfixL (Div <$ symbolP "/")
-                    , InfixL (Rem <$ symbolP "%")
+        opTable = [ [ Prefix (TNot <$ symbolP "!") ]
+                  , [ InfixL (TDiv <$ symbolP "/")
+                    , InfixL (TRem <$ symbolP "%")
                     ]
-                  , [ InfixL (Mul <$ symbolP "*") ]
-                  , [ InfixL (Add <$ symbolP "+")
-                    , InfixL (Sub <$ symbolP "-")
+                  , [ InfixL (TMul <$ symbolP "*") ]
+                  , [ InfixL (TAdd <$ symbolP "+")
+                    , InfixL (TSub <$ symbolP "-")
                     ]
-                  , [ InfixL (Eq  <$ symbolP "==") -- TODO: add more comparisons
-                    , InfixL (Leq <$ (try $ symbolP "<="))
-                    , InfixL (Lt  <$ (try $ symbolP "<"))
+                  , [ InfixN (TEq       <$        symbolP "==")
+                    , InfixN ((\x y -> TNot $ TEq x y) <$ symbolP "!=")
+                    , InfixN (TLeq      <$ (try $ symbolP "<="))
+                    , InfixN (TLt       <$ (try $ symbolP "<"))
+                    , InfixN (flip TLeq <$ (try $ symbolP ">="))
+                    , InfixN (flip TLt  <$ (try $ symbolP ">"))
                     ]
-                  , [ InfixL (And <$ symbolP "&&") ]
-                  , [ InfixL (Or  <$ symbolP "||") ]
+                  , [ InfixL (TAnd <$ symbolP "&&") ]
+                  , [ InfixL (TOr  <$ symbolP "||") ]
                   ]
 
-typeP :: Parser Int
-typeP = (label "identifier") . L.lexeme spaceP $
-        choice [ (1 <$ symbolP "bool")
-               , char 'u' *> L.decimal
-               ]
+exprP :: Map Text Variable -> Parser Expr
+exprP varmap = untypeExpr <$> typedExprP varmap
+
+intTypeP :: Parser Type
+intTypeP = fmap UInt (char 'u' *> L.decimal) <|> fmap SInt (char 's' *> L.decimal)
+
+typeP :: Parser Type
+typeP = label "type" $ L.lexeme spaceP ((UInt 1 <$ symbolP "bool") <|>  intTypeP)
 
 declP :: Parser [Variable]
 declP = try $ do
-  width <- typeP
+  ty <- typeP
   ids <- sepBy1 identifierP (symbolP ",")
   _ <- symbolP ";"
-  return $ map (\name -> Variable width name) ids
+  return $ map (\name -> Variable ty name) ids
 
 declsP :: Parser (Set Variable)
 declsP = (S.fromList . concat) <$> many declP
@@ -99,10 +176,10 @@ assP :: Map Text Variable -> Parser Statement
 assP varmap = try $ do
   lhs <- identifierP
   _ <- symbolP "="
-  rhs <- exprP varmap
+  rhs <- typedExprP varmap
   _ <- symbolP ";"
   var <- variableLookup varmap lhs
-  return $ Assignment var rhs
+  return $ Assignment var (untypeExprWithCast (varType var) rhs)
 
 callP :: Parser Statement
 callP = try $ do
@@ -179,41 +256,41 @@ programP = do
     else fail $ "Undeclared identifier(s): " ++
          show (S.toList undeclFuns)
 
-undeclaredVars :: Program -> Set Variable
-undeclaredVars p = S.difference actualVars (pVars p)
-  where gatherExprVars :: Expr -> Set Variable
-        gatherExprVars (Literal _) = S.empty
-        gatherExprVars (Term v) = S.singleton v
-        gatherExprVars (Not bexpr) = gatherExprVars bexpr
-        gatherExprVars (And lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Or lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Add lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Sub lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Mul lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Div lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Rem lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Eq lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Lt lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-        gatherExprVars (Leq lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+-- undeclaredVars :: Program -> Set Variable
+-- undeclaredVars p = S.difference actualVars (pVars p)
+--   where gatherExprVars :: Expr -> Set Variable
+--         gatherExprVars (Literal _) = S.empty
+--         gatherExprVars (Term v) = S.singleton v
+--         gatherExprVars (Not bexpr) = gatherExprVars bexpr
+--         gatherExprVars (And lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Or lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Add lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Sub lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Mul lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Div lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Rem lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Eq lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Lt lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
+--         gatherExprVars (Leq lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
 
-        gatherVars :: Statement -> Set Variable
-        gatherVars (Assignment v rhs) = S.insert v $ gatherExprVars rhs
-        gatherVars (Call _) = S.empty
-        gatherVars (TryCatch tryb catchb) = gatherBlockVars tryb `S.union` gatherBlockVars catchb
-        gatherVars (IfThenElse (Just g) thenb elseb) =
-          gatherExprVars g `S.union` gatherBlockVars thenb `S.union` gatherBlockVars elseb
-        gatherVars (IfThenElse Nothing thenb elseb) =
-          gatherBlockVars thenb `S.union` gatherBlockVars elseb
-        gatherVars (While (Just g) body) = gatherExprVars g `S.union` gatherBlockVars body
-        gatherVars (While Nothing body) = gatherBlockVars body
-        gatherVars Throw = S.empty
+--         gatherVars :: Statement -> Set Variable
+--         gatherVars (Assignment v rhs) = S.insert v $ gatherExprVars rhs
+--         gatherVars (Call _) = S.empty
+--         gatherVars (TryCatch tryb catchb) = gatherBlockVars tryb `S.union` gatherBlockVars catchb
+--         gatherVars (IfThenElse (Just g) thenb elseb) =
+--           gatherExprVars g `S.union` gatherBlockVars thenb `S.union` gatherBlockVars elseb
+--         gatherVars (IfThenElse Nothing thenb elseb) =
+--           gatherBlockVars thenb `S.union` gatherBlockVars elseb
+--         gatherVars (While (Just g) body) = gatherExprVars g `S.union` gatherBlockVars body
+--         gatherVars (While Nothing body) = gatherBlockVars body
+--         gatherVars Throw = S.empty
 
-        gatherBlockVars stmts =
-          foldl (\gathered stmt -> gathered `S.union` gatherVars stmt) S.empty stmts
+--         gatherBlockVars stmts =
+--           foldl (\gathered stmt -> gathered `S.union` gatherVars stmt) S.empty stmts
 
-        actualVars =
-          foldl (\gathered sk ->
-                   gathered `S.union` (gatherBlockVars . skStmts $ sk)) S.empty (pSks p)
+--         actualVars =
+--           foldl (\gathered sk ->
+--                    gathered `S.union` (gatherBlockVars . skStmts $ sk)) S.empty (pSks p)
 
 undeclaredFuns :: Program -> Set Text
 undeclaredFuns p = S.difference usedFuns declaredFuns

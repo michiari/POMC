@@ -926,42 +926,164 @@ _::operator_delete() {}
 
 
 intTests :: TestTree
-intTests = testGroup "Int Variables Tests" [ u8ArithExc, u8ArithRet, u8ArithaHolds ]
+intTests = testGroup "Int Variables Tests" [ u8Arith1Tests, u8Arith2Tests, arithCastsTests ]
 
-u8ArithExc :: TestTree
-u8ArithExc = makeTestCase u8ArithSrc
+u8Arith1Tests :: TestTree
+u8Arith1Tests = testGroup "u8Arith1" [ u8Arith1Exc, u8Arith1Ret, u8Arith1aHolds ]
+
+u8Arith1Exc :: TestTree
+u8Arith1Exc = makeTestCase u8Arith1Src
   (("Throws."
    , Until Up T (ap "exc")
    , []
    , True)
   , True)
 
-u8ArithRet :: TestTree
-u8ArithRet = makeTestCase u8ArithSrc
+u8Arith1Ret :: TestTree
+u8Arith1Ret = makeTestCase u8Arith1Src
   (("Terminates normally."
    , Until Up T (ap "ret")
    , []
    , False)
   , False)
 
-u8ArithaHolds :: TestTree
-u8ArithaHolds = makeTestCase u8ArithSrc
+u8Arith1aHolds :: TestTree
+u8Arith1aHolds = makeTestCase u8Arith1Src
   (("Variable a is non-zero at the end."
    , XNext Up (ap "a")
    , []
    , True)
   , True)
 
-u8ArithSrc :: T.Text
-u8ArithSrc = T.pack [r|
+u8Arith1Src :: T.Text
+u8Arith1Src = T.pack [r|
 u8 a, b, c;
 
 main() {
   a = 4u8;
   b = 5u8;
   c = a * b;
-  if (c / 5u8 <= a) {
+  if (a >= c / 5u8) {
     throw;
   } else { }
+}
+|]
+
+u8Arith2Tests :: TestTree
+u8Arith2Tests = testGroup "u8Arith2" [ u8Arith2Ret, u8Arith2Assert, u8Arith2AssertFalse ]
+
+u8Arith2Ret :: TestTree
+u8Arith2Ret = makeTestCase u8Arith2Src
+  (("Terminates normally."
+   , Until Up T (ap "ret")
+   , []
+   , True)
+  , True)
+
+u8Arith2Assert :: TestTree
+u8Arith2Assert = makeTestCase u8Arith2Src
+  (("Assert true."
+   , Until Up T (ap "ret" `And` ap "assert")
+   , []
+   , True)
+  , True)
+
+u8Arith2AssertFalse :: TestTree
+u8Arith2AssertFalse = makeTestCase u8Arith2Src
+  (("Assert false."
+   , Until Up T (ap "ret" `And` (Not $ ap "assert"))
+   , []
+   , False)
+  , False)
+
+u8Arith2Src :: T.Text
+u8Arith2Src = T.pack [r|
+u8 a, b, x, y, assert;
+
+main() {
+  x = 1u8;
+  y = 10u8;
+  a = 4u8;
+  b = 2u8;
+  if (x > 0u8) {
+    b = a + 2u8;
+    if (x < y) {
+      a = (x * 2u8) + y;
+    } else { }
+  } else { }
+  assert = a != b;
+}
+|]
+
+
+arithCastsTests :: TestTree
+arithCastsTests = testGroup "ArithCasts" [ arithCastsAssert1
+                                         , arithCastsAssert2
+                                         , arithCastsAssert3
+                                         , arithCastsAssert4
+                                         , arithCastsAssert5
+                                         ]
+
+arithCastsAssert1 :: TestTree
+arithCastsAssert1 = makeTestCase arithCastsSrc
+  (("a + c > 1024u16"
+   , Until Down T (ap "ret" `And` ap "assert1")
+   , []
+   , True)
+  , True)
+
+arithCastsAssert2 :: TestTree
+arithCastsAssert2 = makeTestCase arithCastsSrc
+  (("b + d < 0s8"
+   , Until Down T (ap "ret" `And` ap "assert2")
+   , []
+   , True)
+  , True)
+
+arithCastsAssert3 :: TestTree
+arithCastsAssert3 = makeTestCase arithCastsSrc
+  (("f == 25u8"
+   , Until Down T (ap "ret" `And` ap "assert3")
+   , []
+   , True)
+  , True)
+
+arithCastsAssert4 :: TestTree
+arithCastsAssert4 = makeTestCase arithCastsSrc
+  (("b * c == 10240s16"
+   , Until Down T (ap "ret" `And` ap "assert4")
+   , []
+   , True)
+  , True)
+
+arithCastsAssert5 :: TestTree
+arithCastsAssert5 = makeTestCase arithCastsSrc
+  (("d / b == -1s8"
+   , Until Down T (ap "ret" `And` ap "assert5")
+   , []
+   , True)
+  , True)
+
+arithCastsSrc :: T.Text
+arithCastsSrc = T.pack [r|
+u8 a, b, f;
+s16 c, d;
+s32 e;
+bool assert1, assert2, assert3, assert4, assert5;
+
+main() {
+  a = 255u8;
+  b = 10u8;
+  c = 1024s16;
+  d = -15s8;
+
+  assert1 = a + c > 1024u16;
+  assert2 = b + d < 0s8;
+
+  f = b - d;
+  assert3 = f == 25u8;
+
+  assert4 = b * c == 10240s16;
+  assert5 = d / b == -1s8;
 }
 |]

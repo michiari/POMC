@@ -12,6 +12,11 @@ module Pomc.MiniProc ( Program(..)
                      , IntValue
                      , Expr(..)
                      , FunctionName
+                     , Type(..)
+                     , isSigned
+                     , typeWidth
+                     , commonType
+                     , varWidth
                      , programToOpa
                      , skeletonsToOpa
                      ) where
@@ -30,25 +35,40 @@ import Data.Maybe (isNothing, fromJust)
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as B
 
+-- import Debug.Trace
+
 -- Intermediate representation for MiniProc programs
 type FunctionName = Text
-data Variable = Variable { varWidth :: Int
+data Type = UInt Int | SInt Int deriving (Show, Eq, Ord)
+data Variable = Variable { varType :: Type
                          , varName :: Text
                          } deriving (Show, Eq, Ord)
 type IntValue = BitVector
 data Expr = Literal IntValue
           | Term Variable
+          -- Boolean operations
           | Not Expr
           | And Expr Expr
           | Or Expr Expr
+          -- Arithmetic operations
           | Add Expr Expr
           | Sub Expr Expr
           | Mul Expr Expr
-          | Div Expr Expr
-          | Rem Expr Expr
+          | UDiv Expr Expr
+          | SDiv Expr Expr
+          | URem Expr Expr
+          | SRem Expr Expr
+          -- Comparisons
           | Eq Expr Expr
-          | Lt Expr Expr
-          | Leq Expr Expr deriving Show
+          | ULt Expr Expr
+          | ULeq Expr Expr
+          | SLt Expr Expr
+          | SLeq Expr Expr
+          -- Casts
+          | UExt Int Expr
+          | SExt Int Expr
+          | Trunc Int Expr
+          deriving Show
 data Statement = Assignment Variable Expr
                | Call FunctionName
                | TryCatch [Statement] [Statement]
@@ -62,6 +82,23 @@ data FunctionSkeleton = FunctionSkeleton { skName :: FunctionName
 data Program = Program { pVars :: Set Variable
                        , pSks :: [FunctionSkeleton]
                        } deriving Show
+
+isSigned :: Type -> Bool
+isSigned (SInt _) = True
+isSigned _ = False
+
+typeWidth :: Type -> Int
+typeWidth (UInt w) = w
+typeWidth (SInt w) = w
+
+commonType :: Type -> Type -> Type
+commonType (UInt w0) (UInt w1) = UInt $ max w0 w1
+commonType (UInt w0) (SInt w1) = SInt $ max w0 w1
+commonType (SInt w0) (UInt w1) = SInt $ max w0 w1
+commonType (SInt w0) (SInt w1) = SInt $ max w0 w1
+
+varWidth :: Variable -> Int
+varWidth = typeWidth . varType
 
 
 -- Generation of the Extended OPA
@@ -398,7 +435,7 @@ visitState lowerState s@(sid, svval) expandData
                   ed { edDPop = edInsert srcSid [dst] (edDPop ed) }
     in ed3
 
-visitEdges :: VarValuation
+visitEdges :: Show a => VarValuation
            -> (ExpandData -> (VarState, a) -> VarState -> ExpandData)
            -> LowerState
            -> ExpandData
@@ -407,7 +444,7 @@ visitEdges :: VarValuation
 visitEdges vval updateDelta ls expandData ((src, lbl), (States dsts)) =
   foldl visitDst expandData dsts
   where visitDst ed0 ld =
-          let (ed1, maybeNewDst) = caseDst ed0 ld
+          let (ed1, maybeNewDst) = caseDst ed0 ld -- (trace (show ld ++ " " ++ show (src, lbl)) ld)
           in case maybeNewDst of
                Just newDst -> visitState ls newDst ed1
                Nothing     -> ed1
@@ -437,14 +474,25 @@ evalExpr vval (Or lhs rhs) =
 evalExpr vval (Add lhs rhs) = evalExpr vval lhs + evalExpr vval rhs
 evalExpr vval (Sub lhs rhs) = evalExpr vval lhs - evalExpr vval rhs
 evalExpr vval (Mul lhs rhs) = evalExpr vval lhs * evalExpr vval rhs
-evalExpr vval (Div lhs rhs) = evalExpr vval lhs `div` evalExpr vval rhs
-evalExpr vval (Rem lhs rhs) = evalExpr vval lhs `mod` evalExpr vval rhs
+evalExpr vval (UDiv lhs rhs) = evalExpr vval lhs `div` noDiv0 (evalExpr vval rhs)
+evalExpr vval (SDiv lhs rhs) = evalExpr vval lhs `B.sdiv` noDiv0 (evalExpr vval rhs)
+evalExpr vval (URem lhs rhs) = evalExpr vval lhs `mod` noDiv0 (evalExpr vval rhs)
+evalExpr vval (SRem lhs rhs) = evalExpr vval lhs `B.smod` noDiv0 (evalExpr vval rhs)
 evalExpr vval (Eq lhs rhs) = B.fromBool $ evalExpr vval lhs == evalExpr vval rhs
-evalExpr vval (Lt lhs rhs) = B.fromBool $ evalExpr vval lhs < evalExpr vval rhs
-evalExpr vval (Leq lhs rhs) = B.fromBool $ evalExpr vval lhs <= evalExpr vval rhs
+evalExpr vval (ULt lhs rhs) = B.fromBool $ evalExpr vval lhs < evalExpr vval rhs
+evalExpr vval (ULeq lhs rhs) = B.fromBool $ evalExpr vval lhs <= evalExpr vval rhs
+evalExpr vval (SLt lhs rhs) = B.fromBool $ evalExpr vval lhs `B.slt` evalExpr vval rhs
+evalExpr vval (SLeq lhs rhs) = B.fromBool $ evalExpr vval lhs `B.sle` evalExpr vval rhs
+evalExpr vval (UExt size op) = B.zeroExtend size $ evalExpr vval op
+evalExpr vval (SExt size op) = B.signExtend size $ evalExpr vval op
+evalExpr vval (Trunc size op) = evalExpr vval op B.@@ (size - 1, 0)
 
 toBool :: IntValue -> Bool
 toBool v = B.nat v /= 0
+
+noDiv0 :: IntValue -> IntValue
+noDiv0 v | B.nat v /= 0 = v
+         | otherwise = B.ones $ B.size v
 
 -- Generate a plain OPA directly (without variables)
 skeletonsToOpa :: Bool -> [FunctionSkeleton] -> ExplicitOpa Word Text
