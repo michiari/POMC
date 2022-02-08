@@ -160,7 +160,7 @@ intTypeP :: Parser Type
 intTypeP = fmap UInt (char 'u' *> L.decimal) <|> fmap SInt (char 's' *> L.decimal)
 
 typeP :: Parser Type
-typeP = label "type" $ L.lexeme spaceP ((UInt 1 <$ symbolP "bool") <|>  intTypeP)
+typeP = label "type" $ L.lexeme spaceP ((UInt 1 <$ (symbolP "bool" <|> symbolP "var")) <|>  intTypeP)
 
 declP :: Parser [Variable]
 declP = try $ do
