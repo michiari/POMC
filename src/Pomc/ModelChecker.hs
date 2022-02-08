@@ -8,8 +8,8 @@
 -}
 
 module Pomc.ModelChecker ( ExplicitOpa(..)
-                         , modelCheck
-                         , modelCheckGen
+                         , modelCheckExplicit
+                         , modelCheckExplicitGen
                          , extractALs
                          , countStates
                          ) where
@@ -20,12 +20,12 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
 import Pomc.Potl (Formula(..), getProps)
 import Pomc.Check (makeOpa)
-import Pomc.State(State(..))
+import Pomc.State(Input, State(..))
 import Pomc.SatUtil(SatState(..))
 import Pomc.Satisfiability (isEmpty, isEmptyOmega)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
-import qualified Pomc.Encoding as E (PropSet, encodeInput)
+import qualified Pomc.Encoding as E (PropSet, BitEncoding, encodeInput)
 #ifndef NDEBUG
 import Pomc.Satisfiability (toInputTrace, showTrace)
 import qualified Debug.Trace as DBG
@@ -79,59 +79,51 @@ modelCheck :: (Ord s, Hashable s, Show s)
 #endif
            => Bool -- is it the infinite case?
            -> Formula APType -- input formula to check
-           -> ExplicitOpa s APType -- input OPA
+           -> [Prop APType] -- structural labels
+           -> [StructPrecRel APType] -- OPM
+           -> [s] -- OPA initial states
+           -> (s -> Bool) -- OPA isFinal
+           -> (E.BitEncoding -> s -> Input -> [s]) -- OPA Delta Push
+           -> (E.BitEncoding -> s -> Input -> [s]) -- OPA Delta Shift
+           -> (s -> s -> [s]) -- OPA Delta Pop
 #ifndef NDEBUG
            -> (APType -> a)
 #endif
            -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
+modelCheck isOmega phi sls sPrecRel opaInitials opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
-modelCheck isOmega phi opa transInv =
-#else
-modelCheck isOmega phi opa =
+  transInv
 #endif
-  let
-      -- fromList removes duplicates
-      -- all the structural labels + all the labels which appear in phi
-      essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
+  =
+  let -- generate the OPA associated to the negation of the input formula
+    (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
+      makeOpa (Not phi) isOmega (sls, getProps phi) sPrecRel
 
-      -- generate the OPA associated to the negation of the input formula
-      (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
-        makeOpa (Not phi) isOmega (fst $ sigma opa, getProps phi) (precRel opa)
+    -- compute the cartesian product between the initials of the two opas
+    cInitials = cartesian opaInitials phiInitials
+    -- new isFinal function for the cartesian product:
+    -- both underlying opas must be in an acceptance state
+    cIsFinal (MCState q p) = opaIsFinal q && phiIsFinal T p
+    cIsFinalOmega states =
+      (any (\(MCState q _) -> opaIsFinal q) states) &&
+      (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) $ Set.toList cl)
 
-      -- compute the cartesian product between the initials of the two opas
-      cInitials = cartesian (initials opa) phiInitials
-      -- new isFinal function for the cartesian product: both underlying opas must be in an acceptance state
-      cIsFinal (MCState q p) = Set.member q (Set.fromList $ finals opa) && phiIsFinal T p
-      cIsFinalOmega states = (any (\(MCState q _) -> Set.member q $ Set.fromList $ finals opa) states) &&
-                             (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) $ Set.toList cl)
+    odp = opaDeltaPush bitenc -- TODO: check if efficient
+    cDeltaPush (MCState q p) b = cartesian (odp q b) (phiDeltaPush p Nothing)
+    ods = opaDeltaShift bitenc
+    cDeltaShift (MCState q p) b = cartesian (ods q b) (phiDeltaShift p Nothing)
+    cDeltaPop (MCState q p) (MCState q' p') = cartesian (opaDeltaPop q q') (phiDeltaPop p p')
 
-
-      -- unwrap an object of type Maybe List
-      maybeList Nothing = []
-      maybeList (Just l) = l
-
-      -- generate the delta relation of the input opa
-      makeDeltaMapI delta = Map.fromListWith (++) $
-        map (\(q', b', ps) -> ((q', E.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
-            delta
-      makeDeltaMapS delta = Map.fromList $ map (\(q', b', ps) -> ((q', b'), ps)) delta
-      opaDeltaPush q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaPush opa)
-      opaDeltaShift q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI (deltaShift opa)
-      opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (deltaPop opa)
-
-      cDeltaPush (MCState q p) b = cartesian (opaDeltaPush q b) (phiDeltaPush p Nothing)
-      cDeltaShift (MCState q p) b = cartesian (opaDeltaShift q b) (phiDeltaShift p Nothing)
-      cDeltaPop (MCState q p) (MCState q' p') = cartesian (opaDeltaPop q q') (phiDeltaPop p p')
-      cDelta = Sat.Delta
-               { Sat.bitenc = bitenc
-               , Sat.prec = precFunc
-               , Sat.deltaPush = cDeltaPush
-               , Sat.deltaShift = cDeltaShift
-               , Sat.deltaPop = cDeltaPop
-               }
-      (sat, trace) = if isOmega
-                      then isEmptyOmega cDelta cInitials cIsFinalOmega
-                      else isEmpty cDelta cInitials cIsFinal
+    cDelta = Sat.Delta
+             { Sat.bitenc = bitenc
+             , Sat.prec = precFunc
+             , Sat.deltaPush = cDeltaPush
+             , Sat.deltaShift = cDeltaShift
+             , Sat.deltaPop = cDeltaPop
+             }
+    (sat, trace) = if isOmega
+                   then isEmptyOmega cDelta cInitials cIsFinalOmega
+                   else isEmpty cDelta cInitials cIsFinal
 #ifndef NDEBUG
   in DBG.trace (showTrace bitenc transInv trace)
 #else
@@ -140,17 +132,60 @@ modelCheck isOmega phi opa =
      (sat, map (\(MCState q _, b) -> (q, b)) $ toInputTrace bitenc trace)
 
 
+#ifndef NDEBUG
+modelCheckExplicit :: (Ord s, Hashable s, Show s, Show a)
+#else
+modelCheckExplicit :: (Ord s, Hashable s, Show s)
+#endif
+           => Bool -- is it the infinite case?
+           -> Formula APType -- input formula to check
+           -> ExplicitOpa s APType -- input OPA
+#ifndef NDEBUG
+           -> (APType -> a)
+#endif
+           -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
+#ifndef NDEBUG
+modelCheckExplicit isOmega phi opa transInv =
+#else
+modelCheckExplicit isOmega phi opa =
+#endif
+  let
+      -- fromList removes duplicates
+      -- all the structural labels + all the labels which appear in phi
+      essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
+
+      opaIsFinal q = Set.member q (Set.fromList $ finals opa)
+
+      -- unwrap an object of type Maybe List
+      maybeList Nothing = []
+      maybeList (Just l) = l
+
+      -- generate the delta relation of the input opa
+      makeDeltaMapI bitenc delta = Map.fromListWith (++) $
+        map (\(q', b', ps) -> ((q', E.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
+            delta
+      makeDeltaMapS delta = Map.fromList $ map (\(q', b', ps) -> ((q', b'), ps)) delta
+      opaDeltaPush bitenc q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (deltaPush opa)
+      opaDeltaShift bitenc q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (deltaShift opa)
+      opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (deltaPop opa)
+
+  in modelCheck isOmega phi (fst . sigma $ opa) (precRel opa) (initials opa)
+     opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
+#ifndef NDEBUG
+     transInv
+#endif
+
 
 #ifndef NDEBUG
-modelCheckGen :: (Ord s, Hashable s, Show s, Ord a, Show a)
+modelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a, Show a)
 #else
-modelCheckGen :: (Ord s, Hashable s, Show s, Ord a)
+modelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
 #endif
               => Bool
               -> Formula a
               -> ExplicitOpa s a
               -> (Bool, [(s, Set (Prop a))])
-modelCheckGen isOmega phi opa =
+modelCheckExplicitGen isOmega phi opa =
   let (sls, als) = sigma opa
       (tphi, tprec, trans, transInv) = convAP phi (precRel opa) (sls ++ (getProps phi) ++ als)
       transProps props = fmap (fmap trans) props
@@ -165,9 +200,9 @@ modelCheckGen isOmega phi opa =
              , deltaPop   = deltaPop opa
              }
 #ifndef NDEBUG
-      (sat, trace) = modelCheck isOmega tphi tOpa transInv
+      (sat, trace) = modelCheckExplicit isOmega tphi tOpa transInv
 #else
-      (sat, trace) = modelCheck isOmega tphi tOpa
+      (sat, trace) = modelCheckExplicit isOmega tphi tOpa
 #endif
   in (sat, map (\(q, b) -> (q, Set.map (fmap transInv) b)) trace)
 

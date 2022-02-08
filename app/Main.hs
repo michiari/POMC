@@ -8,7 +8,7 @@
 module Main (main) where
 
 import Pomc.Check (fastcheckGen)
-import Pomc.ModelChecker (modelCheckGen, countStates)
+import Pomc.ModelChecker (modelCheckExplicitGen, countStates)
 import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.MiniProc (programToOpa)
 import Pomc.Prec (Prec(..))
@@ -84,7 +84,7 @@ main = do
                             , "\nInput OPA state count: ", show $ countStates opa
                             , "\nResult:  "
                             ])
-             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckGen isOmega phi opa
+             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckExplicitGen isOmega phi opa
                                                      putStr $ show s
                                                      return (s, t)
              if sat

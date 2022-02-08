@@ -7,7 +7,7 @@ import qualified TestSat (cases)
 import EvalFormulas (ap, formulas)
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Formula(..), Dir(..))
-import Pomc.ModelChecker (ExplicitOpa(..), modelCheckGen)
+import Pomc.ModelChecker (ExplicitOpa(..), modelCheckExplicitGen)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -49,7 +49,7 @@ makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
 makeTestCase opa ((name, phi, _, _), expected) =
-  let (sat, trace) = modelCheckGen False phi opa
+  let (sat, trace) = modelCheckExplicitGen False phi opa
       debugMsg False tr = "Expected True, got False. Counterexample:\n"
         ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
       debugMsg True _ = "Expected False, got True."

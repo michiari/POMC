@@ -8,7 +8,7 @@ import OmegaEvalFormulas(omegaFormulas)
 import Pomc.Prop (Prop(..))
 import OPMs (stlPrecRelV2, stlPrecV2sls)
 import Pomc.Potl (Formula(..), Dir(..))
-import Pomc.ModelChecker (ExplicitOpa(..), modelCheckGen)
+import Pomc.ModelChecker (ExplicitOpa(..), modelCheckExplicitGen)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -41,7 +41,7 @@ makeTestCase :: ExplicitOpa Word String
              -> ((String, Formula String, [String], Bool), Bool)
              -> TestTree
 makeTestCase opa ((name, phi, _, _), expected) =
-  let (sat, trace) = modelCheckGen True phi opa
+  let (sat, trace) = modelCheckExplicitGen True phi opa
       debugMsg False tr = "Expected True, got False. Counterexample:\n"
         ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
       debugMsg True _ = "Expected False, got True."
