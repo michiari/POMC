@@ -3,9 +3,8 @@
 module TestMP (tests) where
 
 import Pomc.MiniProcParse (programP)
-import Pomc.MiniProc (programToOpa)
 import Pomc.Potl (Formula(..), Dir(..))
-import Pomc.ModelChecker (modelCheckExplicitGen)
+import Pomc.ModelChecker (modelCheckProgram)
 import qualified TestSat (cases)
 import EvalFormulas (ap, formulas)
 
@@ -71,8 +70,7 @@ makeTestCase filecont ((name, phi, _, _), expected) =
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          let opa = programToOpa False prog
-          fst (modelCheckExplicitGen False (fmap T.pack phi) opa) @?= expected
+          fst (modelCheckProgram False (fmap T.pack phi) prog) @?= expected
 
 
 expectedSasBase :: [Bool]

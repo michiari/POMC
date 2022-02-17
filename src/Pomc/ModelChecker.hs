@@ -8,13 +8,15 @@
 -}
 
 module Pomc.ModelChecker ( ExplicitOpa(..)
+                         , modelCheck
                          , modelCheckExplicit
                          , modelCheckExplicitGen
+                         , modelCheckProgram
                          , extractALs
                          , countStates
                          ) where
 
-#define NDEBUG
+-- #define NDEBUG
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
@@ -26,6 +28,7 @@ import Pomc.Satisfiability (isEmpty, isEmptyOmega)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, convAP)
 import qualified Pomc.Encoding as E (PropSet, BitEncoding, encodeInput)
+import Pomc.MiniProc (Program, VarState, programToOpa)
 #ifndef NDEBUG
 import Pomc.Satisfiability (toInputTrace, showTrace)
 import qualified Debug.Trace as DBG
@@ -37,6 +40,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import qualified Data.HashMap.Strict as Map
+import Data.Text (Text)
 
 import GHC.Generics (Generic)
 import Data.Hashable
@@ -123,7 +127,7 @@ modelCheck isOmega phi sls sPrecRel opaInitials opaIsFinal opaDeltaPush opaDelta
              }
     (sat, trace) = if isOmega
                    then isEmptyOmega cDelta cInitials cIsFinalOmega
-                   else isEmpty cDelta cInitials cIsFinal
+                   else isEmpty cDelta (DBG.traceShowId cInitials) cIsFinal
 #ifndef NDEBUG
   in DBG.trace (showTrace bitenc transInv trace)
 #else
@@ -149,8 +153,7 @@ modelCheckExplicit isOmega phi opa transInv =
 #else
 modelCheckExplicit isOmega phi opa =
 #endif
-  let
-      -- fromList removes duplicates
+  let -- fromList removes duplicates
       -- all the structural labels + all the labels which appear in phi
       essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
 
@@ -219,3 +222,16 @@ countStates opa =
       popStates = foldl (\set (q, r, ps) -> set `Set.union` (Set.fromList (q : r : ps)))
                   shiftStates (deltaPop opa)
   in Set.size $ popStates `Set.union` (Set.fromList $ initials opa ++ finals opa)
+
+modelCheckProgram :: Bool
+                  -> Formula Text
+                  -> Program
+                  -> (Bool, [(VarState, Set (Prop Text))])
+modelCheckProgram isOmega phi prog =
+  let (trans, transInv, sls, tprec, ini, isfin, dpush, dshift, dpop) = programToOpa isOmega prog
+      transPhi = fmap trans phi
+      (sat, trace) = modelCheck isOmega transPhi sls tprec ini isfin dpush dshift dpop
+#ifndef NDEBUG
+                     transInv
+#endif
+  in (sat, map (\(q, b) -> (q, Set.map (fmap transInv) b)) trace)

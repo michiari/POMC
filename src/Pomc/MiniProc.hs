@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 {- |
    Module      : Pomc.MiniProc
    Copyright   : 2020-2021 Michele Chiari
@@ -13,17 +15,26 @@ module Pomc.MiniProc ( Program(..)
                      , Expr(..)
                      , FunctionName
                      , Type(..)
+                     , VarState
                      , isSigned
                      , typeWidth
                      , commonType
                      , varWidth
                      , programToOpa
-                     , skeletonsToOpa
+
+                     , DeltaTarget(..)
+                     , LowerState(..)
+                     , sksToExtendedOpa
+                     , miniProcSls
+                     , miniProcPrecRel
                      ) where
 
 import Pomc.Prop (Prop(..))
+import Pomc.PropConv (APType, convAP)
 import Pomc.Prec (Prec(..), StructPrecRel)
-import Pomc.ModelChecker (ExplicitOpa(..))
+import qualified Pomc.Encoding as E (BitEncoding, decodeInput)
+import Pomc.State (Input)
+import qualified Pomc.Potl as POTL (Formula(..))
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -34,15 +45,17 @@ import qualified Data.Set as S
 import Data.Maybe (isNothing, fromJust)
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as B
+import GHC.Generics (Generic)
+import Data.Hashable
 
 -- import Debug.Trace
 
 -- Intermediate representation for MiniProc programs
 type FunctionName = Text
-data Type = UInt Int | SInt Int deriving (Show, Eq, Ord)
+data Type = UInt Int | SInt Int deriving (Show, Eq, Ord, Generic)
 data Variable = Variable { varType :: Type
                          , varName :: Text
-                         } deriving (Show, Eq, Ord)
+                         } deriving (Show, Eq, Ord, Generic)
 type IntValue = BitVector
 data Expr = Literal IntValue
           | Term Variable
@@ -82,6 +95,12 @@ data FunctionSkeleton = FunctionSkeleton { skName :: FunctionName
 data Program = Program { pVars :: Set Variable
                        , pSks :: [FunctionSkeleton]
                        } deriving Show
+
+instance Hashable Type
+instance Hashable Variable
+-- TODO: see if there's a better way of doing this
+instance Hashable B.BV where
+  hashWithSalt s bv = s `hashWithSalt` B.nat bv `hashWithSalt` B.size bv
 
 isSigned :: Type -> Bool
 isSigned (SInt _) = True
@@ -338,6 +357,10 @@ data ExpandData = ExpandData { edDPush :: Map (VarState, Set (Prop Text)) [VarSt
                              , edVisited :: Set VarState
                              } deriving Show
 
+-- TODO: see if there's a better way of doing this
+instance (Hashable k, Hashable v) => Hashable (Map k v) where
+  hashWithSalt s m = hashWithSalt s $ M.toList m
+
 edInsert :: (Ord k) => k -> [v] -> Map k [v] -> Map k [v]
 edInsert _ [] m = m
 edInsert key vals m =
@@ -348,7 +371,17 @@ edInsert key vals m =
 initialValuation :: Set Variable -> VarValuation
 initialValuation pvars = M.fromSet (\idf -> B.zeros $ varWidth idf) pvars
 
-programToOpa :: Bool -> Program -> ExplicitOpa Word Text
+programToOpa :: Bool -> Program
+             -> ( (Text -> APType)
+                , (APType -> Text)
+                , [Prop APType]
+                , [StructPrecRel APType]
+                , [VarState]
+                , VarState -> Bool
+                , (E.BitEncoding -> VarState -> Input -> [VarState])
+                , (E.BitEncoding -> VarState -> Input -> [VarState])
+                , (VarState -> VarState -> [VarState])
+                )
 programToOpa omega (Program pvars sks) =
   let (lowerState, ini, fin) = sksToExtendedOpa omega sks
       eInitials = [(sid, initVal) | sid <- ini]
@@ -356,51 +389,30 @@ programToOpa omega (Program pvars sks) =
       ed0 = ExpandData M.empty M.empty M.empty S.empty
       ed1 = foldr (visitState lowerState) ed0 eInitials
       ed2 = varsToLabels ed1
-      eFinals = filter (\vst -> fst vst `elem` fin) $ S.toList $ edVisited ed2
+      eIsFinal (sid, _) = sid `S.member` finSet
+        where finSet = S.fromList fin
 
-      remap :: VarState -> Word -> Map VarState Word -> (Word, Word, Map VarState Word)
-      remap s count smap =
-        case M.lookup s smap of
-          Nothing  -> (count, count+1, M.insert s count smap)
-          Just sid -> (sid, count, smap)
-      remapList l oldCount oldSmap = foldr remapOne ([], oldCount, oldSmap) l
-        where remapOne s (acc, count, smap) =
-                let (sid, count', smap') = remap s count smap
-                in (sid:acc, count', smap')
-      remapPushShift delta oldCount oldSmap =
-        foldr remapOne ([], oldCount, oldSmap) (M.toList delta)
-        where remapOne ((p, lbl), qs) (acc, count, smap) =
-                let (sidp, count', smap') = remap p count smap
-                    (sidqs, count'', smap'') = remapList qs count' smap'
-                in ((sidp, lbl, sidqs):acc, count'', smap'')
-      remapPop delta oldCount oldSmap =
-        foldr remapOne ([], oldCount, oldSmap) (M.toList delta)
-        where remapOne ((p, stlsid), qs) (acc, count, smap) =
-                let (sidp, count', smap') = remap p count smap
-                    (sidqs, count'', smap'') = remapList qs count' smap'
-                    stackVarStates = filter (\vs -> fst vs == stlsid) $ S.toList (edVisited ed2)
-                    (stackSids, count''', smap''') = remapList stackVarStates count'' smap''
-                    newTransitions = map (\sidst -> (sidp, sidst, sidqs)) stackSids
-                in (newTransitions ++ acc, count''', smap''')
+      maybeList Nothing = []
+      maybeList (Just l) = l
 
-      (rInitials, count0, smap0) = remapList eInitials 0 M.empty
-      (rFinals, count1, smap1) = remapList eFinals count0 smap0
-      (rDPush, count2, smap2) = remapPushShift (edDPush ed2) count1 smap1
-      (rDShift, count3, smap3) = remapPushShift (edDShift ed2) count2 smap2
-      (rDPop, _, _) = remapPop (edDPop ed2) count3 smap3
+      -- TODO: do everything with APType directly
+      funAPs = map (Prop . skName) sks
+      varAPs = S.toList $ S.map (Prop . varName) pvars
+      (_, tprec, trans, transInv) = convAP POTL.T miniProcPrecRel (miniProcSls ++ funAPs ++ varAPs)
+      remapDeltaInput delta bitenc q b =
+        maybeList $ M.lookup (q, S.map (fmap transInv) $ E.decodeInput bitenc b) delta
 
-      allProps = map (Prop . skName) sks
-                 ++ concatMap ((map Prop) . skModules) sks
-                 ++ map (Prop . varName) (S.toList pvars)
-  in ExplicitOpa
-     { sigma = (miniProcSls, allProps)
-     , precRel = miniProcPrecRel
-     , initials = rInitials
-     , finals = rFinals
-     , deltaPush = rDPush
-     , deltaShift = rDShift
-     , deltaPop = rDPop
-     }
+  in ( trans
+     , transInv
+     , map (fmap trans) miniProcSls
+     , tprec
+     , eInitials
+     , eIsFinal
+     , remapDeltaInput $ edDPush ed2
+     , remapDeltaInput $ edDShift ed2
+     , \q (sid, _) -> maybeList $ M.lookup (q, sid) (edDPop ed2)
+     )
+
 
 varsToLabels :: ExpandData -> ExpandData
 varsToLabels expandData =
@@ -494,25 +506,8 @@ noDiv0 :: IntValue -> IntValue
 noDiv0 v | B.nat v /= 0 = v
          | otherwise = B.ones $ B.size v
 
--- Generate a plain OPA directly (without variables)
-skeletonsToOpa :: Bool -> [FunctionSkeleton] -> ExplicitOpa Word Text
-skeletonsToOpa omega sks = ExplicitOpa
-  { sigma = (miniProcSls, map (Prop . skName) sks)
-  , precRel = miniProcPrecRel
-  , initials = ini
-  , finals = fin
-  , deltaPush = toListDelta $ lsDPush lowerState
-  , deltaShift = toListDelta $ lsDShift lowerState
-  , deltaPop = toListDelta $ lsDPop lowerState
-  }
-  where (lowerState, ini, fin) = sksToExtendedOpa omega sks
-        toListDelta deltaMap = map normalize $ M.toList deltaMap
-          where normalize ((a, b), States ls) =
-                  (a, b, S.toList . S.fromList $ map snd ls)
-                normalize (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
 
 -- OPM
-
 miniProcSls :: [Prop Text]
 miniProcSls = map (Prop . T.pack) ["call", "ret", "han", "exc", "stm"]
 

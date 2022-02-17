@@ -8,9 +8,8 @@
 module Main (main) where
 
 import Pomc.Check (fastcheckGen)
-import Pomc.ModelChecker (modelCheckExplicitGen, countStates)
+import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..), includeP)
-import Pomc.MiniProc (programToOpa)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 import Pomc.Util (safeHeads, timeAction, timeToString, prettyTrace)
@@ -94,7 +93,20 @@ main = do
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 
-        runProg isOmega prog phi = runMC isOmega (programToOpa isOmega prog) phi
+        runProg isOmega prog phi =
+          do putStr (concat [ "\nModel Checking\nFormula: ", show phi
+                            , "\nResult:  "
+                            ])
+             ((sat, trace), time) <- timeAction $
+               do let (s, t) = modelCheckProgram isOmega phi prog
+                  putStr $ show s
+                  return (s, t)
+             if sat
+               then return ()
+               else putStr $ "\nCounterexample: "
+                    ++ (show . prettyTrace (T.singleton '#') (T.pack "...") $ trace)
+             putStrLn (concat ["\nElapsed time: ", timeToString time])
+             return time
 
         addEndPrec precRels = noEndPR
                               ++ map (\p -> (End, p, Yield)) sl

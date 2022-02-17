@@ -14,10 +14,10 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 tests :: TestTree
-tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests, 
-                                                   lRBaseTests, lREvalTests, 
+tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests,
+                                                   lRBaseTests, lREvalTests,
                                                    inspectionTest, overflowTest,
-                                                   jensenTests, jensenFullTests, 
+                                                   jensenTests, jensenFullTests,
                                                    stackExcTests, stackExcSwapTests
                                                   ]
 
@@ -96,22 +96,22 @@ expectedSasBase = [True,  True,  False, False, False, False, False,
                   ]
 
 expectedSasEval :: [Bool]
-expectedSasEval = [False, False, False, False, True,  -- chain_next        
-                   False, False, False, True,         -- contains_exc      
+expectedSasEval = [False, False, False, False, True,  -- chain_next
+                   False, False, False, True,         -- contains_exc
                    --True,                            -- data_access
-                   False, False, False, False,         -- empty_frame       
-                   --True,                            -- exception_safety   
+                   False, False, False, False,         -- empty_frame
+                   --True,                            -- exception_safety
                    False, False, False, False,        -- hier_down
                    False,                             -- hier_insp
-                   --True,                            -- hier_insp_exc      
+                   --True,                            -- hier_insp_exc
                    False, False, False, False,        -- hier_up
-                   False, False,                      -- normal_ret          
-                   True, True,                        -- no_throw            
-                   False, False,                      -- stack_inspection    
-                   False,                             -- uninstall_han       
-                   False, False, True, False,     -- until_exc           
-                   False, False, False                -- until_misc          
-                  ] 
+                   False, False,                      -- normal_ret
+                   True, True,                        -- no_throw
+                   False, False,                      -- stack_inspection
+                   False,                             -- uninstall_han
+                   False, False, True, False,     -- until_exc
+                   False, False, False                -- until_misc
+                  ]
 
 largerRec :: ExplicitOpa Word String
 largerRec = ExplicitOpa
@@ -120,51 +120,51 @@ largerRec = ExplicitOpa
             , initials = [0]
             , finals = [2, 8, 10]
             , deltaPush =
-                [ (0,  makeInputSet ["call", "pa"],    [1]) 
-                , (1,  makeInputSet ["call", "pb"],    [2]) 
-                , (2,  makeInputSet ["call", "pc"],    [3]) 
-                , (2,  makeInputSet ["han"],           [4]) 
-                , (3,  makeInputSet ["call", "pb"],    [2]) 
-                , (4,  makeInputSet ["call", "pc"],    [3]) 
-                , (7,  makeInputSet ["exc", "eb"],     [8]) 
-                , (9,  makeInputSet ["call", "perr"], [10]) 
-                , (10, makeInputSet ["call", "perr"], [10]) 
-                , (15, makeInputSet ["han"],          [19]) 
-                , (19, makeInputSet ["call", "pc"],    [3]) 
-                , (23, makeInputSet ["call", "perr"], [10]) 
-                , (8,  makeInputSet ["call"],          [8]) 
+                [ (0,  makeInputSet ["call", "pa"],    [1])
+                , (1,  makeInputSet ["call", "pb"],    [2])
+                , (2,  makeInputSet ["call", "pc"],    [3])
+                , (2,  makeInputSet ["han"],           [4])
+                , (3,  makeInputSet ["call", "pb"],    [2])
+                , (4,  makeInputSet ["call", "pc"],    [3])
+                , (7,  makeInputSet ["exc", "eb"],     [8])
+                , (9,  makeInputSet ["call", "perr"], [10])
+                , (10, makeInputSet ["call", "perr"], [10])
+                , (15, makeInputSet ["han"],          [19])
+                , (19, makeInputSet ["call", "pc"],    [3])
+                , (23, makeInputSet ["call", "perr"], [10])
+                , (8,  makeInputSet ["call"],          [8])
                 ]
             , deltaShift =
-                [ (9,  makeInputSet ["exc"],          [9]) 
-                , (10, makeInputSet ["ret", "perr"], [11]) 
-                , (12, makeInputSet ["ret", "perr"], [11]) 
-                , (13, makeInputSet ["ret", "pb"],   [14]) 
-                , (16, makeInputSet ["ret", "pc"],   [17]) 
-                , (20, makeInputSet ["exc"],         [23]) 
-                , (21, makeInputSet ["ret", "pa"],   [22]) 
-                , (8,  makeInputSet ["ret"],          [8]) 
+                [ (9,  makeInputSet ["exc"],          [9])
+                , (10, makeInputSet ["ret", "perr"], [11])
+                , (12, makeInputSet ["ret", "perr"], [11])
+                , (13, makeInputSet ["ret", "pb"],   [14])
+                , (16, makeInputSet ["ret", "pc"],   [17])
+                , (20, makeInputSet ["exc"],         [23])
+                , (21, makeInputSet ["ret", "pa"],   [22])
+                , (8,  makeInputSet ["ret"],          [8])
                 ]
             , deltaPop =
-                [ (3,   2,  [5]) 
-                , (3,   4,  [9]) 
-                , (3,  19, [20]) 
-                , (5,   1,  [6]) 
-                , (5,   3, [18]) 
-                , (6,   0,  [7]) 
-                , (8,   7,  [8]) 
-                , (9,   2,  [9]) 
-                , (11, 10, [12]) 
-                , (11,  9, [13]) 
-                , (11, 23, [21]) 
-                , (14,  1, [15]) 
-                , (14,  3, [16]) 
-                , (17,  4, [17]) 
-                , (17,  2, [13]) 
-                , (17, 19, [21]) 
-                , (18,  2,  [5]) 
-                , (18,  4,  [9]) 
-                , (18, 19, [20]) 
-                , (22,  0,  [8]) 
+                [ (3,   2,  [5])
+                , (3,   4,  [9])
+                , (3,  19, [20])
+                , (5,   1,  [6])
+                , (5,   3, [18])
+                , (6,   0,  [7])
+                , (8,   7,  [8])
+                , (9,   2,  [9])
+                , (11, 10, [12])
+                , (11,  9, [13])
+                , (11, 23, [21])
+                , (14,  1, [15])
+                , (14,  3, [16])
+                , (17,  4, [17])
+                , (17,  2, [13])
+                , (17, 19, [21])
+                , (18,  2,  [5])
+                , (18,  4,  [9])
+                , (18, 19, [20])
+                , (22,  0,  [8])
                 , (23, 15, [23])
                 , (8,   8,  [8])
                 ]

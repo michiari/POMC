@@ -12,7 +12,10 @@ module Pomc.OpaGen ( printFunctions
 
 import Pomc.Prop (Prop(..))
 import Pomc.ModelChecker (ExplicitOpa(..))
-import Pomc.MiniProc (FunctionSkeleton(..), Statement(..), FunctionName, skeletonsToOpa)
+import Pomc.MiniProc ( FunctionSkeleton(..), Statement(..), FunctionName
+                     , DeltaTarget(..), LowerState(..), sksToExtendedOpa
+                     , miniProcSls, miniProcPrecRel
+                     )
 
 import System.Random
 import System.IO
@@ -20,6 +23,7 @@ import System.FilePath ((</>))
 import Control.Monad (foldM)
 import Data.Set (Set)
 import qualified Data.Set as S
+import qualified Data.Map as M
 import qualified Data.Text as T
 
 
@@ -88,6 +92,23 @@ printFunctions nf maxCalls maxDepth = do
   let opa = skeletonsToOpa False skeletons
   putStrLn $ show opa
   hWriteOpa opa stdout
+
+-- Generate a plain OPA directly (without variables)
+skeletonsToOpa :: Bool -> [FunctionSkeleton] -> ExplicitOpa Word T.Text
+skeletonsToOpa omega sks = ExplicitOpa
+  { sigma = (miniProcSls, map (Prop . skName) sks)
+  , precRel = miniProcPrecRel
+  , initials = ini
+  , finals = fin
+  , deltaPush = toListDelta $ lsDPush lowerState
+  , deltaShift = toListDelta $ lsDShift lowerState
+  , deltaPop = toListDelta $ lsDPop lowerState
+  }
+  where (lowerState, ini, fin) = sksToExtendedOpa omega sks
+        toListDelta deltaMap = map normalize $ M.toList deltaMap
+          where normalize ((a, b), States ls) =
+                  (a, b, S.toList . S.fromList $ map snd ls)
+                normalize (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
 
 genOpa :: String -> Int -> Int -> Int -> IO ()
 genOpa file nf maxCalls maxDepth = do
