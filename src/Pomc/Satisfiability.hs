@@ -38,6 +38,7 @@ import qualified Data.Vector as V
 
 import Control.DeepSeq(NFData(..))
 
+-- import qualified Debug.Trace as DBG
 
 -- global variables in the algorithms
 data Globals s state = FGlobals

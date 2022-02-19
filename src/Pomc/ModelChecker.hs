@@ -16,7 +16,7 @@ module Pomc.ModelChecker ( ExplicitOpa(..)
                          , countStates
                          ) where
 
--- #define NDEBUG
+#define NDEBUG
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (StructPrecRel)
@@ -36,6 +36,7 @@ import qualified Debug.Trace as DBG
 import Pomc.Satisfiability (toInputTrace)
 #endif
 
+import Data.List ((\\))
 import Data.Set (Set)
 import qualified Data.Set as Set
 
@@ -101,7 +102,8 @@ modelCheck isOmega phi sls sPrecRel opaInitials opaIsFinal opaDeltaPush opaDelta
   =
   let -- generate the OPA associated to the negation of the input formula
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
-      makeOpa (Not phi) isOmega (sls, getProps phi) sPrecRel
+      makeOpa (Not phi) isOmega (sls, getProps phi \\ sls) sPrecRel
+      -- TODO: make sure we always remove sls from als
 
     -- compute the cartesian product between the initials of the two opas
     cInitials = cartesian opaInitials phiInitials
@@ -127,7 +129,7 @@ modelCheck isOmega phi sls sPrecRel opaInitials opaIsFinal opaDeltaPush opaDelta
              }
     (sat, trace) = if isOmega
                    then isEmptyOmega cDelta cInitials cIsFinalOmega
-                   else isEmpty cDelta (DBG.traceShowId cInitials) cIsFinal
+                   else isEmpty cDelta cInitials cIsFinal
 #ifndef NDEBUG
   in DBG.trace (showTrace bitenc transInv trace)
 #else
@@ -228,7 +230,8 @@ modelCheckProgram :: Bool
                   -> Program
                   -> (Bool, [(VarState, Set (Prop Text))])
 modelCheckProgram isOmega phi prog =
-  let (trans, transInv, sls, tprec, ini, isfin, dpush, dshift, dpop) = programToOpa isOmega prog
+  let (trans, transInv, sls, tprec, ini, isfin, dpush, dshift, dpop) =
+        programToOpa isOmega prog (Set.fromList $ getProps phi)
       transPhi = fmap trans phi
       (sat, trace) = modelCheck isOmega transPhi sls tprec ini isfin dpush dshift dpop
 #ifndef NDEBUG

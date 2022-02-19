@@ -38,6 +38,8 @@ import Control.Monad (guard, filterM, foldM)
 import qualified Data.Sequence as SQ
 import Data.Foldable (toList)
 
+-- import qualified Debug.Trace as DBG
+
 -- Function that, given two atoms or input symbols,
 -- returns the precedence relation between them
 type EncPrecFunc = EncodedSet -> EncodedSet -> Maybe Prec
@@ -1554,7 +1556,7 @@ makeOpa phi isOmega (sls, als) sprs = (bitenc
         -- generate the powerset of AP, ech time taking a prop from the structural list
         inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
         -- generate the closure of the normalized input formulas
-        cl =   closure nphi tsprops
+        cl = closure nphi tsprops
         -- generate a BitEncoding from the closure
         bitenc = makeBitEncoding cl
         -- generate an EncPrecFunc from a StructPrecRel

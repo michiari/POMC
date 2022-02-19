@@ -48,7 +48,7 @@ import qualified Data.BitVector as B
 import GHC.Generics (Generic)
 import Data.Hashable
 
--- import Debug.Trace
+-- import qualified Debug.Trace as DBG
 
 -- Intermediate representation for MiniProc programs
 type FunctionName = Text
@@ -371,7 +371,7 @@ edInsert key vals m =
 initialValuation :: Set Variable -> VarValuation
 initialValuation pvars = M.fromSet (\idf -> B.zeros $ varWidth idf) pvars
 
-programToOpa :: Bool -> Program
+programToOpa :: Bool -> Program -> Set (Prop Text)
              -> ( (Text -> APType)
                 , (APType -> Text)
                 , [Prop APType]
@@ -382,13 +382,13 @@ programToOpa :: Bool -> Program
                 , (E.BitEncoding -> VarState -> Input -> [VarState])
                 , (VarState -> VarState -> [VarState])
                 )
-programToOpa omega (Program pvars sks) =
+programToOpa omega (Program pvars sks) additionalProps =
   let (lowerState, ini, fin) = sksToExtendedOpa omega sks
       eInitials = [(sid, initVal) | sid <- ini]
         where initVal = initialValuation pvars
       ed0 = ExpandData M.empty M.empty M.empty S.empty
       ed1 = foldr (visitState lowerState) ed0 eInitials
-      ed2 = varsToLabels ed1
+      ed2 = addLabels additionalProps ed1
       eIsFinal (sid, _) = sid `S.member` finSet
         where finSet = S.fromList fin
 
@@ -396,9 +396,7 @@ programToOpa omega (Program pvars sks) =
       maybeList (Just l) = l
 
       -- TODO: do everything with APType directly
-      funAPs = map (Prop . skName) sks
-      varAPs = S.toList $ S.map (Prop . varName) pvars
-      (_, tprec, trans, transInv) = convAP POTL.T miniProcPrecRel (miniProcSls ++ funAPs ++ varAPs)
+      (_, tprec, trans, transInv) = convAP POTL.T miniProcPrecRel (miniProcSls ++ S.toList additionalProps)
       remapDeltaInput delta bitenc q b =
         maybeList $ M.lookup (q, S.map (fmap transInv) $ E.decodeInput bitenc b) delta
 
@@ -414,18 +412,27 @@ programToOpa omega (Program pvars sks) =
      )
 
 
-varsToLabels :: ExpandData -> ExpandData
-varsToLabels expandData =
+addLabels :: Set (Prop Text) -> ExpandData -> ExpandData
+addLabels additionalProps expandData =
   expandData { edDPush = addProps $ edDPush expandData
              , edDShift = addProps $ edDShift expandData
              }
-  where stateToPropSet :: VarState -> Set (Prop Text)
+  where filterVars :: (Variable, IntValue) -> Bool
+        filterVars (var, val) = toBool val && Prop (varName var) `S.member` additionalProps
+
+        stateToPropSet :: VarState -> Set (Prop Text)
         stateToPropSet (_, vval) =
-          S.fromList $ map (Prop . varName . fst) $ filter (toBool . snd) $ M.toAscList vval
+          S.fromList $ map (Prop . varName . fst) $ filter filterVars $ M.toAscList vval
+          -- TODO: maybe use varName as key so we don't have to call M.toAscList
+
+        allowedProps :: Set (Prop Text)
+        allowedProps = foldr S.insert additionalProps (End : miniProcSls)
 
         addProps :: Map (VarState, Set (Prop Text)) [VarState]
                  -> Map (VarState, Set (Prop Text)) [VarState]
-        addProps delta = M.mapKeysWith (++) (\(s, lbl) -> (s, lbl `S.union` stateToPropSet s)) delta
+        addProps delta = M.mapKeysWith (++)
+          (\(s, lbl) -> (s, (lbl `S.intersection` allowedProps) `S.union` stateToPropSet s))
+          delta
 
 visitState :: LowerState -> VarState -> ExpandData -> ExpandData
 visitState lowerState s@(sid, svval) expandData
