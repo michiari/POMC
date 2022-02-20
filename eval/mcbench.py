@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-import sys
+import argparse
+import platform
 import os
 import subprocess
 import re
@@ -15,12 +16,34 @@ states_pattern = re.compile(r"Input OPA state count: ([0-9]+)")
 memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
 
-def exec_bench(fname):
-    raw_res = subprocess.run(["./eval.sh", fname], capture_output=True)
+if platform.system() == 'Darwin':
+    time_bin = 'gtime'
+else:
+    time_bin = '/usr/bin/time'
+
+def exec_bench(fname, finite, verbose):
+    print('Evaluating file', fname, '...')
+
+    raw_res = subprocess.run(['/usr/bin/time'
+                              , '-f'
+                              , 'Max memory used (KB): %M'
+                              , 'stack'
+                              , 'exec'
+                              , 'pomc'
+                              , '--'
+                              , fname
+                              , '--finite' if finite else '--infinite'
+                              , '+RTS'
+                              , '-t'
+                              , '--machine-readable'
+                              , '-RTS'],
+                             capture_output=True)
     raw_stdout = raw_res.stdout.decode('utf-8')
     raw_stderr = raw_res.stderr.decode('utf-8')
-    print(raw_stdout)
-#    print(raw_stderr)
+    if verbose >= 1:
+        print(raw_stdout)
+    if verbose >= 2:
+        print(raw_stderr)
 
     if raw_res.returncode != 0:
         return (-1, -1, -1, -2**10, 'Error')
@@ -36,9 +59,9 @@ def exec_bench(fname):
             int(mem_match.group(1)), int(memgc_match.group(1)),
             result)
 
-def iter_bench(fname, iters):
+def iter_bench(fname, finite, iters, verbose):
     get_column = lambda rows, i: [r[i] for r in rows]
-    results = [exec_bench(fname) for _ in range(0, iters)]
+    results = [exec_bench(fname, finite, verbose) for _ in range(0, iters)]
     states = get_column(results, 0)
     times = get_column(results, 1)
     mems = get_column(results, 2)
@@ -48,12 +71,12 @@ def iter_bench(fname, iters):
             statistics.mean(mems), statistics.mean(memgcs)/(2**10),
             res[0])
 
-def exec_all(fnames, iters, jobs):
+def exec_all(fnames, finite, iters, jobs, verbose):
     make_row = lambda fname, states, time, mem, memgc, res: [fname, states, time, mem, memgc, res]
     if jobs <= 1:
-        return [make_row(*iter_bench(fname, iters)) for fname in fnames]
+        return [make_row(*iter_bench(fname, finite, iters, verbose)) for fname in fnames]
     else:
-        results = joblib.Parallel(n_jobs=jobs)(joblib.delayed(iter_bench)(fname, iters)
+        results = joblib.Parallel(n_jobs=jobs)(joblib.delayed(iter_bench)(fname, finite, iters, verbose)
                                                for fname in fnames)
         return [make_row(*res) for res in results]
 
@@ -78,28 +101,17 @@ def pretty_print(results, ms):
 
     print(tabulate(results, headers=header))
 
-if len(sys.argv) < 2:
-    print("Usage: ", sys.argv[0], " [-iter <#iters>] [-jobs <#jobs>] [-ms] [file.pomc [...]]\n")
-    exit(0)
 
-iters = 1
-jobs = 1
-ms = False
-files = []
-i = 1
-while i < len(sys.argv):
-    if sys.argv[i] == "-iter":
-        iters = int(sys.argv[i+1])
-        i = i + 2
-    elif sys.argv[i] == "-jobs":
-        jobs = int(sys.argv[i+1])
-        i = i + 2
-    elif sys.argv[i] == "-ms":
-        ms = True
-        i = i + 1
-    else:
-        files.append(sys.argv[i])
-        i = i + 1
+if __name__ == '__main__':
+    argp = argparse.ArgumentParser()
+    argp.add_argument('-f', '--finite', action='store_true', help='Only check finite execution traces (infinite-word model checking is the default)')
+    argp.add_argument('-i', '--iters', type=int, default=1, help='Number of executions for each benchmark')
+    argp.add_argument('-j', '--jobs', type=int, default=1, help='Maximum number of benchmarks to execute in parallel')
+    argp.add_argument('-m', '--ms', action='store_true', help='Display time in milliseconds instead of seconds')
+    argp.add_argument('-v', '--verbose', action='count', default=0, help='Show individual benchmark results')
+    argp.add_argument('benchmarks', type=str, nargs='+', help='*.pomc files or directories containing them')
+    args = argp.parse_args()
 
-results = exec_all(expand_files(files), iters, jobs)
-pretty_print(results, ms)
+    print('Running benchmarks...')
+    results = exec_all(expand_files(args.benchmarks), args.finite, args.iters, args.jobs, args.verbose)
+    pretty_print(results, args.ms)
