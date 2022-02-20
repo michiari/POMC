@@ -140,7 +140,6 @@ makeBitEncoding clos =
       unwrapProp (Atomic (Prop n)) = fromIntegral n
       unwrapProp _ = error "Not a Prop!"
 
-
       -- Mapping between positive closure and bits
       pClosVec = pAtomicVec V.++ pFormulaVec
       --index function of BitEncoding

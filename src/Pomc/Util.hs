@@ -71,8 +71,9 @@ parMapChunk :: (NFData b) => Int -> (a -> b) -> [a] -> [b]
 parMapChunk n f xs = map f xs `using` parListChunk n rdeepseq
 
 prettyTrace :: a -> a -> [(s, S.Set (Prop a))] -> [(s, [a])]
-prettyTrace end summary trace = map (\(q, b) -> (q, if S.null b
-                                                    then [summary]
-                                                    else map unprop $ S.toList b)) trace
+prettyTrace end summary trace =
+  map (\(q, b) -> (q, if S.null b
+                      then [summary]
+                      else map unprop $ S.toList b)) trace
   where unprop End = end
         unprop (Prop p) = p

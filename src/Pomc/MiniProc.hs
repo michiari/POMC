@@ -30,11 +30,10 @@ module Pomc.MiniProc ( Program(..)
                      ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.PropConv (APType, convAP)
+import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeStructPrecRel)
 import Pomc.Prec (Prec(..), StructPrecRel)
 import qualified Pomc.Encoding as E (BitEncoding, decodeInput)
 import Pomc.State (Input)
-import qualified Pomc.Potl as POTL (Formula(..))
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -372,8 +371,7 @@ initialValuation :: Set Variable -> VarValuation
 initialValuation pvars = M.fromSet (\idf -> B.zeros $ varWidth idf) pvars
 
 programToOpa :: Bool -> Program -> Set (Prop Text)
-             -> ( (Text -> APType)
-                , (APType -> Text)
+             -> ( PropConv Text
                 , [Prop APType]
                 , [StructPrecRel APType]
                 , [VarState]
@@ -396,14 +394,13 @@ programToOpa omega (Program pvars sks) additionalProps =
       maybeList (Just l) = l
 
       -- TODO: do everything with APType directly
-      (_, tprec, trans, transInv) = convAP POTL.T miniProcPrecRel (miniProcSls ++ S.toList additionalProps)
+      pconv = makePropConv (miniProcSls ++ S.toList additionalProps)
       remapDeltaInput delta bitenc q b =
-        maybeList $ M.lookup (q, S.map (fmap transInv) $ E.decodeInput bitenc b) delta
+        maybeList $ M.lookup (q, S.map (decodeProp pconv) $ E.decodeInput bitenc b) delta
 
-  in ( trans
-     , transInv
-     , map (fmap trans) miniProcSls
-     , tprec
+  in ( pconv
+     , map (encodeProp pconv) miniProcSls
+     , encodeStructPrecRel pconv miniProcPrecRel
      , eInitials
      , eIsFinal
      , remapDeltaInput $ edDPush ed2

@@ -2,13 +2,14 @@
 
 {- |
    Module      : Pomc.Prop
-   Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari
+   Copyright   : 2020-2022 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Prop ( -- * Atomic proposition type
-                   Prop(..)
+module Pomc.Prop ( Prop(..)
+                 , unprop
+                 , notEnd
                  ) where
 
 import GHC.Generics (Generic)
@@ -22,3 +23,11 @@ instance Hashable a => Hashable (Prop a)
 instance Functor Prop where
   fmap f (Prop a) = Prop (f a)
   fmap _ End = End
+
+unprop :: Prop a -> a
+unprop (Prop p) = p
+unprop End = error "Cannot unprop End."
+
+notEnd :: Prop a -> Bool
+notEnd End = False
+notEnd _ = True

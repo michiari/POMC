@@ -18,7 +18,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel)
 import Pomc.Potl (Formula(..))
 import Pomc.Check (EncPrecFunc, makeOpa)
-import Pomc.PropConv (APType, convPropLabels)
+import Pomc.PropConv (APType, PropConv(..), convProps)
 import Pomc.State(Input, State(..), showState, showAtom)
 import Pomc.Encoding (PropSet, BitEncoding, extractInput, decodeInput)
 import Pomc.SatUtil
@@ -87,19 +87,19 @@ toInputTrace be trace = foldr foldInput [] trace
 
 showTrace :: (SatState state, Show state, Show a)
           => BitEncoding
-          -> (APType -> a)
+          -> PropConv a
           -> Trace state
           -> String
-showTrace be transAP trace = concatMap showMove trace
+showTrace be pconv trace = concatMap showMove trace
   where showMove (moveType, q, g) =
           show moveType     ++ ":\nRaw State:\n" ++
           show q ++ "\nCheck State:\n" ++
-          showState be transAP (getSatState q) ++ "\nStack:\n" ++
+          showState be pconv (getSatState q) ++ "\nStack:\n" ++
           showStack g ++ "\n\n"
         showStack (Just (b, r)) =
-          showAtom be transAP b ++ "\n" ++
+          showAtom be pconv b ++ "\n" ++
           show r ++ "\n" ++
-          showState be transAP (getSatState r)
+          showState be pconv (getSatState r)
         showStack Nothing = "Bottom"
 -- End debugging stuff
 
@@ -463,7 +463,7 @@ isSatisfiableGen :: (Ord a)
                  -> ([Prop a], [Prop a])
                  -> [StructPrecRel a]
                  -> (Bool, [Set (Prop a)])
-isSatisfiableGen isOmega phi ap precf =
-  let (tphi, tap, tprecr, transInv) = convPropLabels phi ap precf
-      (sat, trace) = isSatisfiable isOmega tphi tap tprecr
-  in (sat, map (Set.map (fmap transInv)) trace)
+isSatisfiableGen isOmega phi (sls, als) precf =
+  let (tphi, tprecr, [tsls, tals], pconv) = convProps phi precf [sls, als]
+      (sat, trace) = isSatisfiable isOmega tphi (tsls, tals) tprecr
+  in (sat, map (Set.map (decodeProp pconv)) trace)

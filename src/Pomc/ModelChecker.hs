@@ -26,7 +26,7 @@ import Pomc.State(Input, State(..))
 import Pomc.SatUtil(SatState(..))
 import Pomc.Satisfiability (isEmpty, isEmptyOmega)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
-import Pomc.PropConv (APType, convAP)
+import Pomc.PropConv (APType, PropConv(..), convProps, encodeFormula)
 import qualified Pomc.Encoding as E (PropSet, BitEncoding, encodeInput)
 import Pomc.MiniProc (Program, VarState, programToOpa)
 #ifndef NDEBUG
@@ -92,12 +92,12 @@ modelCheck :: (Ord s, Hashable s, Show s)
            -> (E.BitEncoding -> s -> Input -> [s]) -- OPA Delta Shift
            -> (s -> s -> [s]) -- OPA Delta Pop
 #ifndef NDEBUG
-           -> (APType -> a)
+           -> PropConv a
 #endif
            -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
 modelCheck isOmega phi sls sPrecRel opaInitials opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
-  transInv
+  pconv
 #endif
   =
   let -- generate the OPA associated to the negation of the input formula
@@ -131,7 +131,7 @@ modelCheck isOmega phi sls sPrecRel opaInitials opaIsFinal opaDeltaPush opaDelta
                    then isEmptyOmega cDelta cInitials cIsFinalOmega
                    else isEmpty cDelta cInitials cIsFinal
 #ifndef NDEBUG
-  in DBG.trace (showTrace bitenc transInv trace)
+  in DBG.trace (showTrace bitenc pconv trace)
 #else
   in
 #endif
@@ -147,11 +147,11 @@ modelCheckExplicit :: (Ord s, Hashable s, Show s)
            -> Formula APType -- input formula to check
            -> ExplicitOpa s APType -- input OPA
 #ifndef NDEBUG
-           -> (APType -> a)
+           -> PropConv a
 #endif
            -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
 #ifndef NDEBUG
-modelCheckExplicit isOmega phi opa transInv =
+modelCheckExplicit isOmega phi opa pconv =
 #else
 modelCheckExplicit isOmega phi opa =
 #endif
@@ -177,7 +177,7 @@ modelCheckExplicit isOmega phi opa =
   in modelCheck isOmega phi (fst . sigma $ opa) (precRel opa) (initials opa)
      opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
-     transInv
+     pconv
 #endif
 
 
@@ -192,24 +192,23 @@ modelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
               -> (Bool, [(s, Set (Prop a))])
 modelCheckExplicitGen isOmega phi opa =
   let (sls, als) = sigma opa
-      (tphi, tprec, trans, transInv) = convAP phi (precRel opa) (sls ++ (getProps phi) ++ als)
-      transProps props = fmap (fmap trans) props
-      transDelta delta = map (\(q, b, p) -> (q, Set.map (fmap trans) b, p)) delta
+      (tphi, tprec, [tsls, tals], pconv) = convProps phi (precRel opa) [sls, als]
+      transDelta delta = map (\(q, b, p) -> (q, Set.map (encodeProp pconv) b, p)) delta
       tOpa = ExplicitOpa
-             { sigma      = (transProps sls, transProps als)
+             { sigma      = (tsls, tals)
              , precRel    = tprec
-             , initials   = (initials opa)
-             , finals     = (finals opa)
+             , initials   = initials opa
+             , finals     = finals opa
              , deltaPush  = transDelta (deltaPush opa)
              , deltaShift = transDelta (deltaShift opa)
              , deltaPop   = deltaPop opa
              }
 #ifndef NDEBUG
-      (sat, trace) = modelCheckExplicit isOmega tphi tOpa transInv
+      (sat, trace) = modelCheckExplicit isOmega tphi tOpa pconv
 #else
       (sat, trace) = modelCheckExplicit isOmega tphi tOpa
 #endif
-  in (sat, map (\(q, b) -> (q, Set.map (fmap transInv) b)) trace)
+  in (sat, map (\(q, b) -> (q, Set.map (decodeProp pconv) b)) trace)
 
 -- extract all atomic propositions from the delta relation
 extractALs :: Ord a => [(s, Set (Prop a), [s])] -> [Prop a]
@@ -230,11 +229,11 @@ modelCheckProgram :: Bool
                   -> Program
                   -> (Bool, [(VarState, Set (Prop Text))])
 modelCheckProgram isOmega phi prog =
-  let (trans, transInv, sls, tprec, ini, isfin, dpush, dshift, dpop) =
+  let (pconv, sls, tprec, ini, isfin, dpush, dshift, dpop) =
         programToOpa isOmega prog (Set.fromList $ getProps phi)
-      transPhi = fmap trans phi
+      transPhi = encodeFormula pconv phi
       (sat, trace) = modelCheck isOmega transPhi sls tprec ini isfin dpush dshift dpop
 #ifndef NDEBUG
-                     transInv
+                     pconv
 #endif
-  in (sat, map (\(q, b) -> (q, Set.map (fmap transInv) b)) trace)
+  in (sat, map (\(q, b) -> (q, Set.map (decodeProp pconv) b)) trace)

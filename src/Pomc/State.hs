@@ -18,7 +18,7 @@ module Pomc.State ( State(..)
 
 import Pomc.Encoding (EncodedSet, FormulaSet, BitEncoding)
 import qualified Pomc.Encoding as E
-import Pomc.PropConv (APType)
+import Pomc.PropConv (PropConv(..))
 import Pomc.Potl (negative)
 
 import Data.Set (Set)
@@ -72,29 +72,29 @@ instance NFData State where
 showPendCombs :: Set (EncodedSet, Bool, Bool, Bool) -> String
 showPendCombs = unlines . map show . S.toList
 
-showFormulaSet :: (Show a) => (APType -> a) -> FormulaSet -> String
-showFormulaSet transAP fset =
+showFormulaSet :: (Show a) => PropConv a -> FormulaSet -> String
+showFormulaSet pconv fset =
   let fs = S.toList fset
       posfs = filter (not . negative) fs
       negfs = filter (negative) fs
-  in show $ map (fmap transAP) (posfs ++ negfs)
+  in show $ map (fmap $ decodeAP pconv) (posfs ++ negfs)
 
-showAtom :: (Show a) => BitEncoding -> (APType -> a) -> Atom -> String
-showAtom bitenc transAP atom =
-  "FS: " ++ showFormulaSet transAP (E.decode bitenc atom) ++ "\t\tES: " ++ show atom
+showAtom :: (Show a) => BitEncoding -> PropConv a -> Atom -> String
+showAtom bitenc pconv atom =
+  "FS: " ++ showFormulaSet pconv (E.decode bitenc atom) ++ "\t\tES: " ++ show atom
 
-showState :: (Show a) => BitEncoding -> (APType -> a) -> State -> String
-showState bitenc transAP (FState c p xl xe xr) =
-  "{ C: "    ++ showAtom bitenc transAP c  ++
-  "\n, P: "  ++ showAtom bitenc transAP p  ++
+showState :: (Show a) => BitEncoding -> PropConv a -> State -> String
+showState bitenc pconv (FState c p xl xe xr) =
+  "{ C: "    ++ showAtom bitenc pconv c  ++
+  "\n, P: "  ++ showAtom bitenc pconv p  ++
   "\n, XL: " ++ show xl                    ++
   "\n, X=: " ++ show xe                    ++
   "\n, XR: " ++ show xr                    ++
   "\n}"
-showState bitenc transAP (WState c p st xl xe xr) =
-  "{ C: "    ++ showAtom bitenc transAP c  ++
-  "\n, P: "  ++ showAtom bitenc transAP p  ++
-  "\n, ST: " ++ showAtom bitenc transAP st ++
+showState bitenc pconv (WState c p st xl xe xr) =
+  "{ C: "    ++ showAtom bitenc pconv c  ++
+  "\n, P: "  ++ showAtom bitenc pconv p  ++
+  "\n, ST: " ++ showAtom bitenc pconv st ++
   "\n, XL: " ++ show xl                    ++
   "\n, X=: " ++ show xe                    ++
   "\n, XR: " ++ show xr                    ++
