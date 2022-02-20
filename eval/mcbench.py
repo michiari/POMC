@@ -31,7 +31,8 @@ def exec_bench(fname):
     states_match = states_pattern.search(raw_stdout)
     memgc_match = memgc_pattern.search(raw_stderr)
     result = 'False' if 'False' in result_match else 'True'
-    return (int(states_match.group(1)), float(time_match.group(1)),
+    states = int(states_match.group(1)) if states_match else '?'
+    return (states, float(time_match.group(1)),
             int(mem_match.group(1)), int(memgc_match.group(1)),
             result)
 
