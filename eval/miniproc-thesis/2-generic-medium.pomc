@@ -1,7 +1,5 @@
 formulas = G ((call And pb And (T Sd (call And pa))) --> (PNu exc Or XNu exc));
 
-include = "../Mcall.inc";
-
 program:
 pa() {
   pb();

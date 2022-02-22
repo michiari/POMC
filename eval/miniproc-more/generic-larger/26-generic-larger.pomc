@@ -1,4 +1,2 @@
 formulas = G ((pc And (XNu exc)) --> ((~ pa) HSd pb));
-include = "../../Mcall.inc";
-
 include = "program.inc";

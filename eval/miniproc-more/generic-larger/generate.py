@@ -40,7 +40,6 @@ n = 11
 for form in formulas:
     with open(str(n) + '-generic-larger.pomc', 'w') as f:
         f.write('formulas = ' + form + ';\n')
-        f.write('include = "../../Mcall.inc";\n\n')
         f.write('include = "program.inc";')
     n += 1
 

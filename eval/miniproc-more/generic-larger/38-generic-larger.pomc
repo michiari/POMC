@@ -1,4 +1,2 @@
 formulas = T Uu exc;
-include = "../../Mcall.inc";
-
 include = "program.inc";

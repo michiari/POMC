@@ -1,4 +1,2 @@
 formulas = F (pb And (call HSu pa));
-include = "../../Mcall.inc";
-
 include = "program.inc";
