@@ -924,7 +924,10 @@ _::operator_delete() {}
 
 
 intTests :: TestTree
-intTests = testGroup "Int Variables Tests" [ u8Arith1Tests, u8Arith2Tests, arithCastsTests ]
+intTests = testGroup "Int Variables Tests" [ u8Arith1Tests
+                                           , u8Arith2Tests
+                                           , arithCastsTests
+                                           , nondetTests ]
 
 u8Arith1Tests :: TestTree
 u8Arith1Tests = testGroup "u8Arith1" [ u8Arith1Exc, u8Arith1Ret, u8Arith1aHolds ]
@@ -1083,5 +1086,69 @@ main() {
 
   assert4 = b * c == 10240s16;
   assert5 = d / b == -1s8;
+}
+|]
+
+nondetTests :: TestTree
+nondetTests = testGroup "Nondeterministic Int" [ nondetCover0
+                                               , nondetCover1
+                                               , nondetCover2
+                                               , nondetAssert
+                                               ]
+
+nondetCover0 :: TestTree
+nondetCover0 = makeTestCase nondetSrc
+  (("Coverage 0"
+   , XNext Down (ap "ret" `And` (Not $ ap "cover0"))
+   , []
+   , False)
+  , False)
+
+nondetCover1 :: TestTree
+nondetCover1 = makeTestCase nondetSrc
+  (("Coverage 1"
+   , XNext Down (ap "ret" `And` (Not $ ap "cover1"))
+   , []
+   , False)
+  , False)
+
+nondetCover2 :: TestTree
+nondetCover2 = makeTestCase nondetSrc
+  (("Coverage 2"
+   , XNext Down (ap "ret" `And` (Not $ ap "cover2"))
+   , []
+   , False)
+  , False)
+
+nondetAssert :: TestTree
+nondetAssert = makeTestCase nondetSrc
+  (("Assert true."
+   , Until Up T (ap "ret" `And` ap "assert")
+   , []
+   , True)
+  , True)
+
+nondetSrc :: T.Text
+nondetSrc = T.pack [r|
+u8 a, b, x, y;
+bool assert, cover0, cover1, cover2;
+
+main() {
+  x = *;
+  y = 10u8;
+  a = 4u8;
+  b = 2u8;
+  if (x > 0u8) {
+    b = a + 2u8;
+    if (x < y) {
+      a = (x * 2u8) + y;
+      cover0 = true;
+    } else {
+      cover1 = true;
+    }
+  } else {
+    cover2 = true;
+  }
+  assert = a != b;
 }
 |]

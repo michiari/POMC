@@ -82,6 +82,7 @@ data Expr = Literal IntValue
           | Trunc Int Expr
           deriving Show
 data Statement = Assignment Variable Expr
+               | Nondeterministic Variable
                | Call FunctionName
                | TryCatch [Statement] [Statement]
                | IfThenElse (Maybe Expr) [Statement] [Statement]
@@ -118,11 +119,15 @@ commonType (SInt w0) (SInt w1) = SInt $ max w0 w1
 varWidth :: Variable -> Int
 varWidth = typeWidth . varType
 
+enumerateIntType :: Type -> [IntValue]
+enumerateIntType ty = B.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
+  where len = typeWidth ty
+
 
 -- Generation of the Extended OPA
 
 -- Data structures
-data Label = None | Assign Variable Expr | Guard Expr deriving Show
+data Label = None | Assign Variable Expr | Guard Expr | Nondet Variable deriving Show
 data DeltaTarget = EntryStates Text | States [(Label, Word)] deriving Show
 
 data FunctionInfo = FunctionInfo { fiEntry :: [(Label, Word)]
@@ -231,6 +236,18 @@ lowerStatement _ lowerState0 _ linkPred (Assignment lhs rhs) =
 
   in (lowerState1 { lsDPush = dPush' }, linkAss)
 
+lowerStatement _ lowerState0 _ linkPred (Nondeterministic var) =
+  let assSid = lsSid lowerState0
+      lowerState1 = linkPred (lowerState0 { lsSid = assSid + 1 }) [(None, assSid)]
+      dPush' = dInsert (assSid, makeInputSet [T.pack "stm"])
+               [(Nondet var, assSid)]
+               (lsDPush lowerState1)
+
+      linkAss ls succStates =
+        let dPop' = dInsert (assSid, assSid) succStates (lsDPop ls)
+        in ls { lsDPop = dPop' }
+
+  in (lowerState1 { lsDPush = dPush' }, linkAss)
 
 lowerStatement sks lowerState0 thisFinfo linkPred (Call fname) =
   let calleeSk = fromJust $ M.lookup fname sks
@@ -323,6 +340,7 @@ combGuards :: Expr -> Label -> Label
 combGuards bexp1 None = Guard bexp1
 combGuards bexp1 (Guard bexp2) = Guard (bexp1 `And` bexp2)
 combGuards _ (Assign _ _) = error "Cannot combine Guard with Assignment label."
+combGuards _ (Nondet _) = error "Cannot combine Guard with Nondet label."
 
 lowerBlock :: Map Text FunctionSkeleton
            -> LowerState
@@ -439,20 +457,20 @@ visitState lowerState s@(sid, svval) expandData
         filterStates ((src, _), _) = src == sid
         pushSucc = filter filterStates (M.toList . lsDPush $ lowerState)
         ed1 = foldl (visitEdges svval updatePush lowerState) ed0 pushSucc
-          where updatePush ed srcLbl dst =
-                  ed { edDPush = edInsert srcLbl [dst] (edDPush ed) }
+          where updatePush ed srcLbl dsts =
+                  ed { edDPush = edInsert srcLbl dsts (edDPush ed) }
         shiftSucc = filter filterStates (M.toList . lsDShift $ lowerState)
         ed2 = foldl (visitEdges svval updateShift lowerState) ed1 shiftSucc
-          where updateShift ed srcLbl dst =
-                  ed { edDShift = edInsert srcLbl [dst] (edDShift ed) }
+          where updateShift ed srcLbl dsts =
+                  ed { edDShift = edInsert srcLbl dsts (edDShift ed) }
         popSucc = filter filterStates (M.toList . lsDPop $ lowerState)
         ed3 = foldl (visitEdges svval updatePop lowerState) ed2 popSucc
-          where updatePop ed srcSid dst =
-                  ed { edDPop = edInsert srcSid [dst] (edDPop ed) }
+          where updatePop ed srcSid dsts =
+                  ed { edDPop = edInsert srcSid dsts (edDPop ed) }
     in ed3
 
 visitEdges :: Show a => VarValuation
-           -> (ExpandData -> (VarState, a) -> VarState -> ExpandData)
+           -> (ExpandData -> (VarState, a) -> [VarState] -> ExpandData)
            -> LowerState
            -> ExpandData
            -> ((Word, a), DeltaTarget)
@@ -460,23 +478,19 @@ visitEdges :: Show a => VarValuation
 visitEdges vval updateDelta ls expandData ((src, lbl), (States dsts)) =
   foldl visitDst expandData dsts
   where visitDst ed0 ld =
-          let (ed1, maybeNewDst) = caseDst ed0 ld -- (trace (show ld ++ " " ++ show (src, lbl)) ld)
-          in case maybeNewDst of
-               Just newDst -> visitState ls newDst ed1
-               Nothing     -> ed1
+          case caseDst ld of
+            []      -> ed0
+            newDsts -> let ed1 = updateDelta ed0 ((src, vval), lbl) newDsts
+                       in foldr (visitState ls) ed1 newDsts
 
-        caseDst :: ExpandData -> (Label, Word) -> (ExpandData, Maybe VarState)
-        caseDst ed (None, dst) = (updateDelta ed ((src, vval), lbl) newDst, Just newDst)
-          where newDst = (dst, vval)
-        caseDst ed (Assign lhs rhs, dst) =
-          let newVVal = M.insert lhs (evalExpr vval rhs) vval
-              newDst = (dst, newVVal)
-          in (updateDelta ed ((src, vval), lbl) newDst, Just newDst)
-        caseDst ed (Guard g, dst)
-          | toBool $ evalExpr vval g =
-              let newDst = (dst, vval)
-              in (updateDelta ed ((src, vval), lbl) newDst, Just newDst)
-          | otherwise = (ed, Nothing)
+        caseDst :: (Label, Word) -> [VarState]
+        caseDst (None, dst) = [(dst, vval)]
+        caseDst (Assign lhs rhs, dst) = [(dst, M.insert lhs (evalExpr vval rhs) vval)]
+        caseDst (Guard g, dst)
+          | toBool $ evalExpr vval g = [(dst, vval)]
+          | otherwise = []
+        caseDst (Nondet var, dst) =
+          map (\val -> (dst, M.insert var val vval)) $ enumerateIntType (varType var)
 visitEdges _ _ _ _ (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
 
 evalExpr :: VarValuation -> Expr -> IntValue

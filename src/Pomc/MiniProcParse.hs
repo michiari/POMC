@@ -172,6 +172,15 @@ declP = try $ do
 declsP :: Parser (Set Variable)
 declsP = (S.fromList . concat) <$> many declP
 
+nondetP :: Map Text Variable -> Parser Statement
+nondetP varmap = try $ do
+  lhs <- identifierP
+  _ <- symbolP "="
+  _ <- symbolP "*"
+  _ <- symbolP ";"
+  var <- variableLookup varmap lhs
+  return $ Nondeterministic var
+
 assP :: Map Text Variable -> Parser Statement
 assP varmap = try $ do
   lhs <- identifierP
@@ -220,7 +229,8 @@ throwP :: Parser Statement
 throwP = symbolP "throw" >> symbolP ";" >> return Throw
 
 stmtP :: Map Text Variable -> Parser Statement
-stmtP varmap = choice [ assP varmap
+stmtP varmap = choice [ nondetP varmap
+                      , assP varmap
                       , callP
                       , tryCatchP varmap
                       , iteP varmap
@@ -256,48 +266,13 @@ programP = do
     else fail $ "Undeclared identifier(s): " ++
          show (S.toList undeclFuns)
 
--- undeclaredVars :: Program -> Set Variable
--- undeclaredVars p = S.difference actualVars (pVars p)
---   where gatherExprVars :: Expr -> Set Variable
---         gatherExprVars (Literal _) = S.empty
---         gatherExprVars (Term v) = S.singleton v
---         gatherExprVars (Not bexpr) = gatherExprVars bexpr
---         gatherExprVars (And lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Or lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Add lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Sub lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Mul lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Div lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Rem lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Eq lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Lt lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
---         gatherExprVars (Leq lhs rhs) = gatherExprVars lhs `S.union` gatherExprVars rhs
-
---         gatherVars :: Statement -> Set Variable
---         gatherVars (Assignment v rhs) = S.insert v $ gatherExprVars rhs
---         gatherVars (Call _) = S.empty
---         gatherVars (TryCatch tryb catchb) = gatherBlockVars tryb `S.union` gatherBlockVars catchb
---         gatherVars (IfThenElse (Just g) thenb elseb) =
---           gatherExprVars g `S.union` gatherBlockVars thenb `S.union` gatherBlockVars elseb
---         gatherVars (IfThenElse Nothing thenb elseb) =
---           gatherBlockVars thenb `S.union` gatherBlockVars elseb
---         gatherVars (While (Just g) body) = gatherExprVars g `S.union` gatherBlockVars body
---         gatherVars (While Nothing body) = gatherBlockVars body
---         gatherVars Throw = S.empty
-
---         gatherBlockVars stmts =
---           foldl (\gathered stmt -> gathered `S.union` gatherVars stmt) S.empty stmts
-
---         actualVars =
---           foldl (\gathered sk ->
---                    gathered `S.union` (gatherBlockVars . skStmts $ sk)) S.empty (pSks p)
-
 undeclaredFuns :: Program -> Set Text
 undeclaredFuns p = S.difference usedFuns declaredFuns
   where declaredFuns = S.fromList $ map skName (pSks p)
 
         gatherFuns :: Statement -> Set Text
         gatherFuns (Assignment _ _) = S.empty
+        gatherFuns (Nondeterministic _) = S.empty
         gatherFuns (Call fname) = S.singleton fname
         gatherFuns (TryCatch tryb catchb) = gatherBlockFuns tryb `S.union` gatherBlockFuns catchb
         gatherFuns (IfThenElse _ thenb elseb) = gatherBlockFuns thenb `S.union` gatherBlockFuns elseb
