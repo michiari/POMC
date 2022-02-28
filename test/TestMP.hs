@@ -927,7 +927,10 @@ intTests :: TestTree
 intTests = testGroup "Int Variables Tests" [ u8Arith1Tests
                                            , u8Arith2Tests
                                            , arithCastsTests
-                                           , nondetTests ]
+                                           , nondetTests
+                                           , arrayTests
+                                           , arrayLoopTests
+                                           ]
 
 u8Arith1Tests :: TestTree
 u8Arith1Tests = testGroup "u8Arith1" [ u8Arith1Exc, u8Arith1Ret, u8Arith1aHolds ]
@@ -1150,5 +1153,96 @@ main() {
     cover2 = true;
   }
   assert = a != b;
+}
+|]
+
+
+arrayTests :: TestTree
+arrayTests = testGroup "Int Array Tests" [ arrayCover0
+                                         , arrayCover1
+                                         , arrayAssert0
+                                         ]
+
+arrayCover0 :: TestTree
+arrayCover0 = makeTestCase arraySrc
+  (("Coverage 0"
+   , XNext Down (ap "ret" `And` (Not $ ap "cover0"))
+   , []
+   , False)
+  , False)
+
+arrayCover1 :: TestTree
+arrayCover1 = makeTestCase arraySrc
+  (("Coverage 1"
+   , XNext Down (ap "ret" `And` (Not $ ap "cover1"))
+   , []
+   , False)
+  , False)
+
+arrayAssert0 :: TestTree
+arrayAssert0 = makeTestCase arraySrc
+  (("Assert 0"
+   , XNext Down (ap "ret" `And` ap "assert0")
+   , []
+   , True)
+  , True)
+
+arraySrc :: T.Text
+arraySrc = T.pack [r|
+s8[4] foo;
+u4[2] bar;
+bool cover0, cover1, assert0;
+
+main() {
+  foo[1u8] = 6s8;
+  foo[3u8] = 7s8;
+  bar[0u8] = *;
+  bar[1u8] = foo[3u8] - foo[1u8];
+  foo[2u8] = foo[1u8] + bar[0u8];
+
+  if (foo[2u8] > 10s8) {
+    cover0 = true;
+  } else {
+    cover1 = true;
+  }
+
+  assert0 = foo[0u8] + bar[0u8] == bar[0u8];
+}
+|]
+
+
+arrayLoopTests :: TestTree
+arrayLoopTests = testGroup "Int Array Loop Tests" [ arrayLoopAssert0 ]
+
+arrayLoopAssert0 :: TestTree
+arrayLoopAssert0 = makeTestCase arrayLoopSrc
+  (("Assert 0"
+   , XNext Down (ap "ret" `And` ap "assert0")
+   , []
+   , True)
+  , True)
+
+arrayLoopSrc :: T.Text
+arrayLoopSrc = T.pack [r|
+u8[10] numbers;
+u8 i, n, acc;
+bool assert0;
+
+main() {
+  n = 10u8;
+  i = 0u8;
+  while (i < n) {
+    numbers[i] = i;
+    i = i + 1u8;
+  }
+
+  acc = 0u8;
+  i = 0u8;
+  while (i < n) {
+    acc = acc + numbers[i];
+    i = i + 1u8;
+  }
+
+  assert0 = acc == (n * (n - 1u8)) / 2u8;
 }
 |]

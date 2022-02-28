@@ -13,11 +13,13 @@ module Pomc.MiniProc ( Program(..)
                      , Variable(..)
                      , IntValue
                      , Expr(..)
+                     , LValue(..)
                      , FunctionName
                      , Type(..)
                      , VarState
                      , isSigned
                      , typeWidth
+                     , scalarType
                      , commonType
                      , varWidth
                      , programToOpa
@@ -44,6 +46,8 @@ import qualified Data.Set as S
 import Data.Maybe (isNothing, fromJust)
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as B
+import Data.Vector (Vector)
+import qualified Data.Vector as V
 import GHC.Generics (Generic)
 import Data.Hashable
 
@@ -51,13 +55,19 @@ import Data.Hashable
 
 -- Intermediate representation for MiniProc programs
 type FunctionName = Text
-data Type = UInt Int | SInt Int deriving (Show, Eq, Ord, Generic)
+data Type = UInt Int
+          | SInt Int
+          | UIntArray Int Int -- width size
+          | SIntArray Int Int -- width size
+          deriving (Show, Eq, Ord, Generic)
 data Variable = Variable { varType :: Type
                          , varName :: Text
                          } deriving (Show, Eq, Ord, Generic)
 type IntValue = BitVector
+type ArrayValue = Vector IntValue
 data Expr = Literal IntValue
           | Term Variable
+          | ArrayAccess Variable Expr
           -- Boolean operations
           | Not Expr
           | And Expr Expr
@@ -81,8 +91,9 @@ data Expr = Literal IntValue
           | SExt Int Expr
           | Trunc Int Expr
           deriving Show
-data Statement = Assignment Variable Expr
-               | Nondeterministic Variable
+data LValue = LScalar Variable | LArray Variable Expr deriving Show
+data Statement = Assignment LValue Expr
+               | Nondeterministic LValue
                | Call FunctionName
                | TryCatch [Statement] [Statement]
                | IfThenElse (Maybe Expr) [Statement] [Statement]
@@ -101,20 +112,44 @@ instance Hashable Variable
 -- TODO: see if there's a better way of doing this
 instance Hashable B.BV where
   hashWithSalt s bv = s `hashWithSalt` B.nat bv `hashWithSalt` B.size bv
+instance Hashable a => Hashable (Vector a) where
+  hashWithSalt s v = V.foldl' hashWithSalt s v
 
 isSigned :: Type -> Bool
 isSigned (SInt _) = True
+isSigned (SIntArray _ _) = True
 isSigned _ = False
+
+isScalar :: Type -> Bool
+isScalar (UInt _) = True
+isScalar (SInt _) = True
+isScalar _ = False
+
+isArray :: Type -> Bool
+isArray = not . isScalar
 
 typeWidth :: Type -> Int
 typeWidth (UInt w) = w
 typeWidth (SInt w) = w
+typeWidth (UIntArray w _) = w
+typeWidth (SIntArray w _) = w
+
+arraySize :: Type -> Int
+arraySize (UIntArray _ s) = s
+arraySize (SIntArray _ s) = s
+arraySize _ = error "Scalar types do not have a size."
+
+scalarType :: Type -> Type
+scalarType (UIntArray w _) = UInt w
+scalarType (SIntArray w _) = SInt w
+scalarType scalar = scalar
 
 commonType :: Type -> Type -> Type
 commonType (UInt w0) (UInt w1) = UInt $ max w0 w1
 commonType (UInt w0) (SInt w1) = SInt $ max w0 w1
 commonType (SInt w0) (UInt w1) = SInt $ max w0 w1
 commonType (SInt w0) (SInt w1) = SInt $ max w0 w1
+commonType _ _ = error "Arrays do not have subsuming type."
 
 varWidth :: Variable -> Int
 varWidth = typeWidth . varType
@@ -127,7 +162,7 @@ enumerateIntType ty = B.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
 -- Generation of the Extended OPA
 
 -- Data structures
-data Label = None | Assign Variable Expr | Guard Expr | Nondet Variable deriving Show
+data Label = None | Assign LValue Expr | Guard Expr | Nondet LValue deriving Show
 data DeltaTarget = EntryStates Text | States [(Label, Word)] deriving Show
 
 data FunctionInfo = FunctionInfo { fiEntry :: [(Label, Word)]
@@ -237,11 +272,11 @@ lowerStatement _ lowerState0 _ linkPred (Assignment lhs rhs) =
 
   in (lowerState1 { lsDPush = dPush' }, linkAss)
 
-lowerStatement _ lowerState0 _ linkPred (Nondeterministic var) =
+lowerStatement _ lowerState0 _ linkPred (Nondeterministic lval) =
   let assSid = lsSid lowerState0
       lowerState1 = linkPred (lowerState0 { lsSid = assSid + 1 }) [(None, assSid)]
       dPush' = dInsert (assSid, makeInputSet [T.pack "stm"])
-               [(Nondet var, assSid)]
+               [(Nondet lval, assSid)]
                (lsDPush lowerState1)
 
       linkAss ls succStates =
@@ -367,7 +402,7 @@ lowerBlock sks lowerState thisFinfo linkPred block =
 -- Conversion of the Extended OPA to a plain OPA
 
 -- Data structures
-type VarValuation = Map Variable IntValue
+type VarValuation = (Map Variable IntValue, Map Variable ArrayValue)
 type VarState = (Word, VarValuation)
 
 -- TODO: see if there's a better way of doing this
@@ -375,7 +410,11 @@ instance (Hashable k, Hashable v) => Hashable (Map k v) where
   hashWithSalt s m = hashWithSalt s $ M.toList m
 
 initialValuation :: Set Variable -> VarValuation
-initialValuation pvars = M.fromSet (\idf -> B.zeros $ varWidth idf) pvars
+initialValuation pvars = (scalars, arrays)
+  where scalars = M.fromSet initVal $ S.filter (isScalar . varType) pvars
+        arrays = M.fromSet (\var -> V.replicate (arraySize . varType $ var) (initVal var)) $
+                 S.filter (isArray . varType) pvars
+        initVal = B.zeros . varWidth
 
 programToOpa :: Bool -> Program -> Set (Prop Text)
              -> ( PropConv Text
@@ -423,7 +462,8 @@ applyDeltaInput :: Set (Prop Text)
 applyDeltaInput additionalProps delta (sid, svval) lbl =
   let filterVars :: (Variable, IntValue) -> Bool
       filterVars (var, val) = toBool val && Prop (varName var) `S.member` additionalProps
-      vvalToPropSet = S.fromList $ map (Prop . varName . fst) $ filter filterVars $ M.toAscList svval
+      vvalToPropSet =
+        S.fromList $ map (Prop . varName . fst) $ filter filterVars $ M.toAscList $ fst svval
       -- TODO: change VarValuation so that we don't call M.toList
       filterStates ((src, b), _) = src == sid && lbl == (b `S.union` vvalToPropSet)
       dsts = concatMap (\(_, States s) -> s) $ filter filterStates $ M.toList delta
@@ -442,16 +482,31 @@ applyDeltaPop delta (sid, svval) (stackSid, _) =
 
 computeDst :: VarValuation -> (Label, Word) -> [VarState]
 computeDst vval (None, dst) = [(dst, vval)]
-computeDst vval (Assign lhs rhs, dst) = [(dst, M.insert lhs (evalExpr vval rhs) vval)]
+computeDst vval@(ival, aval) (Assign (LScalar lhs) rhs, dst) =
+  [(dst, (M.insert lhs (evalExpr vval rhs) ival, aval))]
+computeDst vval@(ival, _) (Assign (LArray var idxExpr) rhs, dst) =
+  [(dst, (ival, arrayAssign vval (evalExpr vval rhs) var idxExpr))]
 computeDst vval (Guard g, dst)
   | toBool $ evalExpr vval g = [(dst, vval)]
   | otherwise = []
-computeDst vval (Nondet var, dst) =
-  map (\val -> (dst, M.insert var val vval)) $ enumerateIntType (varType var)
+computeDst (ival, aval) (Nondet (LScalar var), dst) =
+  map (\val -> (dst, (M.insert var val ival, aval))) $ enumerateIntType (varType var)
+computeDst vval@(ival, _) (Nondet (LArray var idxExpr), dst) =
+  map (\val -> (dst, (ival, arrayAssign vval val var idxExpr))) $ enumerateIntType (varType var)
+
+arrayAssign :: VarValuation
+            -> IntValue
+            -> Variable
+            -> Expr
+            -> Map Variable (Vector IntValue)
+arrayAssign vval@(_, aval) val var idxExpr = M.adjust (\arr -> arr V.// [(idx, val)]) var aval
+  where idx = fromEnum . B.nat . evalExpr vval $ idxExpr
 
 evalExpr :: VarValuation -> Expr -> IntValue
 evalExpr _ (Literal val) = val
-evalExpr vval (Term var) = vval M.! var
+evalExpr (ival, _) (Term var) = ival M.! var
+evalExpr vval@(_, aval) (ArrayAccess var idxExpr) =
+  (aval M.! var) V.! (fromEnum . B.nat . evalExpr vval $ idxExpr)
 evalExpr vval (Not bexpr) = B.fromBool . not . toBool $ evalExpr vval bexpr
 evalExpr vval (And lhs rhs) =
   B.fromBool $ (toBool $ evalExpr vval lhs) && (toBool $ evalExpr vval rhs)
@@ -476,6 +531,7 @@ evalExpr vval (Trunc size op) = evalExpr vval op B.@@ (size - 1, 0)
 toBool :: IntValue -> Bool
 toBool v = B.nat v /= 0
 
+-- TODO: try removing this
 noDiv0 :: IntValue -> IntValue
 noDiv0 v | B.nat v /= 0 = v
          | otherwise = B.ones $ B.size v

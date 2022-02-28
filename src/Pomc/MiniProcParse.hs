@@ -28,6 +28,7 @@ import qualified Data.BitVector as BV
 type TypedValue = (IntValue, Type)
 data TypedExpr = TLiteral TypedValue
                | TTerm Variable
+               | TArrayAccess Variable TypedExpr
                -- Boolean operations
                | TNot TypedExpr
                | TAnd TypedExpr TypedExpr
@@ -48,6 +49,8 @@ data TypedExpr = TLiteral TypedValue
 insertCasts :: TypedExpr -> (Expr, Type)
 insertCasts (TLiteral (v, t)) = (Literal v, t)
 insertCasts (TTerm v) = (Term v, varType v)
+insertCasts (TArrayAccess v idxExpr) =
+  (ArrayAccess v (fst $ insertCasts idxExpr), scalarType $ varType v)
 -- All Boolean operators return a single bit
 insertCasts (TNot te) = let (e0, _) = insertCasts te
                         in (Not e0, UInt 1)
@@ -120,17 +123,29 @@ literalP = boolLiteralP <|> intLiteralP
             then fail "Negative literal declared unsigned"
             else return (BV.bitVec (typeWidth ty) value, ty)
 
-variableLookup :: Map Text Variable -> Text -> Parser Variable
-variableLookup varmap vname = case M.lookup vname varmap of
-                                Just var -> return var
-                                Nothing  -> fail $ "Undeclared identifier: " ++ show vname
+variableP :: Map Text Variable -> Parser Variable
+variableP varmap = identifierP >>= variableLookup
+  where variableLookup :: Text -> Parser Variable
+        variableLookup vname =
+          case M.lookup vname varmap of
+            Just var -> return var
+            Nothing  -> fail $ "Undeclared identifier: " ++ show vname
+
+arrayIndexP :: Map Text Variable -> Parser (Variable, TypedExpr)
+arrayIndexP varmap = try $ do
+  var <- variableP varmap
+  _ <- symbolP "["
+  idxExpr <- typedExprP varmap
+  _ <- symbolP "]"
+  return (var, idxExpr)
 
 typedExprP :: Map Text Variable -> Parser TypedExpr
 typedExprP varmap = makeExprParser termP opTable
   where termP :: Parser TypedExpr
         termP = choice
           [ fmap TLiteral literalP
-          , fmap TTerm $ identifierP >>= variableLookup varmap
+          , fmap (\(var, idxExpr) -> TArrayAccess var idxExpr) $ arrayIndexP varmap
+          , fmap TTerm $ variableP varmap
           , between (symbolP "(") (symbolP ")") (typedExprP varmap)
           ]
 
@@ -159,8 +174,23 @@ exprP varmap = untypeExpr <$> typedExprP varmap
 intTypeP :: Parser Type
 intTypeP = fmap UInt (char 'u' *> L.decimal) <|> fmap SInt (char 's' *> L.decimal)
 
+arrayTypeP :: Parser Type
+arrayTypeP = try $ do
+  elemType <- intTypeP
+  _ <- symbolP "["
+  size <- L.decimal
+  _ <- symbolP "]"
+  return $ case elemType of
+             UInt w -> UIntArray w size
+             SInt w -> SIntArray w size
+             _      -> error "Arrays of arrays not supported."
+
 typeP :: Parser Type
-typeP = label "type" $ L.lexeme spaceP ((UInt 1 <$ (symbolP "bool" <|> symbolP "var")) <|>  intTypeP)
+typeP = label "type" $ L.lexeme spaceP $
+  choice [ (UInt 1 <$ (symbolP "bool" <|> symbolP "var"))
+         , arrayTypeP
+         , intTypeP
+         ]
 
 declP :: Parser [Variable]
 declP = try $ do
@@ -172,23 +202,28 @@ declP = try $ do
 declsP :: Parser (Set Variable)
 declsP = (S.fromList . concat) <$> many declP
 
+lValueP :: Map Text Variable -> Parser LValue
+lValueP varmap = lArrayP <|> lScalarP
+  where lScalarP = fmap LScalar $ variableP varmap
+        lArrayP = fmap (\(var, idxExpr) -> LArray var $ untypeExpr idxExpr) $ arrayIndexP varmap
+
 nondetP :: Map Text Variable -> Parser Statement
 nondetP varmap = try $ do
-  lhs <- identifierP
+  lhs <- lValueP varmap
   _ <- symbolP "="
   _ <- symbolP "*"
   _ <- symbolP ";"
-  var <- variableLookup varmap lhs
-  return $ Nondeterministic var
+  return $ Nondeterministic lhs
 
 assP :: Map Text Variable -> Parser Statement
 assP varmap = try $ do
-  lhs <- identifierP
+  lhs <- lValueP varmap
   _ <- symbolP "="
   rhs <- typedExprP varmap
   _ <- symbolP ";"
-  var <- variableLookup varmap lhs
-  return $ Assignment var (untypeExprWithCast (varType var) rhs)
+  return $ Assignment lhs (untypeExprWithCast (lvalType lhs) rhs)
+    where lvalType (LScalar var) = varType var
+          lvalType (LArray var _) = scalarType . varType $ var
 
 callP :: Parser Statement
 callP = try $ do
