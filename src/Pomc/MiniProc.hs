@@ -155,7 +155,8 @@ sksToExtendedOpa True sks = -- Omega case
                ++ map snd (lsLoopEntries lowerState)
   in ( lowerState { lsDPush = dPush, lsDPop = dPop }
      , [0]
-     , S.toList . S.fromList $ fins)
+     , S.toList . S.fromList $ fins
+     )
 
 buildExtendedOpa :: [FunctionSkeleton] -> LowerState
 buildExtendedOpa sks =
@@ -368,22 +369,10 @@ lowerBlock sks lowerState thisFinfo linkPred block =
 -- Data structures
 type VarValuation = Map Variable IntValue
 type VarState = (Word, VarValuation)
-data ExpandData = ExpandData { edDPush :: Map (VarState, Set (Prop Text)) [VarState]
-                             , edDShift :: Map (VarState, Set (Prop Text)) [VarState]
-                             , edDPop :: Map (VarState, Word) [VarState]
-                             , edVisited :: Set VarState
-                             } deriving Show
 
 -- TODO: see if there's a better way of doing this
 instance (Hashable k, Hashable v) => Hashable (Map k v) where
   hashWithSalt s m = hashWithSalt s $ M.toList m
-
-edInsert :: (Ord k) => k -> [v] -> Map k [v] -> Map k [v]
-edInsert _ [] m = m
-edInsert key vals m =
-  case M.lookup key m of
-    Nothing      -> M.insert key vals m
-    Just oldVals -> M.insert key (oldVals ++ vals) m
 
 initialValuation :: Set Variable -> VarValuation
 initialValuation pvars = M.fromSet (\idf -> B.zeros $ varWidth idf) pvars
@@ -402,96 +391,63 @@ programToOpa omega (Program pvars sks) additionalProps =
   let (lowerState, ini, fin) = sksToExtendedOpa omega sks
       eInitials = [(sid, initVal) | sid <- ini]
         where initVal = initialValuation pvars
-      ed0 = ExpandData M.empty M.empty M.empty S.empty
-      ed1 = foldr (visitState lowerState) ed0 eInitials
-      ed2 = addLabels additionalProps ed1
       eIsFinal (sid, _) = sid `S.member` finSet
         where finSet = S.fromList fin
 
-      maybeList Nothing = []
-      maybeList (Just l) = l
-
       -- TODO: do everything with APType directly
-      pconv = makePropConv (miniProcSls ++ S.toList additionalProps)
+      allProps = miniProcSls ++ S.toList additionalProps
+      filterProps = M.mapKeysWith (\(States s1) (States s2) -> States $ s1 ++ s2)
+                    (\(sid, props) -> (sid, S.filter (`elem` allProps) props)) -- TODO: avoid this
+      lsFiltered = lowerState { lsDPush = filterProps $ lsDPush lowerState
+                              , lsDShift = filterProps $ lsDShift lowerState
+                              }
+      pconv = makePropConv allProps
       remapDeltaInput delta bitenc q b =
-        maybeList $ M.lookup (q, S.map (decodeProp pconv) $ E.decodeInput bitenc b) delta
+        applyDeltaInput additionalProps delta q (S.map (decodeProp pconv) $ E.decodeInput bitenc b)
 
   in ( pconv
      , map (encodeProp pconv) miniProcSls
      , encodeStructPrecRel pconv miniProcPrecRel
      , eInitials
      , eIsFinal
-     , remapDeltaInput $ edDPush ed2
-     , remapDeltaInput $ edDShift ed2
-     , \q (sid, _) -> maybeList $ M.lookup (q, sid) (edDPop ed2)
+     , remapDeltaInput $ lsDPush  lsFiltered
+     , remapDeltaInput $ lsDShift lsFiltered
+     , applyDeltaPop   $ lsDPop   lsFiltered
      )
 
+applyDeltaInput :: Set (Prop Text)
+                -> Map (Word, Set (Prop Text)) DeltaTarget
+                -> VarState
+                -> Set (Prop Text)
+                -> [VarState]
+applyDeltaInput additionalProps delta (sid, svval) lbl =
+  let filterVars :: (Variable, IntValue) -> Bool
+      filterVars (var, val) = toBool val && Prop (varName var) `S.member` additionalProps
+      vvalToPropSet = S.fromList $ map (Prop . varName . fst) $ filter filterVars $ M.toAscList svval
+      -- TODO: change VarValuation so that we don't call M.toList
+      filterStates ((src, b), _) = src == sid && lbl == (b `S.union` vvalToPropSet)
+      dsts = concatMap (\(_, States s) -> s) $ filter filterStates $ M.toList delta
+      -- TODO: try not to use M.toList
+  in concatMap (computeDst svval) dsts
 
-addLabels :: Set (Prop Text) -> ExpandData -> ExpandData
-addLabels additionalProps expandData =
-  expandData { edDPush = addProps $ edDPush expandData
-             , edDShift = addProps $ edDShift expandData
-             }
-  where filterVars :: (Variable, IntValue) -> Bool
-        filterVars (var, val) = toBool val && Prop (varName var) `S.member` additionalProps
+applyDeltaPop :: Map (Word, Word) DeltaTarget
+              -> VarState
+              -> VarState
+              -> [VarState]
+applyDeltaPop delta (sid, svval) (stackSid, _) =
+  case M.lookup (sid, stackSid) delta of
+    Nothing              -> []
+    Just (States dsts)   -> concatMap (computeDst svval) dsts
+    Just (EntryStates _) -> error "Expected States, got EntryStates."
 
-        stateToPropSet :: VarState -> Set (Prop Text)
-        stateToPropSet (_, vval) =
-          S.fromList $ map (Prop . varName . fst) $ filter filterVars $ M.toAscList vval
-          -- TODO: maybe use varName as key so we don't have to call M.toAscList
-
-        allowedProps :: Set (Prop Text)
-        allowedProps = foldr S.insert additionalProps (End : miniProcSls)
-
-        addProps :: Map (VarState, Set (Prop Text)) [VarState]
-                 -> Map (VarState, Set (Prop Text)) [VarState]
-        addProps delta = M.mapKeysWith (++)
-          (\(s, lbl) -> (s, (lbl `S.intersection` allowedProps) `S.union` stateToPropSet s))
-          delta
-
-visitState :: LowerState -> VarState -> ExpandData -> ExpandData
-visitState lowerState s@(sid, svval) expandData
-  | s `S.member` edVisited expandData = expandData
-  | otherwise =
-    let ed0 = expandData { edVisited = S.insert s (edVisited expandData) }
-        filterStates ((src, _), _) = src == sid
-        pushSucc = filter filterStates (M.toList . lsDPush $ lowerState)
-        ed1 = foldl (visitEdges svval updatePush lowerState) ed0 pushSucc
-          where updatePush ed srcLbl dsts =
-                  ed { edDPush = edInsert srcLbl dsts (edDPush ed) }
-        shiftSucc = filter filterStates (M.toList . lsDShift $ lowerState)
-        ed2 = foldl (visitEdges svval updateShift lowerState) ed1 shiftSucc
-          where updateShift ed srcLbl dsts =
-                  ed { edDShift = edInsert srcLbl dsts (edDShift ed) }
-        popSucc = filter filterStates (M.toList . lsDPop $ lowerState)
-        ed3 = foldl (visitEdges svval updatePop lowerState) ed2 popSucc
-          where updatePop ed srcSid dsts =
-                  ed { edDPop = edInsert srcSid dsts (edDPop ed) }
-    in ed3
-
-visitEdges :: Show a => VarValuation
-           -> (ExpandData -> (VarState, a) -> [VarState] -> ExpandData)
-           -> LowerState
-           -> ExpandData
-           -> ((Word, a), DeltaTarget)
-           -> ExpandData
-visitEdges vval updateDelta ls expandData ((src, lbl), (States dsts)) =
-  foldl visitDst expandData dsts
-  where visitDst ed0 ld =
-          case caseDst ld of
-            []      -> ed0
-            newDsts -> let ed1 = updateDelta ed0 ((src, vval), lbl) newDsts
-                       in foldr (visitState ls) ed1 newDsts
-
-        caseDst :: (Label, Word) -> [VarState]
-        caseDst (None, dst) = [(dst, vval)]
-        caseDst (Assign lhs rhs, dst) = [(dst, M.insert lhs (evalExpr vval rhs) vval)]
-        caseDst (Guard g, dst)
-          | toBool $ evalExpr vval g = [(dst, vval)]
-          | otherwise = []
-        caseDst (Nondet var, dst) =
-          map (\val -> (dst, M.insert var val vval)) $ enumerateIntType (varType var)
-visitEdges _ _ _ _ (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
+computeDst :: VarValuation -> (Label, Word) -> [VarState]
+computeDst vval (None, dst) = [(dst, vval)]
+computeDst vval (Assign lhs rhs, dst) = [(dst, M.insert lhs (evalExpr vval rhs) vval)]
+computeDst vval (Guard g, dst)
+  | toBool $ evalExpr vval g = [(dst, vval)]
+  | otherwise = []
+computeDst vval (Nondet var, dst) =
+  map (\val -> (dst, M.insert var val vval)) $ enumerateIntType (varType var)
 
 evalExpr :: VarValuation -> Expr -> IntValue
 evalExpr _ (Literal val) = val
