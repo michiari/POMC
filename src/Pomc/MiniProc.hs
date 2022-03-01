@@ -439,13 +439,13 @@ programToOpa omega (Program pvars sks) additionalProps =
         where finSet = S.fromList fin
 
       -- TODO: do everything with APType directly
-      allProps = miniProcSls ++ S.toList additionalProps
+      allProps = foldr S.insert additionalProps miniProcSls
       filterProps = M.mapKeysWith (\(States s1) (States s2) -> States $ s1 ++ s2)
-                    (\(sid, props) -> (sid, S.filter (`elem` allProps) props)) -- TODO: avoid this
+                    (\(sid, props) -> (sid, S.filter (`S.member` allProps) props))
       lsFiltered = lowerState { lsDPush = filterProps $ lsDPush lowerState
                               , lsDShift = filterProps $ lsDShift lowerState
                               }
-      pconv = makePropConv allProps
+      pconv = makePropConv $ S.toList allProps
       allVarProps = S.fromList $ filter (`S.member` additionalProps) $ map (Prop . varName) $ S.toList pvars
       remapDeltaInput delta bitenc q b =
         applyDeltaInput allVarProps delta q (S.map (decodeProp pconv) $ E.decodeInput bitenc b)
