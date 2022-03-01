@@ -402,7 +402,7 @@ lowerBlock sks lowerState thisFinfo linkPred block =
 -- Conversion of the Extended OPA to a plain OPA
 
 -- Data structures
-type VarValuation = (Map Variable IntValue, Map Variable ArrayValue)
+type VarValuation = (Map Text IntValue, Map Text ArrayValue)
 type VarState = (Word, VarValuation)
 
 -- TODO: see if there's a better way of doing this
@@ -411,9 +411,14 @@ instance (Hashable k, Hashable v) => Hashable (Map k v) where
 
 initialValuation :: Set Variable -> VarValuation
 initialValuation pvars = (scalars, arrays)
-  where scalars = M.fromSet initVal $ S.filter (isScalar . varType) pvars
-        arrays = M.fromSet (\var -> V.replicate (arraySize . varType $ var) (initVal var)) $
-                 S.filter (isArray . varType) pvars
+  where scalars = M.fromList
+          $ map (\var -> (varName var, initVal var))
+          $ filter (isScalar . varType)
+          $ S.toList pvars
+        arrays = M.fromList
+          $ map (\var -> (varName var, V.replicate (arraySize . varType $ var) (initVal var)))
+          $ filter (isArray . varType)
+          $ S.toList pvars
         initVal = B.zeros . varWidth
 
 programToOpa :: Bool -> Program -> Set (Prop Text)
@@ -441,8 +446,9 @@ programToOpa omega (Program pvars sks) additionalProps =
                               , lsDShift = filterProps $ lsDShift lowerState
                               }
       pconv = makePropConv allProps
+      allVarProps = S.fromList $ filter (`S.member` additionalProps) $ map (Prop . varName) $ S.toList pvars
       remapDeltaInput delta bitenc q b =
-        applyDeltaInput additionalProps delta q (S.map (decodeProp pconv) $ E.decodeInput bitenc b)
+        applyDeltaInput allVarProps delta q (S.map (decodeProp pconv) $ E.decodeInput bitenc b)
 
   in ( pconv
      , map (encodeProp pconv) miniProcSls
@@ -459,16 +465,18 @@ applyDeltaInput :: Set (Prop Text)
                 -> VarState
                 -> Set (Prop Text)
                 -> [VarState]
-applyDeltaInput additionalProps delta (sid, svval) lbl =
-  let filterVars :: (Variable, IntValue) -> Bool
-      filterVars (var, val) = toBool val && Prop (varName var) `S.member` additionalProps
-      vvalToPropSet =
-        S.fromList $ map (Prop . varName . fst) $ filter filterVars $ M.toAscList $ fst svval
-      -- TODO: change VarValuation so that we don't call M.toList
-      filterStates ((src, b), _) = src == sid && lbl == (b `S.union` vvalToPropSet)
-      dsts = concatMap (\(_, States s) -> s) $ filter filterStates $ M.toList delta
-      -- TODO: try not to use M.toList
-  in concatMap (computeDst svval) dsts
+applyDeltaInput allVarProps delta (sid, svval) lbl =
+  let filterVars (Prop name) = toBool $ fst svval M.! name
+      filterVars End = False
+
+      svvalPropSet = S.filter filterVars allVarProps
+      (varProps, lsProps) = S.partition (`S.member` allVarProps) lbl
+  in if varProps == svvalPropSet
+     then case M.lookup (sid, lsProps) delta of
+            Nothing              -> []
+            Just (States dsts)   -> concatMap (computeDst svval) dsts
+            Just (EntryStates _) -> error "Expected States, got EntryStates."
+     else []
 
 applyDeltaPop :: Map (Word, Word) DeltaTarget
               -> VarState
@@ -483,14 +491,14 @@ applyDeltaPop delta (sid, svval) (stackSid, _) =
 computeDst :: VarValuation -> (Label, Word) -> [VarState]
 computeDst vval (None, dst) = [(dst, vval)]
 computeDst vval@(ival, aval) (Assign (LScalar lhs) rhs, dst) =
-  [(dst, (M.insert lhs (evalExpr vval rhs) ival, aval))]
+  [(dst, (M.insert (varName lhs) (evalExpr vval rhs) ival, aval))]
 computeDst vval@(ival, _) (Assign (LArray var idxExpr) rhs, dst) =
   [(dst, (ival, arrayAssign vval (evalExpr vval rhs) var idxExpr))]
 computeDst vval (Guard g, dst)
   | toBool $ evalExpr vval g = [(dst, vval)]
   | otherwise = []
 computeDst (ival, aval) (Nondet (LScalar var), dst) =
-  map (\val -> (dst, (M.insert var val ival, aval))) $ enumerateIntType (varType var)
+  map (\val -> (dst, (M.insert (varName var) val ival, aval))) $ enumerateIntType (varType var)
 computeDst vval@(ival, _) (Nondet (LArray var idxExpr), dst) =
   map (\val -> (dst, (ival, arrayAssign vval val var idxExpr))) $ enumerateIntType (varType var)
 
@@ -498,15 +506,16 @@ arrayAssign :: VarValuation
             -> IntValue
             -> Variable
             -> Expr
-            -> Map Variable (Vector IntValue)
-arrayAssign vval@(_, aval) val var idxExpr = M.adjust (\arr -> arr V.// [(idx, val)]) var aval
+            -> Map Text (Vector IntValue)
+arrayAssign vval@(_, aval) val var idxExpr =
+  M.adjust (\arr -> arr V.// [(idx, val)]) (varName var) aval
   where idx = fromEnum . B.nat . evalExpr vval $ idxExpr
 
 evalExpr :: VarValuation -> Expr -> IntValue
 evalExpr _ (Literal val) = val
-evalExpr (ival, _) (Term var) = ival M.! var
+evalExpr (ival, _) (Term var) = ival M.! varName var
 evalExpr vval@(_, aval) (ArrayAccess var idxExpr) =
-  (aval M.! var) V.! (fromEnum . B.nat . evalExpr vval $ idxExpr)
+  (aval M.! varName var) V.! (fromEnum . B.nat . evalExpr vval $ idxExpr)
 evalExpr vval (Not bexpr) = B.fromBool . not . toBool $ evalExpr vval bexpr
 evalExpr vval (And lhs rhs) =
   B.fromBool $ (toBool $ evalExpr vval lhs) && (toBool $ evalExpr vval rhs)
