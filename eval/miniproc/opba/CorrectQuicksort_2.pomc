@@ -105,9 +105,7 @@ qsif2() {
 	// this if-condition is due to swapping of firstIteration
 	if ((! aleftGTaright) && (! aleftEQaright)) {
 		shiftloLEQhi2();
-		if (hiEQright) {
-			hiEQright = false;
-		} else {}
+		hiEQright = false;
 	} else {
 		if (! loEQhi){
 			swapElements();
@@ -116,9 +114,8 @@ qsif2() {
 		if (aleftGTaright) {
 			if (! eqEQlo){
 				swapElements();
-				eqEQleft = false;
 			} else {}
-			
+			eqEQleft = false;
 		} else {
 			eqEQlo = false;
 		}

@@ -57,7 +57,6 @@ qs2() {
 			} else {
 				if (hiEQright && eqEQleft) { 
 					leftGEQright = true;
-					leftGEQright = false;
 					qs2();
 					leftGEQright = true;
 					qs2();
@@ -89,11 +88,10 @@ qs2() {
 }
 
 qsif2() { 
+	// this if-condition is due to swapping of firstIteration
 	if ((! aleftGTaright) && (! aleftEQaright)) {
 		shiftloLEQhi2();
-		if (hiEQright) {
-			hiEQright = false;
-		} else {}
+		hiEQright = false;
 	} else {
 		if (! loEQhi){
 			swapElements();
@@ -101,7 +99,7 @@ qsif2() {
 		
 		if (aleftGTaright) {
 			if (! eqEQlo){
-					swapElements();
+				swapElements();
 			} else {}
 			eqEQleft = false;
 		} else {
@@ -114,9 +112,10 @@ qsif2() {
 }
 
 firstIteration2() {
-	eqEQlo = false;
-	shiftloLEQhi2();
 	swapElements();
+	//lo++;
+	eqEQlo = false; 
+	shiftloLEQhi2();
 	loEQleft = false;
 }
 
