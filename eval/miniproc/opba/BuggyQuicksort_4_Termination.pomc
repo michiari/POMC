@@ -1,0 +1,251 @@
+/*  Corresponding procedure in C syntax:
+
+	void quicksort (int left,int right)
+	{
+		int lo,hi,piv;
+		if (left >= right) return;
+		piv = a[right]; lo = left; hi = right;
+		while (lo <= hi) {
+			if (a[hi] > piv) {
+				hi--;
+			} else {
+				swap a[lo],a[hi];
+				lo++;
+			}
+		}
+		quicksort(left,hi);
+		quicksort(lo,right);
+	}	
+
+	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
+
+	Abstracted over the array content and the local variable piv.
+	Abstract Version:
+	void quicksort (int left,int right)
+	{
+		int lo,hi;
+		if (left >= right) return;
+		lo = left; hi = right;
+		while (lo <= hi) {
+			if (∗) {
+				hi++;
+			} else {
+				lo--;
+			}
+		}
+		quicksort(left,hi);
+		quicksort(lo,right);
+	} 
+
+	Considered array of 4 elements, and determined manually all the recursive cases induced by the boolean variables
+
+
+*/
+
+formulas = 	F (ret And main),	
+			XNu (ret And main);
+
+
+program:
+var leftGEQright, loLThi, loEQhi, loEQleft, hiEQright, middle1, middle2;
+
+main() {
+	leftGEQright = false;
+	qs4();
+}
+
+
+qs4() {
+	if (leftGEQright) {
+	} else {
+		middle1 = false;
+		middle2 = false;
+		loEQhi = false;
+		loLThi = true;
+		loEQleft = true;
+		hiEQright = true;
+		while (loLThi || loEQhi) { 
+			qsif4();
+		}
+
+		//recursive calls
+		if (loEQleft){
+			leftGEQright = true;
+			qs4();
+			leftGEQright = false;
+			qs4();			
+		} else {
+			if (hiEQright){
+				leftGEQright = false;
+				qs3();	
+				leftGEQright = true;
+				qs3();
+			} else {
+				// do not over abstract too much
+				if (*) {
+					leftGEQright = false;
+					qs2();
+					leftGEQright = false;
+					qs2();
+				} else {
+					leftGEQright = true;
+					qs4();
+					leftGEQright = false;
+					qs3();
+				}
+			}
+		}
+	}
+}
+
+qsif4() {
+	if (*) {
+		shiftloLEQhi4();
+		hiEQright = false;
+	} else {
+		shiftloLEQhi4();
+		loEQleft = false;
+	
+	}
+}
+
+
+shiftloLEQhi4() {
+	if (middle2){
+		if (middle1){
+			if (loEQhi) {
+				loEQhi = false;
+				loLThi = false;					
+			} else {
+				loEQhi = true;
+				loLThi = false;
+			}
+		} else {
+			middle1 = true;
+		}
+	}else{
+		middle2 = true;
+	}
+	
+	
+}
+
+
+qs3() {
+	if (leftGEQright) {
+	} else {
+		middle1 = false;
+		loEQhi = false;
+		loLThi = true;
+		loEQleft = true;
+		hiEQright = true;
+		while (loLThi || loEQhi) { 
+			qsif3();
+		}
+
+		//recursive calls
+		if (loEQleft){
+			leftGEQright = true;
+			qs3();
+			leftGEQright = false;
+			qs3();			
+		} else {
+			if (hiEQright){
+				leftGEQright = false;
+				qs3();	
+				leftGEQright = true;
+				qs3();
+			} else {
+				// do not over abstract too much
+				leftGEQright = false;
+				qs3();	
+				leftGEQright = true;
+				qs3();
+			}
+		}
+	}
+}
+
+randomleftLEQright(){
+	if (*){
+		leftGEQright = false;
+	} else {
+		leftGEQright = true;
+	}
+}
+
+qsif3() {
+	if (*) {
+		shiftloLEQhi3();
+		hiEQright = false;
+	} else {
+		shiftloLEQhi3();
+		loEQleft = false;
+	
+	}
+}
+
+
+shiftloLEQhi3() {
+	if (middle1){
+		if (loEQhi) {
+			loEQhi = false;
+			loLThi = false;					
+		} else {
+			loEQhi = true;
+			loLThi = false;
+		}
+	} else {
+		middle1 = true;
+	}
+	
+}
+
+qs2() {
+	if (leftGEQright) {
+	} else {
+		loEQhi = false;
+		loLThi = true;
+		loEQleft = true;
+		hiEQright = true;
+		while (loLThi || loEQhi) { 
+			qsif2();
+		}
+
+		//recursive calls
+		if (loEQleft){
+			leftGEQright = true;
+			qs2();
+			leftGEQright = false;
+			qs2();			
+		} else {
+			if (hiEQright){
+				leftGEQright = false;
+				qs2();	
+				leftGEQright = true;
+				qs2();
+			} else {}
+		}
+	}
+}
+
+qsif2() {
+	if (*) {
+		shiftloLEQhi2();
+		hiEQright = false;
+	} else {
+		shiftloLEQhi2();
+		loEQleft = false;
+	
+	}
+}
+
+shiftloLEQhi2() {
+	if (loEQhi) {
+		loEQhi = false;
+		loLThi = false;					
+	} else {
+		loEQhi = true;
+		loLThi = false;
+	}
+}

@@ -1,75 +1,113 @@
+/*  Corresponding procedure in C syntax:
+
+	void quicksort (int left,int right)
+	{
+		int lo,eq,hi,piv;
+		if (left >= right) return;
+		piv = a[right]; lo = eq = left; hi = right;
+		while (lo <= hi) {
+			if (a[hi] > piv) {
+				hi--;
+			} else {
+				swap a[lo],a[hi];
+				if (a[lo] < piv) {
+					swap a[lo],a[eq];
+					eq++;
+				}
+				lo++;
+			}
+		}
+		quicksort(left,eq-1);
+		quicksort(lo,right);
+	}
+
+	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
+
+	Abstracted over the array content and the local variables piv,eq.
+	Abstract version:
+	void quicksort (int left,int right)
+	{
+		int lo,eq,hi,piv;
+		if (left >= right) return;
+	    lo = eq = left; hi = right;
+		while (lo <= hi) {
+		    // switch if-else branches
+			if (*) {
+				hi--;
+			} else {
+				if (*) {
+					eq++;
+				}
+				lo++;
+			}
+		}
+		quicksort(left,eq-1);
+		quicksort(lo,right);
+	}
+*/
+
 formulas = 	F (ret And main),
 			XNu (ret And main);
 
 program:
-var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, exc1;
+var  leftGEQright, loLThi, loEQhi, loEQleft, hiEQright, eqEQlo, eqEQleft, middle1;
 
 main() {
-	leftGTright = false;
-	leftEQTright = false;
-	exc1 = false;
-	qs();
+	leftGEQright = false;
+	qs3();
 }
 
-qs() {
-	if (leftGTright || leftEQTright) {
+qs3() {
+	if (leftGEQright) {
 	} else {
-		loEQThi = false;
+		middle1 = false;
+		loEQhi = false;
 		loLThi = true;
-		loEQTleft = true;
-		hiEQTright = true;
-		eqEQTlo = true;
-		eqEQTleft = true;
-		firstIteration();
-		while (loLThi || loEQThi) { 
-			qsif();
+		loEQleft = true;
+		hiEQright = true;
+		eqEQlo = true;
+		eqEQleft = true;
+		firstIteration3();
+		while (loLThi || loEQhi) { 
+			qsif3();
 		}
-		if (loEQTleft){
-			leftGTright = true;
-			leftEQTright = false;
-			qs();
-			leftGTright = false;
-			leftEQTright = false;
-			exc1 = false;
-			qs();
+
+		//recursive calls
+		if (loEQleft){
+			leftGEQright = true;
+			qs3();
+			leftGEQright = false;
+			qs3();
 		} else { 
-			if (hiEQTright && eqEQTlo) {
-				leftGTright = false;
-				leftEQTright = false;
-				exc1 = false;
-				qs();
-				leftGTright = true;
-				leftEQTright = false;
-				qs();
+			if (hiEQright && eqEQlo) {
+				leftGEQright = false;
+				qs3();
+				leftGEQright = true;
+				qs3();
 			} else {
-				if (hiEQTright && eqEQTleft) {
-					leftGTright = true;
-					leftEQTright = false;
-					qs();
-					leftGTright = true;
-					leftEQTright = false;
-					qs();
+				if (hiEQright && eqEQleft) {
+					leftGEQright = true;
+					qs3();
+					leftGEQright = true;
+					qs3();
 				} else {
-					if (hiEQTright) {
-						randomleftLEQTright();
+					if (hiEQright) {
+						randomleftLEQright();
 						qs2();
-						leftGTright = true;
-						leftEQTright = false;
-						qs();
+						leftGEQright = true;
+						qs3();
 					} else {
-						if (eqEQTleft) {
-							leftGTright = true;
-							leftEQTright = false;
-							qs();
-							randomleftLEQTright();
+						if (eqEQleft) {
+							leftGEQright = true;
+							qs3();
+							randomleftLEQright();
 							qs2();
 						} else {
-							if (eqEQTlo) {
-								leftGTright = false;
-								leftEQTright = false;
-								qs2();
-								leftGTright = false;
-								leftEQTright = true;
+							if (eqEQlo) {
+								// do not abstract too much
+								leftGEQright = true;
+								qs3();
+								leftGEQright = false;
 								qs2();
 							} else {}
 						} 
@@ -80,118 +118,98 @@ qs() {
 	}
 }
 
-firstIteration() {
-	eqEQTlo = false;
-	shiftloLEQThi();
-	loEQTleft = false;
+firstIteration3() {
+	eqEQlo = false;
+	shiftloLEQhi3();
+	loEQleft = false;
 }
 
-qsif() {
+qsif3() {
 	if (*) {
-		shiftloLEQThi();
-		if (hiEQTright) {
-			hiEQTright = false;
-		} else {}
+		shiftloLEQhi3();
+		hiEQright = false;
 	} else {
 		if (*) {
-			if (eqEQTlo){
-				eqEQTlo = false;
-			} else {}
+			eqEQleft = false;
 		} else {
-			if (eqEQTleft){
-				eqEQTleft = false;
-			} else {}
+			eqEQlo = false;
 		}
-		shiftloLEQThi();
-		if (loEQTleft) {
-			loEQTleft = false;
-		} else {}		
+		shiftloLEQhi3();
+		loEQleft = false;	
 	}
 }
 
 
 
-shiftloLEQThi() {
-	if (exc1) {
-		if (loEQThi) {
-			loEQThi = false;
+shiftloLEQhi3() {
+	if (middle1) {
+		if (loEQhi) {
+			loEQhi = false;
 			loLThi = false;					
 		} else {
-			loEQThi = true;
+			loEQhi = true;
 			loLThi = false;
 		}
-	} else { exc1 = true;}
+	} else { middle1 = true;}
 }
 
-randomleftLEQTright(){
+randomleftLEQright(){
 	if (*){
-		leftGTright = false;
-		leftEQTright = false;
+		leftGEQright = false;
 	} else {
-		leftGTright = false;
-		leftEQTright = true;
+		leftGEQright = true;
 	}
 }
 
 qs2() {
-	if (leftGTright || leftEQTright) {
+	if (leftGEQright) {
 	} else {
-		loEQThi = false;
+		loEQhi = false;
 		loLThi = true;
-		loEQTleft = true;
-		hiEQTright = true;
-		eqEQTlo = true;
-		eqEQTleft = true;
+		loEQleft = true;
+		hiEQright = true;
+		eqEQlo = true;
+		eqEQleft = true;
 		firstIteration2();
-		while (loLThi || loEQThi) { 
+		while (loLThi || loEQhi) { 
 			qsif2();
 		}
-		if (loEQTleft){
-			leftGTright = true;
-			leftEQTright = false;
+
+		//recursive calls
+		if (loEQleft){
+			leftGEQright = true;
 			qs2();
-			leftGTright = false;
-			leftEQTright = false;
+			leftGEQright = false;
 			qs2();
 		} else { 
-			if (hiEQTright && eqEQTlo) {
-				leftGTright = false;
-				leftEQTright = false;
+			if (hiEQright && eqEQlo) {
+				leftGEQright = false;
 				qs2();
-				leftGTright = true;
-				leftEQTright = false;
+				leftGEQright = true;
 				qs2();
 			} else {
-				if (hiEQTright && eqEQTleft) {
-					leftGTright = true;
-					leftEQTright = false;
+				if (hiEQright && eqEQleft) {
+					leftGEQright = true;
 					qs2();
-					leftGTright = true;
-					leftEQTright = false;
+					leftGEQright = true;
 					qs2();
 				} else {
-					if (hiEQTright) {
-						leftGTright = false;
-						leftEQTright = true;
+					if (hiEQright) {
+						leftGEQright = true;
 						qs2();
-						leftGTright = true;
-						leftEQTright = false;
+						leftGEQright = true;
 						qs2();
 					} else {
-						if (eqEQTleft) {
-							leftGTright = true;
-							leftEQTright = false;
+						if (eqEQleft) {
+							leftGEQright = true;
 							qs2();
-							leftGTright = false;
-							leftEQTright = true;
+							leftGEQright = true;
 							qs2();
 						} else {
-							if (eqEQTlo) {
-								leftGTright = false;
-								leftEQTright = true;
+							if (eqEQlo) {
+								leftGEQright = true;
 								qs2();
-								leftGTright = false;
-								leftEQTright = true;
+								leftGEQright = true;
 								qs2();
 							} else {}
 						} 
@@ -204,39 +222,31 @@ qs2() {
 
 qsif2() {
 	if (*) {
-		shiftloLEQThi2();
-		if (hiEQTright) {
-			hiEQTright = false;
-		} else {}
+		shiftloLEQhi2();
+		hiEQright = false;
 	} else {
 		if (*) {
-			if (eqEQTlo){
-				eqEQTlo = false;
-			} else {}
+			eqEQleft = false;
 		} else {
-			if (eqEQTleft){
-				eqEQTleft = false;
-			} else {}
+			eqEQlo = false;
 		}
-		shiftloLEQThi2();
-		if (loEQTleft) {
-			loEQTleft = false;
-		} else {}		
+		shiftloLEQhi2();
+		loEQleft = false;	
 	}
 }
 
 firstIteration2() {
-	eqEQTlo = false;
-	shiftloLEQThi2();
-	loEQTleft = false;
+	eqEQlo = false;
+	shiftloLEQhi2();
+	loEQleft = false;
 }
 
-shiftloLEQThi2() {
-	if (loEQThi) {
-		loEQThi = false;
+shiftloLEQhi2() {
+	if (loEQhi) {
+		loEQhi = false;
 		loLThi = false;					
 	} else {
-		loEQThi = true;
+		loEQhi = true;
 		loLThi = false;
 	}
 }

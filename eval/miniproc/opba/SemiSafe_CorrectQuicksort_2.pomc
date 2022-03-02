@@ -14,11 +14,10 @@ formulas = 	F (ret And main),
 			(F (ret And main And (~ aleftGTaright))) Or (XNu (exc And hasParsed));
 			
 program:
-var leftGTright, leftEQTright, loLThi, loEQThi, loEQTleft, hiEQTright, eqEQTlo, eqEQTleft, aleftGTaright, aleftEQaright, hasParsed;
+var leftGEQright, loLThi, loEQhi, loEQleft, hiEQright, eqEQlo, eqEQleft, aleftGTaright, aleftEQaright, hasParsed;
 
 main() {
-	leftGTright = false;
-	leftEQTright = false;
+	leftGEQright = false;
 	randomInput();
 	hasParsed = false;
 	try {
@@ -30,66 +29,55 @@ main() {
 }
 
 qs2() {
-	if (leftGTright || leftEQTright) {
+	if (leftGEQright) {
 	} else {
-		loEQThi = false;
+		loEQhi = false;
 		loLThi = true;
-		loEQTleft = true;
-		hiEQTright = true;
-		eqEQTlo = true;
-		eqEQTleft = true;
+		loEQleft = true;
+		hiEQright = true;
+		eqEQlo = true;
+		eqEQleft = true;
 		accessValues();
 		firstIteration2();
-		while (loLThi || loEQThi) { 
+		while (loLThi || loEQhi) { 
 			qsif2();
 		}
 
-		if (loEQTleft){ 
-			leftGTright = true;
-			leftEQTright = false;
+		if (loEQleft){ 
+			leftGEQright = true;
 			qs2();
-			leftGTright = false;
-			leftEQTright = false;
+			leftGEQright = false;
 			qs2();
 		} else { 
-			if (hiEQTright && eqEQTlo) { 
-				leftGTright = false;
-				leftEQTright = false;
+			if (hiEQright && eqEQlo) { 
+				leftGEQright = false;
 				qs2();
-				leftGTright = true;
-				leftEQTright = false;
+				leftGEQright = true;
 				qs2();
 			} else {
-				if (hiEQTright && eqEQTleft) { 
-					leftGTright = true;
-					leftEQTright = false;
+				if (hiEQright && eqEQleft) { 
+					leftGEQright = true;
+					leftGEQright = false;
 					qs2();
-					leftGTright = true;
-					leftEQTright = false;
+					leftGEQright = true;
 					qs2();
 				} else {
-					if (hiEQTright) { 
-						leftGTright = false;
-						leftEQTright = true;
+					if (hiEQright) { 
+						leftGEQright = true;
 						qs2();
-						leftGTright = true;
-						leftEQTright = false;
+						leftGEQright = true;
 						qs2();
 					} else {
-						if (eqEQTleft) { 
-							leftGTright = true;
-							leftEQTright = false;
+						if (eqEQleft) { 
+							leftGEQright = true;
 							qs2();
-							leftGTright = false;
-							leftEQTright = true;
+							leftGEQright = true;
 							qs2();
 						} else {
-							if (eqEQTlo) { 
-								leftGTright = false;
-								leftEQTright = true;
+							if (eqEQlo) { 
+								leftGEQright = true;
 								qs2();
-								leftGTright = false;
-								leftEQTright = true;
+								leftGEQright = true;
 								qs2();
 							} else {}
 						} 
@@ -102,42 +90,42 @@ qs2() {
 
 qsif2() { 
 	if ((! aleftGTaright) && (! aleftEQaright)) {
-		shiftloLEQThi2();
-		if (hiEQTright) {
-			hiEQTright = false;
+		shiftloLEQhi2();
+		if (hiEQright) {
+			hiEQright = false;
 		} else {}
 	} else {
-		if (! loEQThi){
+		if (! loEQhi){
 			swapElements();
 		} else {}
 		
 		if (aleftGTaright) {
-			if (! eqEQTlo){
+			if (! eqEQlo){
 					swapElements();
 			} else {}
-			eqEQTleft = false;
+			eqEQleft = false;
 		} else {
-			eqEQTlo = false;
+			eqEQlo = false;
 		}
 
-		shiftloLEQThi2();
-		loEQTleft = false;		
+		shiftloLEQhi2();
+		loEQleft = false;		
 	}
 }
 
 firstIteration2() {
-	eqEQTlo = false;
-	shiftloLEQThi2();
+	eqEQlo = false;
+	shiftloLEQhi2();
 	swapElements();
-	loEQTleft = false;
+	loEQleft = false;
 }
 
-shiftloLEQThi2() {
-	if (loEQThi) {
-		loEQThi = false;
+shiftloLEQhi2() {
+	if (loEQhi) {
+		loEQhi = false;
 		loLThi = false;					
 	} else {
-		loEQThi = true;
+		loEQhi = true;
 		loLThi = false;
 	}
 }
