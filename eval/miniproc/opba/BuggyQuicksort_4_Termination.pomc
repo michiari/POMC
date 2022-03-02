@@ -1,4 +1,4 @@
-*  Corresponding procedure in C syntax:
+/*  Corresponding procedure in C syntax:
 
 	void quicksort (int left,int right)
 	{
@@ -43,7 +43,7 @@
 */
 
 formulas = 	F (ret And main),	
-			XNu (ret And main),
+			XNu (ret And main);
 
 
 program:
@@ -68,7 +68,7 @@ qs4() {
 			qsif4();
 		}
 
-		\\recursive calls
+		//recursive calls
 		if (loEQleft){
 			leftGEQright = true;
 			qs4();
@@ -89,7 +89,7 @@ qs4() {
 					qs2();
 				} else {
 					leftGEQright = true;
-					qs();
+					qs4();
 					leftGEQright = false;
 					qs3();
 				}
@@ -143,7 +143,7 @@ qs3() {
 			qsif3();
 		}
 
-		\\recursive calls
+		//recursive calls
 		if (loEQleft){
 			leftGEQright = true;
 			qs3();
@@ -212,7 +212,7 @@ qs2() {
 			qsif2();
 		}
 
-		\\recursive calls
+		//recursive calls
 		if (loEQleft){
 			leftGEQright = true;
 			qs2();

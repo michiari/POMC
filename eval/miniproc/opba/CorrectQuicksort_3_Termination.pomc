@@ -54,10 +54,10 @@ var  leftGEQright, loLThi, loEQhi, loEQleft, hiEQright, eqEQlo, eqEQleft, middle
 
 main() {
 	leftGEQright = false;
-	qs();
+	qs3();
 }
 
-qs() {
+qs3() {
 	if (leftGEQright) {
 	} else {
 		middle1 = false;
@@ -67,46 +67,46 @@ qs() {
 		hiEQright = true;
 		eqEQlo = true;
 		eqEQleft = true;
-		firstIteration();
+		firstIteration3();
 		while (loLThi || loEQhi) { 
-			qsif();
+			qsif3();
 		}
 
 		//recursive calls
 		if (loEQleft){
 			leftGEQright = true;
-			qs();
+			qs3();
 			leftGEQright = false;
-			qs();
+			qs3();
 		} else { 
 			if (hiEQright && eqEQlo) {
 				leftGEQright = false;
-				qs();
+				qs3();
 				leftGEQright = true;
-				qs();
+				qs3();
 			} else {
 				if (hiEQright && eqEQleft) {
 					leftGEQright = true;
-					qs();
+					qs3();
 					leftGEQright = true;
-					qs();
+					qs3();
 				} else {
 					if (hiEQright) {
 						randomleftLEQright();
 						qs2();
 						leftGEQright = true;
-						qs();
+						qs3();
 					} else {
 						if (eqEQleft) {
 							leftGEQright = true;
-							qs();
+							qs3();
 							randomleftLEQright();
 							qs2();
 						} else {
 							if (eqEQlo) {
 								// do not abstract too much
 								leftGEQright = true;
-								qs();
+								qs3();
 								leftGEQright = false;
 								qs2();
 							} else {}
@@ -118,15 +118,15 @@ qs() {
 	}
 }
 
-firstIteration() {
+firstIteration3() {
 	eqEQlo = false;
-	shiftloLEQhi();
+	shiftloLEQhi3();
 	loEQleft = false;
 }
 
-qsif() {
+qsif3() {
 	if (*) {
-		shiftloLEQhi();
+		shiftloLEQhi3();
 		hiEQright = false;
 	} else {
 		if (*) {
@@ -134,14 +134,14 @@ qsif() {
 		} else {
 			eqEQlo = false;
 		}
-		shiftloLEQhi();
+		shiftloLEQhi3();
 		loEQleft = false;	
 	}
 }
 
 
 
-shiftloLEQhi() {
+shiftloLEQhi3() {
 	if (middle1) {
 		if (loEQhi) {
 			loEQhi = false;

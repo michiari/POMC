@@ -45,7 +45,7 @@
 */
 
 formulas = 	F (ret And main),	
-			XNu (ret And main),
+			XNu (ret And main);
 
 
 program:
@@ -67,7 +67,7 @@ qs2() {
 			qsif2();
 		}
 
-		\\recursive calls
+		//recursive calls
 		if (loEQleft){
 			leftGEQright = true;
 			qs2();
