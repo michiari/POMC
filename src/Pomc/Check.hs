@@ -17,9 +17,9 @@ module Pomc.Check ( -- * Checking functions
                   ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.Prec (Prec(..), StructPrecRel)
+import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import Pomc.Opa (run, parAugRun)
-import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, future)
+import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, future, getProps)
 import Pomc.Util (safeHead, xor, implies, iff)
 import Pomc.Encoding (EncodedSet, FormulaSet, PropSet, BitEncoding(..))
 import qualified Pomc.Encoding as E
@@ -31,7 +31,7 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Vector as V
 
-import Data.List (foldl', sortOn)
+import Data.List (foldl', sortOn, (\\))
 import qualified Data.HashMap.Strict as M
 import Control.Monad (guard, filterM, foldM)
 
@@ -1526,8 +1526,7 @@ fastcheckGen phi precr ts =
 --- generate an OPA corresponding to a POTL formula
 makeOpa ::  Formula APType -- the input formula
         -> Bool -- is it opba?
-        -> ([Prop APType], [Prop APType]) -- AP (structural labels, all other propositions in phi)
-        -> [StructPrecRel APType]  -- OPM
+        -> Alphabet APType -- OP alphabet
         -> (BitEncoding -- data for encoding and decoding between bitsets and formulas and props
            , EncPrecFunc -- OPM on bitsets
            , [State] -- initial states
@@ -1537,23 +1536,27 @@ makeOpa ::  Formula APType -- the input formula
            , State -> State -> [State] -- deltaPop
            , FormulaSet -- closure
            )
-makeOpa phi isOmega (sls, als) sprs = (bitenc
-                              , prec
-                              , is
-                              , isFinal bitenc
-                              , deltaPush  as pcs scs pushRules      -- apply PushRules
-                              , deltaShift as pcs scs shiftRules     -- apply ShiftRules
-                              , deltaPop   as pcs scs popRules       -- apply PopRules
-                              , cl
-                              )
+makeOpa phi isOmega (sls, sprs) =
+  ( bitenc
+  , prec
+  , is
+  , isFinal bitenc
+  , deltaPush  as pcs scs pushRules  -- apply PushRules
+  , deltaShift as pcs scs shiftRules -- apply ShiftRules
+  , deltaPop   as pcs scs popRules   -- apply PopRules
+  , cl
+  )
   where
         -- remove double negations
         nphi = normalize phi
-        -- all the atomic propositions (AP) which make up the language (L is in powerset(AP))
-        -- it contains duplicates
+        -- APs in phi
+        als = getProps nphi \\ sls
+        -- all the APs which make up the language (L is in powerset(AP))
         tsprops = sls ++ als
         -- generate the powerset of AP, ech time taking a prop from the structural list
-        inputSet = S.fromList [S.fromList (sl:alt) | sl <- sls, alt <- filterM (const [True, False]) als]
+        inputSet = S.fromList [S.fromList (sl:alt) |
+                               sl <- sls,
+                               alt <- filterM (const [True, False]) als]
         -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
         -- generate a BitEncoding from the closure

@@ -62,9 +62,9 @@ simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
 
 -- only for the finite case
 makeTestCase :: T.Text
-             -> ((String, Formula String, [String], Bool), Bool)
+             -> ((String, Formula String, Bool), Bool)
              -> TestTree
-makeTestCase filecont ((name, phi, _, _), expected) =
+makeTestCase filecont ((name, phi, _), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") assertion
   where assertion = do
           prog <- case parse (programP <* eof) name filecont of
@@ -271,7 +271,6 @@ singleWhile = makeTestCase simpleWhileSource
    , Not $ Until Down T (ap "call"
                          `And` ap "pb"
                          `And` (HNext Up $ HUntil Up T (ap "call" `And` ap "pb")))
-   , []
    , True)
   , True)
 
@@ -298,7 +297,6 @@ exprsPb :: TestTree
 exprsPb = makeTestCase exprsSource
   (("Check Or BoolExpr"
    , Until Down T (ap "call" `And` ap "pb")
-   , []
    , True)
   , True)
 
@@ -306,7 +304,6 @@ exprsPc :: TestTree
 exprsPc = makeTestCase exprsSource
   (("Check Or Not BoolExpr"
    , Until Down T (ap "call" `And` ap "pc")
-   , []
    , True)
   , True)
 
@@ -314,7 +311,6 @@ exprsPd :: TestTree
 exprsPd = makeTestCase exprsSource
   (("Check And Not BoolExpr"
    , Until Down T (ap "call" `And` ap "pd")
-   , []
    , False)
   , False)
 
@@ -354,7 +350,6 @@ genSmall = makeTestCase sasMPSource
   (("MiniProc Generic Small"
    , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
      `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
-   , []
    , True)
   , True)
 
@@ -363,7 +358,6 @@ genMed = makeTestCase genMedSource
   (("MiniProc Generic Medium"
    , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
      `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
-   , []
    , False)
   , False)
 
@@ -410,7 +404,6 @@ genLarge = makeTestCase genLargeSource
   (("MiniProc Generic Large"
    , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
      `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
-   , []
    , True)
   , True)
 
@@ -480,7 +473,6 @@ jensenRd = makeTestCase jensen
                    `And` (Not $ ap "P_rd")
                    `And` (Not $ ap "raw_read")
                    `And` (Not $ ap "main"))))
-   , []
    , True)
   , True)
 
@@ -494,7 +486,6 @@ jensenWr = makeTestCase jensen
                    `And` (Not $ ap "P_wr")
                    `And` (Not $ ap "raw_write")
                    `And` (Not $ ap "main"))))
-   , []
    , True)
   , True)
 
@@ -508,7 +499,6 @@ jensenRdCp = makeTestCase jensen
                    `And` (Not $ ap "P_cp")
                    `And` (Not $ ap "raw_read")
                    `And` (Not $ ap "main"))))
-   , []
    , True)
   , True)
 
@@ -522,7 +512,6 @@ jensenWrDb = makeTestCase jensen
                    `And` (Not $ ap "P_db")
                    `And` (Not $ ap "raw_write")
                    `And` (Not $ ap "main"))))
-   , []
    , True)
   , True)
 
@@ -619,7 +608,6 @@ stackUnsafe = makeTestCase stackUnsafeSource
                (Not $ (PBack Up (ap "tainted")
                        `Or` XBack Up (ap "tainted" `And` Not (ap "main")))
                 `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop")))
-   , []
    , False)
   , False)
 
@@ -631,7 +619,6 @@ stackUnsafeNeutrality = makeTestCase stackUnsafeSource
               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , []
      , True)
   , True)
 
@@ -756,7 +743,6 @@ stackSafe = makeTestCase stackSafeSource
                (Not $ (PBack Up (ap "tainted")
                        `Or` XBack Up (ap "tainted" `And` Not (ap "main")))
                 `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop")))
-   , []
    , True)
   , True)
 
@@ -768,7 +754,6 @@ stackSafeNeutrality = makeTestCase stackSafeSource
               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , []
      , True)
   , True)
 
@@ -939,7 +924,6 @@ u8Arith1Exc :: TestTree
 u8Arith1Exc = makeTestCase u8Arith1Src
   (("Throws."
    , Until Up T (ap "exc")
-   , []
    , True)
   , True)
 
@@ -947,7 +931,6 @@ u8Arith1Ret :: TestTree
 u8Arith1Ret = makeTestCase u8Arith1Src
   (("Terminates normally."
    , Until Up T (ap "ret")
-   , []
    , False)
   , False)
 
@@ -955,7 +938,6 @@ u8Arith1aHolds :: TestTree
 u8Arith1aHolds = makeTestCase u8Arith1Src
   (("Variable a is non-zero at the end."
    , XNext Up (ap "a")
-   , []
    , True)
   , True)
 
@@ -980,7 +962,6 @@ u8Arith2Ret :: TestTree
 u8Arith2Ret = makeTestCase u8Arith2Src
   (("Terminates normally."
    , Until Up T (ap "ret")
-   , []
    , True)
   , True)
 
@@ -988,7 +969,6 @@ u8Arith2Assert :: TestTree
 u8Arith2Assert = makeTestCase u8Arith2Src
   (("Assert true."
    , Until Up T (ap "ret" `And` ap "assert")
-   , []
    , True)
   , True)
 
@@ -996,7 +976,6 @@ u8Arith2AssertFalse :: TestTree
 u8Arith2AssertFalse = makeTestCase u8Arith2Src
   (("Assert false."
    , Until Up T (ap "ret" `And` (Not $ ap "assert"))
-   , []
    , False)
   , False)
 
@@ -1032,7 +1011,6 @@ arithCastsAssert1 :: TestTree
 arithCastsAssert1 = makeTestCase arithCastsSrc
   (("a + c > 1024u16"
    , Until Down T (ap "ret" `And` ap "assert1")
-   , []
    , True)
   , True)
 
@@ -1040,7 +1018,6 @@ arithCastsAssert2 :: TestTree
 arithCastsAssert2 = makeTestCase arithCastsSrc
   (("b + d < 0s8"
    , Until Down T (ap "ret" `And` ap "assert2")
-   , []
    , True)
   , True)
 
@@ -1048,7 +1025,6 @@ arithCastsAssert3 :: TestTree
 arithCastsAssert3 = makeTestCase arithCastsSrc
   (("f == 25u8"
    , Until Down T (ap "ret" `And` ap "assert3")
-   , []
    , True)
   , True)
 
@@ -1056,7 +1032,6 @@ arithCastsAssert4 :: TestTree
 arithCastsAssert4 = makeTestCase arithCastsSrc
   (("b * c == 10240s16"
    , Until Down T (ap "ret" `And` ap "assert4")
-   , []
    , True)
   , True)
 
@@ -1064,7 +1039,6 @@ arithCastsAssert5 :: TestTree
 arithCastsAssert5 = makeTestCase arithCastsSrc
   (("d / b == -1s8"
    , Until Down T (ap "ret" `And` ap "assert5")
-   , []
    , True)
   , True)
 
@@ -1103,7 +1077,6 @@ nondetCover0 :: TestTree
 nondetCover0 = makeTestCase nondetSrc
   (("Coverage 0"
    , XNext Down (ap "ret" `And` (Not $ ap "cover0"))
-   , []
    , False)
   , False)
 
@@ -1111,7 +1084,6 @@ nondetCover1 :: TestTree
 nondetCover1 = makeTestCase nondetSrc
   (("Coverage 1"
    , XNext Down (ap "ret" `And` (Not $ ap "cover1"))
-   , []
    , False)
   , False)
 
@@ -1119,7 +1091,6 @@ nondetCover2 :: TestTree
 nondetCover2 = makeTestCase nondetSrc
   (("Coverage 2"
    , XNext Down (ap "ret" `And` (Not $ ap "cover2"))
-   , []
    , False)
   , False)
 
@@ -1127,7 +1098,6 @@ nondetAssert :: TestTree
 nondetAssert = makeTestCase nondetSrc
   (("Assert true."
    , Until Up T (ap "ret" `And` ap "assert")
-   , []
    , True)
   , True)
 
@@ -1167,7 +1137,6 @@ arrayCover0 :: TestTree
 arrayCover0 = makeTestCase arraySrc
   (("Coverage 0"
    , XNext Down (ap "ret" `And` (Not $ ap "cover0"))
-   , []
    , False)
   , False)
 
@@ -1175,7 +1144,6 @@ arrayCover1 :: TestTree
 arrayCover1 = makeTestCase arraySrc
   (("Coverage 1"
    , XNext Down (ap "ret" `And` (Not $ ap "cover1"))
-   , []
    , False)
   , False)
 
@@ -1183,7 +1151,6 @@ arrayAssert0 :: TestTree
 arrayAssert0 = makeTestCase arraySrc
   (("Assert 0"
    , XNext Down (ap "ret" `And` ap "assert0")
-   , []
    , True)
   , True)
 
@@ -1218,7 +1185,6 @@ arrayLoopAssert0 :: TestTree
 arrayLoopAssert0 = makeTestCase arrayLoopSrc
   (("Assert 0"
    , XNext Down (ap "ret" `And` ap "assert0")
-   , []
    , True)
   , True)
 

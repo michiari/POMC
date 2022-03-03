@@ -9,14 +9,14 @@ module Pomc.PropConv ( APType
                      , PropConv(..)
                      , makePropConv
                      , encodeFormula
-                     , encodeStructPrecRel
+                     , encodeAlphabet
                      , convProps
                      , convPropTokens
                      ) where
 
 import Pomc.Prop (Prop(..), unprop, notEnd)
 import Pomc.Potl (Formula, getProps)
-import Pomc.Prec (StructPrecRel)
+import Pomc.Prec (StructPrecRel, Alphabet)
 
 import Data.List (nub)
 import Data.Maybe (fromJust)
@@ -57,6 +57,10 @@ encodeStructPrecRel pconv precr =
                           , pr
                           )
       ) precr
+
+encodeAlphabet :: PropConv a -> Alphabet a -> Alphabet APType
+encodeAlphabet pconv (sls, precr) =
+  (map (encodeProp pconv) sls, encodeStructPrecRel pconv precr)
 
 -- convert generic props into APType props, and return a PropConv
 convProps :: Ord a

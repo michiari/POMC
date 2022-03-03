@@ -12,14 +12,13 @@ module Pomc.ModelChecker ( ExplicitOpa(..)
                          , modelCheckExplicit
                          , modelCheckExplicitGen
                          , modelCheckProgram
-                         , extractALs
                          , countStates
                          ) where
 
 #define NDEBUG
 
 import Pomc.Prop (Prop(..))
-import Pomc.Prec (StructPrecRel)
+import Pomc.Prec (Alphabet)
 import Pomc.Potl (Formula(..), getProps)
 import Pomc.Check (makeOpa)
 import Pomc.State(Input, State(..))
@@ -36,7 +35,6 @@ import qualified Debug.Trace as DBG
 import Pomc.Satisfiability (toInputTrace)
 #endif
 
-import Data.List ((\\))
 import Data.Set (Set)
 import qualified Data.Set as Set
 
@@ -49,13 +47,12 @@ import Data.Hashable
 import Control.DeepSeq(NFData(..), deepseq)
 
 data ExplicitOpa s a = ExplicitOpa
-  { sigma :: ([Prop a], [Prop a]) -- the AP of the input alphabet (structural labels, all other props)
-  , precRel :: [StructPrecRel a] -- OPM
-  , initials   :: [s] -- initial states of the OPA
-  , finals     :: [s] -- final states of the OPA
-  , deltaPush  :: [(s, Set (Prop a), [s])] -- push transition relation
-  , deltaShift :: [(s, Set (Prop a), [s])] -- shift transition relation
-  , deltaPop   :: [(s, s, [s])] -- pop transition relation
+  { eoAlphabet :: Alphabet a -- OP alphabet
+  , eoInitials   :: [s] -- initial states of the OPA
+  , eoFinals     :: [s] -- final states of the OPA
+  , eoDeltaPush  :: [(s, Set (Prop a), [s])] -- push transition relation
+  , eoDeltaShift :: [(s, Set (Prop a), [s])] -- shift transition relation
+  , eoDeltaPop   :: [(s, s, [s])] -- pop transition relation
   } deriving (Show)
 
 -- a specific type for the model checker state: the parametric s is for the input OPA, the second field is for the generated opa from the input formula
@@ -84,8 +81,7 @@ modelCheck :: (Ord s, Hashable s, Show s)
 #endif
            => Bool -- is it the infinite case?
            -> Formula APType -- input formula to check
-           -> [Prop APType] -- structural labels
-           -> [StructPrecRel APType] -- OPM
+           -> Alphabet APType -- structural OP alphabet
            -> [s] -- OPA initial states
            -> (s -> Bool) -- OPA isFinal
            -> (E.BitEncoding -> s -> Input -> [s]) -- OPA Delta Push
@@ -95,15 +91,14 @@ modelCheck :: (Ord s, Hashable s, Show s)
            -> PropConv a
 #endif
            -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
-modelCheck isOmega phi sls sPrecRel opaInitials opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
+modelCheck isOmega phi alphabet opaInitials opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
   pconv
 #endif
   =
   let -- generate the OPA associated to the negation of the input formula
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
-      makeOpa (Not phi) isOmega (sls, getProps phi \\ sls) sPrecRel
-      -- TODO: make sure we always remove sls from als
+      makeOpa (Not phi) isOmega alphabet
 
     -- compute the cartesian product between the initials of the two opas
     cInitials = cartesian opaInitials phiInitials
@@ -114,10 +109,8 @@ modelCheck isOmega phi sls sPrecRel opaInitials opaIsFinal opaDeltaPush opaDelta
       (any (\(MCState q _) -> opaIsFinal q) states) &&
       (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) $ Set.toList cl)
 
-    odp = opaDeltaPush bitenc -- TODO: check if efficient
-    cDeltaPush (MCState q p) b = cartesian (odp q b) (phiDeltaPush p Nothing)
-    ods = opaDeltaShift bitenc
-    cDeltaShift (MCState q p) b = cartesian (ods q b) (phiDeltaShift p Nothing)
+    cDeltaPush (MCState q p) b = cartesian (opaDeltaPush bitenc q b) (phiDeltaPush p Nothing)
+    cDeltaShift (MCState q p) b = cartesian (opaDeltaShift bitenc q b) (phiDeltaShift p Nothing)
     cDeltaPop (MCState q p) (MCState q' p') = cartesian (opaDeltaPop q q') (phiDeltaPop p p')
 
     cDelta = Sat.Delta
@@ -157,9 +150,9 @@ modelCheckExplicit isOmega phi opa =
 #endif
   let -- fromList removes duplicates
       -- all the structural labels + all the labels which appear in phi
-      essentialAP = Set.fromList $ End : (fst $ sigma opa) ++ (getProps phi)
+      essentialAP = Set.fromList $ End : (fst $ eoAlphabet opa) ++ (getProps phi)
 
-      opaIsFinal q = Set.member q (Set.fromList $ finals opa)
+      opaIsFinal q = Set.member q (Set.fromList $ eoFinals opa)
 
       -- unwrap an object of type Maybe List
       maybeList Nothing = []
@@ -170,11 +163,13 @@ modelCheckExplicit isOmega phi opa =
         map (\(q', b', ps) -> ((q', E.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
             delta
       makeDeltaMapS delta = Map.fromList $ map (\(q', b', ps) -> ((q', b'), ps)) delta
-      opaDeltaPush bitenc q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (deltaPush opa)
-      opaDeltaShift bitenc q b = maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (deltaShift opa)
-      opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (deltaPop opa)
+      opaDeltaPush bitenc q b =
+        maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (eoDeltaPush opa)
+      opaDeltaShift bitenc q b =
+        maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (eoDeltaShift opa)
+      opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (eoDeltaPop opa)
 
-  in modelCheck isOmega phi (fst . sigma $ opa) (precRel opa) (initials opa)
+  in modelCheck isOmega phi (eoAlphabet opa) (eoInitials opa)
      opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
      pconv
@@ -191,18 +186,13 @@ modelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
               -> ExplicitOpa s a
               -> (Bool, [(s, Set (Prop a))])
 modelCheckExplicitGen isOmega phi opa =
-  let (sls, als) = sigma opa
-      (tphi, tprec, [tsls, tals], pconv) = convProps phi (precRel opa) [sls, als]
+  let (sls, prec) = eoAlphabet opa
+      (tphi, tprec, [tsls], pconv) = convProps phi prec [sls]
       transDelta delta = map (\(q, b, p) -> (q, Set.map (encodeProp pconv) b, p)) delta
-      tOpa = ExplicitOpa
-             { sigma      = (tsls, tals)
-             , precRel    = tprec
-             , initials   = initials opa
-             , finals     = finals opa
-             , deltaPush  = transDelta (deltaPush opa)
-             , deltaShift = transDelta (deltaShift opa)
-             , deltaPop   = deltaPop opa
-             }
+      tOpa = opa { eoAlphabet   = (tsls, tprec)
+                 , eoDeltaPush  = transDelta (eoDeltaPush opa)
+                 , eoDeltaShift = transDelta (eoDeltaShift opa)
+                 }
 #ifndef NDEBUG
       (sat, trace) = modelCheckExplicit isOmega tphi tOpa pconv
 #else
@@ -210,29 +200,25 @@ modelCheckExplicitGen isOmega phi opa =
 #endif
   in (sat, map (\(q, b) -> (q, Set.map (decodeProp pconv) b)) trace)
 
--- extract all atomic propositions from the delta relation
-extractALs :: Ord a => [(s, Set (Prop a), [s])] -> [Prop a]
-extractALs deltaRels = Set.toList $ foldl (\als (_, a, _) -> als `Set.union` a) Set.empty deltaRels
-
 -- count all the states of an input ExplicitOpa
 countStates :: Ord s => ExplicitOpa s a -> Int
 countStates opa =
   let foldDeltaInput set (q, _, ps) = set `Set.union` (Set.fromList (q : ps))
-      pushStates = foldl foldDeltaInput Set.empty (deltaPush opa)
-      shiftStates = foldl foldDeltaInput pushStates (deltaShift opa)
+      pushStates = foldl foldDeltaInput Set.empty (eoDeltaPush opa)
+      shiftStates = foldl foldDeltaInput pushStates (eoDeltaShift opa)
       popStates = foldl (\set (q, r, ps) -> set `Set.union` (Set.fromList (q : r : ps)))
-                  shiftStates (deltaPop opa)
-  in Set.size $ popStates `Set.union` (Set.fromList $ initials opa ++ finals opa)
+                  shiftStates (eoDeltaPop opa)
+  in Set.size $ popStates `Set.union` (Set.fromList $ eoInitials opa ++ eoFinals opa)
 
 modelCheckProgram :: Bool
                   -> Formula Text
                   -> Program
                   -> (Bool, [(VarState, Set (Prop Text))])
 modelCheckProgram isOmega phi prog =
-  let (pconv, sls, tprec, ini, isfin, dpush, dshift, dpop) =
+  let (pconv, alphabet, ini, isfin, dpush, dshift, dpop) =
         programToOpa isOmega prog (Set.fromList $ getProps phi)
       transPhi = encodeFormula pconv phi
-      (sat, trace) = modelCheck isOmega transPhi sls tprec ini isfin dpush dshift dpop
+      (sat, trace) = modelCheck isOmega transPhi alphabet ini isfin dpush dshift dpop
 #ifndef NDEBUG
                      pconv
 #endif

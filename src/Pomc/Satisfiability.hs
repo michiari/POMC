@@ -15,7 +15,7 @@ module Pomc.Satisfiability ( Delta(..)
                            ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.Prec (Prec(..), StructPrecRel)
+import Pomc.Prec (Prec(..), Alphabet)
 import Pomc.Potl (Formula(..))
 import Pomc.Check (EncPrecFunc, makeOpa)
 import Pomc.PropConv (APType, PropConv(..), convProps)
@@ -437,11 +437,10 @@ reachTransition areFinal globals delta from to = do
 -- (mainly used for testing)
 isSatisfiable :: Bool
               -> Formula APType
-              -> ([Prop APType], [Prop APType])
-              -> [StructPrecRel APType]
+              -> Alphabet APType
               -> (Bool, [PropSet])
-isSatisfiable isOmega phi ap sprs =
-  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) = makeOpa phi isOmega ap sprs
+isSatisfiable isOmega phi alphabet =
+  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) = makeOpa phi isOmega alphabet
       delta = Delta
         { bitenc = be
         , prec = precf
@@ -460,10 +459,9 @@ isSatisfiable isOmega phi ap sprs =
 isSatisfiableGen :: (Ord a)
                  => Bool
                  -> Formula a
-                 -> ([Prop a], [Prop a])
-                 -> [StructPrecRel a]
+                 -> Alphabet a
                  -> (Bool, [Set (Prop a)])
-isSatisfiableGen isOmega phi (sls, als) precf =
-  let (tphi, tprecr, [tsls, tals], pconv) = convProps phi precf [sls, als]
-      (sat, trace) = isSatisfiable isOmega tphi (tsls, tals) tprecr
+isSatisfiableGen isOmega phi (sls, precf) =
+  let (tphi, tprecr, [tsls], pconv) = convProps phi precf [sls]
+      (sat, trace) = isSatisfiable isOmega tphi (tsls, tprecr)
   in (sat, map (Set.map (decodeProp pconv)) trace)

@@ -21,6 +21,7 @@ module Pomc.Prec ( -- * Main precedence type
                  , PrecFunc
                  , PrecRel
                  , StructPrecRel
+                 , Alphabet
                  , compose
                  , fromPredicate
                  , fromRelation
@@ -90,6 +91,7 @@ mask Take  = 4
 type PrecFunc a = Set (Prop a) -> Set (Prop a) -> Maybe Prec
 type PrecRel a = (Set (Prop a), Set (Prop a), Prec)
 type StructPrecRel a = (Prop a, Prop a, Prec)
+type Alphabet a = ([Prop a], [StructPrecRel a]) -- (structural labels, prec. rel.)
 
 compose :: [PrecFunc a] -> PrecFunc a
 compose precRules = apply precRules
@@ -112,7 +114,7 @@ fromRelations prs = compose (map fromRelation prs)
 
 -- Build precedence function from list of precedence relations
 -- between structural labels. The resulting function raises an
--- exception if an input set  does not contain any structural labels,
+-- exception if an input set does not contain any structural labels,
 -- and does not check if there are more than one.
 fromStructPR :: Ord a => [StructPrecRel a] -> PrecFunc a
 fromStructPR sprs = \s1 s2 -> M.lookup (structLabel s1, structLabel s2) relMap

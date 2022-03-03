@@ -14,7 +14,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.ModelChecker (ExplicitOpa(..))
 import Pomc.MiniProc ( FunctionSkeleton(..), Statement(..), FunctionName
                      , DeltaTarget(..), LowerState(..), sksToExtendedOpa
-                     , miniProcSls, miniProcPrecRel
+                     , miniProcAlphabet
                      )
 
 import System.Random
@@ -96,13 +96,12 @@ printFunctions nf maxCalls maxDepth = do
 -- Generate a plain OPA directly (without variables)
 skeletonsToOpa :: Bool -> [FunctionSkeleton] -> ExplicitOpa Word T.Text
 skeletonsToOpa omega sks = ExplicitOpa
-  { sigma = (miniProcSls, map (Prop . skName) sks)
-  , precRel = miniProcPrecRel
-  , initials = ini
-  , finals = fin
-  , deltaPush = toListDelta $ lsDPush lowerState
-  , deltaShift = toListDelta $ lsDShift lowerState
-  , deltaPop = toListDelta $ lsDPop lowerState
+  { eoAlphabet = miniProcAlphabet
+  , eoInitials = ini
+  , eoFinals = fin
+  , eoDeltaPush = toListDelta $ lsDPush lowerState
+  , eoDeltaShift = toListDelta $ lsDShift lowerState
+  , eoDeltaPop = toListDelta $ lsDPop lowerState
   }
   where (lowerState, ini, fin) = sksToExtendedOpa omega sks
         toListDelta deltaMap = map normalize $ M.toList deltaMap
@@ -135,11 +134,11 @@ genBench dir = do
 hWriteOpa :: (Show s, Show a) => ExplicitOpa s a -> Handle -> IO ()
 hWriteOpa opa h = do
   hPutStrLn h evalHeader
-  hPutStrLn h $ "  initials = " ++ formatList (map show $ initials opa) ++ ";"
-  hPutStrLn h $ "  finals = " ++ formatList (map show $ finals opa) ++ ";"
-  hPutStrLn h $ "  deltaPush = " ++ formatDeltaInput (deltaPush opa) ++ ";"
-  hPutStrLn h $ "  deltaShift = " ++ formatDeltaInput (deltaShift opa) ++ ";"
-  hPutStrLn h $ "  deltaPop = " ++ formatDeltaPop (deltaPop opa) ++ ";"
+  hPutStrLn h $ "  initials = " ++ formatList (map show $ eoInitials opa) ++ ";"
+  hPutStrLn h $ "  finals = " ++ formatList (map show $ eoFinals opa) ++ ";"
+  hPutStrLn h $ "  deltaPush = " ++ formatDeltaInput (eoDeltaPush opa) ++ ";"
+  hPutStrLn h $ "  deltaShift = " ++ formatDeltaInput (eoDeltaShift opa) ++ ";"
+  hPutStrLn h $ "  deltaPop = " ++ formatDeltaPop (eoDeltaPop opa) ++ ";"
 
 formatList :: [String] -> String
 formatList [] = ""

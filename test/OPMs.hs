@@ -11,9 +11,10 @@ module OPMs ( -- * Stack Trace Language V1 precedence function
               -- * Stack Trace Language V2 precedence function
             , stlPrecRelV2
             , stlPrecV2sls
+            , stlV2Alphabet
             ) where
 
-import Pomc.Prec (Prec(..), StructPrecRel)
+import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import Pomc.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
@@ -78,3 +79,6 @@ stlPrecRelV2 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
 
 stlPrecV2sls :: [Prop String]
 stlPrecV2sls = map Prop ["call", "ret", "exc", "han"]
+
+stlV2Alphabet :: Alphabet String
+stlV2Alphabet = (stlPrecV2sls, stlPrecRelV2)

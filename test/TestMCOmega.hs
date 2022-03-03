@@ -4,9 +4,9 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import qualified TestSatOmega (cases)
 import EvalFormulas (ap)
-import OmegaEvalFormulas(omegaFormulas)
+import OmegaEvalFormulas (omegaFormulas)
 import Pomc.Prop (Prop(..))
-import OPMs (stlPrecRelV2, stlPrecV2sls)
+import OPMs (stlV2Alphabet)
 import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (ExplicitOpa(..), modelCheckExplicitGen)
 
@@ -38,9 +38,9 @@ lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
   map (makeTestCase largerRec) (zip OmegaEvalFormulas.omegaFormulas expectedLargerRecEval)
 
 makeTestCase :: ExplicitOpa Word String
-             -> ((String, Formula String, [String], Bool), Bool)
+             -> ((String, Formula String, Bool), Bool)
              -> TestTree
-makeTestCase opa ((name, phi, _, _), expected) =
+makeTestCase opa ((name, phi, _), expected) =
   let (sat, trace) = modelCheckExplicitGen True phi opa
       debugMsg False tr = "Expected True, got False. Counterexample:\n"
         ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
@@ -56,11 +56,10 @@ makeInputSet ilst = Set.fromList $ map Prop ilst
 -- Ar' is needed to enforce the final ret pa.
 simpleExc :: ExplicitOpa Word String
 simpleExc = ExplicitOpa
-            { sigma = (stlPrecV2sls, map Prop ["pa", "pb", "pc", "perr"])
-            , precRel = stlPrecRelV2
-            , initials = [0]
-            , finals = [4,10]
-            , deltaPush =
+            { eoAlphabet = stlV2Alphabet
+            , eoInitials = [0]
+            , eoFinals = [4,10]
+            , eoDeltaPush =
                 [ (0, makeInputSet ["call", "pa"],   [1])
                 , (1, makeInputSet ["han"],          [2])
                 , (2, makeInputSet ["call", "pb"],   [3])
@@ -70,13 +69,13 @@ simpleExc = ExplicitOpa
                 , (8, makeInputSet ["call", "perr"], [7])
                 , (10, makeInputSet ["call"], [10])
                 ]
-            , deltaShift =
+            , eoDeltaShift =
                 [ (4, makeInputSet ["exc"],         [5])
                 , (7, makeInputSet ["ret", "perr"], [7])
                 , (9, makeInputSet ["ret", "pa"],   [11])
                 , (10, makeInputSet ["ret"], [10])
                 ]
-            , deltaPop =
+            , eoDeltaPop =
                 [ (4, 2, [4])
                 , (4, 3, [4])
                 , (4, 4, [4])
@@ -115,11 +114,10 @@ expectedSasEval = [False, False, False, False, True,  -- chain_next
 
 largerRec :: ExplicitOpa Word String
 largerRec = ExplicitOpa
-            { sigma = (stlPrecV2sls, map Prop ["pa", "pb", "pc", "perr", "eb"])
-            , precRel = stlPrecRelV2
-            , initials = [0]
-            , finals = [2, 8, 10]
-            , deltaPush =
+            { eoAlphabet = stlV2Alphabet
+            , eoInitials = [0]
+            , eoFinals = [2, 8, 10]
+            , eoDeltaPush =
                 [ (0,  makeInputSet ["call", "pa"],    [1])
                 , (1,  makeInputSet ["call", "pb"],    [2])
                 , (2,  makeInputSet ["call", "pc"],    [3])
@@ -134,7 +132,7 @@ largerRec = ExplicitOpa
                 , (23, makeInputSet ["call", "perr"], [10])
                 , (8,  makeInputSet ["call"],          [8])
                 ]
-            , deltaShift =
+            , eoDeltaShift =
                 [ (9,  makeInputSet ["exc"],          [9])
                 , (10, makeInputSet ["ret", "perr"], [11])
                 , (12, makeInputSet ["ret", "perr"], [11])
@@ -144,7 +142,7 @@ largerRec = ExplicitOpa
                 , (21, makeInputSet ["ret", "pa"],   [22])
                 , (8,  makeInputSet ["ret"],          [8])
                 ]
-            , deltaPop =
+            , eoDeltaPop =
                 [ (3,   2,  [5])
                 , (3,   4,  [9])
                 , (3,  19, [20])
@@ -201,7 +199,6 @@ inspectionTest = testGroup "Stack Inspection OPA" $
   [makeTestCase inspection (("If perr is called, pa is not on the stack."
                             , Always $ (ap "call" `And` ap "perr") `Implies`
                               (Not $ Since Down T (ap "pa"))
-                            , []
                             , True)
                            , True)]
 
@@ -209,7 +206,6 @@ overflowTest :: TestTree
 overflowTest = testGroup "Stack Overflow" $
   [makeTestCase inspection (("The stack is never deeper than 3."
                             , Always . Not $ maxStackDepth 3
-                            , []
                             , True)
                            , False)]
 
@@ -220,65 +216,64 @@ maxStackDepth n = ap "call" `And` ((XBack Down $ maxStackDepth (n-1))
 
 inspection :: ExplicitOpa Word String
 inspection = ExplicitOpa
-  { sigma = (stlPrecV2sls, map Prop ["pa", "pb", "pc", "pd", "pe", "perr"])
-            , precRel = stlPrecRelV2
-            , initials = [0]
-            , finals = [5, 6]
-            , deltaPush =
-                [ (0, makeInputSet ["call", "pa"],    [6])
-                , (1, makeInputSet ["han"], [2])
-                , (2, makeInputSet ["call", "pa"], [6])
-                , (3, makeInputSet ["call", "pb"], [11])
-                , (4, makeInputSet ["call", "perr"], [28])
-                , (6, makeInputSet ["call", "pc"], [16, 17])
-                , (7, makeInputSet ["call", "pd"], [20])
-                , (8, makeInputSet ["call", "pa"], [6])
-                , (11, makeInputSet ["han"], [12])
-                , (12, makeInputSet ["call", "pe"], [24, 26])
-                , (13, makeInputSet ["call", "perr"], [28])
-                , (16, makeInputSet ["call", "pa"], [6])
-                , (17, makeInputSet ["call", "pe"], [24, 26])
-                , (20, makeInputSet ["call", "pc"], [16, 17])
-                , (21, makeInputSet ["call", "pa"], [6])
-                , (24, makeInputSet ["exc"], [5])
-                , (5, makeInputSet ["call"], [5])
-                ]
-            , deltaShift =
-                [ (9, makeInputSet ["ret", "pa"], [10])
-                , (14, makeInputSet ["ret", "pb"], [15])
-                , (18, makeInputSet ["ret", "pc"], [19])
-                , (22, makeInputSet ["ret", "pd"], [23])
-                , (24, makeInputSet ["exc"], [25])
-                , (26, makeInputSet ["ret", "pe"], [27])
-                , (28, makeInputSet ["ret", "perr"], [29])
-                , (5, makeInputSet ["ret"], [5])
-                ]
-            , deltaPop =
-                [ (5, 24, [5])
-                , (10, 0, [1])
-                , (10, 2, [3])
-                , (15, 3, [5])
-                , (19, 6, [7])
-                , (19, 20, [21])
-                , (23, 7, [8, 9])
-                , (24, 12, [24])
-                , (24, 3, [24])
-                , (24, 17, [24])
-                , (24, 6, [24])
-                , (24, 0, [24])
-                , (24, 2, [24])
-                , (24, 8, [24])
-                , (24, 16, [24])
-                , (24, 21, [24])
-                , (25, 11, [13])
-                , (25, 1, [4])
-                , (27, 17, [18])
-                , (27, 12, [14])
-                , (29, 4, [5])
-                , (29, 13, [14])
-                , (5, 5, [5])
-                ]
-            }
+  { eoAlphabet = stlV2Alphabet
+  , eoInitials = [0]
+  , eoFinals = [5, 6]
+  , eoDeltaPush =
+      [ (0, makeInputSet ["call", "pa"],    [6])
+      , (1, makeInputSet ["han"], [2])
+      , (2, makeInputSet ["call", "pa"], [6])
+      , (3, makeInputSet ["call", "pb"], [11])
+      , (4, makeInputSet ["call", "perr"], [28])
+      , (6, makeInputSet ["call", "pc"], [16, 17])
+      , (7, makeInputSet ["call", "pd"], [20])
+      , (8, makeInputSet ["call", "pa"], [6])
+      , (11, makeInputSet ["han"], [12])
+      , (12, makeInputSet ["call", "pe"], [24, 26])
+      , (13, makeInputSet ["call", "perr"], [28])
+      , (16, makeInputSet ["call", "pa"], [6])
+      , (17, makeInputSet ["call", "pe"], [24, 26])
+      , (20, makeInputSet ["call", "pc"], [16, 17])
+      , (21, makeInputSet ["call", "pa"], [6])
+      , (24, makeInputSet ["exc"], [5])
+      , (5, makeInputSet ["call"], [5])
+      ]
+  , eoDeltaShift =
+      [ (9, makeInputSet ["ret", "pa"], [10])
+      , (14, makeInputSet ["ret", "pb"], [15])
+      , (18, makeInputSet ["ret", "pc"], [19])
+      , (22, makeInputSet ["ret", "pd"], [23])
+      , (24, makeInputSet ["exc"], [25])
+      , (26, makeInputSet ["ret", "pe"], [27])
+      , (28, makeInputSet ["ret", "perr"], [29])
+      , (5, makeInputSet ["ret"], [5])
+      ]
+  , eoDeltaPop =
+      [ (5, 24, [5])
+      , (10, 0, [1])
+      , (10, 2, [3])
+      , (15, 3, [5])
+      , (19, 6, [7])
+      , (19, 20, [21])
+      , (23, 7, [8, 9])
+      , (24, 12, [24])
+      , (24, 3, [24])
+      , (24, 17, [24])
+      , (24, 6, [24])
+      , (24, 0, [24])
+      , (24, 2, [24])
+      , (24, 8, [24])
+      , (24, 16, [24])
+      , (24, 21, [24])
+      , (25, 11, [13])
+      , (25, 1, [4])
+      , (27, 17, [18])
+      , (27, 12, [14])
+      , (29, 4, [5])
+      , (29, 13, [14])
+      , (5, 5, [5])
+      ]
+  }
 
 
 jensenTests :: TestTree
@@ -292,7 +287,6 @@ jensenRd = makeTestCase jensen (("Only privileged reads."
                                                (ap "call"
                                                 `And` (Not $ ap "P_all")
                                                 `And` (Not $ ap "raw_rd"))))
-                                , []
                                 , True)
                                , True)
 
@@ -304,17 +298,15 @@ jensenWr = makeTestCase jensen (("Only privileged writes."
                                                (ap "call"
                                                 `And` (Not $ ap "P_all")
                                                 `And` (Not $ ap "raw_wr"))))
-                                , []
                                 , True)
                                , True)
 
 jensen :: ExplicitOpa Word String
 jensen = ExplicitOpa
-  { sigma = (stlPrecV2sls, map Prop ["sp", "cl", "cp", "db", "rd", "wr", "raw_rd", "raw_wr", "P_all"])
-  , precRel = stlPrecRelV2
-  , initials = [0]
-  , finals = [2, 3, 8]
-  , deltaPush =
+  { eoAlphabet = stlV2Alphabet
+  , eoInitials = [0]
+  , eoFinals = [2, 3, 8]
+  , eoDeltaPush =
       [ (0, makeInputSet ["call", "sp", "P_all"], [3])
       , (1, makeInputSet ["call", "cl"], [8])
       , (3, makeInputSet ["call", "cp", "P_all"], [12])
@@ -335,7 +327,7 @@ jensen = ExplicitOpa
       , (35, makeInputSet ["exc"], [2])
       , (2, makeInputSet ["call"], [2])
       ]
-  , deltaShift =
+  , eoDeltaShift =
       [ (6, makeInputSet ["ret", "sp", "P_all"], [7])
       , (10, makeInputSet ["ret", "cl"], [11])
       , (13, makeInputSet ["ret", "cp", "P_all"], [41])
@@ -352,7 +344,7 @@ jensen = ExplicitOpa
       , (39, makeInputSet ["ret", "raw_wr"], [40])
       , (2, makeInputSet ["ret"], [2])
       ]
-  , deltaPop =
+  , eoDeltaPop =
       [ (2, 16, [2])
       , (2, 21, [2])
       , (2, 25, [2])
@@ -400,7 +392,6 @@ jensenFullRd = makeTestCase jensenFull
                   (ap "call"
                     `And` (Not $ ap "P_rd")
                     `And` (Not $ ap "raw_rd"))))
-   , []
    , True)
   , True)
 
@@ -413,7 +404,6 @@ jensenFullWr = makeTestCase jensenFull
                   (ap "call"
                     `And` (Not $ ap "P_wr")
                     `And` (Not $ ap "raw_wr"))))
-   , []
    , True)
   , True)
 
@@ -426,7 +416,6 @@ jensenFullRdCp = makeTestCase jensenFull
                   (ap "call"
                     `And` (Not $ ap "P_cp")
                     `And` (Not $ ap "raw_rd"))))
-   , []
    , True)
   , True)
 
@@ -439,18 +428,15 @@ jensenFullWrDb = makeTestCase jensenFull
                   (ap "call"
                     `And` (Not $ ap "P_db")
                     `And` (Not $ ap "raw_wr"))))
-   , []
    , True)
   , True)
 
 jensenFull :: ExplicitOpa Word String
 jensenFull = ExplicitOpa
-  { sigma = (stlPrecV2sls, map Prop ["sp", "cl", "cp", "db", "rd", "wr", "raw_rd", "raw_wr",
-                                     "P_cp", "P_db", "P_rd", "P_wr"])
-  , precRel = stlPrecRelV2
-  , initials = [0]
-  , finals = [2, 3, 8]
-  , deltaPush =
+  { eoAlphabet = stlV2Alphabet
+  , eoInitials = [0]
+  , eoFinals = [2, 3, 8]
+  , eoDeltaPush =
       [ (0, makeInputSet ["call", "sp", "P_cp", "P_db", "P_rd", "P_wr"], [3])
       , (1, makeInputSet ["call", "cl"], [8])
       , (3, makeInputSet ["call", "cp", "P_cp", "P_db", "P_rd", "P_wr"], [12])
@@ -471,7 +457,7 @@ jensenFull = ExplicitOpa
       , (35, makeInputSet ["exc"], [2])
       , (2, makeInputSet ["call"], [2])
       ]
-  , deltaShift =
+  , eoDeltaShift =
       [ (6, makeInputSet ["ret", "sp", "P_cp", "P_db", "P_rd", "P_wr"], [7])
       , (10, makeInputSet ["ret", "cl"], [11])
       , (13, makeInputSet ["ret", "cp", "P_cp", "P_db", "P_rd", "P_wr"], [41])
@@ -488,7 +474,7 @@ jensenFull = ExplicitOpa
       , (39, makeInputSet ["ret", "raw_wr"], [40])
       , (2, makeInputSet ["ret"], [2])
       ]
-  , deltaPop =
+  , eoDeltaPop =
       [ (2, 16, [2])
       , (2, 21, [2])
       , (2, 25, [2])
@@ -537,7 +523,6 @@ stackExcConsistent = makeTestCase stackExc
                (Not $ (PBack Up (ap "tainted")
                        `Or` XBack Up (ap "tainted"))
                 `And` XBack Up (ap "Stack::push(const T&)" `Or` ap "Stack::pop()")))
-   , []
    , True)
   , False)
 
@@ -549,7 +534,6 @@ stackExcNeutral = makeTestCase stackExc
               `And` XBack Down (ap "han"))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , []
      , True)
   , True)
 
@@ -561,33 +545,15 @@ stackExcNeutralS = makeTestCase stackExc
               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , []
      , True)
   , True)
 
 stackExc :: ExplicitOpa Word String
 stackExc = ExplicitOpa
-  { sigma = (stlPrecV2sls, map Prop [ "Stack"
-                                    , "Stack::Stack()"
-                                    , "Stack::push(const T&)"
-                                    , "Stack::size() const"
-                                    , "Stack::pop()"
-                                    , "Stack::~Stack()"
-                                    , "T"
-                                    , "T::operator new()"
-                                    , "Stack::NewCopy(...)"
-                                    , "T::operator delete()"
-                                    , "T::T()"
-                                    , "std::copy(...)"
-                                    , "T::operator=(const T&)"
-                                    , "T::T(const T&)"
-                                    , "Stack::Stack(const Stack<T>&)"
-                                    , "Stack::operator=(const Stack<T>&)"
-                                    , "tainted"])
-  , precRel = stlPrecRelV2
-  , initials = [0]
-  , finals = [6]
-  , deltaPush =
+  { eoAlphabet = stlV2Alphabet
+  , eoInitials = [0]
+  , eoFinals = [6]
+  , eoDeltaPush =
       [ (0, makeInputSet ["call", "Stack", "Stack::Stack()"], [7])
       , (1, makeInputSet ["call", "Stack", "Stack::push(const T&)"], [36, 38])
       , (2, makeInputSet ["call", "Stack", "Stack::push(const T&)"], [36, 38])
@@ -618,7 +584,7 @@ stackExc = ExplicitOpa
       , (60, makeInputSet ["exc"], [6])
       , (6, makeInputSet ["call"], [6])
       ]
-  , deltaShift =
+  , eoDeltaShift =
       [ (8, makeInputSet ["ret", "Stack", "Stack::Stack()"], [9])
       , (11, makeInputSet ["ret", "Stack", "Stack::Stack(const Stack<T>&)"], [12])
       , (15, makeInputSet ["ret", "Stack", "Stack::operator=(const Stack<T>&)"], [16])
@@ -641,7 +607,7 @@ stackExc = ExplicitOpa
       , (60, makeInputSet ["exc"], [61])
       , (6, makeInputSet ["ret"], [6])
       ]
-  , deltaPop =
+  , eoDeltaPop =
       [ (6, 22, [6])
       , (6, 32, [6])
       , (6, 41, [6])
@@ -723,7 +689,6 @@ stackExcSwapConsistent = makeTestCase stackExcSwap
                (Not $ (PBack Up (ap "tainted")
                        `Or` XBack Up (ap "tainted"))
                 `And` XBack Up (ap "Stack::Push(const T&)" `Or` ap "Stack::Pop()")))
-   , []
    , True)
   , True)
 
@@ -735,7 +700,6 @@ stackExcSwapNeutral = makeTestCase stackExcSwap
               `And` XBack Down (ap "han"))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , []
      , True)
   , True)
 
@@ -747,38 +711,16 @@ stackExcSwapNeutralS = makeTestCase stackExcSwap
               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , []
      , True)
   , True)
 
 
 stackExcSwap :: ExplicitOpa Word String
 stackExcSwap = ExplicitOpa
-  { sigma = (stlPrecV2sls, map Prop [ "Stack"
-                                    , "Stack::Stack()"
-                                    , "Stack::Stack(const Stack<T>&)"
-                                    , "Stack::operator=(const Stack<T>&)"
-                                    , "Stack::Push(const T&)"
-                                    , "Stack::Size() const"
-                                    , "Stack::Pop()"
-                                    , "Stack::Top() const"
-                                    , "Stack::~Stack()"
-                                    , "StackImpl::StackImpl(size_t)"
-                                    , "StackImpl::Swap(StackImpl<T>&)"
-                                    , "StackImpl::~StackImpl()"
-                                    , "T"
-                                    , "T::T()"
-                                    , "T::T(const T&)"
-                                    , "T::~T()"
-                                    , "::operator new()"
-                                    , "std::destroy<T>()"
-                                    , "::operator delete()"
-                                    , "std::swap()"
-                                    , "tainted"])
-  , precRel = stlPrecRelV2
-  , initials = [0]
-  , finals = [6]
-  , deltaPush =
+  { eoAlphabet = stlV2Alphabet
+  , eoInitials = [0]
+  , eoFinals = [6]
+  , eoDeltaPush =
       [ (0, makeInputSet ["call", "Stack", "Stack::Stack()"], [7])
       , (1, makeInputSet ["call", "Stack", "Stack::Push(const T&)"], [40, 45])
       , (2, makeInputSet ["call", "Stack", "Stack::Push(const T&)"], [40, 45])
@@ -815,7 +757,7 @@ stackExcSwap = ExplicitOpa
       , (68, makeInputSet ["exc"], [6])
       , (6, makeInputSet ["call"], [6])
       ]
-  , deltaShift =
+  , eoDeltaShift =
       [ (8, makeInputSet ["ret", "Stack", "StackImpl::StackImpl(size_t)"], [9])
       , (10, makeInputSet ["ret", "::operator new()"], [11])
       , (12, makeInputSet ["exc"], [13])
@@ -842,7 +784,7 @@ stackExcSwap = ExplicitOpa
       , (74, makeInputSet ["ret", "T", "T::~T()"], [75])
       , (6, makeInputSet ["ret"], [6])
       ]
-  , deltaPop =
+  , eoDeltaPop =
       [ (6, 12, [6])
       , (6, 49, [6])
       , (6, 51, [6])

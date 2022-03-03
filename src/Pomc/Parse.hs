@@ -19,7 +19,7 @@ import Pomc.Prop (Prop(..))
 import qualified Pomc.Potl as P
 import Pomc.MiniProc (Program)
 import Pomc.MiniProcParse (programP)
-import Pomc.ModelChecker (ExplicitOpa(..), extractALs)
+import Pomc.ModelChecker (ExplicitOpa(..))
 
 import Data.Void (Void)
 import Data.Text
@@ -40,7 +40,7 @@ type PropString = [Set (Prop Text)]
 data CheckRequest = CheckRequest { creqPrecRels :: Maybe [StructPrecRel Text]
                                  , creqFormulas :: [PFormula]
                                  , creqStrings  :: Maybe [PropString]
-                                 , creqOpa :: Maybe (ExplicitOpa Word Text)
+                                 , creqOpa      :: Maybe (ExplicitOpa Word Text)
                                  , creqMiniProc :: Maybe Program
                                  }
 
@@ -237,7 +237,7 @@ opaSectionP = do
   _ <- symbolP "="
   opaDeltaPop <- deltaPopP
   _ <- symbolP ";"
-  return (ExplicitOpa ([], []) [] opaInitials opaFinals opaDeltaPush opaDeltaShift opaDeltaPop)
+  return (ExplicitOpa ([], []) opaInitials opaFinals opaDeltaPush opaDeltaShift opaDeltaPop)
 
 progSectionP :: Parser Program
 progSectionP = do
@@ -260,21 +260,7 @@ fullOpa :: Maybe (ExplicitOpa Word Text)
         -> [StructPrecRel Text]
         -> Maybe (ExplicitOpa Word Text)
 fullOpa Nothing _ = Nothing
-fullOpa (Just opa) prs = Just $ ExplicitOpa
-                         { sigma = (sls, als)
-                         , precRel = prs
-                         , initials = initials opa
-                         , finals = finals opa
-                         , deltaPush = deltaPush opa
-                         , deltaShift = deltaShift opa
-                         , deltaPop = deltaPop opa
-                         }
-  where sls = extractSLs prs  -- structural labels
-        als = S.toList $
-              (S.fromList (extractALs $ deltaPush opa) -- all the labels defined by the push relation
-               `S.union` S.fromList (extractALs $ deltaShift opa)) -- all the labels defined by the shift relation
-              `S.difference` (S.fromList sls) -- only normal labels, remove structural labels
-
+fullOpa (Just opa) prs = Just $ opa { eoAlphabet = (extractSLs prs, prs) }
 
 includeP :: Parser String
 includeP = do

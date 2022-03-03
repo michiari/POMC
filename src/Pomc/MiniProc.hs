@@ -27,13 +27,12 @@ module Pomc.MiniProc ( Program(..)
                      , DeltaTarget(..)
                      , LowerState(..)
                      , sksToExtendedOpa
-                     , miniProcSls
-                     , miniProcPrecRel
+                     , miniProcAlphabet
                      ) where
 
 import Pomc.Prop (Prop(..))
-import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeStructPrecRel)
-import Pomc.Prec (Prec(..), StructPrecRel)
+import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
+import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import qualified Pomc.Encoding as E (BitEncoding, decodeInput)
 import Pomc.State (Input)
 
@@ -419,8 +418,7 @@ initialValuation pvars = (scalars, arrays)
 
 programToOpa :: Bool -> Program -> Set (Prop Text)
              -> ( PropConv Text
-                , [Prop APType]
-                , [StructPrecRel APType]
+                , Alphabet APType
                 , [VarState]
                 , VarState -> Bool
                 , (E.BitEncoding -> VarState -> Input -> [VarState])
@@ -447,8 +445,7 @@ programToOpa isOmega (Program pvars sks) additionalProps =
         applyDeltaInput allVarProps delta q (S.map (decodeProp pconv) $ E.decodeInput bitenc b)
 
   in ( pconv
-     , map (encodeProp pconv) miniProcSls
-     , encodeStructPrecRel pconv miniProcPrecRel
+     , encodeAlphabet pconv miniProcAlphabet
      , eInitials
      , if isOmega then const True else eIsFinal
      , remapDeltaInput $ lsDPush  lsFiltered
@@ -570,3 +567,6 @@ miniProcPrecRel = map (\(sl1, sl2, pr) -> (Prop . T.pack $ sl1, Prop . T.pack $ 
                 , ("stm",  "exc",  Take)
                 , ("stm",  "stm",  Take)
                 ]
+
+miniProcAlphabet :: Alphabet Text
+miniProcAlphabet = (miniProcSls, miniProcPrecRel)
