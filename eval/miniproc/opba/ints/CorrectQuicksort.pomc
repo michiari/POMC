@@ -22,39 +22,26 @@
 	}
 
 	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
-	Described in: Pontiggia F., Chiari M., Pradella M.. Verification of Programs with Exceptions through Operator Precedence Automata, SEFM 2021.
-	(extended from Pontiggia's Master Thesis)
 */
 
-
 formulas = 	F (ret And main),
-			XNu (ret And main), 
-			F ( G (~ aleftGTaright)),
-			XNu (~ aleftGTaright), 
-			G ((call And main) --> ~ (PNu exc Or XNu exc)), 
-			G ((call And qs2) --> ~ (PNu exc Or XNu exc)), 
-			((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed))), 
-			((PNu exc) Or (XNu exc)) --> ((PNu (exc And ~ aleftGTaright)) Or (XNu (exc And ~ aleftGTaright))), 
-			G ( (call And accessValues) --> (hasParsed) Or (T Sd han )), 
-			(F (ret And main)) Or (XNu (exc And hasParsed)), 
-			(XNu (ret And main)) Or (XNu (exc And hasParsed)), 
-			(F ( G (~ aleftGTaright))) Or (XNu (exc And hasParsed)), 
-			(XNu (~ aleftGTaright)) Or (XNu (exc And hasParsed)), 
-			(F (ret And main And (~ aleftGTaright))) Or (XNu (exc And hasParsed));
+			XNu (ret And main),
+			F ( G (okay)),
+			XNu (okay),
+			F (ret And main And (okay)),
+			XNu (ret And main And (okay));
 			
+
 program:
-var leftGEQright, loLThi, loEQhi, loEQleft, hiEQright, eqEQlo, eqEQleft, aleftGTaright, aleftEQaright, hasParsed;
+bool leftGEQright, loLThi, loEQhi, loEQleft, hiEQright, eqEQlo, eqEQleft, okay;
+u8[2] arr;
+u8 tmp;
+
 
 main() {
 	leftGEQright = false;
-	randomInput();
-	hasParsed = false;
-	try {
-	 	qs2();
-	} catch {
-		hasParsed = true;
-		qs2();
-	}
+	qs2();
+	okay = arr[0u8] <= arr[1u8];
 }
 
 qs2() {
@@ -66,12 +53,12 @@ qs2() {
 		hiEQright = true;
 		eqEQlo = true;
 		eqEQleft = true;
-		accessValues();
 		firstIteration2();
 		while (loLThi || loEQhi) { 
 			qsif2();
 		}
 
+		//recursive calls
 		if (loEQleft){ 
 			leftGEQright = true;
 			qs2();
@@ -118,7 +105,7 @@ qs2() {
 
 qsif2() { 
 	// this if-condition is due to swapping of firstIteration
-	if ((! aleftGTaright) && (! aleftEQaright)) {
+	if (arr[0u8] < arr[1u8]) {
 		shiftloLEQhi2();
 		hiEQright = false;
 	} else {
@@ -126,7 +113,7 @@ qsif2() {
 			swapElements();
 		} else {}
 		
-		if (aleftGTaright) {
+		if (arr[0u8] > arr[1u8]) {
 			if (! eqEQlo){
 				swapElements();
 			} else {}
@@ -158,30 +145,12 @@ shiftloLEQhi2() {
 	}
 }
 
-randomInput() {
-	if (*) {
-		aleftGTaright = true;
-		aleftEQaright = false;
-	} else {
-		if (*) {
-			aleftGTaright = false;
-			aleftEQaright = true;
-		} else {
-			aleftGTaright = false;
-			aleftEQaright = false;
-		}
-	}
-}
-
 swapElements() {
-	if (aleftEQaright) {
-	} else {
-		aleftGTaright = !aleftGTaright;
-	}
+	tmp = arr[0u8];
+	arr[0u8] = arr[1u8];
+	arr[1u8] = tmp;
 }
 
-accessValues(){
-	if (*){
-		throw;
-	} else {}
+rant(u8 var){
+	var = 1u8;
 }

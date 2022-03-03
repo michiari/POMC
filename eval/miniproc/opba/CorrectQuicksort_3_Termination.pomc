@@ -22,6 +22,7 @@
 	}
 
 	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
+	Described in: Pontiggia, Francesco. POMC. A model checking tool for operator precedence languages on omega-words. Master’s thesis. Politecnico di Milano, 2021.
 
 	Abstracted over the array content and the local variables piv,eq.
 	Abstract version:
