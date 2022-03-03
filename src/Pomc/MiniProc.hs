@@ -520,10 +520,10 @@ evalExpr vval (Or lhs rhs) =
 evalExpr vval (Add lhs rhs) = evalExpr vval lhs + evalExpr vval rhs
 evalExpr vval (Sub lhs rhs) = evalExpr vval lhs - evalExpr vval rhs
 evalExpr vval (Mul lhs rhs) = evalExpr vval lhs * evalExpr vval rhs
-evalExpr vval (UDiv lhs rhs) = evalExpr vval lhs `div` noDiv0 (evalExpr vval rhs)
-evalExpr vval (SDiv lhs rhs) = evalExpr vval lhs `B.sdiv` noDiv0 (evalExpr vval rhs)
-evalExpr vval (URem lhs rhs) = evalExpr vval lhs `mod` noDiv0 (evalExpr vval rhs)
-evalExpr vval (SRem lhs rhs) = evalExpr vval lhs `B.smod` noDiv0 (evalExpr vval rhs)
+evalExpr vval (UDiv lhs rhs) = evalExpr vval lhs `div` evalExpr vval rhs
+evalExpr vval (SDiv lhs rhs) = evalExpr vval lhs `B.sdiv` evalExpr vval rhs
+evalExpr vval (URem lhs rhs) = evalExpr vval lhs `mod` evalExpr vval rhs
+evalExpr vval (SRem lhs rhs) = evalExpr vval lhs `B.smod` evalExpr vval rhs
 evalExpr vval (Eq lhs rhs) = B.fromBool $ evalExpr vval lhs == evalExpr vval rhs
 evalExpr vval (ULt lhs rhs) = B.fromBool $ evalExpr vval lhs < evalExpr vval rhs
 evalExpr vval (ULeq lhs rhs) = B.fromBool $ evalExpr vval lhs <= evalExpr vval rhs
@@ -535,11 +535,6 @@ evalExpr vval (Trunc size op) = evalExpr vval op B.@@ (size - 1, 0)
 
 toBool :: IntValue -> Bool
 toBool v = B.nat v /= 0
-
--- TODO: try removing this
-noDiv0 :: IntValue -> IntValue
-noDiv0 v | B.nat v /= 0 = v
-         | otherwise = B.ones $ B.size v
 
 
 -- OPM
