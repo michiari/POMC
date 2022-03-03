@@ -175,7 +175,6 @@ data LowerState = LowerState { lsDPush :: Map (Word, Set (Prop Text)) DeltaTarge
                              , lsDPop :: Map (Word, Word) DeltaTarget
                              , lsFinfo :: Map Text FunctionInfo
                              , lsSid :: Word
-                             , lsLoopEntries :: [(Label, Word)]
                              } deriving Show
 
 sksToExtendedOpa :: Bool -> [FunctionSkeleton] -> (LowerState, [Word], [Word])
@@ -185,17 +184,14 @@ sksToExtendedOpa True sks = -- Omega case
       -- Add stuttering transitions
       dPush = M.insert (1, makeInputSet [T.pack "stm"]) (States [(None, 1)]) (lsDPush lowerState)
       dPop = M.insert (1, 1) (States [(None, 1)]) (lsDPop lowerState)
-
-      fins = 1 : (concatMap (map snd . fiEntry) $ M.elems (lsFinfo lowerState))
-               ++ map snd (lsLoopEntries lowerState)
   in ( lowerState { lsDPush = dPush, lsDPop = dPop }
      , [0]
-     , S.toList . S.fromList $ fins
+     , [0..(lsSid lowerState)] -- all states are final in the Omega case
      )
 
 buildExtendedOpa :: [FunctionSkeleton] -> LowerState
 buildExtendedOpa sks =
-  let lowerState = lowerFunction sksMap (LowerState M.empty M.empty M.empty M.empty 3 []) (head sks)
+  let lowerState = lowerFunction sksMap (LowerState M.empty M.empty M.empty M.empty 3) (head sks)
       sksMap = M.fromList $ map (\sk -> (skName sk, sk)) sks
       firstFname = skName $ head sks
       firstFinfo = fromJust $ M.lookup firstFname (lsFinfo lowerState)
@@ -355,11 +351,11 @@ lowerStatement sks ls0 thisFinfo linkPred0 (IfThenElse guard thenBlock elseBlock
 
 lowerStatement sks ls0 thisFinfo linkPred0 (While guard body) =
   let linkPred1 lowerState0 succStates =
-        let enterEdges = case guard of
-                           Just bexp -> map (\(lbl, s) -> (combGuards bexp lbl, s)) succStates
-                           Nothing -> succStates
-            lowerState1 = linkPred0 (linkBody lowerState0 enterEdges) enterEdges
-        in lowerState1 { lsLoopEntries = lsLoopEntries lowerState1 ++ enterEdges }
+        let enterEdges =
+              case guard of
+                Just bexp -> map (\(lbl, s) -> (combGuards bexp lbl, s)) succStates
+                Nothing -> succStates
+        in linkPred0 (linkBody lowerState0 enterEdges) enterEdges
 
       (ls1, linkBody) = lowerBlock sks ls0 thisFinfo linkPred1 body
       linkPredWhile lowerState succStates =
@@ -431,8 +427,8 @@ programToOpa :: Bool -> Program -> Set (Prop Text)
                 , (E.BitEncoding -> VarState -> Input -> [VarState])
                 , (VarState -> VarState -> [VarState])
                 )
-programToOpa omega (Program pvars sks) additionalProps =
-  let (lowerState, ini, fin) = sksToExtendedOpa omega sks
+programToOpa isOmega (Program pvars sks) additionalProps =
+  let (lowerState, ini, fin) = sksToExtendedOpa isOmega sks
       eInitials = [(sid, initVal) | sid <- ini]
         where initVal = initialValuation pvars
       eIsFinal (sid, _) = sid `S.member` finSet
@@ -454,7 +450,7 @@ programToOpa omega (Program pvars sks) additionalProps =
      , map (encodeProp pconv) miniProcSls
      , encodeStructPrecRel pconv miniProcPrecRel
      , eInitials
-     , eIsFinal
+     , if isOmega then const True else eIsFinal
      , remapDeltaInput $ lsDPush  lsFiltered
      , remapDeltaInput $ lsDShift lsFiltered
      , applyDeltaPop   $ lsDPop   lsFiltered
@@ -524,10 +520,10 @@ evalExpr vval (Or lhs rhs) =
 evalExpr vval (Add lhs rhs) = evalExpr vval lhs + evalExpr vval rhs
 evalExpr vval (Sub lhs rhs) = evalExpr vval lhs - evalExpr vval rhs
 evalExpr vval (Mul lhs rhs) = evalExpr vval lhs * evalExpr vval rhs
-evalExpr vval (UDiv lhs rhs) = evalExpr vval lhs `div` noDiv0 (evalExpr vval rhs)
-evalExpr vval (SDiv lhs rhs) = evalExpr vval lhs `B.sdiv` noDiv0 (evalExpr vval rhs)
-evalExpr vval (URem lhs rhs) = evalExpr vval lhs `mod` noDiv0 (evalExpr vval rhs)
-evalExpr vval (SRem lhs rhs) = evalExpr vval lhs `B.smod` noDiv0 (evalExpr vval rhs)
+evalExpr vval (UDiv lhs rhs) = evalExpr vval lhs `div` evalExpr vval rhs
+evalExpr vval (SDiv lhs rhs) = evalExpr vval lhs `B.sdiv` evalExpr vval rhs
+evalExpr vval (URem lhs rhs) = evalExpr vval lhs `mod` evalExpr vval rhs
+evalExpr vval (SRem lhs rhs) = evalExpr vval lhs `B.smod` evalExpr vval rhs
 evalExpr vval (Eq lhs rhs) = B.fromBool $ evalExpr vval lhs == evalExpr vval rhs
 evalExpr vval (ULt lhs rhs) = B.fromBool $ evalExpr vval lhs < evalExpr vval rhs
 evalExpr vval (ULeq lhs rhs) = B.fromBool $ evalExpr vval lhs <= evalExpr vval rhs
@@ -539,11 +535,6 @@ evalExpr vval (Trunc size op) = evalExpr vval op B.@@ (size - 1, 0)
 
 toBool :: IntValue -> Bool
 toBool v = B.nat v /= 0
-
--- TODO: try removing this
-noDiv0 :: IntValue -> IntValue
-noDiv0 v | B.nat v /= 0 = v
-         | otherwise = B.ones $ B.size v
 
 
 -- OPM
