@@ -20,6 +20,7 @@
 	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
 
 	Abstracted over the array content and the local variable piv.
+	We consider an array of 4 elements.
 	Abstract Version:
 	void quicksort (int left,int right)
 	{
