@@ -31,16 +31,16 @@ formulas = 	F (ret And main),
 
 program:
 bool  okay;
-s8 tmp, left, right, lo, hi, piv, swapLeft, swapRight;
-s8[3] a;
+s4 tmp, left, right, lo, hi, piv, swapLeft, swapRight;
+s4[3] a;
 
 
 main() {
-	left = 0s8;
-	right = 2s8;
-	a[0s8] = *;
-	a[1s8] = *;
-	a[2s8] = *;
+	left = 0s4;
+	right = 2s4;
+	a[0s4] = *;
+	a[1s4] = *;
+	a[2s4] = *;
 	qs();
 }
 
@@ -55,13 +55,13 @@ qs() {
 		}
 
 		// recursive calls
-		if (lo == 0s8 && right == 1s8){
+		if (lo == 0s4 && right == 1s4){
 			qsRec0();
 		} else {
-			if (lo == 0s8 && right == 2s8){
+			if (lo == 0s4 && right == 2s4){
 				qsRec1();
 			} else {
-				if (lo == 1s8 && right == 2s8){
+				if (lo == 1s4 && right == 2s4){
 					qsRec2();
 				} else {
 					qsRec3();
@@ -73,12 +73,12 @@ qs() {
 
 qsif() { 
 	if (a[hi] > piv){
-		hi = hi - 1s8; 
+		hi = hi - 1s4; 
 	} else {
 		swapLeft = lo;
 		swapRight = hi;
 		swapElements();
-		lo = lo + 1s8;
+		lo = lo + 1s4;
 	}
 }
 
@@ -86,31 +86,31 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s8] <= a[1s8] && a[1s8] <= a[2s8];
+	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4];
 }
 
 //recursive cases depending on the value of lo and right for a three-elements array
 qsRec0() {
 	right = hi;
 	qs();
-	left = 0s8; 
-	right = 1s8;
+	left = 0s4; 
+	right = 1s4;
 	qs();
 }
 
 qsRec1() {
 	right = hi;
 	qs();
-	left = 0s8; 
-	right = 2s8;
+	left = 0s4; 
+	right = 2s4;
 	qs();
 }
 
 qsRec2() {
 	right = hi;
 	qs();
-	left = 1s8; 
-	right = 2s8;
+	left = 1s4; 
+	right = 2s4;
 	qs();
 }
 

@@ -20,18 +20,18 @@ formulas = 	F (ret And main),
 
 program:
 bool  okay, hasParsed;
-s8 tmp, left, right, lo, eq, hi, piv, swapLeft, swapRight;
-s8[5] a;
+s4 tmp, left, right, lo, eq, hi, piv, swapLeft, swapRight;
+s4[5] a;
 
 
 main() {
-	left = 0s8;
-	right = 4s8;
-	a[0s8] = *;
-	a[1s8] = *;
-	a[2s8] = *;
-	a[3s8] = *;
-	a[4s8] = *;
+	left = 0s4;
+	right = 4s4;
+	a[0s4] = *;
+	a[1s4] = *;
+	a[2s4] = *;
+	a[3s4] = *;
+	a[4s4] = *;
 	hasParsed = false;
 	try {
 	 	qs();
@@ -53,34 +53,34 @@ qs() {
 		}
 
 		// recursive calls
-		if (lo == 0s8 && right == 1s8){
+		if (lo == 0s4 && right == 1s4){
 			qsRec0();
 		} else {
-			if (lo == 0s8 && right == 2s8){
+			if (lo == 0s4 && right == 2s4){
 				qsRec1();
 			} else {
-				if (lo == 0s8 && right == 3s8){
+				if (lo == 0s4 && right == 3s4){
 					qsRec2();
 				} else {
-					if (lo == 0s8 && right == 4s8){
+					if (lo == 0s4 && right == 4s4){
 						qsRec3();
 					} else {
-						if (lo == 1s8 && right == 2s8){
+						if (lo == 1s4 && right == 2s4){
 							qsRec4();
 						} else {
-							if (lo == 1s8 && right == 3s8){
+							if (lo == 1s4 && right == 3s4){
 								qsRec5();
 							} else {
-								if (lo == 1s8 && right == 4s8){
+								if (lo == 1s4 && right == 4s4){
 									qsRec6();
 								} else {
-									if (lo == 2s8 && right == 3s8){
+									if (lo == 2s4 && right == 3s4){
 										qsRec7();
 									} else {
-										if (lo == 2s8 && right == 4s8){
+										if (lo == 2s4 && right == 4s4){
 											qsRec8();
 										} else {
-											if (lo == 3s8 && right == 4s8){
+											if (lo == 3s4 && right == 4s4){
 												qsRec9();
 											} else {
 												qsRec10();
@@ -100,7 +100,7 @@ qs() {
 
 qsif() { 
 	if (a[hi] > piv){
-		hi = hi - 1s8; 
+		hi = hi - 1s4; 
 	} else {
 		swapLeft = lo;
 		swapRight = hi;
@@ -110,7 +110,7 @@ qsif() {
 			swapRight = eq;
 			swapElements();
 		} else {}
-		lo = lo + 1s8;
+		lo = lo + 1s4;
 	}
 }
 
@@ -119,7 +119,7 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s8] <= a[1s8] && a[1s8] <= a[2s8] && a[2s8] <= a[3s8] && a[3s8] <= a[4s8];
+	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4] && a[3s4] <= a[4s4];
 }
 
 accessValues(){
@@ -130,88 +130,88 @@ accessValues(){
 
 //recursive cases depending on the value of lo and right for a five-elements array
 qsRec0() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 0s8; 
-	right = 1s8;
+	left = 0s4; 
+	right = 1s4;
 	qs();
 }
 
 qsRec1() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 0s8; 
-	right = 2s8;
+	left = 0s4; 
+	right = 2s4;
 	qs();
 }
 
 qsRec2() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 0s8; 
-	right = 3s8;
+	left = 0s4; 
+	right = 3s4;
 	qs();
 }
 
 qsRec3() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 0s8; 
-	right = 4s8;
+	left = 0s4; 
+	right = 4s4;
 	qs();
 }
 
 qsRec4() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 1s8; 
-	right = 2s8;
+	left = 1s4; 
+	right = 2s4;
 	qs();
 }
 
 qsRec5() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 1s8; 
-	right = 3s8;
+	left = 1s4; 
+	right = 3s4;
 	qs();
 }
 
 qsRec6() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 1s8; 
-	right = 4s8;
+	left = 1s4; 
+	right = 4s4;
 	qs();
 }
 
 qsRec7() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 2s8; 
-	right = 3s8;
+	left = 2s4; 
+	right = 3s4;
 	qs();
 }
 
 qsRec8() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 2s8; 
-	right = 4s8;
+	left = 2s4; 
+	right = 4s4;
 	qs();
 }
 
 
 qsRec9() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
-	left = 3s8; 
-	right = 4s8;
+	left = 3s4; 
+	right = 4s4;
 	qs();
 }
 
 qsRec10() {
-	right = eq - 1s8;
+	right = eq - 1s4;
 	qs();
 	//abort second recursive call, it involves at most one element
 	//qs();
