@@ -24,6 +24,9 @@ import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
 import qualified Data.BitVector as BV
 
+data IdentifierIdInfo = IdentifierIdInfo { scalarIds :: IdType
+                                         , arrayIds  :: IdType
+                                         } deriving Show
 
 type TypedValue = (IntValue, Type)
 data TypedExpr = TLiteral TypedValue
@@ -97,6 +100,17 @@ untypeExprWithCast dt te = let (ex, st) = insertCasts te
 
 
 type Parser = Parsec Void Text
+
+composeMany :: (a -> Parser a) -> a -> Parser a
+composeMany f arg = go arg
+  where go arg0 = do
+          r <- optional $ f arg0
+          case r of
+            Just arg1 -> go arg1
+            Nothing -> return arg0
+
+composeSome :: (a -> Parser a) -> a -> Parser a
+composeSome f arg = f arg >>= composeMany f
 
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
@@ -192,15 +206,26 @@ typeP = label "type" $ L.lexeme spaceP $
          , intTypeP
          ]
 
-declP :: Parser [Variable]
-declP = try $ do
+declP :: (Map Text Variable, IdentifierIdInfo)
+      -> Parser (Map Text Variable, IdentifierIdInfo)
+declP (varmap, idIdInfo) = try $ do
   ty <- typeP
-  ids <- sepBy1 identifierP (symbolP ",")
+  names <- sepBy1 identifierP (symbolP ",")
   _ <- symbolP ";"
-  return $ map (\name -> Variable ty name) ids
+  let numIds = if isScalar ty then scalarIds idIdInfo else arrayIds idIdInfo
+      numVars = fromIntegral $ length names :: IdType
+      newVarMap = M.fromList
+        $ map (\(name, vid) -> (name, Variable ty name vid))
+        $ zip names [numIds + i | i <- [0..(numVars - 1)]]
+  return ( varmap `M.union` newVarMap
+         , if isScalar ty
+           then idIdInfo { scalarIds = numIds + numVars }
+           else idIdInfo { arrayIds = numIds + numVars }
+         )
 
-declsP :: Parser (Set Variable)
-declsP = (S.fromList . concat) <$> many declP
+declsP :: (Map Text Variable, IdentifierIdInfo)
+       -> Parser (Map Text Variable, IdentifierIdInfo)
+declsP vmi = composeMany declP vmi
 
 lValueP :: Map Text Variable -> Parser LValue
 lValueP varmap = lArrayP <|> lScalarP
@@ -285,16 +310,19 @@ functionP varmap = do
   fname <- identifierP
   _ <- symbolP "()"
   stmts <- blockP varmap
-  return $ FunctionSkeleton fname (parseModules fname) stmts
+  return FunctionSkeleton { skName = fname
+                          , skModules = (parseModules fname)
+                          , skStmts = stmts
+                          }
 
 programP :: Parser Program
 programP = do
   spaceP
-  declSet <- declsP
-  let varmap = M.fromList $ map (\var -> (varName var, var)) (S.toAscList declSet)
+  (varmap, _) <- declsP (M.empty, IdentifierIdInfo 0 0)
   sks <- some $ functionP varmap
   eof
-  let p = Program declSet sks
+  let (scalarVars, arrayVars) = S.partition (isScalar . varType) $ S.fromList $ M.elems varmap
+      p = Program scalarVars arrayVars sks
       undeclFuns = undeclaredFuns p
   if S.null undeclFuns
     then return p

@@ -869,10 +869,9 @@ deltaRules bitenc cl precFunc =
 
           ppCurr = current $ fromJust (fprPopped info) -- holding formulas in the state to pop
           xbuClos = S.filter checkXbu cl -- get all XBack Up formulas of the closure
-          ppCheckSet = E.encode bitenc $
-                      S.filter (\(XBack Up g) -> E.member bitenc (AuxBack Down g) ppCurr) xbuClos
+          ppCheckSet = E.encode bitenc $ S.filter (\(XBack Up g) -> E.member bitenc (AuxBack Down g) ppCurr) xbuClos
                       -- get all (XBack Up g) such that (AuxBack Down g) currently holds in state to pop
-          checkSet = E.union ppCheckSet  pPendXbufs
+          checkSet = E.union ppCheckSet pPendXbufs
       in if fXl
          then  pPendXbufs == fPendXbufs
          else  fPendXbufs == checkSet
@@ -1324,8 +1323,8 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
 
     fstates = if (pvalid)
               then [FState curr pend xl xe xr | curr <- vas
-                                             , pc@(pend, xl, xe, xr) <- vpcs
-                                             , valid curr pc]
+                                              , pc@(pend, xl, xe, xr) <- vpcs
+                                              , valid curr pc]
               else []
       -- all future rules must be satisfied
       where makeInfo curr pendComb = FrInfo { frState          = state,
@@ -1337,7 +1336,7 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                                             }
             valid curr pcomb = let info = makeInfo curr pcomb
                                in all ($ info) frs
-    --omega case
+    -- omega case
     -- all future stack rules must be satisfied
     vscs = S.toList . S.filter valid $ scombs
       where makeFsrInfo stackComb = FsrInfo {fsrState           = state,

@@ -136,13 +136,13 @@ modelCheckExplicit :: (Ord s, Hashable s, Show s, Show a)
 #else
 modelCheckExplicit :: (Ord s, Hashable s, Show s)
 #endif
-           => Bool -- is it the infinite case?
-           -> Formula APType -- input formula to check
-           -> ExplicitOpa s APType -- input OPA
+                   => Bool -- is it the infinite case?
+                   -> Formula APType -- input formula to check
+                   -> ExplicitOpa s APType -- input OPA
 #ifndef NDEBUG
-           -> PropConv a
+                   -> PropConv a
 #endif
-           -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
+                   -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
 #ifndef NDEBUG
 modelCheckExplicit isOmega phi opa pconv =
 #else
@@ -180,10 +180,10 @@ modelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a, Show a)
 #else
 modelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
 #endif
-              => Bool
-              -> Formula a
-              -> ExplicitOpa s a
-              -> (Bool, [(s, Set (Prop a))])
+                      => Bool
+                      -> Formula a
+                      -> ExplicitOpa s a
+                      -> (Bool, [(s, Set (Prop a))])
 modelCheckExplicitGen isOmega phi opa =
   let (sls, prec) = eoAlphabet opa
       essentialAP = Set.fromList $ End : sls ++ getProps phi

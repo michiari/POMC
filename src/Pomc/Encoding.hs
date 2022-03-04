@@ -42,7 +42,7 @@ import Data.Bits (Bits(..))
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 import Data.Hashable
-import Control.DeepSeq(NFData(..))
+import Control.DeepSeq (NFData(..))
 
 
 type EncodedSet = EncodedAtom
@@ -79,7 +79,7 @@ instance Hashable EncodedAtom where
 --- decode a BitVector into a plain set of formulas
 decode :: BitEncoding -> EncodedAtom -> FormulaSet
 decode bitenc (EncodedAtom bv) =
-  let pos = map (fetch bitenc) (listBits bv) --all the positive formulas, according to the bitencoding
+  let pos = map (fetch bitenc) (listBits bv) -- all the positive formulas, according to the bitencoding
       neg = map (Not . (fetch bitenc)) (listBits . BV.complement $ bv) -- all the negative formulas, according to the bitencoding
   in S.fromList pos `S.union` S.fromList neg
 
