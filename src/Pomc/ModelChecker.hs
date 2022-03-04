@@ -148,8 +148,7 @@ modelCheckExplicit isOmega phi opa pconv =
 #else
 modelCheckExplicit isOmega phi opa =
 #endif
-  let -- fromList removes duplicates
-      -- all the structural labels + all the labels which appear in phi
+  let -- all the structural labels + all the labels which appear in phi
       essentialAP = Set.fromList $ End : (fst $ eoAlphabet opa) ++ (getProps phi)
 
       opaIsFinal q = Set.member q (Set.fromList $ eoFinals opa)
@@ -187,8 +186,11 @@ modelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
               -> (Bool, [(s, Set (Prop a))])
 modelCheckExplicitGen isOmega phi opa =
   let (sls, prec) = eoAlphabet opa
+      essentialAP = Set.fromList $ End : sls ++ getProps phi
       (tphi, tprec, [tsls], pconv) = convProps phi prec [sls]
-      transDelta delta = map (\(q, b, p) -> (q, Set.map (encodeProp pconv) b, p)) delta
+      transDelta delta =
+        map (\(q, b, p) ->
+                (q, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p)) delta
       tOpa = opa { eoAlphabet   = (tsls, tprec)
                  , eoDeltaPush  = transDelta (eoDeltaPush opa)
                  , eoDeltaShift = transDelta (eoDeltaShift opa)
