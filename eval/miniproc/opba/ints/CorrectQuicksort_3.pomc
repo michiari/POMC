@@ -41,6 +41,9 @@ s8[3] a;
 main() {
 	left = 0s8;
 	right = 2s8;
+	a[0s8] = *;
+	a[1s8] = *;
+	a[2s8] = *;
 	qs();
 }
 
@@ -69,9 +72,6 @@ qs() {
 				}
 			} 
 		}
-
-		
-		
 	}
 }
 
@@ -94,8 +94,8 @@ qsif() {
 swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
-	a[swapLeft] = tmp;
-	okay = a[0s8] <= a[1s8];
+	a[swapRight] = tmp;
+	okay = a[0s8] <= a[1s8] && a[1s8] <= a[2s8];
 }
 
 //recursive cases depending on the value of lo and right for a three-elements array
