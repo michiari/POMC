@@ -97,8 +97,8 @@ encode bitenc set =
 
 -- encode a single formula into an EncodedAtom
 singleton :: BitEncoding -> Formula APType -> EncodedAtom
-singleton bitenc f =
-  EncodedAtom $ BV.setBit (BV.zeros $ width bitenc) (index bitenc $ f)
+singleton bitenc f | negative f = error "Cannot make singleton with negative formula."
+                   | otherwise = EncodedAtom $ BV.setBit (BV.zeros $ width bitenc) (index bitenc $ f)
 {-# INLINABLE singleton #-}
 
 empty :: BitEncoding -> EncodedAtom

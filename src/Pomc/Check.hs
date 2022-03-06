@@ -505,6 +505,29 @@ deltaRules bitenc cl precFunc =
         }
   in (shiftGroup, pushGroup, popGroup)
   where
+    -- Auxiliary functions for when we want to check for an operator
+    -- depending on another one
+    makeOp2OpMap :: (Formula APType -> Formula APType)
+                 -> (Formula APType -> Bool)
+                 -> [(EncodedSet, EncodedSet, EncodedSet)]
+    makeOp2OpMap getAssoc checkOp =
+      map makeMasks $ filter checkOp $ S.toList cl
+      where makeMasks f =
+              let g = getAssoc f
+                  gMask = E.singleton bitenc
+                          $ if negative g then negation g else g
+              in ( E.singleton bitenc f -- mask for f
+                 , gMask -- mask for g
+                 , if negative g then E.empty bitenc else gMask -- how g should be
+                 )
+    makeOpCheckSet :: [(EncodedSet, EncodedSet, EncodedSet)]
+                   -> EncodedSet
+                   -> EncodedSet
+    makeOpCheckSet op2OpMap baseSet = foldl'
+      (\cset (fMask, gMask, g) -> if E.intersect gMask baseSet == g then E.union cset fMask else cset)
+      (E.empty bitenc)
+      op2OpMap
+
     -- XL rules :: PrInfo -> Bool
     xlShiftPr info = let pXl = mustPush (prState info) in not pXl
     xlPushPr  info = let pXl = mustPush (prState info) in pXl
@@ -677,6 +700,7 @@ deltaRules bitenc cl precFunc =
     -- XND: XNext Down --
     -- get a mask with all XNext Down formulas set to one
     maskXnd = E.suchThat bitenc checkXnd
+    g2xndg = makeOp2OpMap (\(XNext _ g) -> g) checkXnd
     checkXnd (XNext Down _) = True
     checkXnd _ = False
 
@@ -691,7 +715,7 @@ deltaRules bitenc cl precFunc =
           pCurrXndfs = E.intersect pCurr maskXnd -- current holding XNext Down formulas
           fPendXndfs = E.intersect fPend maskXnd -- future pending XNext Down obligations
 
-      in if fXl -- if  nextState mustPush
+      in if fXl -- if nextState mustPush
            then pCurrXndfs == fPendXndfs
            else E.null pCurrXndfs -- if not mustPush, then here mustn't be XNext Down formulas
 
@@ -704,17 +728,13 @@ deltaRules bitenc cl precFunc =
           ppPend = pending $ fromJust (fprPopped info) -- pending obligations of state to pop
           ppPendXndfs = E.intersect maskXnd ppPend -- all XNext Down pending obligations of state to pop
 
-          xndClos = S.filter checkXnd cl -- get all XNext Down formulas of the closure
-          pCheckSet = E.encode bitenc $
-                      S.filter (\(XNext _ g) -> E.member bitenc g pCurr) xndClos -- get all (XNext Down g) formulas of the closure such that g currently holds
-
+          pCheckSet = makeOpCheckSet g2xndg pCurr -- get all (XNext Down g) formulas of the closure such that g currently holds
           fCheckSet = E.intersect fPend maskXnd -- future XNext Down pending obligations
-
           checkSet = E.union pCheckSet fCheckSet -- or (future XNext Down pending obligation) (XNext Down g such that g currently hold)
 
-      in  if fXl -- if next state mustPush
-            then ppPendXndfs == checkSet -- all XNext Down pending obligations of state to pop are valid if or ...
-            else ppPendXndfs == fCheckSet -- all XNext Down pending obligations of state to pop are valid if they hold as pending obligations in the next state
+      in if fXl -- if next state mustPush
+         then ppPendXndfs == checkSet -- all XNext Down pending obligations of state to pop are valid if or ...
+         else ppPendXndfs == fCheckSet -- all XNext Down pending obligations of state to pop are valid if they hold as pending obligations in the next state
 
     xndPopPr :: PrInfo -> Bool
     xndPopPr info =
@@ -727,12 +747,8 @@ deltaRules bitenc cl precFunc =
       let pCurr = current $ prState info -- current holding formulas
           pPend = pending $ prState info -- current pending obligations
           pPendXndfs = E.intersect pPend maskXnd -- current pending XNext Down obligations
-
-          xndClos = S.filter checkXnd cl -- get all XNext Down formulas
-          pCheckList = E.encode bitenc $ -- get all (XNext Down g) formulas of the closure such that g currently holds
-                       S.filter (\(XNext _ g) -> E.member bitenc g pCurr) xndClos
-
-      in pCheckList == pPendXndfs -- XNext Down g is a current pending obligation iff g holds in the current state
+          pCheckSet = makeOpCheckSet g2xndg pCurr -- get all (XNext Down g) formulas of the closure such that g currently holds
+      in pCheckSet == pPendXndfs -- XNext Down g is a current pending obligation iff g holds in the current state
 
     --
     -- XNU: XNext Up
@@ -764,11 +780,9 @@ deltaRules bitenc cl precFunc =
           pPend = pending (prState info) --current pending obligations
           pPendXnufs = E.intersect pPend maskXnu -- current pending XNext Up obligations
 
-          xnuClos = S.filter checkXnu cl -- all XNext Up formulas in the closure
-          pCheckList = E.encode bitenc $
-                       S.filter (\(XNext _ g) -> E.member bitenc g pCurr) xnuClos -- all (XNext Up g) such that g currently holds
-
-      in pCheckList == pPendXnufs
+          g2xnug = makeOp2OpMap (\(XNext _ g) -> g) checkXnu
+          pCheckSet = makeOpCheckSet g2xnug pCurr -- all (XNext Up g) such that g currently holds
+      in pCheckSet == pPendXnufs
 
     xnuPopFpr :: FprInfo -> Bool
     xnuPopFpr info =
@@ -818,9 +832,8 @@ deltaRules bitenc cl precFunc =
       let pCurr = current $ fprState info --current holding formulas
           (fPend, _, _, _) = fprFuturePendComb info -- future pending formulas
           fPendXbdfs = E.intersect fPend maskXbd -- future pending XBack Down formulas
-          xbdClos = S.filter checkXbd cl -- all XBack Down formulas in the closure
-          pCheckSet = E.encode bitenc $
-                      S.filter (\(XBack _ g) -> E.member bitenc g pCurr) xbdClos -- all (XBack Down g) such that g currently holds
+          g2xbdg = makeOp2OpMap (\(XBack _ g) -> g) checkXbd
+          pCheckSet = makeOpCheckSet g2xbdg pCurr -- all (XBack Down g) such that g currently holds
       in fPendXbdfs == pCheckSet
 
     xbdShiftFpr :: FprInfo -> Bool
@@ -868,13 +881,12 @@ deltaRules bitenc cl precFunc =
           fPendXbufs = E.intersect fPend maskXbu -- future XBack Up pending obligations
 
           ppCurr = current $ fromJust (fprPopped info) -- holding formulas in the state to pop
-          xbuClos = S.filter checkXbu cl -- get all XBack Up formulas of the closure
-          ppCheckSet = E.encode bitenc $ S.filter (\(XBack Up g) -> E.member bitenc (AuxBack Down g) ppCurr) xbuClos
-                      -- get all (XBack Up g) such that (AuxBack Down g) currently holds in state to pop
+          abd2xbu = makeOp2OpMap (\(XBack Up g) -> AuxBack Down g) checkXbu
+          ppCheckSet = makeOpCheckSet abd2xbu ppCurr -- get all (XBack Up g) such that (AuxBack Down g) currently holds in state to pop
           checkSet = E.union ppCheckSet pPendXbufs
       in if fXl
-         then  pPendXbufs == fPendXbufs
-         else  fPendXbufs == checkSet
+         then pPendXbufs == fPendXbufs
+         else fPendXbufs == checkSet
 
     --
     -- ABD: AuxBack Down
@@ -913,10 +925,8 @@ deltaRules bitenc cl precFunc =
           (fPend, _, _, _) = fprFuturePendComb info -- future pending formulas
           fPendAbdfs = E.intersect fPend maskAbd -- future pending AuxBack Down formulas
 
-          abdClos = S.filter checkAbd cl -- get all AuxBack Down formulas of the closure
-          pCheckSet = E.encode bitenc $
-                      S.filter (\(AuxBack _ g) -> E.member bitenc g pCurr) abdClos
-                      -- get all (AuxBack Down g) such that g currently holds
+          g2abdg = makeOp2OpMap (\(AuxBack _ g) -> g) checkAbd
+          pCheckSet = makeOpCheckSet g2abdg pCurr -- get all (AuxBack Down g) such that g currently holds
 
       in fPendAbdfs == pCheckSet
 
@@ -949,9 +959,8 @@ deltaRules bitenc cl precFunc =
           pXr = afterPop $ prState info -- was the last transition a pop?
           pPendHnufs = E.intersect pPend maskHnu -- current pending HNext Up formulas
 
-          hnuClos = S.filter checkHnu cl -- all HNext Up formulas in the closure
-          checkSet = E.encode bitenc $
-                     S.filter (\(HNext _ g) -> E.member bitenc g pCurr) hnuClos -- all (HNext Up g) such that g currently holds
+          g2hnug = makeOp2OpMap (\(HNext _ g) -> g) checkHnu
+          checkSet = makeOpCheckSet g2hnug pCurr -- all (HNext Up g) such that g currently holds
       in if pXr
            then pPendHnufs == checkSet
            else E.null pPendHnufs
@@ -1010,9 +1019,8 @@ deltaRules bitenc cl precFunc =
           ppXr = afterPop $ fromJust (frPopped info) -- did the state to pop come from a pop?
           fCurrHbufs = E.intersect fCurr maskHbu -- future current holding XBack Up formulas
 
-          hbuClos = S.filter checkHbu cl -- HBack Up formulas in the closure
-          checkSet = E.encode bitenc $
-                     S.filter (\(HBack Up g) -> E.member bitenc g ppCurr) hbuClos -- all (HBack Up g) such that g holds in state to pop
+          g2hbug = makeOp2OpMap (\(HBack Up g) -> g) checkHbu
+          checkSet = makeOpCheckSet g2hbug ppCurr -- all (HBack Up g) such that g holds in state to pop
       in if fXl
          then (if ppXr
               then fCurrHbufs == checkSet
@@ -1031,7 +1039,6 @@ deltaRules bitenc cl precFunc =
     maskHnd = E.suchThat bitenc checkHnd
     checkHnd (HNext Down _) = True
     checkHnd _ = False
-    hndClos = S.filter checkHnd cl -- all HNext Down formulas in the closure
 
     hndCond :: FormulaSet -> Bool
     hndCond clos = not (null [f | f@(HNext Down _) <- S.toList clos])
@@ -1043,10 +1050,8 @@ deltaRules bitenc cl precFunc =
 
           fPendHndfs = E.intersect fPend maskHnd -- future pending HNext Down obligations
 
-          checkSet = E.encode bitenc $
-                     S.filter (\(HNext _ g) -> E.member bitenc (AuxBack Down g) ppCurr) hndClos
-                     -- all (HNext Down g) formulas such that AuxBack Down g holds in state to pop
-
+          abdg2hndg = makeOp2OpMap (\(HNext Down g) -> AuxBack Down g) checkHnd
+          checkSet = makeOpCheckSet abdg2hndg ppCurr -- all (HNext Down g) formulas such that AuxBack Down g holds in state to pop
       in if not fXl && not fXe
            then fPendHndfs == checkSet
            else True
@@ -1059,22 +1064,19 @@ deltaRules bitenc cl precFunc =
 
           pPendHndfs = E.intersect pPend maskHnd  -- current pending HNext Down formulas
 
-          checkSet = E.encode bitenc $
-                     S.filter (\f -> E.member bitenc (AuxBack Down f) ppCurr) hndClos
-                     -- all HNext Down g such that AuxBack Down HNext Down g holds in state to pop
-
+          abdhndg2hndg = makeOp2OpMap (\f -> AuxBack Down f) checkHnd
+          checkSet = makeOpCheckSet abdhndg2hndg ppCurr -- all HNext Down g such that AuxBack Down (HNext Down g) holds in state to pop
       in if not fXl && not fXe
-          then pPendHndfs == checkSet
+         then pPendHndfs == checkSet
          else True
 
     hndPopFpr3 :: FprInfo -> Bool
     hndPopFpr3 info =
       let (_, _, fXe, _) = fprFuturePendComb info -- future pending obligations
           ppCurr = current $ fromJust (fprPopped info) -- current holding formulas in state to pop
-          checkSet = S.filter (\f -> E.member bitenc (AuxBack Down f) ppCurr) hndClos
-          -- all HNext Down g formulas such that AuxBack Down HNext Down  g holds in state to pop
-
-      in if not (null checkSet)
+          abdhndg2hndg = makeOp2OpMap (\f -> AuxBack Down f) checkHnd
+          checkSet = makeOpCheckSet abdhndg2hndg ppCurr -- all HNext Down g formulas such that AuxBack Down (HNext Down g) holds in state to pop
+      in if not (E.null checkSet)
            then not fXe
            else True
 
@@ -1104,7 +1106,6 @@ deltaRules bitenc cl precFunc =
     maskHbd = E.suchThat bitenc checkHbd
     checkHbd (HBack Down _) = True
     checkHbd _ = False
-    hbdClos = S.filter checkHbd cl -- all HBack Down formulas in the closure
 
     hbdCond :: FormulaSet -> Bool
     hbdCond clos = not (null [f | f@(HBack Down _) <- S.toList clos])
@@ -1117,10 +1118,8 @@ deltaRules bitenc cl precFunc =
 
           pPendHbdfs = E.intersect pPend maskHbd -- current pending HBack Down formulas
 
-          checkSet = E.encode bitenc $
-                     S.filter (\(HBack _ g) -> E.member bitenc (AuxBack Down g) ppCurr) hbdClos
-                     -- all (HBack Down g) formulas such that (AuxBack Down g) holds in state to pop
-
+          abdg2hbdg = makeOp2OpMap (\(HBack _ g) -> AuxBack Down g) checkHbd
+          checkSet = makeOpCheckSet abdg2hbdg ppCurr -- all (HBack Down g) formulas such that (AuxBack Down g) holds in state to pop
       in if not fXl && not fXe
            then pPendHbdfs == checkSet
            else True
@@ -1132,11 +1131,8 @@ deltaRules bitenc cl precFunc =
 
           fPendHbdfs = E.intersect fPend maskHbd -- future pending HBack Down formulas
 
-
-          checkSet = E.encode bitenc $
-                     S.filter (\f -> E.member bitenc (AuxBack Down f) ppCurr) hbdClos
-                     -- all (HBack Down g) formulas such that (AuxBack Down (HBack Down g)) holds in state to pop
-
+          abdhbdg2hbdg = makeOp2OpMap (\f -> AuxBack Down f) checkHbd
+          checkSet = makeOpCheckSet abdhbdg2hbdg ppCurr -- all (HBack Down g) formulas such that (AuxBack Down (HBack Down g)) holds in state to pop
       in if not fXl
            then fPendHbdfs == checkSet
            else True
@@ -1175,7 +1171,6 @@ deltaRules bitenc cl precFunc =
     maskEv = E.suchThat bitenc checkEv
     checkEv (Eventually _) = True
     checkEv _ = False
-    evClos = S.filter checkEv cl -- all Eventually g formulas in the closure
 
     evCond :: FormulaSet -> Bool
     evCond clos = not (null [f | f@(Eventually _) <- S.toList clos])
@@ -1185,10 +1180,9 @@ deltaRules bitenc cl precFunc =
       let pCurr = current $ fcrState info
           fCurr = fcrFutureCurr info
           pCurrEvfs = E.intersect pCurr maskEv
-          pCheckSet = E.encode bitenc $
-                      S.filter (\(Eventually g) -> E.member bitenc g pCurr) evClos
-          fCheckSet = E.encode bitenc $
-                      S.filter (\ev -> E.member bitenc ev fCurr) evClos
+          evg2g = makeOp2OpMap (\(Eventually g) -> g) checkEv
+          pCheckSet = makeOpCheckSet evg2g pCurr
+          fCheckSet = E.intersect fCurr maskEv
           checkSet = E.union pCheckSet fCheckSet
       in pCurrEvfs ==  checkSet
     evShiftFcr = evPushFcr
@@ -1196,8 +1190,7 @@ deltaRules bitenc cl precFunc =
       let pCurr = current $ fcrState info
           fCurr = fcrFutureCurr info
           pCurrEvfs = E.intersect pCurr maskEv
-          fCheckSet = E.encode bitenc $
-                      S.filter (\ev -> E.member bitenc ev fCurr) evClos
+          fCheckSet = E.intersect fCurr maskEv
       in pCurrEvfs ==  fCheckSet
 ---------------------------------------------------------------------------------
 -- present
