@@ -1,5 +1,33 @@
-/*  TODO: add a Java sketch of this model.
-	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
+/*  Corresponding Procedure in Java syntax:
+
+	main(){
+		try{
+			qs();
+		}catch(){
+			parseList();
+			// null elements removed
+			qs();
+		}
+	}
+
+	//same procedure as in Correct Quicksort
+	qs(){
+		... 
+		accessValues();
+		...
+	}
+
+	parseList(){
+		hasParsed = true;
+	}
+
+	accessValues(){
+		if(*){
+			throw();
+		} else{
+			\\ readValues
+		}
+	}
 */
 
 formulas = 	F (ret And main),
