@@ -24,8 +24,6 @@ s4 left, right, lo, hi, eq;
 u2 piv, swapLeft, swapRight, tmp;
 u2[5] a;
 
-
-
 main() {
 	left = 0s4;
 	right = 4s4;

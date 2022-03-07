@@ -36,7 +36,7 @@ program:
 bool  okay;
 s4 left, right, lo, hi, eq;
 u1 piv, swapLeft, swapRight, tmp;
-u1[6] a;
+u1[7] a;
 
 
 
@@ -49,6 +49,7 @@ main() {
 	a[3s4] = *;
 	a[4s4] = *;
 	a[5s4] = *;
+	a[6s4] = *;
 	qs();
 }
 
@@ -79,37 +80,61 @@ qs() {
 						if (lo == 0s4 && right == 5s4){
 							qsRec4();
 						} else {
-							if (lo == 1s4 && right == 2s4){
+							if (lo == 0s4 && right == 6s4){
 								qsRec5();
 							} else {
-								if (lo == 1s4 && right == 3s4){
+								if (lo == 1s4 && right == 2s4){
 									qsRec6();
 								} else {
-									if (lo == 1s4 && right == 4s4){
+									if (lo == 1s4 && right == 3s4){
 										qsRec7();
 									} else {
-										if (lo == 1s4 && right == 5s4){
+										if (lo == 1s4 && right == 4s4){
 											qsRec8();
 										} else {
-											if (lo == 2s4 && right == 3s4){
+											if (lo == 1s4 && right == 5s4){
 												qsRec9();
 											} else {
-												if (lo == 2s4 && right == 4s4){
+												if (lo == 1s4 && right == 6s4){
 													qsRec10();
 												} else {
-													if (lo == 2s4 && right == 5s4){
+													if (lo == 2s4 && right == 3s4){
 														qsRec11();
 													} else {
-														if (lo == 3s4 && right == 4s4){
+														if (lo == 2s4 && right == 4s4){
 															qsRec12();
 														} else {
-															if (lo == 3s4 && right == 5s4){
+															if (lo == 2s4 && right == 5s4){
 																qsRec13();
 															} else {
-																if (lo == 4s4 && right == 5s4){
+																if (lo == 2s4 && right == 6s4){
 																	qsRec14();
 																} else {
-																	qsRec15();
+																	if (lo == 3s4 && right == 4s4){
+																		qsRec15();
+																	} else {
+																		if (lo == 3s4 && right == 5s4){
+																			qsRec16();
+																		} else {
+																			if (lo == 3s4 && right == 6s4){
+																				qsRec17();
+																			} else {
+																				if (lo == 4s4 && right == 5s4){
+																					qsRec18();
+																				} else {
+																					if (lo == 4s4 && right == 6s4){
+																						qsRec19();
+																					} else {
+																						if (lo == 5s4 && right == 6s4){
+																							qsRec20();
+																						} else {
+																							qsRec21();
+																						}
+																					}
+																				}
+																			}
+																		}
+																	}
 																}
 															}
 														}
@@ -148,12 +173,12 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4] && a[3s4] <= a[4s4] && a[4s4] <= a[5s4];
+	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4] && a[3s4] <= a[4s4] && a[4s4] <= a[5s4] && a[5s4] <= a[6s4];
 }
 
 //recursive cases depending on the value of lo and right for a six-elements array
 qsRec0() {
-	right = eq - 1s4;
+    right = eq -1s4;
 	qs();
 	left = 0s4; 
 	right = 1s4;
@@ -161,7 +186,7 @@ qsRec0() {
 }
 
 qsRec1() {
-	right = eq - 1s4;
+	right = eq -1s4;
 	qs();
 	left = 0s4; 
 	right = 2s4;
@@ -169,7 +194,7 @@ qsRec1() {
 }
 
 qsRec2() {
-	right = eq - 1s4;
+	right = eq -1s4;
 	qs();
 	left = 0s4; 
 	right = 3s4;
@@ -177,7 +202,7 @@ qsRec2() {
 }
 
 qsRec3() {
-	right = eq - 1s4;
+	right = eq -1s4;
 	qs();
 	left = 0s4; 
 	right = 4s4;
@@ -185,7 +210,7 @@ qsRec3() {
 }
 
 qsRec4() {
-	right = eq - 1s4;
+	right = eq -1s4;
 	qs();
 	left = 0s4; 
 	right = 5s4;
@@ -193,87 +218,135 @@ qsRec4() {
 }
 
 qsRec5() {
-	right = eq - 1s4;
+	right = eq -1s4;
+	qs();
+	left = 0s4; 
+	right = 6s4;
+	qs();
+}
+
+qsRec6() {
+	right = eq -1s4;
 	qs();
 	left = 1s4; 
 	right = 2s4;
 	qs();
 }
 
-qsRec6() {
-	right = eq - 1s4;
+qsRec7() {
+	right = eq -1s4;
 	qs();
 	left = 1s4; 
 	right = 3s4;
-	qs();
-}
-
-qsRec7() {
-	right = eq - 1s4;
-	qs();
-	left = 1s4; 
-	right = 4s4;
 	qs();
 }
 
 qsRec8() {
-	right = eq - 1s4;
+	right = eq -1s4;
+	qs();
+	left = 1s4; 
+	right = 4s4;
+	qs();
+}
+
+qsRec9() {
+	right = eq -1s4;
 	qs();
 	left = 1s4; 
 	right = 5s4;
 	qs();
 }
 
-qsRec9() {
-	right = eq - 1s4;
+qsRec10() {
+	right = eq -1s4;
+	qs();
+	left = 1s4; 
+	right = 6s4;
+	qs();
+}
+
+qsRec11() {
+	right = eq -1s4;
 	qs();
 	left = 2s4; 
 	right = 3s4;
 	qs();
 }
 
-qsRec10() {
-	right = eq - 1s4;
-	qs();
-	left = 2s4; 
-	right = 4s4;
-	qs();
-}
-
-qsRec11() {
-	right = eq - 1s4;
-	qs();
-	left = 2s4; 
-	right = 5s4;
-	qs();
-}
-
 qsRec12() {
-	right = eq - 1s4;
+	right = eq -1s4;
 	qs();
-	left = 3s4; 
+	left = 2s4; 
 	right = 4s4;
 	qs();
 }
 
 qsRec13() {
-	right = eq - 1s4;
+	right = eq -1s4;
+	qs();
+	left = 2s4; 
+	right = 5s4;
+	qs();
+}
+
+qsRec14() {
+	right = eq -1s4;
+	qs();
+	left = 2s4; 
+	right = 6s4;
+	qs();
+}
+
+qsRec15() {
+	right = eq -1s4;
+	qs();
+	left = 3s4; 
+	right = 4s4;
+	qs();
+}
+
+qsRec16() {
+	right = eq -1s4;
 	qs();
 	left = 3s4; 
 	right = 5s4;
 	qs();
 }
 
-qsRec14() {
-	right = eq - 1s4;
+qsRec17() {
+	right = eq -1s4;
 	qs();
-	left = 4s4; 
-	right = 3s4;
+	left = 3s4; 
+	right = 6s4;
 	qs();
 }
 
-qsRec15() {
-	right = eq - 1s4;
+qsRec18() {
+	right = eq -1s4;
+	qs();
+	left = 4s4; 
+	right = 5s4;
+	qs();
+}
+
+qsRec19() {
+	right = eq -1s4;
+	qs();
+	left = 4s4; 
+	right = 6s4;
+	qs();
+}
+
+qsRec20() {
+	right = eq -1s4;
+	qs();
+	left = 5s4; 
+	right = 6s4;
+	qs();
+}
+
+qsRec21() {
+	right = eq -1s4;
 	qs();
 	//abort second recursive call, it involves at most one element
 	//qs();

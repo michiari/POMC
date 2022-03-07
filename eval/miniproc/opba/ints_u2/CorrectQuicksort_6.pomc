@@ -36,7 +36,7 @@ program:
 bool  okay;
 s4 left, right, lo, hi, eq;
 u2 piv, swapLeft, swapRight, tmp;
-u2[5] a;
+u2[6] a;
 
 
 
