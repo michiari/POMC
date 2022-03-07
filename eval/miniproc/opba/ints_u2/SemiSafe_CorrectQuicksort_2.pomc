@@ -21,15 +21,15 @@ formulas = 	F (ret And main),
 program:
 bool  okay, hasParsed;
 s3 left, right, lo, hi, eq;
-u3 piv, swapLeft, swapRight, tmp;
-u3[3] a;
+u2 piv, swapLeft, swapRight, tmp;
+u2[2] a;
+
 
 main() {
 	left = 0s3;
-	right = 2s3;
+	right = 1s3;
 	a[0s3] = *;
 	a[1s3] = *;
-	a[2s3] = *;
 	hasParsed = false;
 	try {
 	 	qs();
@@ -54,15 +54,7 @@ qs() {
 		if (lo == 0s3 && right == 1s3){
 			qsRec0();
 		} else {
-			if (lo == 0s3 && right == 2s3){
-				qsRec1();
-			} else {
-				if (lo == 1s3 && right == 2s3){
-					qsRec2();
-				} else {
-					qsRec3();
-				}
-			} 
+			qsRec1();
 		}
 	}
 }
@@ -88,7 +80,7 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s3] <= a[1s3] && a[1s3] <= a[2s3];
+	okay = a[0s3] <= a[1s3];
 }
 
 accessValues(){
@@ -97,35 +89,17 @@ accessValues(){
 	} else {}
 }
 
-//recursive cases depending on the value of lo and right for a three-elements array
+//recursive cases depending on the value of lo for a two-elements array
 qsRec0() {
 	left = 0s3;
 	right = eq - 1s3;
 	qs();
-	left = 0s3; 
+	lo = 0s3; 
 	right = 1s3;
 	qs();
 }
 
 qsRec1() {
-	left = 0s3;
-	right = eq - 1s3;
-	qs();
-	left = 0s3; 
-	right = 2s3;
-	qs();
-}
-
-qsRec2() {
-	left = 0s3;
-	right = eq - 1s3;
-	qs();
-	left = 1s3; 
-	right = 2s3;
-	qs();
-}
-
-qsRec3() {
 	left = 0s3;
 	right = eq - 1s3;
 	qs();
