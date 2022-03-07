@@ -31,16 +31,18 @@ formulas = 	F (ret And main),
 
 program:
 bool  okay;
-s4 tmp, left, right, lo, hi, piv, swapLeft, swapRight;
-s4[3] a;
+s4 left, right, lo, hi;
+u3 piv, swapLeft, swapRight, tmp;
+u3[4] a;
 
 
 main() {
 	left = 0s4;
-	right = 2s4;
+	right = 3s4;
 	a[0s4] = *;
 	a[1s4] = *;
 	a[2s4] = *;
+	a[3s4] = *;
 	qs();
 }
 
@@ -61,10 +63,22 @@ qs() {
 			if (lo == 0s4 && right == 2s4){
 				qsRec1();
 			} else {
-				if (lo == 1s4 && right == 2s4){
+				if (lo == 0s4 && right == 3s4){
 					qsRec2();
 				} else {
-					qsRec3();
+					if (lo == 1s4 && right == 2s4){
+						qsRec3();
+					} else {
+						if (lo == 1s4 && right == 3s4){
+							qsRec4();
+						} else {
+							if (lo == 2s4 && right == 3s4){
+								qsRec5();
+							} else {
+								qsRec6();
+							}
+						}
+					}
 				}
 			} 
 		}
@@ -86,10 +100,10 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4];
+	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4];
 }
 
-//recursive cases depending on the value of lo and right for a three-elements array
+//recursive cases depending on the value of lo and right for a four-elements array
 qsRec0() {
 	right = hi;
 	qs();
@@ -109,12 +123,36 @@ qsRec1() {
 qsRec2() {
 	right = hi;
 	qs();
+	left = 0s4; 
+	right = 3s4;
+	qs();
+}
+
+qsRec3() {
+	right = hi;
+	qs();
 	left = 1s4; 
 	right = 2s4;
 	qs();
 }
 
-qsRec3() {
+qsRec4() {
+	right = hi;
+	qs();
+	left = 1s4; 
+	right = 3s4;
+	qs();
+}
+
+qsRec5() {
+	right = hi;
+	qs();
+	left = 2s4; 
+	right = 3s4;
+	qs();
+}
+
+qsRec6() {
 	right = hi;
 	qs();
 	//abort second recursive call, it involves at most one element

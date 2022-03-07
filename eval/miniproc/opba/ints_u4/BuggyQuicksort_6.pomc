@@ -1,3 +1,5 @@
+--TODO: update this test
+
 /*  Corresponding procedure in C syntax:
 
 	void quicksort (int left,int right)
@@ -142,7 +144,7 @@ swapElements() {
 
 //recursive cases depending on the value of lo and right for a six-elements array
 qsRec0() {
-	right = eq - 1s4;
+    right = hi;
 	qs();
 	left = 0s4; 
 	right = 1s4;
@@ -150,7 +152,7 @@ qsRec0() {
 }
 
 qsRec1() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 0s4; 
 	right = 2s4;
@@ -158,7 +160,7 @@ qsRec1() {
 }
 
 qsRec2() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 0s4; 
 	right = 3s4;
@@ -166,7 +168,7 @@ qsRec2() {
 }
 
 qsRec3() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 0s4; 
 	right = 4s4;
@@ -174,7 +176,7 @@ qsRec3() {
 }
 
 qsRec4() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 0s4; 
 	right = 5s4;
@@ -182,7 +184,7 @@ qsRec4() {
 }
 
 qsRec5() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 1s4; 
 	right = 2s4;
@@ -190,7 +192,7 @@ qsRec5() {
 }
 
 qsRec6() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 1s4; 
 	right = 3s4;
@@ -198,7 +200,7 @@ qsRec6() {
 }
 
 qsRec7() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 1s4; 
 	right = 4s4;
@@ -206,7 +208,7 @@ qsRec7() {
 }
 
 qsRec8() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 1s4; 
 	right = 5s4;
@@ -214,7 +216,7 @@ qsRec8() {
 }
 
 qsRec9() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 2s4; 
 	right = 3s4;
@@ -222,7 +224,7 @@ qsRec9() {
 }
 
 qsRec10() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 2s4; 
 	right = 4s4;
@@ -230,7 +232,7 @@ qsRec10() {
 }
 
 qsRec11() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 2s4; 
 	right = 5s4;
@@ -238,7 +240,7 @@ qsRec11() {
 }
 
 qsRec12() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 3s4; 
 	right = 4s4;
@@ -246,7 +248,7 @@ qsRec12() {
 }
 
 qsRec13() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 3s4; 
 	right = 5s4;
@@ -254,7 +256,7 @@ qsRec13() {
 }
 
 qsRec14() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	left = 4s4; 
 	right = 3s4;
@@ -262,7 +264,7 @@ qsRec14() {
 }
 
 qsRec15() {
-	right = eq - 1s4;
+	right = hi;
 	qs();
 	//abort second recursive call, it involves at most one element
 	//qs();
