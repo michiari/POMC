@@ -17,7 +17,7 @@
 				lo++;
 			}
 		}
-		quicksort(left,eq-1s4);
+		quicksort(left,eq-1s3);
 		quicksort(lo,right);
 	}
 
@@ -34,15 +34,16 @@ formulas = 	F (ret And main),
 
 program:
 bool  okay;
-s4 tmp, left, right, lo, eq, hi, piv, swapLeft, swapRight;
-s4[2] a;
+s3 left, right, lo, hi, eq;
+u3 piv, swapLeft, swapRight, tmp;
+u3[2] a;
 
 
 main() {
-	a[0s4] = *;
-	a[1s4] = *;
-	left = 0s4;
-	right = 1s4;
+	left = 0s3;
+	right = 1s3;
+	a[0s3] = *;
+	a[1s3] = *;
 	qs();
 }
 
@@ -58,7 +59,7 @@ qs() {
 		}
 
 		// recursive calls
-		if (lo == 0s4 && right == 1s4){
+		if (lo == 0s3 && right == 1s3){
 			qsRec0();
 		} else {
 			qsRec1();
@@ -68,7 +69,7 @@ qs() {
 
 qsif() { 
 	if (a[hi] > piv){
-		hi = hi - 1s4; 
+		hi = hi - 1s3; 
 	} else {
 		swapLeft = lo;
 		swapRight = hi;
@@ -78,7 +79,7 @@ qsif() {
 			swapRight = eq;
 			swapElements();
 		} else {}
-		lo = lo + 1s4;
+		lo = lo + 1s3;
 	}
 }
 
@@ -86,20 +87,20 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s4] <= a[1s4];
+	okay = a[0s3] <= a[1s3];
 }
 
 //recursive cases depending on the value of lo and right for a two-elements array
 qsRec0() {
-	right = eq - 1s4;
+	right = eq - 1s3;
 	qs();
-	left = 0s4; 
-	right = 1s4;
+	left = 0s3; 
+	right = 1s3;
 	qs();
 }
 
 qsRec1() {
-	right = eq - 1s4;
+	right = eq - 1s3;
 	qs();
 	//abort second recursive call, it involves at most one element
 	//qs();

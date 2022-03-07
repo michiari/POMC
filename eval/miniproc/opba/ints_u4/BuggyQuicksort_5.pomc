@@ -1,8 +1,3 @@
-
--- TODO: update this test
-
-
-
 /*  Corresponding procedure in C syntax:
 
 	void quicksort (int left,int right)
@@ -36,8 +31,9 @@ formulas = 	F (ret And main),
 
 program:
 bool  okay;
-s4 tmp, left, right, lo, hi, piv, swapLeft, swapRight;
-s4[5] a;
+s4 left, right, lo, hi;
+u4 piv, swapLeft, swapRight, tmp;
+u4[5] a;
 
 
 main() {

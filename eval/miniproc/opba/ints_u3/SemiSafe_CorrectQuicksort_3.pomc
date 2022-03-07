@@ -20,9 +20,9 @@ formulas = 	F (ret And main),
 
 program:
 bool  okay, hasParsed;
-s4 tmp, left, right, lo, eq, hi, piv, swapLeft, swapRight;
-s4[3] a;
-
+s3 left, right, lo, hi, eq;
+u3 piv, swapLeft, swapRight, tmp;
+u3[3] a;
 
 main() {
 	left = 0s4;

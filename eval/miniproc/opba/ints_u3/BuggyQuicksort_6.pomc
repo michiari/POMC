@@ -31,8 +31,9 @@ formulas = 	F (ret And main),
 
 program:
 bool  okay;
-s4 tmp, left, right, lo, hi, piv, swapLeft, swapRight;
-s4[6] a;
+s4 left, right, lo, hi;
+u3 piv, swapLeft, swapRight, tmp;
+u3[6] a;
 
 
 main() {

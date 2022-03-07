@@ -1,5 +1,3 @@
--- TODO_ update this test s4 --> s3
-
 /*  TODO: add a Java sketch of this model.
 	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
 */
@@ -22,9 +20,9 @@ formulas = 	F (ret And main),
 
 program:
 bool  okay, hasParsed;
-s4 tmp, left, right, lo, eq, hi, piv, swapLeft, swapRight;
-s4[5] a;
-
+s4 left, right, lo, hi, eq;
+u4 piv, swapLeft, swapRight, tmp;
+u4[5] a;
 
 main() {
 	left = 0s4;

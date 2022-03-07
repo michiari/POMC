@@ -38,7 +38,6 @@ s3 left, right, lo, hi, eq;
 u4 piv, swapLeft, swapRight, tmp;
 u4[2] a;
 
-
 main() {
 	a[0s3] = *;
 	a[1s3] = *;
