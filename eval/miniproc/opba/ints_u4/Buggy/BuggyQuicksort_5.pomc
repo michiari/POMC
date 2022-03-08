@@ -18,7 +18,7 @@
 	}	
 
 	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
-	We consider an array of 2 elements.
+	
 */
 
 formulas = 	F (ret And main),

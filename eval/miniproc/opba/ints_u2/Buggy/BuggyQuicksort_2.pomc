@@ -18,7 +18,6 @@
 	}	
 
 	Ref: Schwoon, Stefan. Model-checking pushdown systems. Diss. Technische Universität München, 2002. 
-	We consider an array of 2 elements.
 */
 
 formulas = 	F (ret And main),
@@ -28,7 +27,6 @@ formulas = 	F (ret And main),
 			XNu (okay),
 			F (ret And main And (okay)),
 			XNu (ret And main And (okay));
-
 
 program:
 bool  okay, dup;

@@ -25,7 +25,7 @@
 	Described in: Pontiggia, Francesco. POMC. A model checking tool for operator precedence languages on omega-words. Master’s thesis. Politecnico di Milano, 2021.
 
 	Abstracted over the array content and the local variable piv.
-	We consider an array of 2 elements.
+	
 	Abstract version:
 	void quicksort (int left,int right)
 	{
