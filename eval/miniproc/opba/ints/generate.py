@@ -48,7 +48,7 @@ for u_size in range(1,5):
                     f2.write(line.replace('u*', 'u' + str(u_size)))
                 f1.close()
                 f2.close()
-                with open('ints_u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(arr_size) + '.' + str(n) +'.pomc', 'w') as f:
+                with open('ints_u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(n) +'.pomc', 'w') as f:
                     f.write('formulas = ' + form + ';\n')
                     f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
                 n += 1
