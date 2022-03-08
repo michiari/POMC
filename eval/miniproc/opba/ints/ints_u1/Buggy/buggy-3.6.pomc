@@ -1,0 +1,2 @@
+formulas = XNu (ret And main And (okay));
+include = "../Buggy_Programs/BuggyQuicksort_3.inc";
