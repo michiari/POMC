@@ -1,2 +1,0 @@
-formulas = F (ret And main And (okay));
-include = "../Correct_Programs/CorrectQuicksort_4.inc";

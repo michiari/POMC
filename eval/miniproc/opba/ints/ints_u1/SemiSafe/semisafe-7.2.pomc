@@ -1,2 +1,0 @@
-formulas = XNu (ret And main);
-include = "../SemiSafe_Programs/SemiSafeQuicksort_7.inc";

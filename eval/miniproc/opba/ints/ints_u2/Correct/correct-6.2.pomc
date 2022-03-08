@@ -1,2 +1,0 @@
-formulas = XNu (ret And main);
-include = "../Correct_Programs/CorrectQuicksort_6.inc";
