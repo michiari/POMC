@@ -32,7 +32,6 @@ main() {
 	right = 1s3;
 	a[0s3] = *;
 	a[1s3] = *;
-	dup = false;
 	qs();
 }
 
