@@ -38,7 +38,8 @@ Experiments = [(Buggy_formulas,"Buggy") , (Correct_formulas,"Correct"), (SemiSaf
 for u_size in range(1,5):
     for (exp,name) in Experiments:
         for arr_size in range(2,8):
-            n = 1
+            n = 1;
+            m = 0;
             for form in exp:
                 filein = name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
                 fileout = 'ints_u' + str(u_size) + '/' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
@@ -48,8 +49,12 @@ for u_size in range(1,5):
                     f2.write(line.replace('u*', 'u' + str(u_size)))
                 f1.close()
                 f2.close()
-                with open('ints_u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(n) +'.pomc', 'w') as f:
+                with open('ints_u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(m) + str(n) +'.pomc', 'w') as f:
                     f.write('formulas = ' + form + ';\n')
                     f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
                 n += 1
+                if n==10:
+                    m +=1;
+                    n = 0;
+
                 
