@@ -26,8 +26,8 @@
 
 program:
 bool  okay;
-s4 left, right, lo, hi, eq;
-u2 piv, swapLeft, swapRight, tmp;
+s4 left, right, lo, hi, eq, swapLeft, swapRight;
+u2 piv, tmp;
 u2[7] a;
 
 
