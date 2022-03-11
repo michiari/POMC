@@ -1,54 +1,36 @@
-module TestMCOmega (tests) where
+module TestMCOmega (tests, slowTests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import qualified TestSatOmega (cases)
-import EvalFormulas (ap)
-import OmegaEvalFormulas (omegaFormulas)
-import Pomc.Prop (Prop(..))
-import OPMs (stlV2Alphabet)
+import EvalFormulas (TestCase, ap, zipExpected, excludeIndices, formulas)
+import OPMs (stlV2Alphabet, makeInputSet)
 import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (ExplicitOpa(..), modelCheckExplicitGen)
 
-import Data.Set (Set)
-import qualified Data.Set as Set
-
 tests :: TestTree
-tests = testGroup "ModelChecking.hs Omega Tests" [ sasBaseTests, sasEvalTests,
-                                                   lRBaseTests, lREvalTests,
-                                                   inspectionTest, overflowTest,
-                                                   jensenTests, jensenFullTests,
-                                                   stackExcTests, stackExcSwapTests
-                                                  ]
-
-sasBaseTests :: TestTree
-sasBaseTests = testGroup "SAS OPA MC Base Tests" $
-  map (makeTestCase simpleExc) (zip TestSatOmega.cases expectedSasBase)
+tests = testGroup "ModelChecking.hs Omega Tests" [ sasEvalTests, lREvalTests
+                                                 , inspectionTest, overflowTest
+                                                 , jensenTests, jensenFullTests
+                                                 , stackExcTests, stackExcSwapTests
+                                                 ]
 
 sasEvalTests :: TestTree
-sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
-  map (makeTestCase simpleExc) (zip OmegaEvalFormulas.omegaFormulas expectedSasEval)
-
-lRBaseTests :: TestTree
-lRBaseTests = testGroup "LargerRec OPA MC Base Tests" $
-  map (makeTestCase largerRec) (zip TestSatOmega.cases expectedLargerRecBase)
+sasEvalTests = testGroup "SAS OPA MC Omega Eval Tests" $
+  map (makeTestCase simpleExc) (zipExpected sasFormulas expectedSasEval)
+  where sasFormulas = excludeIndices formulas [18, 38, 44]
 
 lREvalTests :: TestTree
-lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
-  map (makeTestCase largerRec) (zip OmegaEvalFormulas.omegaFormulas expectedLargerRecEval)
+lREvalTests = testGroup "LargerRec OPA MC Omega Eval Tests" $
+  map (makeTestCase largerRec) (zipExpected lRFormulas expectedLargerRecEval)
+  where lRFormulas = excludeIndices formulas [18, 22, 33, 38, 44]
 
 makeTestCase :: ExplicitOpa Word String
-             -> ((String, Formula String, Bool), Bool)
+             -> (TestCase, Bool)
              -> TestTree
-makeTestCase opa ((name, phi, _), expected) =
-  let (sat, trace) = modelCheckExplicitGen True phi opa
-      debugMsg False tr = "Expected True, got False. Counterexample:\n"
-        ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
-      debugMsg True _ = "Expected False, got True."
-  in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
+makeTestCase opa ((name, phi), expected) =
+  testCase (name ++ " (" ++ show phi ++ ")")
+  $ fst (modelCheckExplicitGen True phi opa) @?= expected
 
-makeInputSet :: (Ord a) => [a] -> Set (Prop a)
-makeInputSet ilst = Set.fromList $ map Prop ilst
 
 -- State encoding:
 -- M0 = 0, A0 = 1, A1 = 2, B0 = 3, C0 = 4,
@@ -87,30 +69,26 @@ simpleExc = ExplicitOpa
                 ]
             }
 
-expectedSasBase :: [Bool]
-expectedSasBase = [True,  True,  False, False, False, False, False,
-                   False, False, False, False, False, False,
-                   False, False, False, False, False, False,
-                   False, False, False, False, False
-                  ]
-
 expectedSasEval :: [Bool]
-expectedSasEval = [False, False, False, False, True,  -- chain_next
-                   False, False, False, True,         -- contains_exc
-                   --True,                            -- data_access
-                   False, False, False, False,         -- empty_frame
-                   --True,                            -- exception_safety
-                   False, False, False, False,        -- hier_down
-                   False,                             -- hier_insp
-                   --True,                            -- hier_insp_exc
-                   False, False, False, False,        -- hier_up
-                   False, False,                      -- normal_ret
-                   True, True,                        -- no_throw
-                   False, False,                      -- stack_inspection
-                   False,                             -- uninstall_han
-                   False, False, True, False,     -- until_exc
-                   False, False, False                -- until_misc
-                  ]
+expectedSasEval =
+  [ True,  False,  True, False, False, False
+  , False, False, False, False, False, False
+  , False, False, False, False, False, False
+  , False, False, False, False, False -- base_tests
+  , False, False, False, False, True -- chain_next
+  , False, False, False, True        -- contains_exc
+  , True                             -- data_access
+  , False, False, False, False       -- empty_frame
+  , False, False, False, False       -- hier_down
+  , False                            -- hier_insp
+  , False, False, False, False       -- hier_up
+  , False, False                     -- normal_ret
+  , True, True                       -- no_throw
+  , False, False                     -- stack_inspection
+  , False                            -- uninstall_han
+  , False, False, True, False        -- until_exc
+  , False, False, False              -- until_misc
+  ]
 
 largerRec :: ExplicitOpa Word String
 largerRec = ExplicitOpa
@@ -168,45 +146,38 @@ largerRec = ExplicitOpa
                 ]
             }
 
-expectedLargerRecBase :: [Bool]
-expectedLargerRecBase = [False, True,  False, False, False, False, False,
-                         True, False, False, False, False, False,
-                         False, False, False, False, False, False,
-                         False, False, False, False, False
-                        ]
-
 expectedLargerRecEval :: [Bool]
-expectedLargerRecEval = [False, False, False, False, False,  -- chain_next
-                         False, False, False, False,         -- contains_exc
-                         --True,                            -- data_access
-                         False, False, False, False,         -- empty_frame
-                         --True,                            -- exception_safety
-                         False, False, False, False,        -- hier_down
-                         False,                             -- hier_insp
-                         --False,                           -- hier_insp_exc
-                         False, False, False, False,        -- hier_up
-                         False, False,                      -- normal_ret
-                         False, False,                      -- no_throw
-                         False, False,                      -- stack_inspection
-                         False,                             -- uninstall_han
-                         False, False, False, False,         -- until_exc
-                         False, False, False                -- until_misc
-                        ]
+expectedLargerRecEval =
+  [ True, False, True,  False, False, False
+  , False, True,  False, False, False, False
+  , False, False, False, False, False, False
+  , False, False, False, False -- base_tests
+  , False, False, False, False, False -- chain_next
+  , False, False, False, False        -- contains_exc
+  , False, False, False, False        -- empty_frame
+  , False, False, False, False        -- hier_down
+  , False                             -- hier_insp
+  , False, False, False, False        -- hier_up
+  , False, False                      -- normal_ret
+  , False, False                      -- no_throw
+  , False, False                      -- stack_inspection
+  , False                             -- uninstall_han
+  , False, False, False, False        -- until_exc
+  , False, False, False               -- until_misc
+  ]
 
 
 inspectionTest :: TestTree
 inspectionTest = testGroup "Stack Inspection OPA" $
   [makeTestCase inspection (("If perr is called, pa is not on the stack."
                             , Always $ (ap "call" `And` ap "perr") `Implies`
-                              (Not $ Since Down T (ap "pa"))
-                            , True)
+                              (Not $ Since Down T (ap "pa")))
                            , True)]
 
 overflowTest :: TestTree
 overflowTest = testGroup "Stack Overflow" $
   [makeTestCase inspection (("The stack is never deeper than 3."
-                            , Always . Not $ maxStackDepth 3
-                            , True)
+                            , Always . Not $ maxStackDepth 3)
                            , False)]
 
 maxStackDepth :: Int -> Formula String
@@ -286,8 +257,7 @@ jensenRd = makeTestCase jensen (("Only privileged reads."
                                              (Not $ Since Down T
                                                (ap "call"
                                                 `And` (Not $ ap "P_all")
-                                                `And` (Not $ ap "raw_rd"))))
-                                , True)
+                                                `And` (Not $ ap "raw_rd")))))
                                , True)
 
 jensenWr :: TestTree
@@ -297,8 +267,7 @@ jensenWr = makeTestCase jensen (("Only privileged writes."
                                              (Not $ Since Down T
                                                (ap "call"
                                                 `And` (Not $ ap "P_all")
-                                                `And` (Not $ ap "raw_wr"))))
-                                , True)
+                                                `And` (Not $ ap "raw_wr")))))
                                , True)
 
 jensen :: ExplicitOpa Word String
@@ -391,8 +360,7 @@ jensenFullRd = makeTestCase jensenFull
                 (Not $ Since Down T
                   (ap "call"
                     `And` (Not $ ap "P_rd")
-                    `And` (Not $ ap "raw_rd"))))
-   , True)
+                    `And` (Not $ ap "raw_rd")))))
   , True)
 
 jensenFullWr :: TestTree
@@ -403,8 +371,7 @@ jensenFullWr = makeTestCase jensenFull
                 (Not $ Since Down T
                   (ap "call"
                     `And` (Not $ ap "P_wr")
-                    `And` (Not $ ap "raw_wr"))))
-   , True)
+                    `And` (Not $ ap "raw_wr")))))
   , True)
 
 jensenFullRdCp :: TestTree
@@ -415,8 +382,7 @@ jensenFullRdCp = makeTestCase jensenFull
                 (Not $ Since Down T
                   (ap "call"
                     `And` (Not $ ap "P_cp")
-                    `And` (Not $ ap "raw_rd"))))
-   , True)
+                    `And` (Not $ ap "raw_rd")))))
   , True)
 
 jensenFullWrDb :: TestTree
@@ -427,8 +393,7 @@ jensenFullWrDb = makeTestCase jensenFull
                 (Not $ Since Down T
                   (ap "call"
                     `And` (Not $ ap "P_db")
-                    `And` (Not $ ap "raw_wr"))))
-   , True)
+                    `And` (Not $ ap "raw_wr")))))
   , True)
 
 jensenFull :: ExplicitOpa Word String
@@ -511,9 +476,9 @@ jensenFull = ExplicitOpa
 
 
 stackExcTests :: TestTree
-stackExcTests = testGroup "Exception Safety Unsafe Stack" [stackExcConsistent
+stackExcTests = testGroup "Exception Safety Unsafe Stack" [ stackExcConsistent
                                                           , stackExcNeutral
-                                                          , stackExcNeutralS]
+                                                          ]
 
 stackExcConsistent :: TestTree
 stackExcConsistent = makeTestCase stackExc
@@ -522,8 +487,7 @@ stackExcConsistent = makeTestCase stackExc
                `Implies`
                (Not $ (PBack Up (ap "tainted")
                        `Or` XBack Up (ap "tainted"))
-                `And` XBack Up (ap "Stack::push(const T&)" `Or` ap "Stack::pop()")))
-   , True)
+                `And` XBack Up (ap "Stack::push(const T&)" `Or` ap "Stack::pop()"))))
   , False)
 
 stackExcNeutral :: TestTree
@@ -533,8 +497,7 @@ stackExcNeutral = makeTestCase stackExc
               `And` PBack Up (ap "T")
               `And` XBack Down (ap "han"))
               `Implies`
-              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , True)
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc")))
   , True)
 
 stackExcNeutralS :: TestTree
@@ -544,8 +507,7 @@ stackExcNeutralS = makeTestCase stackExc
               `And` PBack Up (ap "T")
               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
-              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , True)
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc")))
   , True)
 
 stackExc :: ExplicitOpa Word String
@@ -677,9 +639,10 @@ stackExc = ExplicitOpa
 
 
 stackExcSwapTests :: TestTree
-stackExcSwapTests = testGroup "Exception Safety Safe Stack" [stackExcSwapConsistent
+stackExcSwapTests = testGroup "Exception Safety Safe Stack" [ stackExcSwapConsistent
                                                             , stackExcSwapNeutral
-                                                            , stackExcSwapNeutralS]
+                                                            , stackExcSwapNeutralS
+                                                            ]
 
 stackExcSwapConsistent :: TestTree
 stackExcSwapConsistent = makeTestCase stackExcSwap
@@ -688,8 +651,7 @@ stackExcSwapConsistent = makeTestCase stackExcSwap
                `Implies`
                (Not $ (PBack Up (ap "tainted")
                        `Or` XBack Up (ap "tainted"))
-                `And` XBack Up (ap "Stack::Push(const T&)" `Or` ap "Stack::Pop()")))
-   , True)
+                `And` XBack Up (ap "Stack::Push(const T&)" `Or` ap "Stack::Pop()"))))
   , True)
 
 stackExcSwapNeutral :: TestTree
@@ -699,8 +661,7 @@ stackExcSwapNeutral = makeTestCase stackExcSwap
               `And` PBack Up (ap "T")
               `And` XBack Down (ap "han"))
               `Implies`
-              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , True)
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc")))
   , True)
 
 stackExcSwapNeutralS :: TestTree
@@ -710,8 +671,7 @@ stackExcSwapNeutralS = makeTestCase stackExcSwap
               `And` PBack Up (ap "T")
               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
-              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , True)
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc")))
   , True)
 
 
@@ -836,3 +796,26 @@ stackExcSwap = ExplicitOpa
       , (6, 6, [6])
       ]
   }
+
+
+slowTests :: TestTree
+slowTests = testGroup "ModelChecking.hs Omega Slow Tests" [ sasSlowTests
+                                                          , lRSlowTests
+                                                          , stackExcNeutralS
+                                                          ]
+
+sasSlowTests :: TestTree
+sasSlowTests = testGroup "SAS OPA MC Omega Slow Tests" $
+  map (makeTestCase simpleExc) [ (formulas !! 18, False)
+                               , (formulas !! 38, True)
+                               , (formulas !! 44, True)
+                               ]
+
+lRSlowTests :: TestTree
+lRSlowTests = testGroup "LargerRec OPA MC Omega Slow Tests" $
+  map (makeTestCase largerRec) [ (formulas !! 18, False)
+                               , (formulas !! 22, False)
+                               , (formulas !! 33, True)
+                               , (formulas !! 38, True)
+                               , (formulas !! 44, False)
+                               ]

@@ -5,8 +5,8 @@ module TestMP (tests) where
 import Pomc.MiniProcParse (programP)
 import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (modelCheckProgram)
-import qualified TestSat (cases)
-import EvalFormulas (ap, formulas)
+import EvalFormulas (TestCase, ap, zipExpected, formulas)
+import qualified Data.Set as S (toList)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -15,10 +15,10 @@ import Text.RawString.QQ
 import qualified Data.Text as T
 
 tests :: TestTree
-tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
-                                   , noHanBaseTests, noHanEvalTests
-                                   , simpleThenBaseTests, simpleThenEvalTests
-                                   , simpleElseBaseTests, simpleElseEvalTests
+tests = testGroup "MiniProc Tests" [ sasEvalTests
+                                   , noHanEvalTests
+                                   , simpleThenEvalTests
+                                   , simpleElseEvalTests
                                    , singleWhile
                                    , exprsTests
                                    , generic
@@ -27,76 +27,62 @@ tests = testGroup "MiniProc Tests" [ sasBaseTests, sasEvalTests
                                    , intTests
                                    ]
 
-sasBaseTests :: TestTree
-sasBaseTests = testGroup "SAS MiniProc MC Base Tests" $
-  map (makeTestCase sasMPSource) (zip TestSat.cases expectedSasBase)
-
 sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS MiniProc MC Eval Tests" $
-  map (makeTestCase sasMPSource) (zip EvalFormulas.formulas expectedSasEval)
-
-noHanBaseTests :: TestTree
-noHanBaseTests = testGroup "NoHan MiniProc MC Base Tests" $
-  map (makeTestCase noHanSource) (zip TestSat.cases expectedNoHanBase)
+  map (makeTestCase sasMPSource) (zipExpected EvalFormulas.formulas expectedSasEval)
 
 noHanEvalTests :: TestTree
 noHanEvalTests = testGroup "NoHan MiniProc MC Eval Tests" $
-  map (makeTestCase noHanSource) (zip EvalFormulas.formulas expectedNoHanEval)
-
-simpleThenBaseTests :: TestTree
-simpleThenBaseTests = testGroup "SimpleThen MiniProc MC Base Tests" $
-  map (makeTestCase simpleThenSource) (zip TestSat.cases expectedSimpleThenBase)
+  map (makeTestCase noHanSource) (zipExpected EvalFormulas.formulas expectedNoHanEval)
 
 simpleThenEvalTests :: TestTree
 simpleThenEvalTests = testGroup "SimpleThen MiniProc MC Eval Tests" $
-  map (makeTestCase simpleThenSource) (zip EvalFormulas.formulas expectedSimpleThenEval)
-
-simpleElseBaseTests :: TestTree
-simpleElseBaseTests = testGroup "SimpleElse MiniProc MC Base Tests" $
-  map (makeTestCase simpleElseSource) (zip TestSat.cases expectedSimpleElseBase)
+  map (makeTestCase simpleThenSource) (zipExpected EvalFormulas.formulas expectedSimpleThenEval)
 
 simpleElseEvalTests :: TestTree
 simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
-  map (makeTestCase simpleElseSource) (zip EvalFormulas.formulas expectedSimpleElseEval)
+  map (makeTestCase simpleElseSource) (zipExpected EvalFormulas.formulas expectedSimpleElseEval)
 
 
 -- only for the finite case
 makeTestCase :: T.Text
-             -> ((String, Formula String, Bool), Bool)
+             -> (TestCase, Bool)
              -> TestTree
-makeTestCase filecont ((name, phi, _), expected) =
+makeTestCase filecont ((name, phi), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") assertion
   where assertion = do
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          fst (modelCheckProgram False (fmap T.pack phi) prog) @?= expected
+          let (sat, trace) = modelCheckProgram False (fmap T.pack phi) prog
+              debugMsg False tr = "Expected True, got False. Trace:\n"
+                                  ++ show (map (\(q, b) -> (q, S.toList b)) tr)
+              debugMsg True _ = "Expected False, got True."
+          assertBool (debugMsg sat trace) (sat == expected)
 
-
-expectedSasBase :: [Bool]
-expectedSasBase = [True, False, False, False, False, False,
-                   False, False, False, True, True, False,
-                   True, False, True, False, False, False,
-                   False, False, False, False
-                  ]
 
 expectedSasEval :: [Bool]
-expectedSasEval = [True, True, True, True,     -- chain_next
-                   True, False,                -- contains_exc
-                   True,                       -- data_access
-                   False, False, True,         -- empty_frame
-                   True,                       -- exception_safety
-                   False, False, False, False, -- hier_down
-                   False,                      -- hier_insp
-                   True,                       -- hier_insp_exc
-                   True, True, False, False,   -- hier_up
-                   False, False,               -- normal_ret
-                   True, True,                 -- no_throw
-                   True, True,                 -- stack_inspection
-                   False,                      -- uninstall_han
-                   False, True, True,          -- until_exc
-                   True, True, True            -- until_misc
-                  ]
+expectedSasEval =
+  [ True, False, True, False, False, False
+  , False, False, False, False, True, True
+  , False, True, False, True, False, False
+  , False, False, False, False, False, True -- base_tests
+  , True, True, True, False, True    -- chain_next
+  , True, False, False, True         -- contains_exc
+  , True                             -- data_access
+  , False, False, True, False        -- empty_frame
+  , True                             -- exception_safety
+  , False, False, False, False       -- hier_down
+  , False                            -- hier_insp
+  , True                             -- hier_insp_exc
+  , True, True, False, False         -- hier_up
+  , False, False                     -- normal_ret
+  , True, True                       -- no_throw
+  , True, True                       -- stack_inspection
+  , False                            -- uninstall_han
+  , False, True, True, True          -- until_exc
+  , True, True, True                 -- until_misc
+  ]
 
 sasMPSource :: T.Text
 sasMPSource = T.pack [r|
@@ -124,30 +110,29 @@ pc() {
 perr() { }
 |]
 
-expectedNoHanBase :: [Bool]
-expectedNoHanBase = [True, False, False, False, False, False,
-                     True, False, False, False, False, False,
-                     False, True, False, False, False, False,
-                     False, True, False, False
-                    ]
 
 expectedNoHanEval :: [Bool]
-expectedNoHanEval = [False, False, False, True,  -- chain_next
-                     False, False,               -- contains_exc
-                     True,                       -- data_access
-                     False, False, False,        -- empty_frame
-                     False,                      -- exception_safety
-                     True, False, False, False,  -- hier_down
-                     False,                      -- hier_insp
-                     True,                       -- hier_insp_exc
-                     False, False, False, False, -- hier_up
-                     False, False,               -- normal_ret
-                     False, False,               -- no_throw
-                     True, True,                 -- stack_inspection
-                     True,                       -- uninstall_han
-                     True, True, False,          -- until_exc
-                     False, False, False         -- until_misc
-                  ]
+expectedNoHanEval =
+  [ True, False, True, False, False, False
+  , False, True, False, False, False, False
+  , False, False, True, False, False, False
+  , True, False, False, False, False, False -- base_tests
+  , False, False, False, False, True  -- chain_next
+  , False, False, True, False         -- contains_exc
+  , True                              -- data_access
+  , False, False, False, True         -- empty_frame
+  , False                             -- exception_safety
+  , True, False, False, False         -- hier_down
+  , False                             -- hier_insp
+  , True                              -- hier_insp_exc
+  , False, False, False, False        -- hier_up
+  , False, False                      -- normal_ret
+  , False, False                      -- no_throw
+  , True, True                        -- stack_inspection
+  , True                              -- uninstall_han
+  , True, True, True, False           -- until_exc
+  , False, False, False               -- until_misc
+  ]
 
 noHanSource :: T.Text
 noHanSource = T.pack [r|
@@ -169,30 +154,28 @@ pc() {
 |]
 
 
-expectedSimpleThenBase :: [Bool]
-expectedSimpleThenBase = [True, False, False, False, False, False,
-                          False, False, False, True, True, False,
-                          True, False, True, False, False, False,
-                          False, False, False, False
-                         ]
-
 expectedSimpleThenEval :: [Bool]
-expectedSimpleThenEval = [False, False, False, False, -- chain_next
-                          True, False,                -- contains_exc
-                          True,                       -- data_access
-                          False, False, True,         -- empty_frame
-                          True,                       -- exception_safety
-                          False, False, False, False, -- hier_down
-                          False,                      -- hier_insp
-                          True,                       -- hier_insp_exc
-                          False, False, False, False, -- hier_up
-                          False, False,               -- normal_ret
-                          True, True,                 -- no_throw
-                          True, True,                 -- stack_inspection
-                          False,                      -- uninstall_han
-                          False, False, False,        -- until_exc
-                          False, True, False          -- until_misc
-                         ]
+expectedSimpleThenEval =
+  [ True, False, True, False, False, False
+  , False, False, False, False, True, True
+  , False, True, False, True, False, False
+  , False, False, False, False, False, False -- base_tests
+  , False, False, False, False, False -- chain_next
+  , True, False, False, True          -- contains_exc
+  , True                              -- data_access
+  , False, False, True, False         -- empty_frame
+  , True                              -- exception_safety
+  , False, False, False, False        -- hier_down
+  , False                             -- hier_insp
+  , True                              -- hier_insp_exc
+  , False, False, False, False        -- hier_up
+  , False, False                      -- normal_ret
+  , True, True                        -- no_throw
+  , True, True                        -- stack_inspection
+  , False                             -- uninstall_han
+  , False, False, False, False        -- until_exc
+  , False, True, False                -- until_misc
+  ]
 
 simpleThenSource :: T.Text
 simpleThenSource = T.pack [r|
@@ -217,30 +200,31 @@ pc() { }
 |]
 
 
-expectedSimpleElseBase :: [Bool]
-expectedSimpleElseBase = [True, False, False, False, False, False,
-                          False, False, False, True, True, False,
-                          False, False, True, False, False, False,
-                          False, False, False, False
-                         ]
-
+-- NOTE: some tests (e.g., 30) have a result different from what they should
+-- according to their description, because of the dummy exception thrown
+-- to uninstall the han.
 expectedSimpleElseEval :: [Bool]
-expectedSimpleElseEval = [False, False, False, False, -- chain_next
-                          True, False,                -- contains_exc
-                          True,                       -- data_access
-                          False, False, False,        -- empty_frame
-                          True,                       -- exception_safety
-                          False, False, False, False, -- hier_down
-                          False,                      -- hier_insp
-                          True,                       -- hier_insp_exc
-                          False, False, False, False, -- hier_up
-                          False, True,                -- normal_ret
-                          True, True,                 -- no_throw
-                          True, True,                 -- stack_inspection
-                          False,                      -- uninstall_han
-                          False, False, True,         -- until_exc
-                          False, False, False         -- until_misc
-                         ]
+expectedSimpleElseEval =
+  [ True, False, True, False, False, False
+  , False, False, False, False, True, True
+  , False, False, False, True, False, False
+  , False, False, False, False, False, False -- base_tests
+  , False, False, False, False, False -- chain_next
+  , True, False, False, True          -- contains_exc
+  , True                              -- data_access
+  , False, False, False, True         -- empty_frame
+  , True                              -- exception_safety
+  , False, False, False, False        -- hier_down
+  , False                             -- hier_insp
+  , True                              -- hier_insp_exc
+  , False, False, False, False        -- hier_up
+  , False, True                       -- normal_ret
+  , True, True                        -- no_throw
+  , False, True                       -- stack_inspection
+  , False                             -- uninstall_han
+  , False, False, False, True         -- until_exc
+  , False, False, False               -- until_misc
+  ]
 
 simpleElseSource :: T.Text
 simpleElseSource = T.pack [r|
@@ -270,8 +254,7 @@ singleWhile = makeTestCase simpleWhileSource
   (("Single-Iteration While Loop"
    , Not $ Until Down T (ap "call"
                          `And` ap "pb"
-                         `And` (HNext Up $ HUntil Up T (ap "call" `And` ap "pb")))
-   , True)
+                         `And` (HNext Up $ HUntil Up T (ap "call" `And` ap "pb"))))
   , True)
 
 simpleWhileSource :: T.Text
@@ -296,22 +279,19 @@ exprsTests = testGroup "BoolExpr Tests" [exprsPb, exprsPc, exprsPd]
 exprsPb :: TestTree
 exprsPb = makeTestCase exprsSource
   (("Check Or BoolExpr"
-   , Until Down T (ap "call" `And` ap "pb")
-   , True)
+   , Until Down T (ap "call" `And` ap "pb"))
   , True)
 
 exprsPc :: TestTree
 exprsPc = makeTestCase exprsSource
   (("Check Or Not BoolExpr"
-   , Until Down T (ap "call" `And` ap "pc")
-   , True)
+   , Until Down T (ap "call" `And` ap "pc"))
   , True)
 
 exprsPd :: TestTree
 exprsPd = makeTestCase exprsSource
   (("Check And Not BoolExpr"
-   , Until Down T (ap "call" `And` ap "pd")
-   , False)
+   , Until Down T (ap "call" `And` ap "pd"))
   , False)
 
 exprsSource :: T.Text
@@ -349,16 +329,14 @@ genSmall :: TestTree
 genSmall = makeTestCase sasMPSource
   (("MiniProc Generic Small"
    , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
-     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
-   , True)
+     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
   , True)
 
 genMed :: TestTree
 genMed = makeTestCase genMedSource
   (("MiniProc Generic Medium"
    , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
-     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
-   , False)
+     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
   , False)
 
 genMedSource :: T.Text
@@ -403,8 +381,7 @@ genLarge :: TestTree
 genLarge = makeTestCase genLargeSource
   (("MiniProc Generic Large"
    , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
-     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc"))
-   , True)
+     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
   , True)
 
 genLargeSource :: T.Text
@@ -472,8 +449,7 @@ jensenRd = makeTestCase jensen
                   (ap "call"
                    `And` (Not $ ap "P_rd")
                    `And` (Not $ ap "raw_read")
-                   `And` (Not $ ap "main"))))
-   , True)
+                   `And` (Not $ ap "main")))))
   , True)
 
 jensenWr :: TestTree
@@ -485,8 +461,7 @@ jensenWr = makeTestCase jensen
                   (ap "call"
                    `And` (Not $ ap "P_wr")
                    `And` (Not $ ap "raw_write")
-                   `And` (Not $ ap "main"))))
-   , True)
+                   `And` (Not $ ap "main")))))
   , True)
 
 jensenRdCp :: TestTree
@@ -498,8 +473,7 @@ jensenRdCp = makeTestCase jensen
                   (ap "call"
                    `And` (Not $ ap "P_cp")
                    `And` (Not $ ap "raw_read")
-                   `And` (Not $ ap "main"))))
-   , True)
+                   `And` (Not $ ap "main")))))
   , True)
 
 jensenWrDb :: TestTree
@@ -511,8 +485,7 @@ jensenWrDb = makeTestCase jensen
                   (ap "call"
                    `And` (Not $ ap "P_db")
                    `And` (Not $ ap "raw_write")
-                   `And` (Not $ ap "main"))))
-   , True)
+                   `And` (Not $ ap "main")))))
   , True)
 
 jensen :: T.Text
@@ -607,8 +580,7 @@ stackUnsafe = makeTestCase stackUnsafeSource
                `Implies`
                (Not $ (PBack Up (ap "tainted")
                        `Or` XBack Up (ap "tainted" `And` Not (ap "main")))
-                `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop")))
-   , False)
+                `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop"))))
   , False)
 
 stackUnsafeNeutrality :: TestTree
@@ -618,8 +590,7 @@ stackUnsafeNeutrality = makeTestCase stackUnsafeSource
               `And` PBack Up (ap "T")
               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
-              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , True)
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc")))
   , True)
 
 stackUnsafeSource :: T.Text
@@ -742,8 +713,7 @@ stackSafe = makeTestCase stackSafeSource
                `Implies`
                (Not $ (PBack Up (ap "tainted")
                        `Or` XBack Up (ap "tainted" `And` Not (ap "main")))
-                `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop")))
-   , True)
+                `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop"))))
   , True)
 
 stackSafeNeutrality :: TestTree
@@ -753,8 +723,7 @@ stackSafeNeutrality = makeTestCase stackSafeSource
               `And` PBack Up (ap "T")
               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
-              (XBack Down $ XBack Down $ XNext Up $ ap "exc"))
-     , True)
+              (XBack Down $ XBack Down $ XNext Up $ ap "exc")))
   , True)
 
 stackSafeSource :: T.Text
@@ -923,22 +892,19 @@ u8Arith1Tests = testGroup "u8Arith1" [ u8Arith1Exc, u8Arith1Ret, u8Arith1aHolds 
 u8Arith1Exc :: TestTree
 u8Arith1Exc = makeTestCase u8Arith1Src
   (("Throws."
-   , Until Up T (ap "exc")
-   , True)
+   , Until Up T (ap "exc"))
   , True)
 
 u8Arith1Ret :: TestTree
 u8Arith1Ret = makeTestCase u8Arith1Src
   (("Terminates normally."
-   , Until Up T (ap "ret")
-   , False)
+   , Until Up T (ap "ret"))
   , False)
 
 u8Arith1aHolds :: TestTree
 u8Arith1aHolds = makeTestCase u8Arith1Src
   (("Variable a is non-zero at the end."
-   , XNext Up (ap "a")
-   , True)
+   , XNext Up (ap "a"))
   , True)
 
 u8Arith1Src :: T.Text
@@ -961,22 +927,19 @@ u8Arith2Tests = testGroup "u8Arith2" [ u8Arith2Ret, u8Arith2Assert, u8Arith2Asse
 u8Arith2Ret :: TestTree
 u8Arith2Ret = makeTestCase u8Arith2Src
   (("Terminates normally."
-   , Until Up T (ap "ret")
-   , True)
+   , Until Up T (ap "ret"))
   , True)
 
 u8Arith2Assert :: TestTree
 u8Arith2Assert = makeTestCase u8Arith2Src
   (("Assert true."
-   , Until Up T (ap "ret" `And` ap "assert")
-   , True)
+   , Until Up T (ap "ret" `And` ap "assert"))
   , True)
 
 u8Arith2AssertFalse :: TestTree
 u8Arith2AssertFalse = makeTestCase u8Arith2Src
   (("Assert false."
-   , Until Up T (ap "ret" `And` (Not $ ap "assert"))
-   , False)
+   , Until Up T (ap "ret" `And` (Not $ ap "assert")))
   , False)
 
 u8Arith2Src :: T.Text
@@ -1010,36 +973,31 @@ arithCastsTests = testGroup "ArithCasts" [ arithCastsAssert1
 arithCastsAssert1 :: TestTree
 arithCastsAssert1 = makeTestCase arithCastsSrc
   (("a + c > 1024u16"
-   , Until Down T (ap "ret" `And` ap "assert1")
-   , True)
+   , Until Down T (ap "ret" `And` ap "assert1"))
   , True)
 
 arithCastsAssert2 :: TestTree
 arithCastsAssert2 = makeTestCase arithCastsSrc
   (("b + d < 0s8"
-   , Until Down T (ap "ret" `And` ap "assert2")
-   , True)
+   , Until Down T (ap "ret" `And` ap "assert2"))
   , True)
 
 arithCastsAssert3 :: TestTree
 arithCastsAssert3 = makeTestCase arithCastsSrc
   (("f == 25u8"
-   , Until Down T (ap "ret" `And` ap "assert3")
-   , True)
+   , Until Down T (ap "ret" `And` ap "assert3"))
   , True)
 
 arithCastsAssert4 :: TestTree
 arithCastsAssert4 = makeTestCase arithCastsSrc
   (("b * c == 10240s16"
-   , Until Down T (ap "ret" `And` ap "assert4")
-   , True)
+   , Until Down T (ap "ret" `And` ap "assert4"))
   , True)
 
 arithCastsAssert5 :: TestTree
 arithCastsAssert5 = makeTestCase arithCastsSrc
   (("d / b == -1s8"
-   , Until Down T (ap "ret" `And` ap "assert5")
-   , True)
+   , Until Down T (ap "ret" `And` ap "assert5"))
   , True)
 
 arithCastsSrc :: T.Text
@@ -1076,29 +1034,25 @@ nondetTests = testGroup "Nondeterministic Int" [ nondetCover0
 nondetCover0 :: TestTree
 nondetCover0 = makeTestCase nondetSrc
   (("Coverage 0"
-   , XNext Down (ap "ret" `And` (Not $ ap "cover0"))
-   , False)
+   , XNext Down (ap "ret" `And` (Not $ ap "cover0")))
   , False)
 
 nondetCover1 :: TestTree
 nondetCover1 = makeTestCase nondetSrc
   (("Coverage 1"
-   , XNext Down (ap "ret" `And` (Not $ ap "cover1"))
-   , False)
+   , XNext Down (ap "ret" `And` (Not $ ap "cover1")))
   , False)
 
 nondetCover2 :: TestTree
 nondetCover2 = makeTestCase nondetSrc
   (("Coverage 2"
-   , XNext Down (ap "ret" `And` (Not $ ap "cover2"))
-   , False)
+   , XNext Down (ap "ret" `And` (Not $ ap "cover2")))
   , False)
 
 nondetAssert :: TestTree
 nondetAssert = makeTestCase nondetSrc
   (("Assert true."
-   , Until Up T (ap "ret" `And` ap "assert")
-   , True)
+   , Until Up T (ap "ret" `And` ap "assert"))
   , True)
 
 nondetSrc :: T.Text
@@ -1136,22 +1090,19 @@ arrayTests = testGroup "Int Array Tests" [ arrayCover0
 arrayCover0 :: TestTree
 arrayCover0 = makeTestCase arraySrc
   (("Coverage 0"
-   , XNext Down (ap "ret" `And` (Not $ ap "cover0"))
-   , False)
+   , XNext Down (ap "ret" `And` (Not $ ap "cover0")))
   , False)
 
 arrayCover1 :: TestTree
 arrayCover1 = makeTestCase arraySrc
   (("Coverage 1"
-   , XNext Down (ap "ret" `And` (Not $ ap "cover1"))
-   , False)
+   , XNext Down (ap "ret" `And` (Not $ ap "cover1")))
   , False)
 
 arrayAssert0 :: TestTree
 arrayAssert0 = makeTestCase arraySrc
   (("Assert 0"
-   , XNext Down (ap "ret" `And` ap "assert0")
-   , True)
+   , XNext Down (ap "ret" `And` ap "assert0"))
   , True)
 
 arraySrc :: T.Text
@@ -1184,8 +1135,7 @@ arrayLoopTests = testGroup "Int Array Loop Tests" [ arrayLoopAssert0 ]
 arrayLoopAssert0 :: TestTree
 arrayLoopAssert0 = makeTestCase arrayLoopSrc
   (("Assert 0"
-   , XNext Down (ap "ret" `And` ap "assert0")
-   , True)
+   , XNext Down (ap "ret" `And` ap "assert0"))
   , True)
 
 arrayLoopSrc :: T.Text

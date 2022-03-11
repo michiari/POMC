@@ -12,13 +12,15 @@ module OPMs ( -- * Stack Trace Language V1 precedence function
             , stlPrecRelV2
             , stlPrecV2sls
             , stlV2Alphabet
+            , makeInputSet
             ) where
 
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import Pomc.Prop (Prop(..))
 
 import Data.List (isPrefixOf)
-
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 -- Utility function to annotate Stack Trace Language Version 1 strings
 -- Given a list of string tokens, if a token starts with 'c' it is annotated
@@ -82,3 +84,6 @@ stlPrecV2sls = map Prop ["call", "ret", "exc", "han"]
 
 stlV2Alphabet :: Alphabet String
 stlV2Alphabet = (stlPrecV2sls, stlPrecRelV2)
+
+makeInputSet :: (Ord a) => [a] -> Set (Prop a)
+makeInputSet ilst = Set.fromList $ map Prop ilst
