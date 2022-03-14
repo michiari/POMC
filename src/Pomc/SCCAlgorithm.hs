@@ -191,7 +191,7 @@ updateSCCInt :: (NFData state, SatState state, Eq state, Hashable state, Show st
              -> ST.ST s ()
 updateSCCInt graph iVal
   | iVal < 0 =  return () 
-  | otherwise = GS.popWhile_ (bStack graph) (\x -> x < iVal)
+  | otherwise = GS.popWhile_ (bStack graph) (\x -> iVal < x)
 
 -- unsafe
 discoverSummary :: (NFData state, SatState state, Eq state, Hashable state, Show state)
