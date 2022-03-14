@@ -147,16 +147,11 @@ makeBitEncoding clos =
 
   in E.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
--- generate atoms from a bitEncoding, the closure of phi and the powerset of APs, excluded not valid sets
+-- generate encoded atoms from a the closure of phi and all possible inputs
 genAtoms :: BitEncoding -> [Formula APType] -> [Input] -> [Atom]
 genAtoms bitenc clos inputs =
-  let
-      -- validPropSets = S.insert (S.singleton End) inputSet
-      -- -- Map the powerset of APs into a set of EncodedAtoms
-      -- atomics = map (E.encodeInput bitenc) $ S.toList validPropSets
-
-      -- Consistency checks
-      -- each check is partially applied: it still need an encoded atom to run the check on
+  let -- Consistency checks
+      -- each check is partially applied: it still needs an encoded atom to run the check on
       checks =
         [ onlyif (T `elem` clos) (trueCons bitenc)
         , onlyif (not . null $ [f | f@(And _ _)          <- clos]) (andCons bitenc clos)
@@ -382,27 +377,26 @@ stackCombs bitenc clos =
   let xns = [f | f@(XNext _ _) <- clos]
   in E.powerSet bitenc xns
 
--- given phi, the closure of phi, the set of consistent atoms and the bitencoding, generate all the initial states
-initials :: Bool -> Formula APType -> [Formula APType] -> ([Atom], BitEncoding) -> [State]
-initials isOmega phi clos (atoms, bitenc) =
-  let compatible atom = let set = atom
-                            checkPb (PBack {}) = True
-                            checkPb _ = False
-                            checkAuxB (AuxBack Down _) = True
-                            checkAuxB _ = False
-                            checkxb (XBack _ _) = True
-                            checkxb _ = False
-                        in E.member bitenc phi set && -- phi must be satisfied in the initial state
-                           (not $ E.any bitenc checkPb set) && -- the initial state must have no PBack
-                           (not $ E.any bitenc checkAuxB set) && -- the initial state must have no AuxBack
-                           (not $ E.any bitenc checkxb set)  -- the initial state must have no XBack
+-- given phi, its closure, and the set of all consistent atoms, generate all initial states
+initials :: Bool -> BitEncoding -> Formula APType -> [Formula APType] -> [Atom] -> [State]
+initials isOmega bitenc phi clos atoms =
+  let compatible atom =
+        let checkNotComp (PBack _ _) = True
+            checkNotComp (AuxBack Down _) = True
+            checkNotComp (XBack _ _) = True
+            checkNotComp _ = False
+            maskNotComp = E.suchThat bitenc checkNotComp
+        in E.member bitenc phi atom && E.null (E.intersect atom maskNotComp)
+           -- phi must be satisfied in the initial state and it must contain no incompatible formulas
       compAtoms = filter compatible atoms
-      xndfSet = S.fromList  [f | f@(XNext Down _) <- clos]
-  -- list comprehension with all the states that are compatible and the powerset of all possible future obligations
+      xndfSets = E.powerSet bitenc [f | f@(XNext Down _) <- clos]
+  -- list of all compatible states and the powerset of all possible future obligations
   -- for the Omega case, there are no stack obligations in the initial states
   in if (isOmega)
-      then [WState phia (E.encode bitenc phip) (E.empty bitenc) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
-      else [FState phia (E.encode bitenc phip) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
+     then [WState phia phip (E.empty bitenc) True False False
+          | phia <- compAtoms, phip <- xndfSets]
+     else [FState phia phip True False False
+          | phia <- compAtoms, phip <- xndfSets]
 
 -- return all deltaRules b satisfying condition (i -> Bool) on i (a closure)
 resolve :: i -> [(i -> Bool, b)] -> [b]
@@ -1432,7 +1426,7 @@ check phi sprs ts =
         -- generate all possible stack obligations for the omega case
         scs = stackCombs bitenc cl
         -- generate initial states
-        is = initials False nphi cl (as, bitenc)
+        is = initials False bitenc nphi cl as
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
         deltaShift atoms pcombs scombs rgroup state props = fstates
@@ -1490,7 +1484,7 @@ fastcheck phi sprs ts =
         as = genAtoms bitenc cl inputSet
         -- generate all possible pending obligations
         pcs = pendCombs bitenc cl
-        is = filter compInitial (initials  False nphi cl (as, bitenc))
+        is = filter compInitial (initials False bitenc nphi cl as)
         (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl prec
 
         compInitial s = fromMaybe True $
@@ -1568,7 +1562,7 @@ makeOpa phi isOmega (sls, sprs) =
         -- generate all possible stack obligations for the omega case
         scs = stackCombs bitenc cl
         -- generate initial states
-        is = initials isOmega nphi cl (as, bitenc)
+        is = initials isOmega bitenc nphi cl as
 
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
