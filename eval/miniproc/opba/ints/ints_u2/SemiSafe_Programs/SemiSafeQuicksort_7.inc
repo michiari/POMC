@@ -51,6 +51,8 @@ main() {
 	 	qs();
 	} catch {
 		hasParsed = true;
+		left = 0s4;
+		right = 6s4;
 		qs();
 	}
 }

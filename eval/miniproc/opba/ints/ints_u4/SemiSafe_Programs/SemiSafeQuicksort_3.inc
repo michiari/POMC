@@ -37,16 +37,18 @@ u4 piv, swapLeft, swapRight, tmp;
 u4[3] a;
 
 main() {
-	left = 0s4;
-	right = 2s4;
-	a[0s4] = *;
-	a[1s4] = *;
-	a[2s4] = *;
+	left = 0s3;
+	right = 2s3;
+	a[0s3] = *;
+	a[1s3] = *;
+	a[2s3] = *;
 	hasParsed = false;
 	try {
 	 	qs();
 	} catch {
 		hasParsed = true;
+		left = 0s3;
+		right = 2s3;
 		qs();
 	}
 }
@@ -63,13 +65,13 @@ qs() {
 		}
 
 		// recursive calls
-		if (lo == 0s4 && right == 1s4){
+		if (lo == 0s3 && right == 1s3){
 			qsRec0();
 		} else {
-			if (lo == 0s4 && right == 2s4){
+			if (lo == 0s3 && right == 2s3){
 				qsRec1();
 			} else {
-				if (lo == 1s4 && right == 2s4){
+				if (lo == 1s3 && right == 2s3){
 					qsRec2();
 				} else {
 					qsRec3();
@@ -81,7 +83,7 @@ qs() {
 
 qsif() { 
 	if (a[hi] > piv){
-		hi = hi - 1s4; 
+		hi = hi - 1s3; 
 	} else {
 		swapLeft = lo;
 		swapRight = hi;
@@ -91,7 +93,7 @@ qsif() {
 			swapRight = eq;
 			swapElements();
 		} else {}
-		lo = lo + 1s4;
+		lo = lo + 1s3;
 	}
 }
 
@@ -100,7 +102,7 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4];
+	okay = a[0s3] <= a[1s3] && a[1s3] <= a[2s3];
 }
 
 accessValues(){
@@ -111,35 +113,35 @@ accessValues(){
 
 //recursive cases depending on the value of lo and right for a three-elements array
 qsRec0() {
-	left = 0s4;
-	right = eq - 1s4;
+	left = 0s3;
+	right = eq - 1s3;
 	qs();
-	left = 0s4; 
-	right = 1s4;
+	left = 0s3; 
+	right = 1s3;
 	qs();
 }
 
 qsRec1() {
-	left = 0s4;
-	right = eq - 1s4;
+	left = 0s3;
+	right = eq - 1s3;
 	qs();
-	left = 0s4; 
-	right = 2s4;
+	left = 0s3; 
+	right = 2s3;
 	qs();
 }
 
 qsRec2() {
-	left = 0s4;
-	right = eq - 1s4;
+	left = 0s3;
+	right = eq - 1s3;
 	qs();
-	left = 1s4; 
-	right = 2s4;
+	left = 1s3; 
+	right = 2s3;
 	qs();
 }
 
 qsRec3() {
-	left = 0s4;
-	right = eq - 1s4;
+	left = 0s3;
+	right = eq - 1s3;
 	qs();
 	//abort second recursive call, it involves at most one element
 	//qs();
