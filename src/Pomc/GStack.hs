@@ -50,7 +50,9 @@ size :: GStack s v -> ST s Int
 size (_, lenref) = readSTRef lenref
 
 multPop :: GStack s v -> Int  -> ST s [v]
-multPop gs n  = replicateM n $ pop gs
+multPop gs n 
+  | n <= 0 = return []
+  |otherwise = replicateM n $ pop gs
 
 popWhile :: GStack s v -> (v -> Bool) -> ST s [v]
 popWhile (gsref, lenref) cond = 

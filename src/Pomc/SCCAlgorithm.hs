@@ -11,7 +11,7 @@ module Pomc.SCCAlgorithm ( Graph
                          , alreadyVisited
                          , visitGraphFromKey
                          , initialNodes
-                         , summariesSize
+                         , emptySummaries
                          , toCollapsePhase
                          , toSearchPhase
                          , visitNode
@@ -80,7 +80,7 @@ data Graph s state = Graph
   , bStack          :: GStack s Int -- for the Gabow algorithm
   , sStack          :: GStack s Int -- for the Gabow algorithm
   , initials        :: STRef s (Set (Int, Bool))
-  , summaries       :: STRef s (Set (Int, Key state))
+  , summaries       :: STRef s ([(Int, Key state)])
   }
 
 newGraph :: (NFData state, SatState state, Eq state, Hashable state, Show state)
@@ -92,7 +92,7 @@ newGraph iniNodes = do
   newBS         <- GS.new
   newSS         <- GS.new
   newInitials   <- newSTRef (Set.empty)
-  newSummaries  <- newSTRef (Set.empty)
+  newSummaries  <- newSTRef []
   forM_ (iniNodes) $ \key -> do
     newId <- freshPosId newIdSequence
     THT.insert tht (decode key) newId $ SingleNode {getgnId = newId, iValue = 0, node = key, edges = Set.empty, preds = Set.empty};
@@ -201,7 +201,7 @@ discoverSummary :: (NFData state, SatState state, Eq state, Hashable state, Show
                 -> ST.ST s ()
 discoverSummary graph fr t = do
   gnFrom <- THT.lookup (nodeToGraphNode graph) $ decode fr
-  modifySTRef' (summaries graph) $ Set.insert (getgnId gnFrom, t)
+  modifySTRef' (summaries graph) $ \l -> (getgnId gnFrom, t):l
 
 -- unsafe
 insertEdge :: (NFData state, SatState state, Eq state, Hashable state, Show state)
@@ -290,37 +290,40 @@ merge graph idents areFinal =
         gnStates = Set.map (getState . fst) gnsNodesSet
     THT.fuse (nodeToGraphNode graph) (Set.map decode gnsNodesSet) newId newgn;
     THT.multModify (nodeToGraphNode graph) (Set.toList gnsPredsSet) updateGn;
-    modifySTRef' (summaries graph) $ Set.map $ \(f,t) -> (sub f,t);
+    modifySTRef' (summaries graph) $ map $ \(f,t) -> (sub f,t);
     modifySTRef' (initials graph)  $ Set.map $ \(n,b) -> (sub n,b);
     return $ areFinal . Set.toList $ gnStates
 
-summariesSize :: (NFData state, SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Int
-summariesSize graph = do
+emptySummaries:: (NFData state, SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s Bool
+emptySummaries graph = do
   summ <- readSTRef $ summaries graph
-  return $ Set.size summ
+  return $ null summ
 
 toCollapsePhase :: (NFData state, SatState state, Eq state, Hashable state, Show state) => Graph s state -> ST.ST s (Set (Int,Bool))
 toCollapsePhase graph =
-  let resolveSummary (fr, key) = do
-        alrDir <- alreadyDiscovered graph key
-        ident <- THT.lookupId (nodeToGraphNode graph) $ decode key
-        let summ = fromJust ident
-            insertEd x@SingleNode{edges = es}  = x{edges = Set.insert summ es}
-            insertEd x@SCComponent{edges = es} = x{edges = Set.insert summ es}
-        THT.modify (nodeToGraphNode graph) fr insertEd
-        return (fromJust ident, not $ alrDir)
+  let resolveSummary (s, acc) [] = return acc 
+      resolveSummary (s,acc) ((fr, key):l) 
+        | Set.member (fr, decode key) s = resolveSummary (s,acc) l 
+        | otherwise = do
+            alrDir <- alreadyDiscovered graph key
+            ident <- THT.lookupId (nodeToGraphNode graph) $ decode key
+            let summ = fromJust ident
+                insertEd x@SingleNode{edges = es}  = x{edges = Set.insert summ es}
+                insertEd x@SCComponent{edges = es} = x{edges = Set.insert summ es}
+            THT.modify (nodeToGraphNode graph) fr insertEd
+            resolveSummary ((Set.insert (fr, decode key) s), (Set.insert (fromJust ident, not $ alrDir) acc)) l
   in do
     THT.modifyAll (nodeToGraphNode graph) resetgnIValue
     summ <- readSTRef $ summaries graph
-    newInitials <- mapM resolveSummary $ Set.toList summ
+    newInitials <-  resolveSummary (Set.empty, Set.empty) summ
     modifySTRef' (initials graph) $ Set.map $ \(ident, _) -> (ident,True)
-    return $ Set.fromList newInitials
+    return newInitials
 
 toSearchPhase :: (NFData state, SatState state, Eq state, Hashable state, Show state) => Graph s state -> (Set (Int,Bool)) -> ST.ST s ()
 toSearchPhase graph newInitials = do
   THT.modifyAll (nodeToGraphNode graph) resetgnIValue
   writeSTRef (initials graph) newInitials;
-  writeSTRef (summaries graph) Set.empty
+  writeSTRef (summaries graph) []
 
 --unsafe
 visitGraphFromKey :: (NFData state, SatState state, Ord state, Hashable state, Show state)
