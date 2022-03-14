@@ -32,7 +32,7 @@ import qualified Data.Vector as V
 
 import Data.List (foldl', sortOn, (\\))
 import qualified Data.HashMap.Strict as M
-import Control.Monad (guard, filterM)
+import Control.Monad (guard)
 
 import qualified Data.Sequence as SQ
 import Data.Foldable (toList)
@@ -148,12 +148,12 @@ makeBitEncoding clos =
   in E.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
 -- generate atoms from a bitEncoding, the closure of phi and the powerset of APs, excluded not valid sets
-genAtoms :: BitEncoding -> [Formula APType] -> Set PropSet -> [Atom]
-genAtoms bitenc clos inputSet =
+genAtoms :: BitEncoding -> [Formula APType] -> [Input] -> [Atom]
+genAtoms bitenc clos inputs =
   let
-      validPropSets = S.insert (S.singleton End) inputSet
-      -- Map the powerset of APs into a set of EncodedAtoms
-      atomics = map (E.encodeInput bitenc) $ S.toList validPropSets
+      -- validPropSets = S.insert (S.singleton End) inputSet
+      -- -- Map the powerset of APs into a set of EncodedAtoms
+      -- atomics = map (E.encodeInput bitenc) $ S.toList validPropSets
 
       -- Consistency checks
       -- each check is partially applied: it still need an encoded atom to run the check on
@@ -178,16 +178,16 @@ genAtoms bitenc clos inputSet =
 
       -- Make all consistent atoms
       -- given a starting empty sequence and a BitVector representing a set of formulas,
-      -- join it with all the atoms in atomics and check consistency
+      -- join it with all the atoms in inputs and check consistency
       prependCons as eset =
-        let combs = do easet <- atomics
+        let combs = do easet <- inputs
                        let eset' = E.joinInputFormulas easet eset
                        guard (consistent eset')
                        return eset'
         in as SQ.>< (SQ.fromList combs)
 
   in toList $ if width bitenc - propBits bitenc == 0
-              then SQ.fromList atomics
+              then SQ.fromList inputs
               else foldl' prependCons SQ.empty (E.generateFormulas bitenc)
 
 -- Consistency check functions
@@ -1415,8 +1415,9 @@ check phi sprs ts =
     encTs
   where nphi = normalize phi
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
-        inputSet = foldl' (flip S.insert) S.empty ts
         encTs = map (E.encodeInput bitenc) ts
+        inputSet = S.toList . S.fromList
+          $ (E.singletonInput bitenc End):encTs
 
         -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
@@ -1473,8 +1474,9 @@ fastcheck phi sprs ts =
     encTs
   where nphi = normalize phi
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
-        inputSet = foldl' (flip S.insert) S.empty ts
         encTs = map (E.encodeInput bitenc) ts
+        inputSet = S.toList . S.fromList
+          $ (E.singletonInput bitenc End):encTs
 
         -- generate the closure of the normalized input formula
         cl = closure nphi tsprops
@@ -1551,10 +1553,8 @@ makeOpa phi isOmega (sls, sprs) =
         als = getProps nphi \\ sls
         -- all the APs which make up the language (L is in powerset(AP))
         tsprops = sls ++ als
-        -- generate the powerset of AP, ech time taking a prop from the structural list
-        inputSet = S.fromList [S.fromList (sl:alt) |
-                               sl <- sls,
-                               alt <- filterM (const [True, False]) als]
+        -- generate the powerset of AP, each time taking a prop from the structural list
+        inputSet = E.generateInputs bitenc sls als
         -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
         -- generate a BitEncoding from the closure
