@@ -60,7 +60,20 @@ qs() {
 		lo = eq;
 		hi = right;
 		while (lo <= hi) { 
-			qsif();
+			if (a[hi] > piv){
+				hi = hi - 1s3; 
+			} else {
+				swapLeft = lo;
+				swapRight = hi;
+				swapElements();
+				if (a[lo] < piv){
+					swapLeft = lo;
+					swapRight = eq;
+					swapElements();
+					eq = eq + 1s3;
+				} else {}
+				lo = lo + 1s3;
+			}
 		}
 
 		// recursive calls
@@ -69,22 +82,6 @@ qs() {
 		} else {
 			qsRec1();
 		}
-	}
-}
-
-qsif() { 
-	if (a[hi] > piv){
-		hi = hi - 1s3; 
-	} else {
-		swapLeft = lo;
-		swapRight = hi;
-		swapElements();
-		if (a[lo] < piv){
-			swapLeft = lo;
-			swapRight = eq;
-			swapElements();
-		} else {}
-		lo = lo + 1s3;
 	}
 }
 
