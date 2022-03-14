@@ -31,6 +31,8 @@ module Pomc.Encoding ( EncodedSet
                      , decodeInput
                      , encodeInput
                      , inputSuchThat
+                     , generateInputs
+                     , singletonInput
                      , Pomc.Encoding.nat
                      ) where
 
@@ -129,7 +131,7 @@ null (EncodedAtom bv) = bv == BV.nil
 -- test whether a Formula is part of an EncodedAtom
 member :: BitEncoding -> Formula APType -> EncodedAtom -> Bool
 member bitenc phi (EncodedAtom bv) | negative phi = not $ bv BV.@. (index bitenc $ negation phi)
-                            | otherwise = bv BV.@. (index bitenc $ phi)
+                                   | otherwise = bv BV.@. (index bitenc $ phi)
 {-# INLINABLE member #-}
 
 -- test whether any formula in EncodedAtom satisfies the predicate
@@ -139,7 +141,8 @@ any bitenc predicate (EncodedAtom bv) = Prelude.any (predicate . (fetch bitenc))
 
 -- filter the formulas in an EncodedAtom according to predicate
 filter :: BitEncoding -> (Formula APType -> Bool) -> EncodedAtom -> EncodedAtom
-filter bitenc predicate (EncodedAtom bv) = EncodedAtom . snd $ BV.foldr filterVec (0, BV.zeros $ BV.width bv) bv
+filter bitenc predicate (EncodedAtom bv) =
+  EncodedAtom . snd $ BV.foldr filterVec (0, BV.zeros $ BV.width bv) bv
   where filterVec b (i, acc) = if b && predicate (fetch bitenc $ i)
                                then (i+1, BV.setBit acc i)
                                else (i+1, acc)
@@ -199,6 +202,22 @@ inputSuchThat bitenc predicate = EncodedAtom $ BV.fromBits bitList
         atomicPred (Atomic p) = predicate p
         atomicPred _ = error "Expected atomic formula, got something else."
 {-# INLINABLE inputSuchThat #-}
+
+-- encode a single formula into an EncodedAtom
+singletonInput :: BitEncoding -> Prop APType -> EncodedAtom
+singletonInput bitenc f =
+  EncodedAtom $ BV.setBit (BV.zeros $ propBits bitenc) (index bitenc $ Atomic f)
+{-# INLINABLE singletonInput #-}
+
+-- generate all possible input sets
+generateInputs :: BitEncoding -> [Prop APType] -> [Prop APType] -> [EncodedAtom]
+generateInputs bitenc sls als =
+  let alSets = foldM
+               (\set f -> [set, set `union` (singletonInput bitenc f)])
+               (EncodedAtom . BV.zeros . propBits $ bitenc)
+               als
+      nonEnd = concatMap (\sl -> map (`union` (singletonInput bitenc sl)) alSets) sls
+  in (singletonInput bitenc End) : nonEnd
 
 -- list of all set bits in a BitVector
 listBits :: BitVector -> [Int]

@@ -32,7 +32,7 @@ import qualified Data.Vector as V
 
 import Data.List (foldl', sortOn, (\\))
 import qualified Data.HashMap.Strict as M
-import Control.Monad (guard, filterM)
+import Control.Monad (guard)
 
 import qualified Data.Sequence as SQ
 import Data.Foldable (toList)
@@ -147,16 +147,11 @@ makeBitEncoding clos =
 
   in E.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
--- generate atoms from a bitEncoding, the closure of phi and the powerset of APs, excluded not valid sets
-genAtoms :: BitEncoding -> [Formula APType] -> Set PropSet -> [Atom]
-genAtoms bitenc clos inputSet =
-  let
-      validPropSets = S.insert (S.singleton End) inputSet
-      -- Map the powerset of APs into a set of EncodedAtoms
-      atomics = map (E.encodeInput bitenc) $ S.toList validPropSets
-
-      -- Consistency checks
-      -- each check is partially applied: it still need an encoded atom to run the check on
+-- generate encoded atoms from a the closure of phi and all possible inputs
+genAtoms :: BitEncoding -> [Formula APType] -> [Input] -> [Atom]
+genAtoms bitenc clos inputs =
+  let -- Consistency checks
+      -- each check is partially applied: it still needs an encoded atom to run the check on
       checks =
         [ onlyif (T `elem` clos) (trueCons bitenc)
         , onlyif (not . null $ [f | f@(And _ _)          <- clos]) (andCons bitenc clos)
@@ -178,16 +173,16 @@ genAtoms bitenc clos inputSet =
 
       -- Make all consistent atoms
       -- given a starting empty sequence and a BitVector representing a set of formulas,
-      -- join it with all the atoms in atomics and check consistency
+      -- join it with all the atoms in inputs and check consistency
       prependCons as eset =
-        let combs = do easet <- atomics
+        let combs = do easet <- inputs
                        let eset' = E.joinInputFormulas easet eset
                        guard (consistent eset')
                        return eset'
         in as SQ.>< (SQ.fromList combs)
 
   in toList $ if width bitenc - propBits bitenc == 0
-              then SQ.fromList atomics
+              then SQ.fromList inputs
               else foldl' prependCons SQ.empty (E.generateFormulas bitenc)
 
 -- Consistency check functions
@@ -382,27 +377,26 @@ stackCombs bitenc clos =
   let xns = [f | f@(XNext _ _) <- clos]
   in E.powerSet bitenc xns
 
--- given phi, the closure of phi, the set of consistent atoms and the bitencoding, generate all the initial states
-initials :: Bool -> Formula APType -> [Formula APType] -> ([Atom], BitEncoding) -> [State]
-initials isOmega phi clos (atoms, bitenc) =
-  let compatible atom = let set = atom
-                            checkPb (PBack {}) = True
-                            checkPb _ = False
-                            checkAuxB (AuxBack Down _) = True
-                            checkAuxB _ = False
-                            checkxb (XBack _ _) = True
-                            checkxb _ = False
-                        in E.member bitenc phi set && -- phi must be satisfied in the initial state
-                           (not $ E.any bitenc checkPb set) && -- the initial state must have no PBack
-                           (not $ E.any bitenc checkAuxB set) && -- the initial state must have no AuxBack
-                           (not $ E.any bitenc checkxb set)  -- the initial state must have no XBack
+-- given phi, its closure, and the set of all consistent atoms, generate all initial states
+initials :: Bool -> BitEncoding -> Formula APType -> [Formula APType] -> [Atom] -> [State]
+initials isOmega bitenc phi clos atoms =
+  let compatible atom =
+        let checkNotComp (PBack _ _) = True
+            checkNotComp (AuxBack Down _) = True
+            checkNotComp (XBack _ _) = True
+            checkNotComp _ = False
+            maskNotComp = E.suchThat bitenc checkNotComp
+        in E.member bitenc phi atom && E.null (E.intersect atom maskNotComp)
+           -- phi must be satisfied in the initial state and it must contain no incompatible formulas
       compAtoms = filter compatible atoms
-      xndfSet = S.fromList  [f | f@(XNext Down _) <- clos]
-  -- list comprehension with all the states that are compatible and the powerset of all possible future obligations
+      xndfSets = E.powerSet bitenc [f | f@(XNext Down _) <- clos]
+  -- list of all compatible states and the powerset of all possible future obligations
   -- for the Omega case, there are no stack obligations in the initial states
   in if (isOmega)
-      then [WState phia (E.encode bitenc phip) (E.empty bitenc) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
-      else [FState phia (E.encode bitenc phip) True False False | phia <- compAtoms, phip <- S.toList (S.powerSet xndfSet)]
+     then [WState phia phip (E.empty bitenc) True False False
+          | phia <- compAtoms, phip <- xndfSets]
+     else [FState phia phip True False False
+          | phia <- compAtoms, phip <- xndfSets]
 
 -- return all deltaRules b satisfying condition (i -> Bool) on i (a closure)
 resolve :: i -> [(i -> Bool, b)] -> [b]
@@ -1415,8 +1409,9 @@ check phi sprs ts =
     encTs
   where nphi = normalize phi
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
-        inputSet = foldl' (flip S.insert) S.empty ts
         encTs = map (E.encodeInput bitenc) ts
+        inputSet = S.toList . S.fromList
+          $ (E.singletonInput bitenc End):encTs
 
         -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
@@ -1431,7 +1426,7 @@ check phi sprs ts =
         -- generate all possible stack obligations for the omega case
         scs = stackCombs bitenc cl
         -- generate initial states
-        is = initials False nphi cl (as, bitenc)
+        is = initials False bitenc nphi cl as
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
         deltaShift atoms pcombs scombs rgroup state props = fstates
@@ -1473,8 +1468,9 @@ fastcheck phi sprs ts =
     encTs
   where nphi = normalize phi
         tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
-        inputSet = foldl' (flip S.insert) S.empty ts
         encTs = map (E.encodeInput bitenc) ts
+        inputSet = S.toList . S.fromList
+          $ (E.singletonInput bitenc End):encTs
 
         -- generate the closure of the normalized input formula
         cl = closure nphi tsprops
@@ -1488,7 +1484,7 @@ fastcheck phi sprs ts =
         as = genAtoms bitenc cl inputSet
         -- generate all possible pending obligations
         pcs = pendCombs bitenc cl
-        is = filter compInitial (initials  False nphi cl (as, bitenc))
+        is = filter compInitial (initials False bitenc nphi cl as)
         (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl prec
 
         compInitial s = fromMaybe True $
@@ -1551,10 +1547,8 @@ makeOpa phi isOmega (sls, sprs) =
         als = getProps nphi \\ sls
         -- all the APs which make up the language (L is in powerset(AP))
         tsprops = sls ++ als
-        -- generate the powerset of AP, ech time taking a prop from the structural list
-        inputSet = S.fromList [S.fromList (sl:alt) |
-                               sl <- sls,
-                               alt <- filterM (const [True, False]) als]
+        -- generate the powerset of AP, each time taking a prop from the structural list
+        inputSet = E.generateInputs bitenc sls als
         -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
         -- generate a BitEncoding from the closure
@@ -1568,7 +1562,7 @@ makeOpa phi isOmega (sls, sprs) =
         -- generate all possible stack obligations for the omega case
         scs = stackCombs bitenc cl
         -- generate initial states
-        is = initials isOmega nphi cl (as, bitenc)
+        is = initials isOmega bitenc nphi cl as
 
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
