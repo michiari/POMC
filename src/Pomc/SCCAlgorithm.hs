@@ -77,7 +77,6 @@ type Value state = GraphNode state
 data Graph s state = Graph
   { idSeq           :: STRef s Int
   , nodeToGraphNode :: THT.TripleHashTable s (Value state)
-  , c               :: STRef s Int -- for the Gabow algorithm
   , bStack          :: GStack s Int -- for the Gabow algorithm
   , sStack          :: GStack s Int -- for the Gabow algorithm
   , initials        :: STRef s (Set (Int, Bool))
@@ -90,7 +89,6 @@ newGraph :: (NFData state, SatState state, Eq state, Hashable state, Show state)
 newGraph iniNodes = do
   newIdSequence <- newSTRef (1 :: Int)
   tht           <- THT.empty
-  newCSequence  <- newSTRef (-1 :: Int)
   newBS         <- GS.new
   newSS         <- GS.new
   newInitials   <- newSTRef (Set.empty)
@@ -101,7 +99,6 @@ newGraph iniNodes = do
     modifySTRef' newInitials (Set.insert (newId,True))
   return $ Graph { idSeq = newIdSequence
                  , nodeToGraphNode = tht
-                 , c = newCSequence
                  , bStack = newBS
                  , sStack = newSS
                  , initials = newInitials
@@ -192,14 +189,9 @@ updateSCCInt :: (NFData state, SatState state, Eq state, Hashable state, Show st
              => Graph s state
              -> Int
              -> ST.ST s ()
-updateSCCInt graph iVal =  do
-  topElemB <- GS.peek (bStack graph)
-  if (iVal  < 0) || (iVal  >=  topElemB)
-    then  return ()
-    else do
-      _ <- GS.pop (bStack graph);
-      updateSCCInt graph iVal
-
+updateSCCInt graph iVal
+  | iVal < 0 =  return () 
+  | otherwise = GS.popWhile_ (bStack graph) (\x -> x < iVal)
 
 -- unsafe
 discoverSummary :: (NFData state, SatState state, Eq state, Hashable state, Show state)
@@ -244,27 +236,32 @@ createComponentGn :: (NFData state, SatState state, Ord state, Hashable state, S
                   -> ST.ST s Bool
 createComponentGn graph gn areFinal =
   let
-    toMerge [ident] = do
-      cond <- identCond ident
-      if cond
-        then merge graph [ident] areFinal
-        else do
-          newC <- freshNegId (c graph);
-          THT.modify (nodeToGraphNode graph) ident $ setgnIValue newC;
-          return False;
-    toMerge idents = merge graph idents areFinal
-    identCond ident = THT.lookupApply (nodeToGraphNode graph) ident $ (Set.member ident) . edges
-    stackCond = do
-      sSize <- GS.size $ sStack graph
-      return $ (iValue gn) > sSize
+    toMerge [ident] = uniMerge graph ident areFinal
+    toMerge idents = merge graph idents areFinal 
   in do
     topB <- GS.peek (bStack graph)
+    sSize <- GS.size $ sStack graph
     if  (iValue gn) == topB
       then do
         _ <- GS.pop (bStack graph)
-        idents <- GS.popUntil (sStack graph) stackCond
+        idents <- GS.multPop (sStack graph) (sSize - (iValue gn) + 1)
         toMerge idents
       else return False
+
+uniMerge :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+      => Graph s state
+      -> Int
+      -> ([state] -> Bool)
+      -> ST.ST s Bool
+uniMerge graph ident areFinal =
+  let
+    gnNode SingleNode{node = n}    = Set.singleton n
+    gnNode SCComponent{nodes = ns} = ns
+  in do
+    gnStates <- THT.lookupApply (nodeToGraphNode graph) ident $ Set.map (getState . fst) . gnNode
+    THT.modify (nodeToGraphNode graph) ident $ setgnIValue (-1)
+    identCond <- THT.lookupApply (nodeToGraphNode graph) ident $ (Set.member ident) . edges
+    return $ identCond && (areFinal $ Set.toList  gnStates)
 
 merge :: (NFData state, SatState state, Ord state, Hashable state, Show state)
       => Graph s state
@@ -278,14 +275,13 @@ merge graph idents areFinal =
     identsSet = Set.fromList idents
     newId = head idents
   in do
-    newC <- freshNegId (c graph)
     gnsNodes <- THT.lookupMap (nodeToGraphNode graph) idents gnNode
     gnsEdges <- THT.lookupMap (nodeToGraphNode graph) idents $ (Set.filter $ \e -> not $ Set.member e identsSet) . edges
     gnsPreds <- THT.lookupMap (nodeToGraphNode graph) idents $ (Set.filter $ \p -> not $ Set.member p identsSet) . preds
     let gnsNodesSet = Set.unions gnsNodes
         gnsEdgesSet = Set.unions gnsEdges
         gnsPredsSet = Set.unions gnsPreds
-        newgn = SCComponent{nodes = gnsNodesSet, getgnId = newId, iValue = newC, edges = gnsEdgesSet, preds = gnsPredsSet}
+        newgn = SCComponent{nodes = gnsNodesSet, getgnId = newId, iValue = (-1), edges = gnsEdgesSet, preds = gnsPredsSet}
         sub n = if Set.member n identsSet
                   then newId
                   else n

@@ -11,10 +11,13 @@ module Pomc.GStack ( GStack
                    , pop
                    , size
                    , new
-                   , popUntil
+                   , multPop
+                   , popWhile
+                   , popWhile_
                    ) where
 
 import Control.Monad.ST (ST)
+import Control.Monad(replicateM)
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 
 -- an implementation for the stack needed in the Gabow algorithm
@@ -46,13 +49,32 @@ pop (gsref, lenref)  = do
 size :: GStack s v -> ST s Int
 size (_, lenref) = readSTRef lenref
 
-popUntil :: GStack s v -> ST s Bool -> ST s [v]
-popUntil gs cond =
-  let recurse acc = do
-        condEval <- cond
-        if condEval
-          then return acc
-          else do
-            x <- pop gs
-            recurse (x:acc)
-  in recurse []
+multPop :: GStack s v -> Int  -> ST s [v]
+multPop gs n  = replicateM n $ pop gs
+
+popWhile :: GStack s v -> (v -> Bool) -> ST s [v]
+popWhile (gsref, lenref) cond = 
+  let 
+    recurse True  gs l acc = recurse (cond . head . tail $ gs) (tail gs) (l+(-1)) ((head gs):acc)
+    recurse False gs l acc = do 
+      writeSTRef gsref gs 
+      writeSTRef lenref l 
+      return acc
+  in do 
+  gs <- readSTRef gsref
+  l <- readSTRef lenref
+  recurse (cond $ head gs) gs l [] 
+
+popWhile_ :: GStack s v -> (v -> Bool) -> ST s ()
+popWhile_ (gsref, lenref) cond = 
+  let 
+    recurse True  gs l  = recurse (cond . head . tail $ gs) (tail gs) (l+(-1)) 
+    recurse False gs l  = do 
+      writeSTRef gsref gs 
+      writeSTRef lenref l 
+      return ()
+  in do 
+    gs <- readSTRef gsref
+    l <- readSTRef lenref
+    recurse (cond $ head gs) gs l 
+
