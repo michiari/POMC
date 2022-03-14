@@ -448,7 +448,7 @@ isSatisfiable isOmega phi alphabet =
         , deltaShift = (\q _ -> dShift q Nothing)
         , deltaPop = dPop
         }
-      isFinalOmega states = all (\f -> any (isFinal f) states) $ Set.toList cl
+      isFinalOmega states = all (\f -> any (isFinal f) states) cl
       (emptyRes, trace) = if isOmega
                           then isEmptyOmega delta initials isFinalOmega
                           else isEmpty delta initials (isFinal T)

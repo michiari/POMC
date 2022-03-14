@@ -107,7 +107,7 @@ modelCheck isOmega phi alphabet opaInitials opaIsFinal opaDeltaPush opaDeltaShif
     cIsFinal (MCState q p) = opaIsFinal q && phiIsFinal T p
     cIsFinalOmega states =
       (any (\(MCState q _) -> opaIsFinal q) states) &&
-      (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) $ Set.toList cl)
+      (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) cl)
 
     cDeltaPush (MCState q p) b = cartesian (opaDeltaPush bitenc q b) (phiDeltaPush p Nothing)
     cDeltaShift (MCState q p) b = cartesian (opaDeltaShift bitenc q b) (phiDeltaShift p Nothing)

@@ -17,6 +17,7 @@ module Pomc.Encoding ( EncodedSet
                      , singleton
                      , empty
                      , generateFormulas
+                     , powerSet
                      , Pomc.Encoding.null
                      , member
                      , Pomc.Encoding.any
@@ -43,7 +44,7 @@ import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 import Data.Hashable
 import Control.DeepSeq (NFData(..))
-
+import Control.Monad (foldM)
 
 type EncodedSet = EncodedAtom
 type FormulaSet = Set (Formula APType)
@@ -114,6 +115,11 @@ generateFormulas bitenc =
      then []
      else map (EncodedAtom . BV.reverse) $ BV.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
 {-# INLINABLE generateFormulas #-}
+
+-- power set of a list of formulas as a list of EncodedAtoms
+powerSet :: BitEncoding -> [Formula APType] -> [EncodedAtom]
+powerSet bitenc fs =
+  foldM (\set f -> [set, set `union` (singleton bitenc f)]) (empty bitenc) fs
 
 -- test whether the given EncodedAtom is empty
 null :: EncodedAtom -> Bool
