@@ -148,7 +148,7 @@ largerRec = ExplicitOpa
 
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval =
-  [ True, False, True,  False, False, False
+  [ True,  False, False, False, False, False
   , False, True,  False, False, False, False
   , False, False, False, False, False, False
   , False, False, False, False -- base_tests
