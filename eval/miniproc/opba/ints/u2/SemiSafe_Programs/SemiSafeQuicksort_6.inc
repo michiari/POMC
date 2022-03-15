@@ -32,8 +32,8 @@
 
 program:
 bool  okay, hasParsed;
-s4 left, right, lo, hi, eq;
-u2 piv, swapLeft, swapRight, tmp;
+s4 left, right, lo, hi, eq, swapLeft, swapRight;
+u2 piv, tmp;
 u2[6] a;
 
 main() {

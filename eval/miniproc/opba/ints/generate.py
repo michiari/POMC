@@ -42,14 +42,14 @@ for u_size in range(1,5):
             m = 0;
             for form in exp:
                 filein = name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
-                fileout = 'ints_u' + str(u_size) + '/' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
+                fileout = 'u' + str(u_size) + '/' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
                 f1 = open(filein, 'r')
                 f2 = open(fileout, 'w')
                 for line in f1:
                     f2.write(line.replace('u*', 'u' + str(u_size)))
                 f1.close()
                 f2.close()
-                with open('ints_u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(m) + str(n) +'.pomc', 'w') as f:
+                with open('u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(m) + str(n) +'.pomc', 'w') as f:
                     f.write('formulas = ' + form + ';\n')
                     f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
                 n += 1

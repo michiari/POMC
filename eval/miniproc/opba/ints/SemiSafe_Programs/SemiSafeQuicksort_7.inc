@@ -32,13 +32,13 @@
 
 program:
 bool  okay, hasParsed;
-s4 left, right, lo, hi, eq;
-u* piv, swapLeft, swapRight, tmp;
+s4 left, right, lo, hi, eq, swapLeft, swapRight;
+u* piv, tmp;
 u*[7] a;
 
 main() {
 	left = 0s4;
-	right = 5s4;
+	right = 6s4;
 	a[0s4] = *;
 	a[1s4] = *;
 	a[2s4] = *;
