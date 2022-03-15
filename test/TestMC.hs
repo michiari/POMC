@@ -17,13 +17,11 @@ tests = testGroup "ModelChecking.hs Tests" [ sasEvalTests, synthEvalTests, lREva
 
 sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
-  map (makeTestCase simpleExc) $ zipExpected sasFormulas expectedSasEval
-  where sasFormulas = excludeIndices formulas [44]
+  map (makeTestCase simpleExc) $ zipExpected formulas expectedSasEval
 
 synthEvalTests :: TestTree
 synthEvalTests = testGroup "SYNTH OPA MC Eval Tests" $
-  map (makeTestCase synth) $ zipExpected synthFormulas expectedSasEval
-  where synthFormulas = excludeIndices formulas [44]
+  map (makeTestCase synth) $ zipExpected formulas expectedSasEval
 
 lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
@@ -89,6 +87,7 @@ expectedSasEval =
   , True                             -- exception_safety
   , False, False, False, False       -- hier_down
   , False                            -- hier_insp
+  , True                             -- hier_insp_exc
   , True, True, False, False         -- hier_up
   , False, False                     -- normal_ret
   , True, True                       -- no_throw
@@ -843,16 +842,8 @@ stackExcSwap = ExplicitOpa
 
 
 slowTests :: TestTree
-slowTests = testGroup "ModelChecking.hs Slow Tests" [sasSlowTests, synthSlowTests, lRSlowTests]
-
-sasSlowTests :: TestTree
-sasSlowTests = testGroup "SAS OPA MC Slow Tests" $
-  map (makeTestCase simpleExc) [(formulas !! 44, True)]
-
-synthSlowTests :: TestTree
-synthSlowTests = testGroup "SYNTH OPA MC Slow Tests" $
-  map (makeTestCase synth) [(formulas !! 44, True)]
+slowTests = testGroup "ModelChecking.hs Slow Tests" [lRSlowTests]
 
 lRSlowTests :: TestTree
 lRSlowTests = testGroup "LargerRec OPA MC Slow Tests" $
-  map (makeTestCase largerRec) [(formulas !! 18, False), (formulas !! 44, True)]
+  map (makeTestCase largerRec) [(formulas !! 18, False), (formulas !! 44, False)]

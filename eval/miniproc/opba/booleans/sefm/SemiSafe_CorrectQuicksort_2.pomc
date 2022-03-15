@@ -12,7 +12,7 @@
 
 	//same procedure as in Correct Quicksort
 	qs(){
-		... 
+		...
 		accessValues();
 		...
 	}
@@ -28,27 +28,27 @@
 			\\ readValues
 		}
 	}
-*/
+
 	Described in: Pontiggia F., Chiari M., Pradella M.. Verification of Programs with Exceptions through Operator Precedence Automata, SEFM 2021.
 	(extended from Pontiggia's Master Thesis)
 */
 
 
 formulas = 	F (ret And main),
-			XNu (ret And main), 
+			XNu (ret And main),
 			F ( G (~ aleftGTaright)),
-			XNu (~ aleftGTaright), 
-			G ((call And main) --> ~ (PNu exc Or XNu exc)), 
-			G ((call And qs2) --> ~ (PNu exc Or XNu exc)), 
-			((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed))), 
-			((PNu exc) Or (XNu exc)) --> ((PNu (exc And ~ aleftGTaright)) Or (XNu (exc And ~ aleftGTaright))), 
-			G ( (call And accessValues) --> (hasParsed) Or (T Sd han )), 
-			(F (ret And main)) Or (XNu (exc And hasParsed)), 
-			(XNu (ret And main)) Or (XNu (exc And hasParsed)), 
-			(F ( G (~ aleftGTaright))) Or (XNu (exc And hasParsed)), 
-			(XNu (~ aleftGTaright)) Or (XNu (exc And hasParsed)), 
+			XNu (~ aleftGTaright),
+			G ((call And main) --> ~ (PNu exc Or XNu exc)),
+			G ((call And qs2) --> ~ (PNu exc Or XNu exc)),
+			((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed))),
+			((PNu exc) Or (XNu exc)) --> ((PNu (exc And ~ aleftGTaright)) Or (XNu (exc And ~ aleftGTaright))),
+			G ( (call And accessValues) --> (hasParsed) Or (T Sd han )),
+			(F (ret And main)) Or (XNu (exc And hasParsed)),
+			(XNu (ret And main)) Or (XNu (exc And hasParsed)),
+			(F ( G (~ aleftGTaright))) Or (XNu (exc And hasParsed)),
+			(XNu (~ aleftGTaright)) Or (XNu (exc And hasParsed)),
 			(F (ret And main And (~ aleftGTaright))) Or (XNu (exc And hasParsed));
-			
+
 program:
 var leftGEQright, loLThi, loEQhi, loEQleft, hiEQright, eqEQlo, eqEQleft, aleftGTaright, aleftEQaright, hasParsed;
 
@@ -75,55 +75,55 @@ qs2() {
 		eqEQleft = true;
 		accessValues();
 		firstIteration2();
-		while (loLThi || loEQhi) { 
+		while (loLThi || loEQhi) {
 			qsif2();
 		}
 
-		if (loEQleft){ 
+		if (loEQleft){
 			leftGEQright = true;
 			qs2();
 			leftGEQright = false;
 			qs2();
-		} else { 
-			if (hiEQright && eqEQlo) { 
+		} else {
+			if (hiEQright && eqEQlo) {
 				leftGEQright = false;
 				qs2();
 				leftGEQright = true;
 				qs2();
 			} else {
-				if (hiEQright && eqEQleft) { 
+				if (hiEQright && eqEQleft) {
 					leftGEQright = true;
 					qs2();
 					leftGEQright = true;
 					qs2();
 				} else {
-					if (hiEQright) { 
+					if (hiEQright) {
 						leftGEQright = true;
 						qs2();
 						leftGEQright = true;
 						qs2();
 					} else {
-						if (eqEQleft) { 
+						if (eqEQleft) {
 							leftGEQright = true;
 							qs2();
 							leftGEQright = true;
 							qs2();
 						} else {
-							if (eqEQlo) { 
+							if (eqEQlo) {
 								leftGEQright = true;
 								qs2();
 								leftGEQright = true;
 								qs2();
 							} else {}
-						} 
+						}
 					}
-				}				
+				}
 			}
 		}
 	}
 }
 
-qsif2() { 
+qsif2() {
 	// this if-condition is due to swapping of firstIteration
 	if ((! aleftGTaright) && (! aleftEQaright)) {
 		shiftloLEQhi2();
@@ -132,7 +132,7 @@ qsif2() {
 		if (! loEQhi){
 			swapElements();
 		} else {}
-		
+
 		if (aleftGTaright) {
 			if (! eqEQlo){
 				swapElements();
@@ -143,14 +143,14 @@ qsif2() {
 		}
 
 		shiftloLEQhi2();
-		loEQleft = false;		
+		loEQleft = false;
 	}
 }
 
 firstIteration2() {
 	swapElements();
 	//lo++;
-	eqEQlo = false; 
+	eqEQlo = false;
 	shiftloLEQhi2();
 	loEQleft = false;
 }
@@ -158,7 +158,7 @@ firstIteration2() {
 shiftloLEQhi2() {
 	if (loEQhi) {
 		loEQhi = false;
-		loLThi = false;					
+		loLThi = false;
 	} else {
 		loEQhi = true;
 		loLThi = false;
