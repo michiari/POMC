@@ -24,17 +24,16 @@
 program:
 bool  okay;
 s4 left, right, lo, hi, swapLeft, swapRight;
-u* piv, tmp;
-u*[5] a;
+u1 piv, tmp;
+u1[4] a;
 
 main() {
 	left = 0s4;
-	right = 4s4;
+	right = 3s4;
 	a[0s4] = *;
 	a[1s4] = *;
 	a[2s4] = *;
 	a[3s4] = *;
-	a[4s4] = *;
 	qs();
 }
 
@@ -65,32 +64,16 @@ qs() {
 				if (lo == 0s4 && right == 3s4){
 					qsRec2();
 				} else {
-					if (lo == 0s4 && right == 4s4){
+					if (lo == 1s4 && right == 2s4){
 						qsRec3();
 					} else {
-						if (lo == 1s4 && right == 2s4){
+						if (lo == 1s4 && right == 3s4){
 							qsRec4();
 						} else {
-							if (lo == 1s4 && right == 3s4){
+							if (lo == 2s4 && right == 3s4){
 								qsRec5();
 							} else {
-								if (lo == 1s4 && right == 4s4){
-									qsRec6();
-								} else {
-									if (lo == 2s4 && right == 3s4){
-										qsRec7();
-									} else {
-										if (lo == 2s4 && right == 4s4){
-											qsRec8();
-										} else {
-											if (lo == 3s4 && right == 4s4){
-												qsRec9();
-											} else {
-												qsRec10();
-											}
-										}
-									}
-								}
+								qsRec6();
 							}
 						}
 					}
@@ -104,10 +87,10 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4] && a[3s4] <= a[4s4];
+	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4];
 }
 
-//recursive cases depending on the value of lo and right for a five-elements array
+//recursive cases depending on the value of lo and right for a four-elements array
 qsRec0() {
 	right = hi;
 	qs();
@@ -135,8 +118,8 @@ qsRec2() {
 qsRec3() {
 	right = hi;
 	qs();
-	left = 0s4; 
-	right = 4s4;
+	left = 1s4; 
+	right = 2s4;
 	qs();
 }
 
@@ -144,52 +127,19 @@ qsRec4() {
 	right = hi;
 	qs();
 	left = 1s4; 
-	right = 2s4;
+	right = 3s4;
 	qs();
 }
 
 qsRec5() {
 	right = hi;
 	qs();
-	left = 1s4; 
+	left = 2s4; 
 	right = 3s4;
 	qs();
 }
 
 qsRec6() {
-	right = hi;
-	qs();
-	left = 1s4; 
-	right = 4s4;
-	qs();
-}
-
-qsRec7() {
-	right = hi;
-	qs();
-	left = 2s4; 
-	right = 3s4;
-	qs();
-}
-
-qsRec8() {
-	right = hi;
-	qs();
-	left = 2s4; 
-	right = 4s4;
-	qs();
-}
-
-
-qsRec9() {
-	right = hi;
-	qs();
-	left = 3s4; 
-	right = 4s4;
-	qs();
-}
-
-qsRec10() {
 	right = hi;
 	qs();
 	//abort second recursive call, it involves at most one element

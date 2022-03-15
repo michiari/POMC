@@ -24,8 +24,8 @@
 program:
 bool  okay;
 s3 left, right, lo, hi, swapLeft, swapRight;
-u* piv, tmp;
-u*[2] a;
+u2 piv, tmp;
+u2[2] a;
 
 main() {
 	left = 0s3;

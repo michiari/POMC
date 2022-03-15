@@ -23,8 +23,8 @@
 
 program:
 bool  okay;
-s3 left, right, lo, hi;
-u* piv, swapLeft, swapRight, tmp;
+s3 left, right, lo, hi, swapLeft, swapRight;
+u* piv, tmp;
 u*[3] a;
 
 main() {

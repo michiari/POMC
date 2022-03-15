@@ -23,8 +23,8 @@
 
 program:
 bool  okay;
-s4 left, right, lo, hi;
-u* piv, swapLeft, swapRight, tmp;
+s4 left, right, lo, hi, swapLeft, swapRight;
+u* piv, tmp;
 u*[6] a;
 
 main() {
@@ -46,7 +46,14 @@ qs() {
 		lo = left;
 		hi = right;
 		while (lo <= hi) { 
-			qsif();
+			if (a[hi] > piv){
+				hi = hi - 1s4; 
+			} else {
+				swapLeft = lo;
+				swapRight = hi;
+				swapElements();
+				lo = lo + 1s4;
+			}
 		}
 
 		// recursive calls
@@ -111,17 +118,6 @@ qs() {
 				}
 			} 
 		}
-	}
-}
-
-qsif() { 
-	if (a[hi] > piv){
-		hi = hi - 1s4; 
-	} else {
-		swapLeft = lo;
-		swapRight = hi;
-		swapElements();
-		lo = lo + 1s4;
 	}
 }
 

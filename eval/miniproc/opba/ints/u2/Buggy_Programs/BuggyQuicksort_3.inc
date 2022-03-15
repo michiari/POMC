@@ -24,14 +24,15 @@
 program:
 bool  okay;
 s3 left, right, lo, hi, swapLeft, swapRight;
-u* piv, tmp;
-u*[2] a;
+u2 piv, tmp;
+u2[3] a;
 
 main() {
 	left = 0s3;
-	right = 1s3;
+	right = 2s3;
 	a[0s3] = *;
 	a[1s3] = *;
+	a[2s3] = *;
 	qs();
 }
 
@@ -56,7 +57,15 @@ qs() {
 		if (lo == 0s3 && right == 1s3){
 			qsRec0();
 		} else {
-			qsRec1();
+			if (lo == 0s3 && right == 2s3){
+				qsRec1();
+			} else {
+				if (lo == 1s3 && right == 2s3){
+					qsRec2();
+				} else {
+					qsRec3();
+				}
+			} 
 		}
 	}
 }
@@ -65,10 +74,10 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s3] <= a[1s3];
+	okay = a[0s3] <= a[1s3] && a[1s3] <= a[2s3];
 }
 
-//recursive cases depending on the value of lo and right for a two-elements array
+//recursive cases depending on the value of lo and right for a three-elements array
 qsRec0() {
 	right = hi;
 	qs();
@@ -80,7 +89,22 @@ qsRec0() {
 qsRec1() {
 	right = hi;
 	qs();
+	left = 0s3; 
+	right = 2s3;
+	qs();
+}
+
+qsRec2() {
+	right = hi;
+	qs();
+	left = 1s3; 
+	right = 2s3;
+	qs();
+}
+
+qsRec3() {
+	right = hi;
+	qs();
 	//abort second recursive call, it involves at most one element
 	//qs();
 }
-
