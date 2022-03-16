@@ -286,18 +286,18 @@ searchPhase areFinal globals delta  =
     if detected
       then return True
       else do
-        size <- summariesSize $ graph globals
-        collapsePhase size initials areFinal globals delta
+        nullSumm <- nullSummaries $ graph globals
+        collapsePhase nullSumm initials areFinal globals delta
 
 
 collapsePhase :: (NFData state, SatState state, Ord state, Hashable state, Show state)
-                  => Int
+                  => Bool
                   -> Set (StateId state, Stack state)
                   -> ([state] -> Bool)
                   -> Globals s state
                   -> Delta state
                   -> ST.ST s Bool
-collapsePhase 0 _ _ _ _ = return False
+collapsePhase True _ _ _ _ = return False
 collapsePhase _ initials areFinal globals delta =
   let visit node = do
         alrVis <- alreadyVisited (graph globals) node

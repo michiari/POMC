@@ -9,6 +9,7 @@ module Pomc.GStack ( GStack
                    , push
                    , peek
                    , pop
+                   , pop_
                    , size
                    , new
                    , multPop
@@ -46,6 +47,13 @@ pop (gsref, lenref)  = do
   modifySTRef' lenref (+(-1))
   return $ head gs
 
+pop_ :: GStack s v -> ST s ()
+pop_ (gsref, lenref)  = do
+  gs <- readSTRef gsref
+  writeSTRef gsref $ tail gs;
+  modifySTRef' lenref (+(-1))
+  return ()
+
 size :: GStack s v -> ST s Int
 size (_, lenref) = readSTRef lenref
 
@@ -61,9 +69,9 @@ popWhile (gsref, lenref) cond =
       writeSTRef lenref l 
       return acc
   in do 
-  gs <- readSTRef gsref
-  l <- readSTRef lenref
-  recurse (cond $ head gs) gs l [] 
+    gs <- readSTRef gsref
+    l <- readSTRef lenref
+    recurse (cond $ head gs) gs l [] 
 
 popWhile_ :: GStack s v -> (v -> Bool) -> ST s ()
 popWhile_ (gsref, lenref) cond = 
