@@ -38,32 +38,35 @@ import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Data.List(partition)
+
 import Data.Vector (Vector)
 
 import Data.Hashable
 
 import Control.DeepSeq(NFData(..))
 
-type SummaryBody = [Edge]
+type SummaryBody = Set Int
   
 data Edge = Internal -- a transition
   { to  :: Int 
   } | Summary -- a chain support
   { to :: Int
-  , body :: [Edge]
+  , body :: Set Int
   } deriving (Show, Eq, Ord)
+
 
 data GraphNode state = SCComponent
   { gnId     :: Int
   , iValue   :: Int -- changes at each iteration of the Gabow algorithm
   , nodes    :: [(StateId state, Stack state)]
-  , edges    :: Set Edge
+  , edges    :: [Edge]
   , seIdents :: Set Int -- nodes of the self edges
   } | SingleNode
   { gnId   :: Int
   , iValue :: Int
   , node   :: (StateId state, Stack state)
-  , edges  :: Set Edge
+  , edges  :: [Edge]
   }
 
 instance (Show state) => Show (GraphNode  state) where
@@ -102,7 +105,7 @@ newGraph iniNodes = do
   newSummaries  <- newSTRef []
   forM_ (iniNodes) $ \key -> do
     newId <- freshPosId newIdSequence
-    THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = Set.empty} 
+    THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = []} 
     modifySTRef' newInitials (Set.insert (newId,True))
   return $ Graph { idSeq = newIdSequence
                  , gnMap = tht
@@ -123,11 +126,14 @@ sEdgeIdents :: GraphNode state -> Set Int
 sEdgeIdents SingleNode{} = Set.empty 
 sEdgeIdents SCComponent{seIdents = seIx} = seIx
 
+
 summaryIdents :: Edge -> Set Int
 summaryIdents (Internal _) = Set.empty 
-summaryIdents (Summary _ b)  = Set.unions . map sNodes $ b 
-    where sNodes (Internal t) = Set.singleton t
-          sNodes (Summary t b') = Set.insert t . Set.unions . map sNodes $ b'
+summaryIdents (Summary _ b)  = b
+
+visitedIdents :: Edge -> Set Int 
+visitedIdents (Internal t) = Set.singleton t 
+visitedIdents (Summary t b) = Set.insert t b
 
 gnNode :: GraphNode state -> [(StateId state, Stack state)]
 gnNode SingleNode{node = n}    = [n]
@@ -163,7 +169,7 @@ alreadyDiscovered graph key = do
       return $ not $ Set.member (i, True) inSet
     Nothing -> do 
       newIdent <- freshPosId $ idSeq graph
-      let sn = SingleNode{ gnId = newIdent,iValue = 0, node = key, edges = Set.empty}
+      let sn = SingleNode{ gnId = newIdent,iValue = 0, node = key, edges = []}
       THT.insert (gnMap graph) (decode key) newIdent sn
       return False
 
@@ -220,7 +226,7 @@ discoverSummaryBody graph fr  = do
       cond Nothing = return False 
       cond (Just e) = THT.lookupApply (gnMap graph) (to e) $ not . containsSId 
   b <- GS.peekWhileM (sStack graph) cond
-  return $ map fromJust b
+  return $ Set.unions . map (visitedIdents . fromJust) $ b
 
 discoverSummary :: (NFData state, SatState state, Eq state, Hashable state, Show state)
                 => Graph s state
@@ -234,8 +240,8 @@ discoverSummary graph fr b t = do
 
 
 insertEd :: Bool -> Edge -> GraphNode state -> GraphNode state 
-insertEd False e x@SingleNode{edges = es}     = x{edges = Set.insert e es}
-insertEd False e x@SCComponent{edges = es}    = x{edges = Set.insert e es}
+insertEd False e x@SingleNode{edges = es}     = x{edges = e : es}
+insertEd False e x@SCComponent{edges = es}    = x{edges = e : es}
 insertEd True  e x@SCComponent{seIdents = is}  = x{seIdents = Set.union is $ summaryIdents e}
 insertEd True  e SingleNode{gnId = g, iValue = i, node = n, edges = es}   = 
   SCComponent{gnId = g, iValue = i, nodes = [n], edges = es, seIdents = summaryIdents e}
@@ -314,13 +320,13 @@ merge graph idents areFinal = do
   let newId = head idents
       identsSet = Set.fromList idents
       gnsNodes = concat . map gnNode $ gns
-      filterEd es = Set.partition (\e -> Set.member (to e) identsSet) es
+      filterEd es = partition (\e -> Set.member (to e) identsSet) es
       (selfEdges, gnsEdgesSet) = unzip . map (filterEd . edges) $ gns
-      setSummaryIdents s = Set.unions . Set.map summaryIdents $ s
+      setSummaryIdents s = Set.unions . map summaryIdents $ s
       subgnsSEIdentsSet = Set.unions . map setSummaryIdents $ selfEdges
       gnsSEIdentsSet = Set.unions . map sEdgeIdents $ gns
       allSeIdentsSet = Set.union subgnsSEIdentsSet gnsSEIdentsSet
-      allEdges = Set.unions gnsEdgesSet
+      allEdges = concat gnsEdgesSet
       newgn = SCComponent{nodes = gnsNodes,  gnId = newId, iValue = (-1), edges = allEdges, seIdents = allSeIdentsSet}
   THT.merge (gnMap graph) (map decode gnsNodes) newId newgn
   summgnNodes <- THT.lookupMap (gnMap graph) (Set.toList allSeIdentsSet) gnNode
