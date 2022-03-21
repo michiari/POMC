@@ -21,7 +21,6 @@ module Pomc.SCCAlgorithm ( Graph
                          , discoverSummaryBody
                          , insertEdge 
                          , discoverSummary
-                         , updateSummaryBody
                          , updateSCC
                          ) where
 
@@ -118,18 +117,6 @@ setgnIValue new gn@SingleNode{}  = gn{iValue = new}
 
 resetgnIValue :: GraphNode state -> GraphNode state
 resetgnIValue  = setgnIValue 0
-
-sub :: Int -> Set Int -> Int -> Int 
-sub newI idents i
-  | Set.member i idents = newI 
-  | otherwise = i
-
-updateEdge :: Int -> Set Int -> Edge -> Edge 
-updateEdge newI idents (Internal t) = Internal (sub newI idents t)
-updateEdge newI idents (Summary t b) = Summary (sub newI idents t) (map (updateEdge newI idents) b)
-
-updateSummaryBody :: Int -> Set Int -> SummaryBody -> SummaryBody
-updateSummaryBody newId idents = map $ updateEdge newId idents
 
 summaryIdents :: Edge -> Int -> Set Int
 summaryIdents (Internal _)  _ = Set.empty 
@@ -267,7 +254,7 @@ createComponent :: (NFData state, SatState state, Ord state, Hashable state, Sho
                 => Graph s state
                 -> Key state
                 -> ([state] -> Bool)
-                -> ST.ST s (Bool, Maybe (Int, Set Int))
+                -> ST.ST s Bool
 createComponent graph key areFinal = do
   gn <- THT.lookup (gnMap graph) $ decode key
   createComponentGn graph gn areFinal
@@ -276,7 +263,7 @@ createComponentGn :: (NFData state, SatState state, Ord state, Hashable state, S
                   => Graph s state
                   -> GraphNode state
                   -> ([state] -> Bool)
-                  -> ST.ST s (Bool, Maybe (Int, Set Int))
+                  -> ST.ST s Bool
 createComponentGn graph gn areFinal =
   let
     toMerge [ident] = uniMerge graph (gnId gn) areFinal
@@ -290,13 +277,13 @@ createComponentGn graph gn areFinal =
         GS.pop_ (bStack graph)
         idents <- GS.multPop (sStack graph) (sSize - (iValue gn) + 1)
         toMerge idents
-      else return (False, Nothing)
+      else return False 
 
 uniMerge :: (NFData state, SatState state, Ord state, Hashable state, Show state)
       => Graph s state
       -> Int
       -> ([state] -> Bool)
-      -> ST.ST s (Bool, Maybe (Int, Set Int))
+      -> ST.ST s Bool
 uniMerge graph ident areFinal = do
     (gnStates, identCond) <- THT.lookupApply (gnMap graph) ident $ 
       \gn  -> (Set.map (getState . fst) . gnNode $ gn, (Set.member ident) . Set.map to . edges $ gn)
@@ -305,31 +292,26 @@ uniMerge graph ident areFinal = do
     summgnNodesSet <- THT.lookupMap (gnMap graph) (Set.toList . Set.unions $ summIdents) gnNode
     let summStates = Set.toList . Set.map (getState . fst) . Set.unions $ summgnNodesSet
     THT.modify (gnMap graph) ident $ setgnIValue (-1)
-    return $ (identCond && (areFinal $ summStates ++ (Set.toList gnStates)), Nothing)
+    return $ identCond && (areFinal $ summStates ++ (Set.toList gnStates)) 
 
 merge :: (NFData state, SatState state, Ord state, Hashable state, Show state)
       => Graph s state
       -> [Int]
       -> ([state] -> Bool)
-      -> ST.ST s (Bool, Maybe (Int, Set Int))
+      -> ST.ST s Bool
 merge graph idents areFinal = do
   gns <- THT.lookupMap (gnMap graph) idents id 
   let newId = head idents
       identsSet = Set.fromList idents
       gnsNodesSet = Set.unions . map gnNode $ gns
-      gnsEdgesSet = Set.unions . map ((Set.map $ updateEdge newId identsSet) . edges) $ gns
+      gnsEdgesSet = Set.unions . map edges  $ gns
       newgn = SCComponent{nodes = gnsNodesSet,  gnId = newId, iValue = (-1), edges = gnsEdgesSet}
-      updateGn x@SingleNode{edges = es}  = x{edges = Set.map (updateEdge newId identsSet) es}
-      updateGn x@SCComponent{edges = es} = x{edges = Set.map (updateEdge newId identsSet) es}
       gnStates = Set.toList $ Set.map (getState . fst) gnsNodesSet
       summIdents = Set.map (\e -> summaryIdents e newId) $ gnsEdgesSet 
   THT.fuse (gnMap graph) (Set.map decode gnsNodesSet) newId newgn
-  THT.modifyAll (gnMap graph) updateGn
-  modifySTRef' (summaries graph) $ Set.map $ \(f, sb, t) -> (sub newId identsSet f, updateSummaryBody newId identsSet sb, t)
-  modifySTRef' (initials graph)  $ Set.map $ \(n,b) -> (sub newId identsSet n,b)
   summgnNodesSet <- THT.lookupMap (gnMap graph) (Set.toList . Set.unions $ summIdents) gnNode
   let summStates = Set.toList . Set.map (getState . fst) . Set.unions $ summgnNodesSet
-  return $ ( areFinal $ gnStates ++ summStates, Just (newId, identsSet))
+  return $ areFinal $ gnStates ++ summStates
 
 nullSummaries :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
               => Graph s state 
@@ -369,31 +351,29 @@ toSearchPhase graph newInitials = do
 
 visitGraphFromKey :: (NFData state, SatState state, Ord state, Hashable state, Show state)
                   => Graph s state
-                  -> (Maybe(Int, Set Int) -> ST.ST s ()) 
                   -> ([state] -> Bool)
                   -> Maybe Edge
                   -> Key state
                   ->  ST.ST s Bool
-visitGraphFromKey graph sbUpdater areFinal e key = do
+visitGraphFromKey graph areFinal e key = do
   gn <- THT.lookup (gnMap graph) $ decode key
-  visitGraphFrom graph sbUpdater areFinal e gn
+  visitGraphFrom graph areFinal e gn
 
 -- unsafe
 visitGraphFrom :: (NFData state, SatState state, Ord state, Hashable state, Show state)
                => Graph s state
-               -> (Maybe(Int, Set Int) -> ST.ST s ()) 
                -> ([state] -> Bool)
                -> Maybe Edge
                -> GraphNode state
                -> ST.ST s Bool
-visitGraphFrom graph sbUpdater areFinal e gn = do
+visitGraphFrom graph areFinal e gn = do
   visitGraphNode graph e gn 
   success <-  foldM (\acc ne -> if acc
                                   then return True
                                   else do
                                     nextGn <- THT.lookupApply (gnMap graph) (to ne) id
                                     if (iValue nextGn) == 0
-                                      then visitGraphFrom graph sbUpdater areFinal (Just ne) nextGn
+                                      then visitGraphFrom graph areFinal (Just ne) nextGn
                                       else  do
                                         updateSCCInt graph (iValue nextGn)
                                         return False)
@@ -401,7 +381,5 @@ visitGraphFrom graph sbUpdater areFinal e gn = do
                     (edges gn)
   if success
     then return True
-    else do 
-      result <- createComponentGn graph gn areFinal
-      sbUpdater $ snd result;
-      return $ fst result
+    else createComponentGn graph gn areFinal
+

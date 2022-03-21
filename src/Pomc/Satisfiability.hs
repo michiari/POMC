@@ -302,7 +302,7 @@ collapsePhase _ initials areFinal globals delta =
   let visit node = do
         alrVis <- alreadyVisited (graph globals) node
         if not alrVis
-          then visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal Nothing node
+          then visitGraphFromKey (graph globals) areFinal Nothing node
           else return False
   in do
     newInitials <- toCollapsePhase $ graph globals
@@ -328,7 +328,7 @@ reachOmega areFinal globals delta me (q,g) = do
   let be = bitenc delta
       qProps = getSidProps be q -- atomic propositions holding in the state (the input)
       qState = getState q
-      cases
+      cases 
         | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) =
           reachOmegaPush areFinal globals delta (q,g) qState qProps
 
@@ -343,10 +343,8 @@ reachOmega areFinal globals delta me (q,g) = do
   success <- cases
   if success
     then return True
-    else do 
-      result <- createComponent (graph globals) (q,g) areFinal
-      updateSummaryBodies globals $ snd result
-      return $ fst result
+    else createComponent (graph globals) (q,g) areFinal
+
 
 reachOmegaPush :: (NFData state, SatState state, Ord state, Hashable state, Show state)
           => ([state] -> Bool)
@@ -434,12 +432,8 @@ reachTransition sb areFinal globals delta from to = do
       if alrVis
         then do updateSCC (graph globals) to;
                 return False
-        else visitGraphFromKey (graph globals) (updateSummaryBodies globals) areFinal (Just e) to
+        else visitGraphFromKey (graph globals) areFinal (Just e) to
     else reachOmega areFinal globals delta (Just e) to
-
-updateSummaryBodies :: Globals s state -> Maybe (Int,Set Int) -> ST.ST s ()
-updateSummaryBodies _ Nothing = return  ()
-updateSummaryBodies globals (Just (newId,oldIds)) = SM.modifyAll (wSuppEnds globals) $ \(sid, sb) -> (sid, updateSummaryBody newId oldIds sb)
 
 -------------------------------------------------------------
 -- given a formula, build the opa associated with the formula
