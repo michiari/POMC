@@ -42,7 +42,7 @@ import Data.Vector (Vector)
 
 import Data.Hashable
 
-import Control.DeepSeq(NFData(..), deepseq)
+import Control.DeepSeq(NFData(..))
 
 type SummaryBody = [Edge]
   
@@ -56,7 +56,7 @@ data Edge = Internal -- a transition
 data GraphNode state = SCComponent
   { gnId     :: Int
   , iValue   :: Int -- changes at each iteration of the Gabow algorithm
-  , nodes    :: Set (StateId state, Stack state)
+  , nodes    :: [(StateId state, Stack state)]
   , edges    :: Set Edge
   , seIdents :: Set Int -- nodes of the self edges
   } | SingleNode
@@ -129,18 +129,18 @@ summaryIdents (Summary _ b)  = Set.unions . map sNodes $ b
     where sNodes (Internal t) = Set.singleton t
           sNodes (Summary t b') = Set.insert t . Set.unions . map sNodes $ b'
 
-gnNode :: GraphNode state -> Set (StateId state, Stack state)
-gnNode SingleNode{node = n}    = Set.singleton n
+gnNode :: GraphNode state -> [(StateId state, Stack state)]
+gnNode SingleNode{node = n}    = [n]
 gnNode SCComponent{nodes = ns} = ns
 
 initialNodes :: (NFData state, SatState state, Eq state, Hashable state, Show state)
              =>  Graph s state
-             -> ST.ST s (Set (Key state))
+             -> ST.ST s [(Key state)]
 initialNodes graph = do
   inSet <- readSTRef $ initials graph
   let inIdents = Set.map fst . Set.filter snd $ inSet
   gnNodesList <- THT.lookupMap (gnMap graph) (Set.toList inIdents) gnNode
-  return $ Set.unions gnNodesList
+  return $ concat gnNodesList
 
 -- unsafe
 alreadyVisited :: (NFData state, SatState state, Eq state, Hashable state, Show state)
@@ -216,7 +216,7 @@ discoverSummaryBody :: (NFData state, SatState state, Eq state, Hashable state, 
 discoverSummaryBody graph fr  = do  
   let 
       containsSId SingleNode{node = n} = fst n == fr 
-      containsSId SCComponent{nodes=ns} = Set.member fr . Set.map fst $ ns
+      containsSId SCComponent{nodes=ns} = elem fr . map fst $ ns
       cond Nothing = return False 
       cond (Just e) = THT.lookupApply (gnMap graph) (to e) $ not . containsSId 
   b <- GS.peekWhileM (sStack graph) cond
@@ -237,8 +237,8 @@ insertEd :: Bool -> Edge -> GraphNode state -> GraphNode state
 insertEd False e x@SingleNode{edges = es}     = x{edges = Set.insert e es}
 insertEd False e x@SCComponent{edges = es}    = x{edges = Set.insert e es}
 insertEd True  e x@SCComponent{seIdents = is}  = x{seIdents = Set.union is $ summaryIdents e}
-insertEd True  e x@SingleNode{gnId = g, iValue = i, node = n, edges = es}   = 
-  SCComponent{gnId = g, iValue = i, nodes = Set.singleton n, edges = es, seIdents = summaryIdents e}
+insertEd True  e SingleNode{gnId = g, iValue = i, node = n, edges = es}   = 
+  SCComponent{gnId = g, iValue = i, nodes = [n], edges = es, seIdents = summaryIdents e}
 
 -- unsafe
 insertEdge :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
@@ -275,7 +275,7 @@ createComponentGn :: (NFData state, SatState state, Ord state, Hashable state, S
                   -> ST.ST s Bool
 createComponentGn graph gn areFinal =
   let
-    toMerge [ident] = uniMerge graph (gnId gn) areFinal
+    toMerge [_] = uniMerge graph (gnId gn) areFinal
     toMerge (Nothing : idents) = merge graph (gnId gn : (map (to . fromJust) idents)) areFinal 
     toMerge idents = merge graph (map (to . fromJust) idents) areFinal 
   in do
@@ -298,8 +298,8 @@ uniMerge graph ident areFinal = do
     gn <- THT.lookupApply (gnMap graph) ident id 
     let cases SCComponent{seIdents = se} = do 
               summgnNodes <- THT.lookupMap (gnMap graph) (Set.toList se) gnNode
-              let summStates = Set.toList . Set.map (getState . fst) . Set.unions $ summgnNodes
-                  gnStates = Set.toList . Set.map (getState . fst) . nodes $ gn
+              let summStates = map (getState . fst) . concat $ summgnNodes
+                  gnStates = map (getState . fst) . nodes $ gn
               return $ areFinal (summStates ++ gnStates)
         cases _ = return False
     cases gn
@@ -313,7 +313,7 @@ merge graph idents areFinal = do
   gns <- THT.lookupMap(gnMap graph) idents id 
   let newId = head idents
       identsSet = Set.fromList idents
-      gnsNodesSet = Set.unions . map gnNode $ gns
+      gnsNodes = concat . map gnNode $ gns
       filterEd es = Set.partition (\e -> Set.member (to e) identsSet) es
       (selfEdges, gnsEdgesSet) = unzip . map (filterEd . edges) $ gns
       setSummaryIdents s = Set.unions . Set.map summaryIdents $ s
@@ -321,11 +321,11 @@ merge graph idents areFinal = do
       gnsSEIdentsSet = Set.unions . map sEdgeIdents $ gns
       allSeIdentsSet = Set.union subgnsSEIdentsSet gnsSEIdentsSet
       allEdges = Set.unions gnsEdgesSet
-      newgn = SCComponent{nodes = gnsNodesSet,  gnId = newId, iValue = (-1), edges = allEdges, seIdents = allSeIdentsSet}
-  THT.merge (gnMap graph) (Set.map decode gnsNodesSet) newId newgn
+      newgn = SCComponent{nodes = gnsNodes,  gnId = newId, iValue = (-1), edges = allEdges, seIdents = allSeIdentsSet}
+  THT.merge (gnMap graph) (map decode gnsNodes) newId newgn
   summgnNodes <- THT.lookupMap (gnMap graph) (Set.toList allSeIdentsSet) gnNode
-  let summStates = Set.toList . Set.map (getState . fst) . Set.unions $ summgnNodes
-      gnStates = Set.toList . Set.map (getState . fst) $ gnsNodesSet
+  let summStates = map (getState . fst) . concat $ summgnNodes
+      gnStates = map (getState . fst) gnsNodes
   return $ areFinal $ gnStates ++ summStates
 
 nullSummaries :: (NFData state, SatState state, Eq state, Hashable state, Show state) 

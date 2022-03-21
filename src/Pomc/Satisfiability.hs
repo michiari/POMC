@@ -292,7 +292,7 @@ searchPhase areFinal globals delta  =
 
 collapsePhase :: (NFData state, SatState state, Ord state, Hashable state, Show state)
                   => Bool
-                  -> Set (StateId state, Stack state)
+                  -> [(StateId state, Stack state)]
                   -> ([state] -> Bool)
                   -> Globals s state
                   -> Delta state

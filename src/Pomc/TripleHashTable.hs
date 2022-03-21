@@ -48,13 +48,13 @@ insert (ht1, _, mm) key ident value = do
   BH.insert ht1 key ident;
   MM.insert mm ident value
 
-merge :: (TripleHashTable s v) -> Set (Int,Int,Int) -> Int -> v -> ST s ()
-merge (ht1, ht2, mm) keySet ident value = do
-  forM_ (Set.toList keySet) ( \key -> do
-                                oldIdent <- BH.lookup ht1 key
-                                BH.insert ht2 (fromJust oldIdent) ident
-                                MM.delete mm $ fromJust oldIdent
-                            );
+merge :: (TripleHashTable s v) -> [(Int,Int,Int)] -> Int -> v -> ST s ()
+merge (ht1, ht2, mm) keys ident value = do
+  forM_ keys ( \key -> do
+                        oldIdent <- BH.lookup ht1 key
+                        BH.insert ht2 (fromJust oldIdent) ident
+                        MM.delete mm $ fromJust oldIdent
+              );
   MM.insert mm ident value
 
 multcheckMerge :: HashTable s Int Int -> [Int] -> ST s (Set Int)
