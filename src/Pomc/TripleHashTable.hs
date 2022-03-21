@@ -32,7 +32,7 @@ import qualified Pomc.MaybeMap as MM
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
-type TripleHashTable s v = (HashTable s (Int,Int,Int) Int, HashTable Int Int, STRef s (MM.MaybeMap s v))
+type TripleHashTable s v = (HashTable s (Int,Int,Int) Int, HashTable s Int Int, STRef s (MM.MaybeMap s v))
 
 empty  :: ST s (TripleHashTable s v)
 empty = do
@@ -58,13 +58,13 @@ fuse (ht1, ht2, mm) keySet ident value = do
                             );
   MM.insert mm ident value
 
-checkMerge :: HashTable Int Int -> Int -> ST s Int
+checkMerge :: HashTable s Int Int -> Int -> ST s Int
 checkMerge ht i = 
   let unfold Nothing    = i 
       unfold (Just val) = val
-  do 
-  maybeVal <- BH.lookup ht i 
-  return $ unfold maybeVal
+  in do 
+    maybeVal <- BH.lookup ht i 
+    return $ unfold maybeVal
 
 lookup :: (TripleHashTable s v) -> (Int,Int,Int) -> ST s v
 lookup (ht1, ht2, mm) key = do
@@ -73,14 +73,12 @@ lookup (ht1, ht2, mm) key = do
   value <- MM.lookup mm mergeIdent
   return $ fromJust value
 
--- not safe
 lookupApply :: (TripleHashTable s v) -> Int -> (v -> w) -> ST s w
 lookupApply (_, ht2, mm) ident f = do
   mergeIdent <- checkMerge ht2 ident
   value <- MM.lookup mm mergeIdent
   return $ f . fromJust $ value
 
--- not safe
 lookupMap :: (TripleHashTable s  v) -> [Int] -> (v -> w) -> ST s [w]
 lookupMap (_,ht2, mm) idents f =  forM idents $ \ident -> do
   mergeIdent <- checkMerge ht2 ident
@@ -94,8 +92,8 @@ modify (_, ht2,mm) ident f = do
 
 multModify :: (TripleHashTable s v) -> [Int] -> (v -> v) -> ST s ()
 multModify (_, ht2, mm) idents f = do 
-mergeIdents <- forM idents $ checkMerge ht2
-MM.multModify mm mergeIdents f
+  mergeIdents <- forM idents $ checkMerge ht2
+  MM.multModify mm mergeIdents f
 
 modifyAll :: (TripleHashTable s  v) -> (v -> v) -> ST s ()
-modifyAll (_, mm) f = MM.modifyAll mm f
+modifyAll (_, _,  mm) f = MM.modifyAll mm f
