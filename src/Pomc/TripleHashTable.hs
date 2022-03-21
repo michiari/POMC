@@ -33,6 +33,24 @@ import qualified Pomc.MaybeMap as MM
 type HashTable s k v = BH.HashTable s k v
 type TripleHashTable s v = (HashTable s (Int,Int,Int) Int, HashTable s Int Int, STRef s (MM.MaybeMap s v))
 
+multcheckMerge :: HashTable s Int Int -> [Int] -> ST s (Set Int)
+multcheckMerge ht is = 
+  let maybeVal Nothing old  = old
+      maybeVal (Just new) _ = new
+  in foldM (\s ix -> do 
+                      mi <- BH.lookup ht ix
+                      return $ Set.insert (maybeVal mi ix) s)
+            Set.empty
+            is
+
+checkMerge :: HashTable s Int Int -> Int -> ST s Int
+checkMerge ht i = 
+  let maybeVal Nothing    = i
+      maybeVal (Just new) = new
+  in do
+    mi <- BH.lookup ht i
+    return $ maybeVal mi
+
 empty  :: ST s (TripleHashTable s v)
 empty = do
   ht1 <- BH.new
@@ -57,24 +75,6 @@ merge (ht1, ht2, mm) keys ident value = do
               );
   MM.insert mm ident value
 
-multcheckMerge :: HashTable s Int Int -> [Int] -> ST s (Set Int)
-multcheckMerge ht is = 
-  let maybeVal Nothing old  = old
-      maybeVal (Just new) _ = new
-  in foldM (\s ix -> do 
-                      mi <- BH.lookup ht ix
-                      return $ Set.insert (maybeVal mi ix) s)
-            Set.empty
-            is
-
-checkMerge :: HashTable s Int Int -> Int -> ST s Int
-checkMerge ht i = 
-  let maybeVal Nothing old  = old
-      maybeVal (Just new) _ = new
-  in do
-    mi <- BH.lookup ht i
-    return $ maybeVal mi i
-
 lookup :: (TripleHashTable s v) -> (Int,Int,Int) -> ST s v
 lookup (ht1, ht2, mm) key = do
   ident <- BH.lookup ht1 key
@@ -96,7 +96,7 @@ lookupMap (_,ht2, mm) idents f =  do
       return $ f . fromJust $ value
 
 modify :: (TripleHashTable s v) -> Int -> (v -> v) -> ST s ()
-modify (_, ht2,mm) ident f = do 
+modify (_, ht2, mm) ident f = do 
   mergeIdent <- checkMerge ht2 ident
   MM.modify mm mergeIdent f
 
