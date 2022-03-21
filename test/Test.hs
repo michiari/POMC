@@ -15,13 +15,7 @@ tests :: TestTree
 tests = testGroup "Tests" [normalTests, slowTests]
 
 normalTests :: TestTree
-normalTests = testGroup "Normal Tests" [ TestOpa.tests
-                                       , TestCheck.tests
-                                       , TestSat.tests
-                                       , TestMC.tests
-                                       , TestMP.tests
-                                       , TestSatOmega.tests
-                                       , TestMCOmega.tests
+normalTests = testGroup "Normal Tests" [ TestSatOmega.tests
                                        ]
 
 slowTests :: TestTree
