@@ -9,17 +9,16 @@ module Pomc.TripleHashTable( TripleHashTable
                            , empty
                            , lookupId
                            , insert
-                           , fuse
+                           , merge
                            , lookup
                            , lookupApply
                            , lookupMap
                            , modify
-                           , multModify
                            , modifyAll
                            ) where
 
 import Prelude hiding (lookup)
-import Control.Monad (forM_, forM)
+import Control.Monad (forM_, forM, foldM)
 import Control.Monad.ST (ST)
 import Data.Maybe
 import Data.Set (Set)
@@ -49,8 +48,8 @@ insert (ht1, _, mm) key ident value = do
   BH.insert ht1 key ident;
   MM.insert mm ident value
 
-fuse :: (TripleHashTable s v) -> Set (Int,Int,Int) -> Int -> v -> ST s ()
-fuse (ht1, ht2, mm) keySet ident value = do
+merge :: (TripleHashTable s v) -> Set (Int,Int,Int) -> Int -> v -> ST s ()
+merge (ht1, ht2, mm) keySet ident value = do
   forM_ (Set.toList keySet) ( \key -> do
                                 oldIdent <- BH.lookup ht1 key
                                 BH.insert ht2 (fromJust oldIdent) ident
@@ -58,13 +57,23 @@ fuse (ht1, ht2, mm) keySet ident value = do
                             );
   MM.insert mm ident value
 
+multcheckMerge :: HashTable s Int Int -> [Int] -> ST s (Set Int)
+multcheckMerge ht is = 
+  let maybeVal Nothing old  = old
+      maybeVal (Just new) _ = new
+  in foldM (\s ix -> do 
+                      mi <- BH.lookup ht ix
+                      return $ Set.insert (maybeVal mi ix) s)
+            Set.empty
+            is
+
 checkMerge :: HashTable s Int Int -> Int -> ST s Int
 checkMerge ht i = 
-  let unfold Nothing    = i 
-      unfold (Just val) = val
-  in do 
-    maybeVal <- BH.lookup ht i 
-    return $ unfold maybeVal
+  let maybeVal Nothing old  = old
+      maybeVal (Just new) _ = new
+  in do
+    mi <- BH.lookup ht i
+    return $ maybeVal mi i
 
 lookup :: (TripleHashTable s v) -> (Int,Int,Int) -> ST s v
 lookup (ht1, ht2, mm) key = do
@@ -80,20 +89,16 @@ lookupApply (_, ht2, mm) ident f = do
   return $ f . fromJust $ value
 
 lookupMap :: (TripleHashTable s  v) -> [Int] -> (v -> w) -> ST s [w]
-lookupMap (_,ht2, mm) idents f =  forM idents $ \ident -> do
-  mergeIdent <- checkMerge ht2 ident
-  value <- MM.lookup mm mergeIdent
-  return $ f . fromJust $ value
+lookupMap (_,ht2, mm) idents f =  do 
+    mergeIdents <- multcheckMerge ht2 idents
+    forM (Set.toList mergeIdents) $ \ident -> do
+      value <- MM.lookup mm ident
+      return $ f . fromJust $ value
 
 modify :: (TripleHashTable s v) -> Int -> (v -> v) -> ST s ()
 modify (_, ht2,mm) ident f = do 
   mergeIdent <- checkMerge ht2 ident
   MM.modify mm mergeIdent f
-
-multModify :: (TripleHashTable s v) -> [Int] -> (v -> v) -> ST s ()
-multModify (_, ht2, mm) idents f = do 
-  mergeIdents <- forM idents $ checkMerge ht2
-  MM.multModify mm mergeIdents f
 
 modifyAll :: (TripleHashTable s  v) -> (v -> v) -> ST s ()
 modifyAll (_, _,  mm) f = MM.modifyAll mm f

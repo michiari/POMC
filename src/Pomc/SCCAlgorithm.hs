@@ -300,7 +300,7 @@ merge :: (NFData state, SatState state, Ord state, Hashable state, Show state)
       -> ([state] -> Bool)
       -> ST.ST s Bool
 merge graph idents areFinal = do
-  gns <- THT.lookupMap (gnMap graph) idents id 
+  gns <- THT.lookupMap(gnMap graph) idents id 
   let newId = head idents
       identsSet = Set.fromList idents
       gnsNodesSet = Set.unions . map gnNode $ gns
@@ -308,7 +308,7 @@ merge graph idents areFinal = do
       newgn = SCComponent{nodes = gnsNodesSet,  gnId = newId, iValue = (-1), edges = gnsEdgesSet}
       gnStates = Set.toList $ Set.map (getState . fst) gnsNodesSet
       summIdents = Set.map (\e -> summaryIdents e newId) $ gnsEdgesSet 
-  THT.fuse (gnMap graph) (Set.map decode gnsNodesSet) newId newgn
+  THT.merge (gnMap graph) (Set.map decode gnsNodesSet) newId newgn
   summgnNodesSet <- THT.lookupMap (gnMap graph) (Set.toList . Set.unions $ summIdents) gnNode
   let summStates = Set.toList . Set.map (getState . fst) . Set.unions $ summgnNodesSet
   return $ areFinal $ gnStates ++ summStates
