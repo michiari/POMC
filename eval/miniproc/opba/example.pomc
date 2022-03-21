@@ -1,0 +1,19 @@
+formulas =  ~ (F (call And pb)),
+            ~ (F (call And perr)),
+            (F (call And pb)),
+            (F (call And perr)),
+            F (ret And pa);
+
+program:
+
+pa() {
+  perr();
+  pa();
+}
+
+perr() {
+  pb();
+}
+
+pb() {
+}
