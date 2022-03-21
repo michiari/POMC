@@ -86,7 +86,7 @@ data Graph s state = Graph
   , bStack     :: GStack s Int 
   , sStack     :: GStack s (Maybe Edge) 
   , initials   :: STRef s (Set (Int, Bool))
-  , summaries  :: STRef s (Set (Int, SummaryBody, Key state))
+  , summaries  :: STRef s [(Int, SummaryBody, Key state)]
   }
 
 newGraph :: (NFData state, SatState state, Eq state, Hashable state, Show state)
@@ -98,7 +98,7 @@ newGraph iniNodes = do
   newBS         <- GS.new
   newSS         <- GS.new
   newInitials   <- newSTRef (Set.empty)
-  newSummaries  <- newSTRef (Set.empty)
+  newSummaries  <- newSTRef []
   forM_ (iniNodes) $ \key -> do
     newId <- freshPosId newIdSequence
     THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = Set.empty} 
@@ -229,7 +229,7 @@ discoverSummary :: (NFData state, SatState state, Eq state, Hashable state, Show
                 -> ST.ST s ()
 discoverSummary graph fr b t = do
   gnFrom <- THT.lookup (gnMap graph) $ decode fr
-  modifySTRef' (summaries graph) $ Set.insert ( gnId gnFrom, b, t)
+  modifySTRef' (summaries graph) $ \l -> ( gnId gnFrom, b, t):l
 
 -- unsafe
 insertEdge :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
@@ -318,7 +318,7 @@ nullSummaries :: (NFData state, SatState state, Eq state, Hashable state, Show s
               -> ST.ST s Bool
 nullSummaries graph = do
   summ <- readSTRef $ summaries graph
-  return $ Set.null summ
+  return $ null summ
 
 toCollapsePhase :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                 => Graph s state 
@@ -336,7 +336,7 @@ toCollapsePhase graph =
   in do
     THT.modifyAll (gnMap graph) resetgnIValue
     summ <- readSTRef $ summaries graph
-    newInitials <- mapM resolveSummary $ Set.toList summ
+    newInitials <- mapM resolveSummary summ
     modifySTRef' (initials graph) $ Set.map $ \(i, _) -> (i,True)
     return $ Set.fromList newInitials
 
@@ -347,7 +347,7 @@ toSearchPhase :: (NFData state, SatState state, Eq state, Hashable state, Show s
 toSearchPhase graph newInitials = do
   THT.modifyAll (gnMap graph) resetgnIValue
   writeSTRef (initials graph) newInitials 
-  writeSTRef (summaries graph) Set.empty
+  writeSTRef (summaries graph) []
 
 visitGraphFromKey :: (NFData state, SatState state, Ord state, Hashable state, Show state)
                   => Graph s state
@@ -382,4 +382,3 @@ visitGraphFrom graph areFinal e gn = do
   if success
     then return True
     else createComponentGn graph gn areFinal
-
