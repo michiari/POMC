@@ -44,6 +44,8 @@ import Data.Vector (Vector)
 
 import Data.Hashable
 
+import qualified Pomc.DoubleSet as DS
+
 import Control.DeepSeq(NFData(..))
   
 data Edge = Internal -- a transition
@@ -88,7 +90,7 @@ data Graph s state = Graph
   , gnMap      :: THT.TripleHashTable s (Value state)
   , bStack     :: GStack s Int 
   , sStack     :: GStack s (Maybe Edge) 
-  , initials   :: STRef s (Set (Int, Bool))
+  , initials   :: DS.DoubleSet s Int
   , summaries  :: STRef s [(Int, SummaryBody, Key state)]
   }
 
@@ -100,12 +102,12 @@ newGraph iniNodes = do
   tht           <- THT.empty
   newBS         <- GS.new
   newSS         <- GS.new
-  newInitials   <- newSTRef (Set.empty)
+  newInitials   <- DS.new
   newSummaries  <- newSTRef []
   forM_ (iniNodes) $ \key -> do
     newId <- freshPosId newIdSequence
     THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = []} 
-    modifySTRef' newInitials (Set.insert (newId,True))
+    DS.insert newInitials (newId, True)
   return $ Graph { idSeq = newIdSequence
                  , gnMap = tht
                  , bStack = newBS
@@ -148,8 +150,7 @@ initialNodes :: (NFData state, SatState state, Eq state, Hashable state, Show st
              =>  Graph s state
              -> ST.ST s [(Key state)]
 initialNodes graph = do
-  inSet <- readSTRef $ initials graph
-  let inIdents = Set.map fst . Set.filter snd $ inSet
+  inIdents <- DS.allMarked (initials graph)
   gnNodes <- THT.lookupMap (gnMap graph) (Set.toList inIdents) components
   return $ concat gnNodes
 
@@ -169,9 +170,7 @@ alreadyDiscovered :: (NFData state, SatState state, Eq state, Hashable state, Sh
 alreadyDiscovered graph key = do
   ident <- THT.lookupId (gnMap graph) $ decode key
   case ident of 
-    Just i -> do
-      inSet <- readSTRef (initials graph)
-      return $ not $ Set.member (i, True) inSet
+    Just i -> DS.isNotMarked (initials graph) i
     Nothing -> do 
       newIdent <- freshPosId $ idSeq graph
       let sn = SingleNode{ gnId = newIdent,iValue = 0, node = key, edges = []}
@@ -194,10 +193,7 @@ visitGraphNode :: (NFData state, SatState state, Eq state, Hashable state, Show 
                -> GraphNode state
                -> ST.ST s ()
 visitGraphNode graph me gn = do
-  modifySTRef' (initials graph)
-    $ \s -> if Set.member ( gnId gn, True) s
-              then Set.insert ( gnId gn, False) . Set.delete ( gnId gn, True) $ s
-              else s
+  DS.unmark (initials graph) (gnId gn)
   GS.push (sStack graph) me
   sSize <- GS.size $ sStack graph
   THT.unsafeModify (gnMap graph) ( gnId gn) $ setgnIValue sSize
@@ -353,7 +349,7 @@ toCollapsePhase graph =
     THT.modifyAll (gnMap graph) resetgnIValue
     summ <- readSTRef $ summaries graph
     newInitials <- mapM resolveSummary summ
-    modifySTRef' (initials graph) $ Set.map $ \(i, _) -> (i,True)
+    DS.markAll (initials graph)
     return $ Set.fromList newInitials
 
 toSearchPhase :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
@@ -362,7 +358,8 @@ toSearchPhase :: (NFData state, SatState state, Eq state, Hashable state, Show s
               -> ST.ST s ()
 toSearchPhase graph newInitials = do
   THT.modifyAll (gnMap graph) resetgnIValue
-  writeSTRef (initials graph) newInitials 
+  DS.reset (initials graph)
+  forM_ newInitials $ DS.insert (initials graph)
   writeSTRef (summaries graph) []
 
 visitGraphFromKey :: (NFData state, SatState state, Ord state, Hashable state, Show state)
