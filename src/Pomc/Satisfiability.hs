@@ -314,7 +314,7 @@ collapsePhase _ initials areFinal globals delta =
     if detected
       then return True
       else do
-        toSearchPhase (graph globals) (newInitials);
+        toSearchPhase (graph globals) newInitials
         searchPhase areFinal globals delta
 
 reachOmega :: (NFData state, SatState state, Ord state, Hashable state, Show state)
@@ -339,7 +339,7 @@ reachOmega areFinal globals delta me (q,g) = do
           reachOmegaPop globals delta (q,g) qState
 
         | otherwise = return False
-  visitNode (graph globals) me (q,g);
+  visitNode (graph globals) me (q,g)
   success <- cases
   if success
     then return True
@@ -430,7 +430,7 @@ reachTransition sb areFinal globals delta from to = do
     then do
       alrVis <- alreadyVisited (graph globals) to
       if alrVis
-        then do updateSCC (graph globals) to;
+        then do updateSCC (graph globals) to
                 return False
         else visitGraphFromKey (graph globals) areFinal (Just e) to
     else reachOmega areFinal globals delta (Just e) to

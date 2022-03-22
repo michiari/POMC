@@ -200,7 +200,7 @@ visitGraphNode graph me gn = do
               else s
   GS.push (sStack graph) me
   sSize <- GS.size $ sStack graph
-  THT.modify (gnMap graph) ( gnId gn) $ setgnIValue sSize
+  THT.unsafeModify (gnMap graph) ( gnId gn) $ setgnIValue sSize
   GS.push (bStack graph) sSize
 
 --unsafe
@@ -243,7 +243,6 @@ discoverSummary graph fr b t = do
   gnFrom <- THT.lookup (gnMap graph) $ decode fr
   modifySTRef' (summaries graph) $ \l -> ( gnId gnFrom, b, t):l
 
--- unsafe
 insertEdge :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                   => Graph s state 
                   -> Key state 
@@ -297,8 +296,8 @@ uniMerge :: (NFData state, SatState state, Ord state, Hashable state, Show state
       -> ([state] -> Bool)
       -> ST.ST s Bool
 uniMerge graph ident areFinal = do
-    THT.modify (gnMap graph) ident $ setgnIValue (-1)
-    gn <- THT.lookupApply (gnMap graph) ident id 
+    THT.unsafeModify (gnMap graph) ident $ setgnIValue (-1)
+    gn <- THT.unsafeLookupApply (gnMap graph) ident id 
     let cases SCComponent{seIdents = se} = do 
               summgnNodes <- THT.lookupMap (gnMap graph) (Set.toList se) components
               let summStates = map (getState . fst) . concat $ summgnNodes

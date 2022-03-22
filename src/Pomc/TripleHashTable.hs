@@ -12,8 +12,10 @@ module Pomc.TripleHashTable( TripleHashTable
                            , merge
                            , lookup
                            , lookupApply
+                           , unsafeLookupApply
                            , lookupMap
                            , modify
+                           , unsafeModify
                            , modifyAll
                            ) where
 
@@ -88,6 +90,11 @@ lookupApply (_, ht2, mm) ident f = do
   value <- MM.lookup mm mergeIdent
   return $ f . fromJust $ value
 
+unsafeLookupApply :: (TripleHashTable s v) -> Int -> (v -> w) -> ST s w
+unsafeLookupApply (_, _, mm) ident f = do
+  value <- MM.lookup mm ident
+  return $ f . fromJust $ value
+
 lookupMap :: (TripleHashTable s  v) -> [Int] -> (v -> w) -> ST s [w]
 lookupMap (_,ht2, mm) idents f =  do 
     mergeIdents <- multcheckMerge ht2 idents
@@ -100,5 +107,8 @@ modify (_, ht2, mm) ident f = do
   mergeIdent <- checkMerge ht2 ident
   MM.modify mm mergeIdent f
 
+unsafeModify :: (TripleHashTable s v) -> Int -> (v -> v) -> ST s ()
+unsafeModify (_, _, mm) = MM.modify mm
+
 modifyAll :: (TripleHashTable s  v) -> (v -> v) -> ST s ()
-modifyAll (_, _,  mm) f = MM.modifyAll mm f
+modifyAll (_, _,  mm) = MM.modifyAll mm
