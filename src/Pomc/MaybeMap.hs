@@ -21,16 +21,15 @@ import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 
 import qualified Data.Vector.Mutable as MV
 
--- Map to sets
+-- a Map of Maybes
+-- needed for the nodes of the SCC algorithm, where the merged nodes map to a Nothing value
 type MaybeMap s v = MV.MVector s (Maybe v)
 
--- an empty Maybe Map, an array of Maybes
 empty :: ST.ST s (STRef s (MaybeMap s v))
 empty = do
   mm <- MV.replicate 4 Nothing
   newSTRef mm
 
--- insert a value in the MaybeMap at the given position
 insert :: STRef s (MaybeMap s v) -> Int -> v -> ST.ST s ()
 insert mmref k val = do
   mm <- readSTRef mmref

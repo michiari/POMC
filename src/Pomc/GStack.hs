@@ -23,7 +23,8 @@ import Control.Monad.ST (ST)
 import Control.Monad(replicateM)
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 
--- an implementation for the stack needed in the Gabow algorithm
+-- an implementation for a stack 
+-- needed in the Gabow algorithm
 type GStack s v = (STRef s [v], STRef s Int)
 
 new :: ST s (GStack s v)

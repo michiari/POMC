@@ -22,7 +22,8 @@ import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 import Data.Set(Set)
 import qualified Data.Set as Set
 
--- an implementation for the stack needed in the Gabow algorithm
+-- an implementation for a set where some elements are marked
+-- needed for the set of initial nodes of the SCC algorithm
 type DoubleSet s v = STRef s (Set v, Set v)
 
 new :: ST s (DoubleSet s v)
