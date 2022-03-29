@@ -184,7 +184,7 @@ accessValues(){
 	} else {}
 }
 
-//recursive cases depending on the value of lo and right for a six-elements array
+//recursive cases depending on the value of lo and right for a seven-elements array
 qsRec0() {
     right = eq -1s4;
 	qs();
