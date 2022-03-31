@@ -34,3 +34,9 @@ You may want to impose a timeout when running these:
 ```sh
 stack test --ta '-p "Slow Tests" --timeout=2h'
 ```
+
+# Tips
+
+- To display proper stack traces when exceptions are thrown, run tests with `--profile`.
+
+- To run tests in `ghci` for debugging, you may run `stack ghci pomc:test-pomc`
