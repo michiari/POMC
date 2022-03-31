@@ -493,7 +493,7 @@ programToOpa isOmega prog additionalProps =
                 $ pSks prog
               genLocals ils (sid, a) =
                 let (callSet, other) = S.partition (== (Prop $ T.pack "call")) a
-                    [Prop fname] = S.toList other
+                    [Prop fname] = filter (\(Prop p) -> p `M.member` funInitLocals) $ S.toList other
                 in if S.null callSet
                    then ils
                    else M.insert sid (funInitLocals M.! fname) ils
