@@ -24,10 +24,6 @@ import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
 import qualified Data.BitVector as BV
 
-data IdentifierIdInfo = IdentifierIdInfo { scalarIds :: IdType
-                                         , arrayIds  :: IdType
-                                         } deriving Show
-
 type TypedValue = (IntValue, Type)
 data TypedExpr = TLiteral TypedValue
                | TTerm Variable
@@ -109,9 +105,6 @@ composeMany f arg = go arg
             Just arg1 -> go arg1
             Nothing -> return arg0
 
-composeSome :: (a -> Parser a) -> a -> Parser a
-composeSome f arg = f arg >>= composeMany f
-
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
 
@@ -130,7 +123,7 @@ boolLiteralP = ((BV.fromBool True, UInt 1) <$ symbolP "true")
 
 literalP :: Parser TypedValue
 literalP = boolLiteralP <|> intLiteralP
-  where intLiteralP = try $ L.lexeme spaceP $ do
+  where intLiteralP = L.lexeme spaceP $ do
           value <- L.signed spaceP (L.lexeme spaceP L.decimal) :: Parser Integer
           ty <- intTypeP
           if value < 0 && not (isSigned ty)
@@ -206,25 +199,25 @@ typeP = label "type" $ L.lexeme spaceP $
          , intTypeP
          ]
 
-declP :: (Map Text Variable, IdentifierIdInfo)
-      -> Parser (Map Text Variable, IdentifierIdInfo)
-declP (varmap, idIdInfo) = try $ do
+declP :: (Map Text Variable, VarIdInfo)
+      -> Parser (Map Text Variable, VarIdInfo)
+declP (varmap, vii) = try $ do
   ty <- typeP
   names <- sepBy1 identifierP (symbolP ",")
   _ <- symbolP ";"
-  let numIds = if isScalar ty then scalarIds idIdInfo else arrayIds idIdInfo
+  let numIds = if isScalar ty then scalarIds vii else arrayIds vii
       numVars = fromIntegral $ length names :: IdType
       newVarMap = M.fromList
         $ map (\(name, vid) -> (name, Variable ty name vid))
         $ zip names [numIds + i | i <- [0..(numVars - 1)]]
   return ( varmap `M.union` newVarMap
          , if isScalar ty
-           then idIdInfo { scalarIds = numIds + numVars }
-           else idIdInfo { arrayIds = numIds + numVars }
+           then vii { scalarIds = numIds + numVars }
+           else vii { arrayIds = numIds + numVars }
          )
 
-declsP :: (Map Text Variable, IdentifierIdInfo)
-       -> Parser (Map Text Variable, IdentifierIdInfo)
+declsP :: (Map Text Variable, VarIdInfo)
+       -> Parser (Map Text Variable, VarIdInfo)
 declsP vmi = composeMany declP vmi
 
 lValueP :: Map Text Variable -> Parser LValue
@@ -305,24 +298,37 @@ blockP varmap = try $ do
   _ <- symbolP "}"
   return stmts
 
-functionP :: Map Text Variable -> Parser FunctionSkeleton
-functionP varmap = do
+functionP :: Map Text Variable
+          -> VarIdInfo
+          -> Parser (FunctionSkeleton)
+functionP gvarmap vii = do
   fname <- identifierP
   _ <- symbolP "()"
-  stmts <- blockP varmap
+  _ <- symbolP "{"
+  (lvarmap, _) <- declsP (M.empty, vii)
+  stmts <- many (stmtP $ lvarmap `M.union` gvarmap)
+  _ <- symbolP "}"
+  let (lScalars, lArrays) =
+        S.partition (isScalar . varType) $ S.fromList $ M.elems lvarmap
   return FunctionSkeleton { skName = fname
                           , skModules = (parseModules fname)
+                          , skScalars = lScalars
+                          , skArrays = lArrays
                           , skStmts = stmts
                           }
 
 programP :: Parser Program
 programP = do
   spaceP
-  (varmap, _) <- declsP (M.empty, IdentifierIdInfo 0 0)
-  sks <- some $ functionP varmap
+  (varmap, vii) <- declsP (M.empty, VarIdInfo 0 0)
+  sks <- some $ functionP varmap vii
   eof
-  let (scalarVars, arrayVars) = S.partition (isScalar . varType) $ S.fromList $ M.elems varmap
-      p = Program scalarVars arrayVars sks
+  let (scalarGlobs, arrayGlobs) = S.partition (isScalar . varType) $ S.fromList $ M.elems varmap
+      (scalarLocs, arrayLocs) = foldl
+        (\(sc, ar) sk -> (sc `S.union` skScalars sk, ar `S.union` skArrays sk))
+        (S.empty, S.empty)
+        sks
+      p = Program scalarGlobs arrayGlobs scalarLocs arrayLocs sks
       undeclFuns = undeclaredFuns p
   if S.null undeclFuns
     then return p

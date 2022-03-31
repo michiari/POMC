@@ -884,6 +884,7 @@ intTests = testGroup "Int Variables Tests" [ u8Arith1Tests
                                            , nondetTests
                                            , arrayTests
                                            , arrayLoopTests
+                                           , localTests
                                            ]
 
 u8Arith1Tests :: TestTree
@@ -1160,5 +1161,72 @@ main() {
   }
 
   assert0 = acc == (n * (n - 1u8)) / 2u8;
+}
+|]
+
+
+localTests :: TestTree
+localTests = testGroup "Local Variables Tests" [ localAssertA
+                                               , localAssertB
+                                               , localAssertC
+                                               ]
+
+localAssertA :: TestTree
+localAssertA = makeTestCase localTestsSrc
+  (("Assert A"
+   , Until Down T (ap "ret" `And` ap "assertA"))
+  , True)
+
+localAssertB :: TestTree
+localAssertB = makeTestCase localTestsSrc
+  (("Assert B"
+   , Until Down T (ap "ret" `And` ap "assertB"))
+  , True)
+
+localAssertC :: TestTree
+localAssertC = makeTestCase localTestsSrc
+  (("Assert C"
+   , Until Down T (ap "ret" `And` ap "assertC"))
+  , False)
+
+localTestsSrc :: T.Text
+localTestsSrc = T.pack [r|
+u8 a;
+u8[2] b;
+
+pA() {
+  u16 a, b, c;
+  bool assertA;
+
+  a = 255u16;
+  b = 1u16;
+  c = 2u16;
+  assertA = a + b + c == 258u16;
+
+  pB();
+}
+
+pB() {
+  u8 c;
+  bool assertB;
+
+  a = 1u8;
+  b[0u8] = 2u8;
+  c = 3u8;
+  assertB = a + b[0u8] + b[1u8] + c == 6u8;
+
+  pC();
+}
+
+pC() {
+  u8[3] a;
+  bool assertC;
+
+  a[0u8] = 1u8;
+  a[1u8] = *;
+  a[2u8] = 3u8;
+  b[0u8] = 4u8;
+
+  assertC = a[0u8] + a[1u8] + a[2u8] + b[0u8] + b[1u8] == 10u8;
 }
 |]

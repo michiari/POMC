@@ -26,6 +26,7 @@ module Pomc.MiniProc ( Program(..)
                      , varWidth
                      , programToOpa
                      , IdType
+                     , VarIdInfo(..)
 
                      , DeltaTarget(..)
                      , LowerState(..)
@@ -105,10 +106,14 @@ data Statement = Assignment LValue Expr
                | Throw deriving Show
 data FunctionSkeleton = FunctionSkeleton { skName :: FunctionName
                                          , skModules :: [FunctionName]
+                                         , skScalars :: Set Variable
+                                         , skArrays :: Set Variable
                                          , skStmts :: [Statement]
                                          } deriving Show
-data Program = Program { pScalarVars :: Set Variable
-                       , pArrayVars :: Set Variable
+data Program = Program { pGlobalScalars :: Set Variable
+                       , pGlobalArrays :: Set Variable
+                       , pLocalScalars :: Set Variable
+                       , pLocalArrays :: Set Variable
                        , pSks :: [FunctionSkeleton]
                        } deriving Show
 
@@ -402,17 +407,39 @@ lowerBlock sks lowerState thisFinfo linkPred block =
 -- Conversion of the Extended OPA to a plain OPA
 
 -- Data structures
-type VarValuation = (Vector IntValue, Vector ArrayValue)
+data VarIdInfo = VarIdInfo { scalarIds :: IdType
+                           , arrayIds  :: IdType
+                           } deriving Show
+
+isGlobal :: VarIdInfo -> Bool -> IdType -> Bool
+isGlobal gvii scalar vid | scalar = vid < scalarIds gvii
+                         | otherwise = vid < arrayIds gvii
+
+getLocalIdx :: VarIdInfo -> Bool -> IdType -> Int
+getLocalIdx gvii scalar vid | scalar = vid - scalarIds gvii
+                            | otherwise = vid - arrayIds gvii
+
+data VarValuation = VarValuation { vGlobalScalars :: Vector IntValue
+                                 , vGlobalArrays  :: Vector ArrayValue
+                                 , vLocalScalars  :: Vector IntValue
+                                 , vLocalArrays   :: Vector ArrayValue
+                                 } deriving (Show, Eq, Ord, Generic)
 type VarState = (Word, VarValuation)
 
-initialValuation :: Set Variable -> Set Variable -> VarValuation
-initialValuation svars avars = (scalars, arrays)
+instance Hashable VarValuation
+
+initialValuation :: (Bool -> IdType -> IdType)
+                 -> Set Variable
+                 -> Set Variable
+                 -> (Vector IntValue, Vector ArrayValue)
+initialValuation getIdx svars avars = (scalars, arrays)
   where scalars = V.replicate (S.size svars) B.nil  V.//
-          map (\var -> (varId var, initVal var)) (S.toList svars)
+          map (\var -> (getIdx True $ varId var, initialScalar var)) (S.toList svars)
         arrays = V.replicate (S.size avars) V.empty V.//
-          map (\var -> (varId var, V.replicate (arraySize . varType $ var) (initVal var)))
-          (S.toList avars)
-        initVal = B.zeros . varWidth
+          map (\var -> (getIdx False $ varId var, initialArray var)) (S.toList avars)
+
+        initialScalar = B.zeros . varWidth
+        initialArray var = V.replicate (arraySize . varType $ var) (initialScalar var)
 
 programToOpa :: Bool -> Program -> Set (Prop Text)
              -> ( PropConv Text
@@ -423,10 +450,16 @@ programToOpa :: Bool -> Program -> Set (Prop Text)
                 , (E.BitEncoding -> VarState -> Input -> [VarState])
                 , (VarState -> VarState -> [VarState])
                 )
-programToOpa isOmega (Program svars avars sks) additionalProps =
-  let (lowerState, ini, fin) = sksToExtendedOpa isOmega sks
+programToOpa isOmega prog additionalProps =
+  let (lowerState, ini, fin) = sksToExtendedOpa isOmega (pSks prog)
       eInitials = [(sid, initVal) | sid <- ini]
-        where initVal = initialValuation svars avars
+        where (gScalars, gArrays) =
+                initialValuation (\_ i -> i) (pGlobalScalars prog) (pGlobalArrays prog)
+              initVal = VarValuation { vGlobalScalars = gScalars
+                                     , vGlobalArrays = gArrays
+                                     , vLocalScalars = V.empty
+                                     , vLocalArrays = V.empty
+                                     }
       eIsFinal (sid, _) = sid `S.member` finSet
         where finSet = S.fromList fin
 
@@ -438,97 +471,170 @@ programToOpa isOmega (Program svars avars sks) additionalProps =
       lsRemapped = lowerState { lsDPush = remapProps $ lsDPush lowerState
                               , lsDShift = remapProps $ lsDShift lowerState
                               }
-      varPropMap = M.fromList
-        $ map (\var -> (Prop $ encodeAP pconv $ varName var, varId var))
-        $ filter (\var -> Prop (varName var) `S.member` additionalProps)
-        $ S.toList svars
-      decodeDeltaInput delta bitenc q b =
-        applyDeltaInput varPropMap delta q $ E.decodeInput bitenc b
+      varPropMap = foldl genPropMap M.empty
+        $ (M.keys $ lsDPush lowerState) ++ (M.keys $ lsDShift lowerState)
+        where funLocals = M.fromList
+                $ map (\sk -> (skName sk,
+                               makeVarMap (skScalars sk) `M.union` globalVarMap))
+                $ pSks prog
+              globalVarMap = makeVarMap $ pGlobalScalars prog
+              makeVarMap varSet = M.fromList
+                $ map (\var -> (Prop $ encodeAP pconv $ varName var, varId var))
+                $ filter (\var -> Prop (varName var) `S.member` additionalProps)
+                $ S.toList varSet
+              genPropMap ils (sid, a) =
+                case filter (`notElem` miniProcSls) $ S.toList a of
+                  [Prop fname] -> M.insert sid (funLocals M.! fname) ils
+                  _ -> ils
+      initLocals = foldl genLocals M.empty $ M.keys $ lsDPush lowerState
+        where funInitLocals = M.fromList
+                $ map (\sk -> (skName sk,
+                               initialValuation (getLocalIdx gvii) (skScalars sk) (skArrays sk)))
+                $ pSks prog
+              genLocals ils (sid, a) =
+                let (callSet, other) = S.partition (== (Prop $ T.pack "call")) a
+                    [Prop fname] = S.toList other
+                in if S.null callSet
+                   then ils
+                   else M.insert sid (funInitLocals M.! fname) ils
+      gvii = VarIdInfo { scalarIds = S.size . pGlobalScalars $ prog
+                       , arrayIds = S.size . pGlobalArrays $ prog
+                       }
+      decodeDeltaInput il delta bitenc q b =
+        applyDeltaInput gvii varPropMap il delta q $ E.decodeInput bitenc b
 
   in ( pconv
      , encodeAlphabet pconv miniProcAlphabet
      , eInitials
      , if isOmega then const True else eIsFinal
-     , decodeDeltaInput $ lsDPush  lsRemapped
-     , decodeDeltaInput $ lsDShift lsRemapped
-     , applyDeltaPop    $ lsDPop   lsRemapped
+     , decodeDeltaInput initLocals $ lsDPush lsRemapped
+     , decodeDeltaInput M.empty $ lsDShift lsRemapped
+     , applyDeltaPop (M.keysSet initLocals) gvii $ lsDPop lsRemapped
      )
 
-applyDeltaInput :: Map (Prop APType) IdType
+applyDeltaInput :: VarIdInfo
+                -- map between sid and map between variable props and their ids,
+                -- only in the scope of the sids' function
+                -> Map Word (Map (Prop APType) IdType)
+                -- map between call sid and initial values of its function-local vars
+                -> Map Word (Vector IntValue, Vector ArrayValue)
                 -> Map (Word, Set (Prop APType)) DeltaTarget
                 -> VarState
                 -> Set (Prop APType)
                 -> [VarState]
-applyDeltaInput varPropMap delta (sid, svval) lbl =
-  let filterVars vid = toBool $ fst svval V.! vid
-      svvalPropSet = M.keysSet $ M.filter filterVars varPropMap
-      (varProps, lsProps) = S.partition (`M.member` varPropMap) lbl
-  in if varProps == svvalPropSet
+applyDeltaInput gvii varPropMap initLocals delta (sid, svval) lbl =
+  let callVval = case M.lookup sid initLocals of
+                   Nothing -> svval
+                   Just (lscalars, larrays) -> svval { vLocalScalars = lscalars
+                                                     , vLocalArrays = larrays
+                                                     }
+      localPropMap = case M.lookup sid varPropMap of
+                       Nothing -> M.empty
+                       Just lpm -> lpm
+      filterVars vid
+        | isGlobal gvii True vid = toBool $ vGlobalScalars callVval V.! vid
+        | otherwise = toBool $ vLocalScalars callVval V.! getLocalIdx gvii True vid
+      vvalPropSet = M.keysSet $ M.filter filterVars localPropMap
+      (varProps, lsProps) = S.partition (`M.member` localPropMap) lbl
+  in if varProps == vvalPropSet
      then case M.lookup (sid, lsProps) delta of
             Nothing              -> []
-            Just (States dsts)   -> concatMap (computeDst svval) dsts
+            Just (States dsts)   -> concatMap (computeDst gvii callVval) dsts
             Just (EntryStates _) -> error "Expected States, got EntryStates."
      else []
 
-applyDeltaPop :: Map (Word, Word) DeltaTarget
+applyDeltaPop :: Set Word
+              -> VarIdInfo
+              -> Map (Word, Word) DeltaTarget
               -> VarState
               -> VarState
               -> [VarState]
-applyDeltaPop delta (sid, svval) (stackSid, _) =
+applyDeltaPop callSites gvii delta (sid, svval) (stackSid, stackVval) =
   case M.lookup (sid, stackSid) delta of
     Nothing              -> []
-    Just (States dsts)   -> concatMap (computeDst svval) dsts
+    Just (States dsts)   -> concatMap (computeDst gvii newVval) dsts
     Just (EntryStates _) -> error "Expected States, got EntryStates."
+  where newVval | stackSid `S.member` callSites =
+                  svval { vLocalScalars = vLocalScalars stackVval
+                        , vLocalArrays = vLocalArrays stackVval
+                        }
+                | otherwise = svval
 
-computeDst :: VarValuation -> (Label, Word) -> [VarState]
-computeDst vval (None, dst) = [(dst, vval)]
-computeDst vval@(ival, aval) (Assign (LScalar lhs) rhs, dst) =
-  [(dst, (ival V.// [(varId lhs, evalExpr vval rhs)], aval))]
-computeDst vval@(ival, _) (Assign (LArray var idxExpr) rhs, dst) =
-  [(dst, (ival, arrayAssign vval (evalExpr vval rhs) var idxExpr))]
-computeDst vval (Guard g, dst)
-  | toBool $ evalExpr vval g = [(dst, vval)]
+computeDst :: VarIdInfo -> VarValuation -> (Label, Word) -> [VarState]
+computeDst _ vval (None, dst) = [(dst, vval)]
+computeDst gvii vval (Assign (LScalar lhs) rhs, dst) =
+  [(dst, scalarAssign gvii vval lhs $ evalExpr gvii vval rhs)]
+computeDst gvii vval (Assign (LArray var idxExpr) rhs, dst) =
+  [(dst, arrayAssign gvii vval var idxExpr $ evalExpr gvii vval rhs)]
+computeDst gvii vval (Guard g, dst)
+  | toBool $ evalExpr gvii vval g = [(dst, vval)]
   | otherwise = []
-computeDst (ival, aval) (Nondet (LScalar var), dst) =
-  map (\val -> (dst, (ival V.// [(varId var, val)], aval))) $ enumerateIntType (varType var)
-computeDst vval@(ival, _) (Nondet (LArray var idxExpr), dst) =
-  map (\val -> (dst, (ival, arrayAssign vval val var idxExpr))) $ enumerateIntType (varType var)
+computeDst gvii vval (Nondet (LScalar var), dst) =
+  map (\val -> (dst, scalarAssign gvii vval var val))
+  $ enumerateIntType (varType var)
+computeDst gvii vval (Nondet (LArray var idxExpr), dst) =
+  map (\val -> (dst, arrayAssign gvii vval var idxExpr val))
+  $ enumerateIntType (varType var)
 
-arrayAssign :: VarValuation
-            -> IntValue
+scalarAssign :: VarIdInfo
+             -> VarValuation
+             -> Variable
+             -> IntValue
+             -> VarValuation
+scalarAssign gvii vval var val
+  | isGlobal gvii True vid = vval {
+      vGlobalScalars = vGlobalScalars vval V.// [(vid, val)] }
+  | otherwise = vval {
+      vLocalScalars = vLocalScalars vval V.// [(getLocalIdx gvii True vid, val)] }
+  where vid = varId var
+
+arrayAssign :: VarIdInfo
+            -> VarValuation
             -> Variable
             -> Expr
-            -> Vector ArrayValue
-arrayAssign vval@(_, aval) val var idxExpr =
-  aval V.// [(vid, aval V.! vid V.// [(idx, val)])]
+            -> IntValue
+            -> VarValuation
+arrayAssign gvii vval var idxExpr val
+  | isGlobal gvii False vid = vval {
+      vGlobalArrays = doAssign (vGlobalArrays vval) vid }
+  | otherwise = vval {
+      vLocalArrays = doAssign (vLocalArrays vval) $ getLocalIdx gvii False vid }
   where vid = varId var
-        idx = fromEnum . B.nat . evalExpr vval $ idxExpr
+        idx = fromEnum . B.nat . evalExpr gvii vval $ idxExpr
+        doAssign aval varIdx =
+          aval V.// [(varIdx, (aval V.! varIdx) V.// [(idx, val)])]
 
-evalExpr :: VarValuation -> Expr -> IntValue
-evalExpr _ (Literal val) = val
-evalExpr (ival, _) (Term var) = ival V.! varId var
-evalExpr vval@(_, aval) (ArrayAccess var idxExpr) =
-  (aval V.! varId var) V.! (fromEnum . B.nat . evalExpr vval $ idxExpr)
-evalExpr vval (Not bexpr) = B.fromBool . not . toBool $ evalExpr vval bexpr
-evalExpr vval (And lhs rhs) =
-  B.fromBool $ (toBool $ evalExpr vval lhs) && (toBool $ evalExpr vval rhs)
-evalExpr vval (Or lhs rhs) =
-  B.fromBool $ (toBool $ evalExpr vval lhs) || (toBool $ evalExpr vval rhs)
-evalExpr vval (Add lhs rhs) = evalExpr vval lhs + evalExpr vval rhs
-evalExpr vval (Sub lhs rhs) = evalExpr vval lhs - evalExpr vval rhs
-evalExpr vval (Mul lhs rhs) = evalExpr vval lhs * evalExpr vval rhs
-evalExpr vval (UDiv lhs rhs) = evalExpr vval lhs `div` evalExpr vval rhs
-evalExpr vval (SDiv lhs rhs) = evalExpr vval lhs `B.sdiv` evalExpr vval rhs
-evalExpr vval (URem lhs rhs) = evalExpr vval lhs `mod` evalExpr vval rhs
-evalExpr vval (SRem lhs rhs) = evalExpr vval lhs `B.smod` evalExpr vval rhs
-evalExpr vval (Eq lhs rhs) = B.fromBool $ evalExpr vval lhs == evalExpr vval rhs
-evalExpr vval (ULt lhs rhs) = B.fromBool $ evalExpr vval lhs < evalExpr vval rhs
-evalExpr vval (ULeq lhs rhs) = B.fromBool $ evalExpr vval lhs <= evalExpr vval rhs
-evalExpr vval (SLt lhs rhs) = B.fromBool $ evalExpr vval lhs `B.slt` evalExpr vval rhs
-evalExpr vval (SLeq lhs rhs) = B.fromBool $ evalExpr vval lhs `B.sle` evalExpr vval rhs
-evalExpr vval (UExt size op) = B.zeroExtend size $ evalExpr vval op
-evalExpr vval (SExt size op) = B.signExtend size $ evalExpr vval op
-evalExpr vval (Trunc size op) = evalExpr vval op B.@@ (size - 1, 0)
+evalExpr :: VarIdInfo -> VarValuation -> Expr -> IntValue
+evalExpr _ _ (Literal val) = val
+evalExpr gvii vval (Term var)
+  | isGlobal gvii True vid = vGlobalScalars vval V.! vid
+  | otherwise = vLocalScalars vval V.! getLocalIdx gvii True vid
+  where vid = varId var
+evalExpr gvii vval (ArrayAccess var idxExpr) =
+  arr V.! (fromEnum . B.nat . evalExpr gvii vval $ idxExpr)
+  where vid = varId var
+        arr | isGlobal gvii False vid = vGlobalArrays vval V.! vid
+            | otherwise = vLocalArrays vval V.! getLocalIdx gvii False vid
+evalExpr gvii vval (Not bexpr) = B.fromBool . not . toBool $ evalExpr gvii vval bexpr
+evalExpr gvii vval (And lhs rhs) =
+  B.fromBool $ (toBool $ evalExpr gvii vval lhs) && (toBool $ evalExpr gvii vval rhs)
+evalExpr gvii vval (Or lhs rhs) =
+  B.fromBool $ (toBool $ evalExpr gvii vval lhs) || (toBool $ evalExpr gvii vval rhs)
+evalExpr gvii vval (Add lhs rhs) = evalExpr gvii vval lhs + evalExpr gvii vval rhs
+evalExpr gvii vval (Sub lhs rhs) = evalExpr gvii vval lhs - evalExpr gvii vval rhs
+evalExpr gvii vval (Mul lhs rhs) = evalExpr gvii vval lhs * evalExpr gvii vval rhs
+evalExpr gvii vval (UDiv lhs rhs) = evalExpr gvii vval lhs `div` evalExpr gvii vval rhs
+evalExpr gvii vval (SDiv lhs rhs) = evalExpr gvii vval lhs `B.sdiv` evalExpr gvii vval rhs
+evalExpr gvii vval (URem lhs rhs) = evalExpr gvii vval lhs `mod` evalExpr gvii vval rhs
+evalExpr gvii vval (SRem lhs rhs) = evalExpr gvii vval lhs `B.smod` evalExpr gvii vval rhs
+evalExpr gvii vval (Eq lhs rhs) = B.fromBool $ evalExpr gvii vval lhs == evalExpr gvii vval rhs
+evalExpr gvii vval (ULt lhs rhs) = B.fromBool $ evalExpr gvii vval lhs < evalExpr gvii vval rhs
+evalExpr gvii vval (ULeq lhs rhs) = B.fromBool $ evalExpr gvii vval lhs <= evalExpr gvii vval rhs
+evalExpr gvii vval (SLt lhs rhs) = B.fromBool $ evalExpr gvii vval lhs `B.slt` evalExpr gvii vval rhs
+evalExpr gvii vval (SLeq lhs rhs) = B.fromBool $ evalExpr gvii vval lhs `B.sle` evalExpr gvii vval rhs
+evalExpr gvii vval (UExt size op) = B.zeroExtend size $ evalExpr gvii vval op
+evalExpr gvii vval (SExt size op) = B.signExtend size $ evalExpr gvii vval op
+evalExpr gvii vval (Trunc size op) = evalExpr gvii vval op B.@@ (size - 1, 0)
 
 toBool :: IntValue -> Bool
 toBool v = B.nat v /= 0

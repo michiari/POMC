@@ -44,7 +44,7 @@ genFunctionSkeleton :: RandomGen g
                     -> (FunctionSkeleton, g)
 genFunctionSkeleton gen fs maxCalls maxDepth fname =
   let (statements, gen') = genBlock gen fs maxCalls maxDepth [genTryCatch, genIfThenElse, genThrow]
-  in (FunctionSkeleton fname [] statements, gen')
+  in (FunctionSkeleton fname [] S.empty S.empty statements, gen')
 
 genBlock :: RandomGen g
          => g
