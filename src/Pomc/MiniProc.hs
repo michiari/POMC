@@ -29,6 +29,7 @@ module Pomc.MiniProc ( Program(..)
                      , VarIdInfo(..)
 
                      , DeltaTarget(..)
+                     , InputLabel(..)
                      , LowerState(..)
                      , sksToExtendedOpa
                      , miniProcAlphabet
@@ -173,42 +174,52 @@ enumerateIntType ty = B.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
 -- Data structures
 data Label = None | Assign LValue Expr | Guard Expr | Nondet LValue deriving Show
 data DeltaTarget = EntryStates Text | States [(Label, Word)] deriving Show
+data InputLabel = InputLabel { ilStruct :: Text
+                             , ilFunction :: FunctionName
+                             , ilModules :: [FunctionName]
+                             } deriving (Eq, Ord, Show)
 
 data FunctionInfo = FunctionInfo { fiEntry :: [(Label, Word)]
                                  , fiRetPad :: Word
                                  , fiThrow :: Word
                                  , fiExcPad :: Word
+                                 , fiSkeleton :: FunctionSkeleton
                                  } deriving Show
-data LowerState a = LowerState { lsDPush :: Map (Word, Set (Prop a)) DeltaTarget
-                               , lsDShift :: Map (Word, Set (Prop a)) DeltaTarget
-                               , lsDPop :: Map (Word, Word) DeltaTarget
-                               , lsFinfo :: Map Text FunctionInfo
-                               , lsSid :: Word
-                               } deriving Show
+data LowerState = LowerState { lsDPush :: Map (Word, InputLabel) DeltaTarget
+                             , lsDShift :: Map (Word, InputLabel) DeltaTarget
+                             , lsDPop :: Map (Word, Word) DeltaTarget
+                             , lsFinfo :: Map Text FunctionInfo
+                             , lsSid :: Word
+                             } deriving Show
 
-sksToExtendedOpa :: Bool -> [FunctionSkeleton] -> (LowerState Text, [Word], [Word])
+makeInputLabel :: String -> FunctionInfo -> InputLabel
+makeInputLabel sl finfo = InputLabel (T.pack sl) (skName fsk) (skModules fsk)
+  where fsk = fiSkeleton finfo
+
+sksToExtendedOpa :: Bool -> [FunctionSkeleton] -> (LowerState, [Word], [Word])
 sksToExtendedOpa False sks = (buildExtendedOpa sks, [0], [1]) -- Finite case
 sksToExtendedOpa True sks = -- Omega case
   let lowerState = buildExtendedOpa sks
       -- Add stuttering transitions
-      dPush = M.insert (1, makeInputSet [T.pack "stm"]) (States [(None, 1)]) (lsDPush lowerState)
+      dPush = M.insert (1, InputLabel (T.pack "stm") T.empty [])
+              (States [(None, 1)]) (lsDPush lowerState)
       dPop = M.insert (1, 1) (States [(None, 1)]) (lsDPop lowerState)
   in ( lowerState { lsDPush = dPush, lsDPop = dPop }
      , [0]
      , [0..(lsSid lowerState)] -- all states are final in the Omega case
      )
 
-buildExtendedOpa :: [FunctionSkeleton] -> LowerState Text
+buildExtendedOpa :: [FunctionSkeleton] -> LowerState
 buildExtendedOpa sks =
   let lowerState = lowerFunction sksMap (LowerState M.empty M.empty M.empty M.empty 3) (head sks)
       sksMap = M.fromList $ map (\sk -> (skName sk, sk)) sks
       firstFname = skName $ head sks
       firstFinfo = fromJust $ M.lookup firstFname (lsFinfo lowerState)
-      dPush' = M.insert (0, makeInputSet $ [T.pack "call", firstFname] ++ (skModules $ head sks))
+      dPush' = M.insert (0, InputLabel (T.pack "call") firstFname (skModules $ head sks))
                (EntryStates firstFname) (lsDPush lowerState)
       dPop' = M.insert (fiRetPad firstFinfo, 0) (States [(None, 1)]) (lsDPop lowerState)
       dPop'' = M.insert (fiThrow firstFinfo, 0) (States [(None, 2)]) dPop'
-      dPush'' = M.insert (2, makeInputSet [T.pack "exc"]) (States [(None, 1)]) dPush'
+      dPush'' = M.insert (2, InputLabel (T.pack "exc") T.empty []) (States [(None, 1)]) dPush'
       dPop''' = M.insert (1, 2) (States [(None, 1)]) dPop''
 
       resolveTarget (EntryStates fname) =
@@ -221,7 +232,7 @@ buildExtendedOpa sks =
                 }
 
 -- Thunk that links a list of states as the successors of the previous statement(s)
-type PredLinker = LowerState Text -> [(Label, Word)] -> LowerState Text
+type PredLinker = LowerState -> [(Label, Word)] -> LowerState
 
 dInsert :: (Ord k) => k -> [(Label, Word)] -> Map k DeltaTarget -> Map k DeltaTarget
 dInsert _ [] delta = delta
@@ -231,16 +242,13 @@ dInsert key states delta =
     Just (States olds) -> M.insert key (States $ olds ++ states) delta
     _                  -> error "DeltaTarget mismatch."
 
-makeInputSet :: (Ord a) => [a] -> Set (Prop a)
-makeInputSet ilst = S.fromList $ map Prop ilst
-
 lowerFunction :: Map Text FunctionSkeleton
-              -> LowerState Text
+              -> LowerState
               -> FunctionSkeleton
-              -> LowerState Text
+              -> LowerState
 lowerFunction sks lowerState0 fsk =
   let sidRet = lsSid lowerState0
-      thisFinfo = FunctionInfo [] (sidRet + 1) (sidRet + 2) (sidRet + 3)
+      thisFinfo = FunctionInfo [] (sidRet + 1) (sidRet + 2) (sidRet + 3) fsk
       lowerState1 = lowerState0 {
         lsFinfo = M.insert (skName fsk) thisFinfo (lsFinfo lowerState0)
         , lsSid = sidRet + 4
@@ -252,22 +260,22 @@ lowerFunction sks lowerState0 fsk =
 
       (lowerState2, linkPred) = lowerBlock sks lowerState1 thisFinfo addEntry (skStmts fsk)
 
-      dShift' = M.insert (sidRet, makeInputSet $ [T.pack "ret", skName fsk] ++ skModules fsk)
+      dShift' = M.insert (sidRet, InputLabel (T.pack "ret") (skName fsk) (skModules fsk))
                  (States [(None, fiRetPad thisFinfo)]) (lsDShift lowerState2)
-      dShift'' = M.insert (fiThrow thisFinfo, makeInputSet [T.pack "exc"])
+      dShift'' = M.insert (fiThrow thisFinfo, InputLabel (T.pack "exc") (skName fsk) (skModules fsk))
                  (States [(None, fiExcPad thisFinfo)]) dShift'
   in linkPred (lowerState2 { lsDShift = dShift'' }) [(None, sidRet)]
 
 lowerStatement :: Map Text FunctionSkeleton
-               -> LowerState Text
+               -> LowerState
                -> FunctionInfo
                -> PredLinker
                -> Statement
-               -> (LowerState Text, PredLinker)
-lowerStatement _ lowerState0 _ linkPred (Assignment lhs rhs) =
+               -> (LowerState, PredLinker)
+lowerStatement _ lowerState0 thisFinfo linkPred (Assignment lhs rhs) =
   let assSid = lsSid lowerState0
       lowerState1 = linkPred (lowerState0 { lsSid = assSid + 1 }) [(None, assSid)]
-      dPush' = dInsert (assSid, makeInputSet [T.pack "stm"])
+      dPush' = dInsert (assSid, makeInputLabel "stm" thisFinfo)
                [(Assign lhs rhs, assSid)]
                (lsDPush lowerState1)
 
@@ -277,10 +285,10 @@ lowerStatement _ lowerState0 _ linkPred (Assignment lhs rhs) =
 
   in (lowerState1 { lsDPush = dPush' }, linkAss)
 
-lowerStatement _ lowerState0 _ linkPred (Nondeterministic lval) =
+lowerStatement _ lowerState0 thisFinfo linkPred (Nondeterministic lval) =
   let assSid = lsSid lowerState0
       lowerState1 = linkPred (lowerState0 { lsSid = assSid + 1 }) [(None, assSid)]
-      dPush' = dInsert (assSid, makeInputSet [T.pack "stm"])
+      dPush' = dInsert (assSid, makeInputLabel "stm" thisFinfo)
                [(Nondet lval, assSid)]
                (lsDPush lowerState1)
 
@@ -299,7 +307,7 @@ lowerStatement sks lowerState0 thisFinfo linkPred (Call fname) =
                     then lowerFunction sks lowerState1 calleeSk
                     else lowerState1
       calleeFinfo1 = fromJust $ M.lookup fname (lsFinfo lowerState2)
-      dPush'' = M.insert (callSid, makeInputSet $ [T.pack "call", fname] ++ skModules calleeSk)
+      dPush'' = M.insert (callSid, InputLabel (T.pack "call") fname (skModules calleeSk))
                 (EntryStates fname) (lsDPush lowerState2)
       dPop'' = M.insert (fiThrow calleeFinfo1, callSid)
                (States [(None, fiThrow thisFinfo)]) (lsDPop lowerState2)
@@ -318,14 +326,14 @@ lowerStatement sks ls0 thisFinfo linkPred0 (TryCatch try catch) =
       ls1 = linkPred0 (ls0 { lsSid = dummySid1 + 1 }) [(None, hanSid)]
 
       linkHandler lowerState successorStates =
-        let dPushH = dInsert (hanSid, makeInputSet [T.pack "han"])
+        let dPushH = dInsert (hanSid, makeInputLabel "han" thisFinfo)
                      successorStates (lsDPush lowerState)
         in lowerState { lsDPush = dPushH }
 
       (ls2, linkPredTry) = lowerBlock sks ls1 thisFinfo linkHandler try
       -- add dummy exc to exit try block
       ls3 = linkPredTry ls2 [(None, dummySid0)]
-      dShift' = M.insert (dummySid0, makeInputSet [T.pack "exc"])
+      dShift' = M.insert (dummySid0, makeInputLabel "exc" thisFinfo)
                 (States [(None, dummySid1)]) (lsDShift ls3)
       ls4 = ls3 { lsDShift = dShift' }
 
@@ -384,11 +392,11 @@ combGuards _ (Assign _ _) = error "Cannot combine Guard with Assignment label."
 combGuards _ (Nondet _) = error "Cannot combine Guard with Nondet label."
 
 lowerBlock :: Map Text FunctionSkeleton
-           -> LowerState Text
+           -> LowerState
            -> FunctionInfo
            -> PredLinker
            -> [Statement]
-           -> (LowerState Text, PredLinker)
+           -> (LowerState, PredLinker)
 lowerBlock _ lowerState _ linkPred [] = (lowerState, linkPred)
 lowerBlock sks lowerState thisFinfo linkPred block =
   foldBlock lowerState linkPred block
@@ -465,12 +473,6 @@ programToOpa isOmega prog additionalProps =
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
-      remapProps = M.mapKeysWith (\(States s1) (States s2) -> States $ s1 ++ s2)
-                    (\(sid, props) ->
-                       (sid, S.map (encodeProp pconv) $ S.filter (`S.member` allProps) props))
-      lsRemapped = lowerState { lsDPush = remapProps $ lsDPush lowerState
-                              , lsDShift = remapProps $ lsDShift lowerState
-                              }
       varPropMap = foldl genPropMap M.empty
         $ (M.keys $ lsDPush lowerState) ++ (M.keys $ lsDShift lowerState)
         where funLocals = M.fromList
@@ -482,34 +484,34 @@ programToOpa isOmega prog additionalProps =
                 $ map (\var -> (Prop $ encodeAP pconv $ varName var, varId var))
                 $ filter (\var -> Prop (varName var) `S.member` additionalProps)
                 $ S.toList varSet
-              genPropMap ils (sid, a) =
-                case filter (`notElem` miniProcSls) $ S.toList a of
-                  [Prop fname] -> M.insert sid (funLocals M.! fname) ils
-                  _ -> ils
+              genPropMap pm (sid, il) | T.null $ ilFunction il = M.insert sid globalVarMap pm
+                                      | otherwise = M.insert sid (funLocals M.! ilFunction il) pm
       initLocals = foldl genLocals M.empty $ M.keys $ lsDPush lowerState
         where funInitLocals = M.fromList
                 $ map (\sk -> (skName sk,
                                initialValuation (getLocalIdx gvii) (skScalars sk) (skArrays sk)))
                 $ pSks prog
-              genLocals ils (sid, a) =
-                let (callSet, other) = S.partition (== (Prop $ T.pack "call")) a
-                    [Prop fname] = filter (\(Prop p) -> p `M.member` funInitLocals) $ S.toList other
-                in if S.null callSet
-                   then ils
-                   else M.insert sid (funInitLocals M.! fname) ils
+              genLocals ils (sid, a)
+                | ilStruct a == T.pack "call" = M.insert sid (funInitLocals M.! ilFunction a) ils
+                | otherwise = ils
       gvii = VarIdInfo { scalarIds = S.size . pGlobalScalars $ prog
                        , arrayIds = S.size . pGlobalArrays $ prog
                        }
       decodeDeltaInput il delta bitenc q b =
         applyDeltaInput gvii varPropMap il delta q $ E.decodeInput bitenc b
 
+      remapProps = M.mapKeysWith (\(States s1) (States s2) -> States $ s1 ++ s2)
+                    (\(sid, ilabel) ->
+                       (sid, S.fromList $ map (encodeProp pconv)
+                             $ filter (`S.member` allProps) (iLabelToList ilabel)))
+                   where iLabelToList il = map Prop $ ilStruct il : ilFunction il : ilModules il
   in ( pconv
      , encodeAlphabet pconv miniProcAlphabet
      , eInitials
      , if isOmega then const True else eIsFinal
-     , decodeDeltaInput initLocals $ lsDPush lsRemapped
-     , decodeDeltaInput M.empty $ lsDShift lsRemapped
-     , applyDeltaPop (M.keysSet initLocals) gvii $ lsDPop lsRemapped
+     , decodeDeltaInput initLocals $ remapProps $ lsDPush lowerState
+     , decodeDeltaInput M.empty $ remapProps $ lsDShift lowerState
+     , applyDeltaPop (M.keysSet initLocals) gvii $ lsDPop lowerState
      )
 
 applyDeltaInput :: VarIdInfo

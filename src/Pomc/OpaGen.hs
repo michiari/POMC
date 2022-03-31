@@ -13,7 +13,7 @@ module Pomc.OpaGen ( printFunctions
 import Pomc.Prop (Prop(..))
 import Pomc.ModelChecker (ExplicitOpa(..))
 import Pomc.MiniProc ( FunctionSkeleton(..), Statement(..), FunctionName
-                     , DeltaTarget(..), LowerState(..), sksToExtendedOpa
+                     , DeltaTarget(..), LowerState(..), InputLabel(..), sksToExtendedOpa
                      , miniProcAlphabet
                      )
 
@@ -99,15 +99,19 @@ skeletonsToOpa omega sks = ExplicitOpa
   { eoAlphabet = miniProcAlphabet
   , eoInitials = ini
   , eoFinals = fin
-  , eoDeltaPush = toListDelta $ lsDPush lowerState
-  , eoDeltaShift = toListDelta $ lsDShift lowerState
-  , eoDeltaPop = toListDelta $ lsDPop lowerState
+  , eoDeltaPush = toListDelta ilToSet $ lsDPush lowerState
+  , eoDeltaShift = toListDelta ilToSet $ lsDShift lowerState
+  , eoDeltaPop = toListDelta id $ lsDPop lowerState
   }
   where (lowerState, ini, fin) = sksToExtendedOpa omega sks
-        toListDelta deltaMap = map normalize $ M.toList deltaMap
+        toListDelta convLabel deltaMap = map normalize $ M.toList deltaMap
           where normalize ((a, b), States ls) =
-                  (a, b, S.toList . S.fromList $ map snd ls)
+                  ( a
+                  , convLabel b
+                  , S.toList . S.fromList $ map snd ls
+                  )
                 normalize (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
+        ilToSet il = S.fromList . map Prop $ ilStruct il : ilFunction il : ilModules il
 
 genOpa :: String -> Int -> Int -> Int -> IO ()
 genOpa file nf maxCalls maxDepth = do
