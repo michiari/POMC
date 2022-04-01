@@ -44,7 +44,7 @@ genFunctionSkeleton :: RandomGen g
                     -> (FunctionSkeleton, g)
 genFunctionSkeleton gen fs maxCalls maxDepth fname =
   let (statements, gen') = genBlock gen fs maxCalls maxDepth [genTryCatch, genIfThenElse, genThrow]
-  in (FunctionSkeleton fname [] S.empty S.empty statements, gen')
+  in (FunctionSkeleton fname [] [] S.empty S.empty statements, gen')
 
 genBlock :: RandomGen g
          => g
@@ -57,7 +57,8 @@ genBlock gen fs maxCalls maxDepth stmtGens =
   foldl createStatements ([], gen') stmtIndices
   where (stmtIndices, gen') = genIndices gen maxCalls (length fs + length stmtGens - 1)
         createStatements (stmts, oldGen) idx
-          | idx < length fs || maxDepth == 0 = ((Call (fs !! (idx `mod` length fs))) : stmts, oldGen)
+          | idx < length fs || maxDepth == 0 =
+              ((Call (fs !! (idx `mod` length fs)) []) : stmts, oldGen)
           | otherwise = let (tcStmt, newGen) = (stmtGens !! (idx - length fs)) oldGen fs maxCalls (maxDepth-1)
                         in (tcStmt : stmts, newGen)
 
@@ -99,18 +100,16 @@ skeletonsToOpa omega sks = ExplicitOpa
   { eoAlphabet = miniProcAlphabet
   , eoInitials = ini
   , eoFinals = fin
-  , eoDeltaPush = toListDelta ilToSet $ lsDPush lowerState
-  , eoDeltaShift = toListDelta ilToSet $ lsDShift lowerState
-  , eoDeltaPop = toListDelta id $ lsDPop lowerState
+  , eoDeltaPush = toListDelta normalizeInput $ lsDPush lowerState
+  , eoDeltaShift = toListDelta normalizeInput $ lsDShift lowerState
+  , eoDeltaPop = toListDelta normalizePop $ lsDPop lowerState
   }
   where (lowerState, ini, fin) = sksToExtendedOpa omega sks
-        toListDelta convLabel deltaMap = map normalize $ M.toList deltaMap
-          where normalize ((a, b), States ls) =
-                  ( a
-                  , convLabel b
-                  , S.toList . S.fromList $ map snd ls
-                  )
-                normalize (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
+        toListDelta normalize deltaMap = map normalize $ M.toList deltaMap
+        normalizeInput (q, (il, States ls)) = (q, ilToSet il, S.toList . S.fromList $ map snd ls)
+        normalizeInput (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
+        normalizePop ((q, r), (_, States ls)) = (q, r, S.toList . S.fromList $ map snd ls)
+        normalizePop (_, dt) = error $ "Expected States DeltaTarget, got " ++ show dt
         ilToSet il = S.fromList . map Prop $ ilStruct il : ilFunction il : ilModules il
 
 genOpa :: String -> Int -> Int -> Int -> IO ()

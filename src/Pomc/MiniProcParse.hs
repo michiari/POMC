@@ -248,7 +248,7 @@ callP = try $ do
   fname <- identifierP
   _ <- symbolP "()"
   _ <- symbolP ";"
-  return $ Call fname
+  return $ Call fname []
 
 tryCatchP :: Map Text Variable -> Parser Statement
 tryCatchP varmap = do
@@ -312,6 +312,7 @@ functionP gvarmap vii = do
         S.partition (isScalar . varType) $ S.fromList $ M.elems lvarmap
   return FunctionSkeleton { skName = fname
                           , skModules = (parseModules fname)
+                          , skParams = []
                           , skScalars = lScalars
                           , skArrays = lArrays
                           , skStmts = stmts
@@ -342,7 +343,7 @@ undeclaredFuns p = S.difference usedFuns declaredFuns
         gatherFuns :: Statement -> Set Text
         gatherFuns (Assignment _ _) = S.empty
         gatherFuns (Nondeterministic _) = S.empty
-        gatherFuns (Call fname) = S.singleton fname
+        gatherFuns (Call fname _) = S.singleton fname
         gatherFuns (TryCatch tryb catchb) = gatherBlockFuns tryb `S.union` gatherBlockFuns catchb
         gatherFuns (IfThenElse _ thenb elseb) = gatherBlockFuns thenb `S.union` gatherBlockFuns elseb
         gatherFuns (While _ body) = gatherBlockFuns body
