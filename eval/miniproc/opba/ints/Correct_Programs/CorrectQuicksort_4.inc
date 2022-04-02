@@ -30,7 +30,6 @@ s4 left, right, lo, hi, eq, swapLeft, swapRight;
 u* piv, tmp;
 u*[4] a;
 
-
 main() {
 	left = 0s4;
 	right = 3s4;
