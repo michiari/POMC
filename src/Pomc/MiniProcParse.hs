@@ -14,6 +14,7 @@ import Pomc.MiniProc
 import Data.Void (Void)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Maybe (isJust)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
@@ -243,76 +244,106 @@ assP varmap = try $ do
     where lvalType (LScalar var) = varType var
           lvalType (LArray var _) = scalarType . varType $ var
 
-callP :: Parser Statement
-callP = try $ do
+callP :: Map Text Variable -> [FormalParam] -> Parser Statement
+callP varmap fparams = try $ do
   fname <- identifierP
-  _ <- symbolP "()"
+  _ <- symbolP "("
+  aparams <- sepBy (exprP varmap) (symbolP ",")
+  _ <- symbolP ")"
   _ <- symbolP ";"
-  return $ Call fname []
+  return $ Call fname $ map matchParams $ zip fparams aparams
+  where matchParams (Value _, expr) = ActualVal expr
+        matchParams (ValueResult _, Term var) = ActualValRes var
+        matchParams _ = error "Value-result actual parameter must be variable names, not expressions."
 
-tryCatchP :: Map Text Variable -> Parser Statement
-tryCatchP varmap = do
+tryCatchP :: Map Text Variable -> [FormalParam] -> Parser Statement
+tryCatchP varmap fparams = do
   _ <- symbolP "try"
-  tryBlock <- blockP varmap
+  tryBlock <- blockP varmap fparams
   _ <- symbolP "catch"
-  catchBlock <- blockP varmap
+  catchBlock <- blockP varmap fparams
   return $ TryCatch tryBlock catchBlock
 
-iteP :: Map Text Variable -> Parser Statement
-iteP varmap = do
+iteP :: Map Text Variable -> [FormalParam] -> Parser Statement
+iteP varmap fparams = do
   _ <- symbolP "if"
   _ <- symbolP "("
   guard <- ((Nothing <$ symbolP "*") <|> fmap Just (exprP varmap))
   _ <- symbolP ")"
-  thenBlock <- blockP varmap
+  thenBlock <- blockP varmap fparams
   _ <- symbolP "else"
-  elseBlock <- blockP varmap
+  elseBlock <- blockP varmap fparams
   return $ IfThenElse guard thenBlock elseBlock
 
-whileP :: Map Text Variable -> Parser Statement
-whileP varmap = do
+whileP :: Map Text Variable -> [FormalParam] -> Parser Statement
+whileP varmap fparams = do
   _ <- symbolP "while"
   _ <- symbolP "("
   guard <- ((Nothing <$ symbolP "*") <|> fmap Just (exprP varmap))
   _ <- symbolP ")"
-  body <- blockP varmap
+  body <- blockP varmap fparams
   return $ While guard body
 
 throwP :: Parser Statement
 throwP = symbolP "throw" >> symbolP ";" >> return Throw
 
-stmtP :: Map Text Variable -> Parser Statement
-stmtP varmap = choice [ nondetP varmap
-                      , assP varmap
-                      , callP
-                      , tryCatchP varmap
-                      , iteP varmap
-                      , whileP varmap
-                      , throwP
-                      ] <?> "statement"
+stmtP :: Map Text Variable -> [FormalParam] -> Parser Statement
+stmtP varmap fparams = choice [ nondetP varmap
+                              , assP varmap
+                              , callP varmap fparams
+                              , tryCatchP varmap fparams
+                              , iteP varmap fparams
+                              , whileP varmap fparams
+                              , throwP
+                              ] <?> "statement"
 
-blockP :: Map Text Variable -> Parser [Statement]
-blockP varmap = try $ do
+blockP :: Map Text Variable -> [FormalParam] -> Parser [Statement]
+blockP varmap fparams = try $ do
   _ <- symbolP "{"
-  stmts <- many (stmtP varmap)
+  stmts <- many (stmtP varmap fparams)
   _ <- symbolP "}"
   return stmts
+
+fargsP :: VarIdInfo
+       -> Parser (VarIdInfo, Map Text Variable, [FormalParam])
+fargsP vii = do
+  rawfargs <- sepBy fargP (symbolP ",")
+  let (ridfargs, newVii) = foldl assignId ([], vii) rawfargs
+      idfargs = reverse $ ridfargs
+      varmap = M.fromList $ map (\(_, var) -> (varName var, var)) idfargs
+      params = map (\(isvr, var) -> if isvr then ValueResult var else Value var) idfargs
+  return (newVii, varmap, params)
+  where assignId (accfargs, accvii) (isvr, var)
+          | isScalar . varType $ var = ((isvr, var { varId = scalarIds accvii }):accfargs,
+                                        accvii { scalarIds = scalarIds accvii + 1 })
+          | otherwise                = ((isvr, var { varId = arrayIds accvii }):accfargs,
+                                        accvii { arrayIds = arrayIds accvii + 1 })
+
+        fargP :: Parser (Bool, Variable)
+        fargP = do
+          ty <- typeP
+          isvr <- optional $ symbolP "&"
+          name <- identifierP
+          return (isJust isvr, Variable ty name 0)
 
 functionP :: Map Text Variable
           -> VarIdInfo
           -> Parser (FunctionSkeleton)
 functionP gvarmap vii = do
   fname <- identifierP
-  _ <- symbolP "()"
+  _ <- symbolP "("
+  (argvii, argvarmap, params) <- fargsP vii
+  _ <- symbolP ")"
   _ <- symbolP "{"
-  (lvarmap, _) <- declsP (M.empty, vii)
-  stmts <- many (stmtP $ lvarmap `M.union` gvarmap)
+  (dvarmap, _) <- declsP (M.empty, argvii)
+  let lvarmap = argvarmap `M.union` dvarmap
+  stmts <- many $ stmtP (lvarmap `M.union` gvarmap) params
   _ <- symbolP "}"
   let (lScalars, lArrays) =
         S.partition (isScalar . varType) $ S.fromList $ M.elems lvarmap
   return FunctionSkeleton { skName = fname
                           , skModules = (parseModules fname)
-                          , skParams = []
+                          , skParams = params
                           , skScalars = lScalars
                           , skArrays = lArrays
                           , skStmts = stmts

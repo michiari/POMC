@@ -14,6 +14,8 @@ module Pomc.MiniProc ( Program(..)
                      , IntValue
                      , Expr(..)
                      , LValue(..)
+                     , FormalParam(..)
+                     , ActualParam(..)
                      , FunctionName
                      , Type(..)
                      , VarState
