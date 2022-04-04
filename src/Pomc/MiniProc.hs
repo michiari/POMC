@@ -57,7 +57,7 @@ import qualified Data.Vector as V
 import GHC.Generics (Generic)
 import Data.Hashable
 
-import qualified Debug.Trace as DBG
+-- import qualified Debug.Trace as DBG
 
 -- Intermediate representation for MiniProc programs
 type IdType = Int
@@ -548,8 +548,11 @@ applyDeltaInput gvii allVarProps localsInfo delta (sid, svval) lbl =
           let newVval = svval { vLocalScalars = initScalars
                               , vLocalArrays = initArrays
                               }
-              evalArg vval (Value fvar, ActualVal expr) =
-                scalarAssign gvii vval fvar $ evalExpr gvii svval expr
+              evalArg vval (Value fvar, ActualVal expr)
+                | isScalar . varType $ fvar =
+                    scalarAssign gvii vval fvar $ evalExpr gvii svval expr
+                | otherwise = let (Term avar) = expr
+                              in wholeArrayAssign gvii vval fvar svval avar
               evalArg vval (ValueResult fvar, ActualValRes avar)
                 | isScalar . varType $ fvar =
                     scalarAssign gvii vval fvar $ evalExpr gvii svval (Term avar)

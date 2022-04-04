@@ -1294,11 +1294,11 @@ main() {
 
   pA(a + b, 42u8, c);
 
-  assertMain0 = a + b + c[0u8] + c[1u8] == 27u8;
+  assertMain0 = a + b + c[0u8] + c[1u8] == 28u8;
 
   pB(a, b + 1u8, c, w);
 
-  assertMain1 = a + b + c[0u8] + c[1u8] + w == 69u8;
+  assertMain1 = a + b + c[0u8] + c[1u8] + w == 84u8;
 }
 
 pA(u8 r, u8 s, u8[2] t) {
@@ -1324,7 +1324,7 @@ pB(u8 &r, u8 s, u8[2] &t, u8 &x) {
   r = 20u8;
   s = 21u8;
   t[0u8] = 3u8;
-  t[0u8] = 4u8;
+  t[1u8] = 4u8;
   x = 42u8;
 
   assertB1 = w + r + s + t[0u8] + t[1u8] + x == 90u8;
