@@ -3,13 +3,12 @@
 import argparse
 import platform
 import os
-import subprocess
+import signal
+import subprocess as sp
 import re
 import statistics
 import joblib
 from tabulate import tabulate
-
-from subprocess import STDOUT, check_output
 
 time_pattern = re.compile(r"Total elapsed time: .+ \(([0-9]+\.[0-9]+e[\+\-0-9]+) s\)")
 mem_pattern = re.compile(r"Max memory used \(KB\): ([0-9]+)")
@@ -22,13 +21,29 @@ if platform.system() == 'Darwin':
 else:
     time_bin = '/usr/bin/time'
 
+def run_cmd(cmd, timeout=None):
+    # Adapted from the official cpython implementation of subprocess
+    with sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.PIPE, start_new_session=True) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except sp.TimeoutExpired as exc:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            # Won't work on MS Windows
+            process.wait()
+            raise
+        except:  # Including KeyboardInterrupt, communicate handled that.
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            # We don't call process.wait() as .__exit__ does that for us.
+            raise
+        retcode = process.poll()
+    return sp.CompletedProcess(process.args, retcode, stdout, stderr)
+
 def exec_bench(fname, finite, verbose):
     print('Evaluating file', fname, '...')
-    cmd = ['/usr/bin/time'
+    cmd = [ '/usr/bin/time'
           , '-f'
           , 'Max memory used (KB): %M'
           , 'stack'
-
           , 'exec'
           , 'pomc'
           , '--'
@@ -39,10 +54,9 @@ def exec_bench(fname, finite, verbose):
           , '--machine-readable'
           , '-RTS']
 
-    raw_res = subprocess.run(cmd,capture_output=True)
-    seconds = 3600;
-    try: 
-        output = check_output(cmd, stderr=STDOUT, timeout=seconds)
+    seconds = 3600
+    try:
+        raw_res = run_cmd(cmd, timeout=seconds)
         raw_stdout = raw_res.stdout.decode('utf-8')
         raw_stderr = raw_res.stderr.decode('utf-8')
 
@@ -59,12 +73,12 @@ def exec_bench(fname, finite, verbose):
         result_match = [r[0] for r in result_pattern.findall(raw_stdout)]
         memgc_match = memgc_pattern.search(raw_stderr)
         result = 'False' if 'False' in result_match else 'True'
-        return ( float(time_match.group(1)),
+        return (float(time_match.group(1)),
                 int(mem_match.group(1)), int(memgc_match.group(1)),
                 result)
-    except: 
+    except sp.TimeoutExpired:
         return ( -1, -1, -2**10, 'Time Out')
-    
+
 
 def iter_bench(fname, finite, iters, verbose):
     get_column = lambda rows, i: [r[i] for r in rows]
@@ -116,7 +130,7 @@ def pretty_print(results, ms):
     #print(tabResults)
     text_file=open("stats/report.csv","w")
     text_file.write(tabResults)
-    text_file.close()  
+    text_file.close()
     print("report generated and saved")
 
 
