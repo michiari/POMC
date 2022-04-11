@@ -255,7 +255,7 @@ qsRec14() {
 	right = eq - 1s4;
 	qs();
 	left = 4s4; 
-	right = 3s4;
+	right = 5s4;
 	qs();
 }
 

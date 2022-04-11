@@ -18,6 +18,7 @@
 	}
 
 	parseList(){
+		...
 		hasParsed = true;
 	}
 
@@ -25,7 +26,7 @@
 		if(*){
 			throw();
 		} else{
-			\\ readValues
+			// readValues
 		}
 	}
 */			
