@@ -3,7 +3,8 @@
 import argparse
 import platform
 import os
-import subprocess
+import signal
+import subprocess as sp
 import re
 import statistics
 import joblib
@@ -20,41 +21,64 @@ if platform.system() == 'Darwin':
 else:
     time_bin = '/usr/bin/time'
 
+def run_cmd(cmd, timeout=None):
+    # Adapted from the official cpython implementation of subprocess
+    with sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.PIPE, start_new_session=True) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except sp.TimeoutExpired as exc:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            # Won't work on MS Windows
+            process.wait()
+            raise
+        except:  # Including KeyboardInterrupt, communicate handled that.
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            # We don't call process.wait() as .__exit__ does that for us.
+            raise
+        retcode = process.poll()
+    return sp.CompletedProcess(process.args, retcode, stdout, stderr)
+
 def exec_bench(fname, finite, verbose):
     print('Evaluating file', fname, '...')
+    cmd = [ '/usr/bin/time'
+          , '-f'
+          , 'Max memory used (KB): %M'
+          , 'stack'
+          , 'exec'
+          , 'pomc'
+          , '--'
+          , fname
+          , '--finite' if finite else '--infinite'
+          , '+RTS'
+          , '-t'
+          , '--machine-readable'
+          , '-RTS']
 
-    raw_res = subprocess.run(['/usr/bin/time'
-                              , '-f'
-                              , 'Max memory used (KB): %M'
-                              , 'stack'
-                              , 'exec'
-                              , 'pomc'
-                              , '--'
-                              , fname
-                              , '--finite' if finite else '--infinite'
-                              , '+RTS'
-                              , '-t'
-                              , '--machine-readable'
-                              , '-RTS'],
-                             capture_output=True)
-    raw_stdout = raw_res.stdout.decode('utf-8')
-    raw_stderr = raw_res.stderr.decode('utf-8')
-    if verbose >= 1:
-        print(raw_stdout)
-    if verbose >= 2:
-        print(raw_stderr)
+    seconds = 3600
+    try:
+        raw_res = run_cmd(cmd, timeout=seconds)
+        raw_stdout = raw_res.stdout.decode('utf-8')
+        raw_stderr = raw_res.stderr.decode('utf-8')
 
-    if raw_res.returncode != 0:
-        return ( -1, -1, -2**10, 'Error')
+        if verbose >= 1:
+            print(raw_stdout)
+        if verbose >= 2:
+            print(raw_stderr)
 
-    time_match = time_pattern.search(raw_stdout)
-    mem_match = mem_pattern.search(raw_stderr)
-    result_match = [r[0] for r in result_pattern.findall(raw_stdout)]
-    memgc_match = memgc_pattern.search(raw_stderr)
-    result = 'False' if 'False' in result_match else 'True'
-    return ( float(time_match.group(1)),
-            int(mem_match.group(1)), int(memgc_match.group(1)),
-            result)
+        if raw_res.returncode != 0:
+            return ( -1, -1, -2**10, 'Error')
+
+        time_match = time_pattern.search(raw_stdout)
+        mem_match = mem_pattern.search(raw_stderr)
+        result_match = [r[0] for r in result_pattern.findall(raw_stdout)]
+        memgc_match = memgc_pattern.search(raw_stderr)
+        result = 'False' if 'False' in result_match else 'True'
+        return (float(time_match.group(1)),
+                int(mem_match.group(1)), int(memgc_match.group(1)),
+                result)
+    except sp.TimeoutExpired:
+        return ( -1, -1, -2**10, 'Time Out')
+
 
 def iter_bench(fname, finite, iters, verbose):
     get_column = lambda rows, i: [r[i] for r in rows]
@@ -63,12 +87,19 @@ def iter_bench(fname, finite, iters, verbose):
     mems = get_column(results, 1)
     memgcs = get_column(results, 2)
     res = get_column(results, 3)
-    return (fname, statistics.mean(times),
+    l = fname.split('/')
+    l = l[len(l) -1].split('-')
+    exp = l[0]
+    l = l[1].split('.')
+    nbits = l[0]
+    lenvec = l[1]
+    f = l[2]
+    return (exp, nbits, lenvec, f, statistics.mean(times),
             statistics.mean(mems), statistics.mean(memgcs)/(2**10),
             res[0])
 
 def exec_all(fnames, finite, iters, jobs, verbose):
-    make_row = lambda fname, time, mem, memgc, res: [fname, time, mem, memgc, res]
+    make_row = lambda exp, nbits, lenvec, f, time, mem, memgc, res: [exp, nbits, lenvec, f, time, mem, memgc, res]
     if jobs <= 1:
         return [make_row(*iter_bench(fname, finite, iters, verbose)) for fname in fnames]
     else:
@@ -89,13 +120,18 @@ def expand_files(arglist):
 
 def pretty_print(results, ms):
     timeh = "Time (ms)" if ms else "Time (s)"
-    header = ["Name", timeh, "Total memory (KiB)", "GC Memory (KiB)", "Result"]
+    header = ["Program", "Array values bits", "Array length", "Formula", timeh, "Total memory (KiB)", "GC Memory (KiB)", "Result"]
 
     if ms:
         for r in results:
-            r[2] *= 1000
+            r[4] *= 1000
 
-    print(tabulate(results, headers=header))
+    tabResults = tabulate(results, headers=header)
+    #print(tabResults)
+    text_file=open("stats/report.csv","w")
+    text_file.write(tabResults)
+    text_file.close()
+    print("report generated and saved")
 
 
 if __name__ == '__main__':

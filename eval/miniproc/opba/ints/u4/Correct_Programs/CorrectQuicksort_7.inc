@@ -30,8 +30,6 @@ s4 left, right, lo, hi, eq, swapLeft, swapRight;
 u4 piv, tmp;
 u4[7] a;
 
-
-
 main() {
 	left = 0s4;
 	right = 6s4;
@@ -165,7 +163,7 @@ swapElements() {
 	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4] && a[3s4] <= a[4s4] && a[4s4] <= a[5s4] && a[5s4] <= a[6s4];
 }
 
-//recursive cases depending on the value of lo and right for a six-elements array
+//recursive cases depending on the value of lo and right for a seven-elements array
 qsRec0() {
     right = eq -1s4;
 	qs();

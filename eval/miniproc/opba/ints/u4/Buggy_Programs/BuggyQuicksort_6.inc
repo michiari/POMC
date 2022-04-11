@@ -128,7 +128,7 @@ swapElements() {
 	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4] && a[3s4] <= a[4s4] && a[4s4] <= a[5s4];
 }
 
-//recursive cases depending on the value of lo and right for a six-elements array
+//recursive cases depending on the value of lo and right for a seven-elements array
 qsRec0() {
     right = hi;
 	qs();

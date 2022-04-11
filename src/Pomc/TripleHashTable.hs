@@ -33,6 +33,9 @@ import qualified Pomc.MaybeMap as MM
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
+
+-- an hashtable indexed by three-ints-tuples
+-- needed in the SCC algorithm.
 type TripleHashTable s v = (HashTable s (Int,Int,Int) Int, HashTable s Int Int, STRef s (MM.MaybeMap s v))
 
 multcheckMerge :: HashTable s Int Int -> [Int] -> ST s (Set Int)
@@ -65,7 +68,7 @@ lookupId (ht1,_, _) key = BH.lookup ht1 key
 
 insert :: TripleHashTable s v -> (Int,Int,Int) -> Int -> v -> ST s ()
 insert (ht1, _, mm) key ident value = do
-  BH.insert ht1 key ident;
+  BH.insert ht1 key ident
   MM.insert mm ident value
 
 merge :: (TripleHashTable s v) -> [(Int,Int,Int)] -> Int -> v -> ST s ()
@@ -74,7 +77,7 @@ merge (ht1, ht2, mm) keys ident value = do
                         oldIdent <- BH.lookup ht1 key
                         BH.insert ht2 (fromJust oldIdent) ident
                         MM.delete mm $ fromJust oldIdent
-              );
+              )
   MM.insert mm ident value
 
 lookup :: (TripleHashTable s v) -> (Int,Int,Int) -> ST s v

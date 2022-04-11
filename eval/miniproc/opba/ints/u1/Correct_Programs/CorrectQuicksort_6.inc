@@ -30,8 +30,6 @@ s4 left, right, lo, hi, eq, swapLeft, swapRight;
 u1 piv, tmp;
 u1[6] a;
 
-
-
 main() {
 	left = 0s4;
 	right = 5s4;
@@ -257,7 +255,7 @@ qsRec14() {
 	right = eq - 1s4;
 	qs();
 	left = 4s4; 
-	right = 3s4;
+	right = 5s4;
 	qs();
 }
 
