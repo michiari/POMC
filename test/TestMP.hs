@@ -884,6 +884,8 @@ intTests = testGroup "Int Variables Tests" [ u8Arith1Tests
                                            , nondetTests
                                            , arrayTests
                                            , arrayLoopTests
+                                           , localTests
+                                           , argTests
                                            ]
 
 u8Arith1Tests :: TestTree
@@ -1160,5 +1162,171 @@ main() {
   }
 
   assert0 = acc == (n * (n - 1u8)) / 2u8;
+}
+|]
+
+
+localTests :: TestTree
+localTests = testGroup "Local Variables Tests" [ localAssertA
+                                               , localAssertB
+                                               , localAssertC
+                                               ]
+
+localAssertA :: TestTree
+localAssertA = makeTestCase localTestsSrc
+  (("Assert A"
+   , Until Down T (ap "ret" `And` ap "assertA"))
+  , True)
+
+localAssertB :: TestTree
+localAssertB = makeTestCase localTestsSrc
+  (("Assert B"
+   , Until Down T (ap "ret" `And` ap "assertB"))
+  , True)
+
+localAssertC :: TestTree
+localAssertC = makeTestCase localTestsSrc
+  (("Assert C"
+   , Until Down T (ap "ret" `And` ap "assertC"))
+  , False)
+
+localTestsSrc :: T.Text
+localTestsSrc = T.pack [r|
+u8 a;
+u8[2] b;
+
+pA() {
+  u16 a, b, c;
+  bool assertA;
+
+  a = 255u16;
+  b = 1u16;
+  c = 2u16;
+  assertA = a + b + c == 258u16;
+
+  pB();
+}
+
+pB() {
+  u8 c;
+  bool assertB;
+
+  a = 1u8;
+  b[0u8] = 2u8;
+  c = 3u8;
+  assertB = a + b[0u8] + b[1u8] + c == 6u8;
+
+  pC();
+}
+
+pC() {
+  u8[3] a;
+  bool assertC;
+
+  a[0u8] = 1u8;
+  a[1u8] = *;
+  a[2u8] = 3u8;
+  b[0u8] = 4u8;
+
+  assertC = a[0u8] + a[1u8] + a[2u8] + b[0u8] + b[1u8] == 10u8;
+}
+|]
+
+
+argTests :: TestTree
+argTests = testGroup "Function Arguments Tests" [ argAssertMain0
+                                                , argAssertMain1
+                                                , argAssertA0
+                                                , argAssertA1
+                                                , argAssertB0
+                                                , argAssertB1
+                                                ]
+
+argAssertMain0 :: TestTree
+argAssertMain0 = makeTestCase argTestsSrc
+  (("Assert Main 0"
+   , Until Down T (ap "ret" `And` ap "assertMain0"))
+  , True)
+
+argAssertMain1 :: TestTree
+argAssertMain1 = makeTestCase argTestsSrc
+  (("Assert Main 1"
+   , Until Down T (ap "ret" `And` ap "assertMain1"))
+  , True)
+
+argAssertA0 :: TestTree
+argAssertA0 = makeTestCase argTestsSrc
+  (("Assert A 0"
+   , Until Down T (ap "ret" `And` ap "assertA0"))
+  , True)
+
+argAssertA1 :: TestTree
+argAssertA1 = makeTestCase argTestsSrc
+  (("Assert A 1"
+   , Until Down T (ap "ret" `And` ap "assertA1"))
+  , True)
+
+argAssertB0 :: TestTree
+argAssertB0 = makeTestCase argTestsSrc
+  (("Assert B 0"
+   , Until Down T (ap "ret" `And` ap "assertB0"))
+  , True)
+
+argAssertB1 :: TestTree
+argAssertB1 = makeTestCase argTestsSrc
+  (("Assert B 1"
+   , Until Down T (ap "ret" `And` ap "assertB1"))
+  , True)
+
+argTestsSrc :: T.Text
+argTestsSrc = T.pack [r|
+u8 a, w;
+
+main() {
+  u8 a, b;
+  u8[2] c;
+  bool assertMain0, assertMain1;
+
+  a = 10u8;
+  b = 15u8;
+  c[0u8] = 1u8;
+  c[1u8] = 2u8;
+
+  pA(a + b, 42u8, c);
+
+  assertMain0 = a + b + c[0u8] + c[1u8] == 28u8;
+
+  pB(a, b + 1u8, c, w);
+
+  assertMain1 = a + b + c[0u8] + c[1u8] + w == 84u8;
+}
+
+pA(u8 r, u8 s, u8[2] t) {
+  u8 u;
+  bool assertA0, assertA1;
+
+  u = a + r + s + t[0u8] + t[1u8];
+  assertA0 = u == 70u8;
+
+  r = 3u8;
+  s = 4u8;
+  t[0u8] = 3u8;
+  t[1u8] = 3u8;
+  u = r + s + t[0u8] + t[1u8];
+  assertA1 = u == 13u8;
+}
+
+pB(u8 &r, u8 s, u8[2] &t, u8 &x) {
+  bool assertB0, assertB1;
+
+  assertB0 = w + r + s + t[0u8] + t[1u8] + x == 29u8;
+
+  r = 20u8;
+  s = 21u8;
+  t[0u8] = 3u8;
+  t[1u8] = 4u8;
+  x = 42u8;
+
+  assertB1 = w + r + s + t[0u8] + t[1u8] + x == 90u8;
 }
 |]

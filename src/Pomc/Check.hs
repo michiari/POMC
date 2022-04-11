@@ -1518,7 +1518,7 @@ fastcheckGen phi precr ts =
 
 ---------------------------------------------------------------------------------
 --- generate an OPA corresponding to a POTL formula
-makeOpa ::  Formula APType -- the input formula
+makeOpa :: Formula APType -- the input formula
         -> Bool -- is it opba?
         -> Alphabet APType -- OP alphabet
         -> ( BitEncoding -- data for encoding and decoding between bitsets and formulas and props

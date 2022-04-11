@@ -14,19 +14,17 @@ import Pomc.MiniProc
 import Data.Void (Void)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Maybe (isJust)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
+import Control.Monad (foldM)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
 import qualified Data.BitVector as BV
-
-data IdentifierIdInfo = IdentifierIdInfo { scalarIds :: IdType
-                                         , arrayIds  :: IdType
-                                         } deriving Show
 
 type TypedValue = (IntValue, Type)
 data TypedExpr = TLiteral TypedValue
@@ -109,9 +107,6 @@ composeMany f arg = go arg
             Just arg1 -> go arg1
             Nothing -> return arg0
 
-composeSome :: (a -> Parser a) -> a -> Parser a
-composeSome f arg = f arg >>= composeMany f
-
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
 
@@ -130,7 +125,7 @@ boolLiteralP = ((BV.fromBool True, UInt 1) <$ symbolP "true")
 
 literalP :: Parser TypedValue
 literalP = boolLiteralP <|> intLiteralP
-  where intLiteralP = try $ L.lexeme spaceP $ do
+  where intLiteralP = L.lexeme spaceP $ do
           value <- L.signed spaceP (L.lexeme spaceP L.decimal) :: Parser Integer
           ty <- intTypeP
           if value < 0 && not (isSigned ty)
@@ -206,25 +201,25 @@ typeP = label "type" $ L.lexeme spaceP $
          , intTypeP
          ]
 
-declP :: (Map Text Variable, IdentifierIdInfo)
-      -> Parser (Map Text Variable, IdentifierIdInfo)
-declP (varmap, idIdInfo) = try $ do
+declP :: (Map Text Variable, VarIdInfo)
+      -> Parser (Map Text Variable, VarIdInfo)
+declP (varmap, vii) = try $ do
   ty <- typeP
   names <- sepBy1 identifierP (symbolP ",")
   _ <- symbolP ";"
-  let numIds = if isScalar ty then scalarIds idIdInfo else arrayIds idIdInfo
+  let numIds = if isScalar ty then scalarIds vii else arrayIds vii
       numVars = fromIntegral $ length names :: IdType
       newVarMap = M.fromList
         $ map (\(name, vid) -> (name, Variable ty name vid))
         $ zip names [numIds + i | i <- [0..(numVars - 1)]]
   return ( varmap `M.union` newVarMap
          , if isScalar ty
-           then idIdInfo { scalarIds = numIds + numVars }
-           else idIdInfo { arrayIds = numIds + numVars }
+           then vii { scalarIds = numIds + numVars }
+           else vii { arrayIds = numIds + numVars }
          )
 
-declsP :: (Map Text Variable, IdentifierIdInfo)
-       -> Parser (Map Text Variable, IdentifierIdInfo)
+declsP :: (Map Text Variable, VarIdInfo)
+       -> Parser (Map Text Variable, VarIdInfo)
 declsP vmi = composeMany declP vmi
 
 lValueP :: Map Text Variable -> Parser LValue
@@ -250,84 +245,182 @@ assP varmap = try $ do
     where lvalType (LScalar var) = varType var
           lvalType (LArray var _) = scalarType . varType $ var
 
-callP :: Parser Statement
-callP = try $ do
+callP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
+callP varmap = try $ do
   fname <- identifierP
-  _ <- symbolP "()"
+  _ <- symbolP "("
+  aparams <- sepBy (typedExprP varmap) (symbolP ",")
+  _ <- symbolP ")"
   _ <- symbolP ";"
-  return $ Call fname
+  return (Call fname [], [aparams])
 
-tryCatchP :: Map Text Variable -> Parser Statement
+tryCatchP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 tryCatchP varmap = do
   _ <- symbolP "try"
-  tryBlock <- blockP varmap
+  (tryBlock, tryAparams) <- blockP varmap
   _ <- symbolP "catch"
-  catchBlock <- blockP varmap
-  return $ TryCatch tryBlock catchBlock
+  (catchBlock, catchAparams) <- blockP varmap
+  return (TryCatch tryBlock catchBlock, tryAparams ++ catchAparams)
 
-iteP :: Map Text Variable -> Parser Statement
+iteP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 iteP varmap = do
   _ <- symbolP "if"
   _ <- symbolP "("
   guard <- ((Nothing <$ symbolP "*") <|> fmap Just (exprP varmap))
   _ <- symbolP ")"
-  thenBlock <- blockP varmap
+  (thenBlock, thenAparams) <- blockP varmap
   _ <- symbolP "else"
-  elseBlock <- blockP varmap
-  return $ IfThenElse guard thenBlock elseBlock
+  (elseBlock, elseAparams) <- blockP varmap
+  return (IfThenElse guard thenBlock elseBlock, thenAparams ++ elseAparams)
 
-whileP :: Map Text Variable -> Parser Statement
+whileP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 whileP varmap = do
   _ <- symbolP "while"
   _ <- symbolP "("
   guard <- ((Nothing <$ symbolP "*") <|> fmap Just (exprP varmap))
   _ <- symbolP ")"
-  body <- blockP varmap
-  return $ While guard body
+  (body, aparams) <- blockP varmap
+  return (While guard body, aparams)
 
 throwP :: Parser Statement
 throwP = symbolP "throw" >> symbolP ";" >> return Throw
 
-stmtP :: Map Text Variable -> Parser Statement
-stmtP varmap = choice [ nondetP varmap
-                      , assP varmap
-                      , callP
+stmtP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
+stmtP varmap = choice [ noParams $ nondetP varmap
+                      , noParams $ assP varmap
+                      , callP varmap
                       , tryCatchP varmap
                       , iteP varmap
                       , whileP varmap
-                      , throwP
+                      , noParams $ throwP
                       ] <?> "statement"
+  where noParams = fmap (\stmt -> (stmt, [[]]))
 
-blockP :: Map Text Variable -> Parser [Statement]
+stmtsP :: Map Text Variable -> Parser ([Statement], [[TypedExpr]])
+stmtsP varmap = do
+  stmtAparams <- many (stmtP varmap)
+  let stmts = map fst stmtAparams
+      aparams = concat $ map snd stmtAparams
+  return (stmts, aparams)
+
+blockP :: Map Text Variable -> Parser ([Statement], [[TypedExpr]])
 blockP varmap = try $ do
   _ <- symbolP "{"
-  stmts <- many (stmtP varmap)
+  stmtsAparams <- stmtsP varmap
   _ <- symbolP "}"
-  return stmts
+  return stmtsAparams
 
-functionP :: Map Text Variable -> Parser FunctionSkeleton
-functionP varmap = do
+fargsP :: VarIdInfo
+       -> Parser (VarIdInfo, Map Text Variable, [FormalParam])
+fargsP vii = do
+  rawfargs <- sepBy fargP (symbolP ",")
+  let (ridfargs, newVii) = foldl assignId ([], vii) rawfargs
+      idfargs = reverse $ ridfargs
+      varmap = M.fromList $ map (\(_, var) -> (varName var, var)) idfargs
+      params = map (\(isvr, var) -> if isvr then ValueResult var else Value var) idfargs
+  return (newVii, varmap, params)
+  where assignId (accfargs, accvii) (isvr, var)
+          | isScalar . varType $ var = ((isvr, var { varId = scalarIds accvii }):accfargs,
+                                        accvii { scalarIds = scalarIds accvii + 1 })
+          | otherwise                = ((isvr, var { varId = arrayIds accvii }):accfargs,
+                                        accvii { arrayIds = arrayIds accvii + 1 })
+
+        fargP :: Parser (Bool, Variable)
+        fargP = do
+          ty <- typeP
+          isvr <- optional $ symbolP "&"
+          name <- identifierP
+          return (isJust isvr, Variable ty name 0)
+
+functionP :: Map Text Variable
+          -> VarIdInfo
+          -> Parser (FunctionSkeleton, [[TypedExpr]])
+functionP gvarmap vii = do
   fname <- identifierP
-  _ <- symbolP "()"
-  stmts <- blockP varmap
-  return FunctionSkeleton { skName = fname
-                          , skModules = (parseModules fname)
-                          , skStmts = stmts
-                          }
+  _ <- symbolP "("
+  (argvii, argvarmap, params) <- fargsP vii
+  _ <- symbolP ")"
+  _ <- symbolP "{"
+  (dvarmap, _) <- declsP (M.empty, argvii)
+  let lvarmap = argvarmap `M.union` dvarmap
+  (stmts, aparams) <- stmtsP (lvarmap `M.union` gvarmap)
+  _ <- symbolP "}"
+  let (lScalars, lArrays) =
+        S.partition (isScalar . varType) $ S.fromList $ M.elems lvarmap
+  return ( FunctionSkeleton { skName = fname
+                            , skModules = (parseModules fname)
+                            , skParams = params
+                            , skScalars = lScalars
+                            , skArrays = lArrays
+                            , skStmts = stmts
+                            }
+         , aparams
+         )
 
 programP :: Parser Program
 programP = do
   spaceP
-  (varmap, _) <- declsP (M.empty, IdentifierIdInfo 0 0)
-  sks <- some $ functionP varmap
+  (varmap, vii) <- declsP (M.empty, VarIdInfo 0 0)
+  sksAparams <- some $ functionP varmap vii
   eof
-  let (scalarVars, arrayVars) = S.partition (isScalar . varType) $ S.fromList $ M.elems varmap
-      p = Program scalarVars arrayVars sks
-      undeclFuns = undeclaredFuns p
-  if S.null undeclFuns
-    then return p
-    else fail $ "Undeclared identifier(s): " ++
-         show (S.toList undeclFuns)
+  case matchParams sksAparams of
+    Right sks ->
+      let (scalarGlobs, arrayGlobs) = S.partition (isScalar . varType) $ S.fromList $ M.elems varmap
+          (scalarLocs, arrayLocs) = foldl
+            (\(sc, ar) sk -> (sc `S.union` skScalars sk, ar `S.union` skArrays sk))
+            (S.empty, S.empty)
+            sks
+          p = Program scalarGlobs arrayGlobs scalarLocs arrayLocs sks
+          undeclFuns = undeclaredFuns p
+      in if S.null undeclFuns
+      then return p
+      else fail $ "Undeclared identifier(s): " ++ show (S.toList undeclFuns)
+    Left ermsg -> fail ermsg
+
+matchParams :: [(FunctionSkeleton, [[TypedExpr]])] -> Either String [FunctionSkeleton]
+matchParams sksAparams = mapM skMatchParams sksAparams
+  where skMap = M.fromList $ map (\(sk, _) -> (skName sk, sk)) sksAparams
+        skMatchParams (sk, aparams) =
+          (\(newStmts, _) -> sk { skStmts = newStmts }) <$> blockMatchParams (skStmts sk) aparams
+        blockMatchParams stmts aparams =
+          (\(rstmts, newAparams) -> (reverse rstmts, newAparams))
+          <$> foldM stmtMatchParams ([], aparams) stmts
+        stmtMatchParams (acc, aparams) stmt =
+          (\(newStmt, newParams) -> (newStmt : acc, newParams)) <$> doMatchParam stmt aparams
+
+        doMatchParam (Call fname _) (aparam:aparams)
+          | length aparam == length calleeParams =
+            (\newParams -> (Call fname newParams, aparams)) <$>
+            mapM matchParam (zip aparam calleeParams)
+          | otherwise = Left ("Function " ++ show (skName calleeSk) ++ " requires "
+                              ++ show (length calleeParams) ++ " parameters, given: "
+                              ++ show (length aparam))
+          where calleeSk = skMap M.! fname
+                calleeParams = skParams calleeSk
+                matchParam (texpr, Value fvar)
+                  | isScalar . varType $ fvar =
+                    Right $ ActualVal $ untypeExprWithCast (varType fvar) texpr
+                  | otherwise =
+                      case texpr of
+                        TTerm avar | varType avar == varType fvar -> Right $ ActualVal (Term avar)
+                        _ -> Left "Type mismatch on array parameter."
+                matchParam (TTerm avar, ValueResult fvar)
+                  | varType avar == varType fvar = Right $ ActualValRes avar
+                  | otherwise = Left "Type mismatch on array parameter."
+                matchParam _ = Left "Value-result actual parameter must be variable names."
+        doMatchParam (TryCatch tryb catchb) aparams = do
+          (tryStmts, tryParams) <- blockMatchParams tryb aparams
+          (catchStmts, catchParams) <- blockMatchParams catchb tryParams
+          return (TryCatch tryStmts catchStmts, catchParams)
+        doMatchParam (IfThenElse g thenb elseb) aparams = do
+          (thenStmts, thenParams) <- blockMatchParams thenb aparams
+          (elseStmts, elseParams) <- blockMatchParams elseb thenParams
+          return (IfThenElse g thenStmts elseStmts, elseParams)
+        doMatchParam (While g body) aparams = do
+          (bodyStmts, bodyParams) <- blockMatchParams body aparams
+          return (While g bodyStmts, bodyParams)
+        doMatchParam stmt (_:aparams) = Right (stmt, aparams)
+        doMatchParam _ _ = error "Statement list and params list are not isomorphic."
 
 undeclaredFuns :: Program -> Set Text
 undeclaredFuns p = S.difference usedFuns declaredFuns
@@ -336,7 +429,7 @@ undeclaredFuns p = S.difference usedFuns declaredFuns
         gatherFuns :: Statement -> Set Text
         gatherFuns (Assignment _ _) = S.empty
         gatherFuns (Nondeterministic _) = S.empty
-        gatherFuns (Call fname) = S.singleton fname
+        gatherFuns (Call fname _) = S.singleton fname
         gatherFuns (TryCatch tryb catchb) = gatherBlockFuns tryb `S.union` gatherBlockFuns catchb
         gatherFuns (IfThenElse _ thenb elseb) = gatherBlockFuns thenb `S.union` gatherBlockFuns elseb
         gatherFuns (While _ body) = gatherBlockFuns body
