@@ -55,5 +55,3 @@ for u_size in range(1,5):
                 if n==10:
                     m +=1;
                     n = 0;
-
-                

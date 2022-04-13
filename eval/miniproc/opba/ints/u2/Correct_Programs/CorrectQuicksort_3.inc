@@ -17,7 +17,7 @@
 				lo++;
 			}
 		}
-		quicksort(left,eq-1s3);
+		quicksort(left,eq-1);
 		quicksort(lo,right);
 	}
 
