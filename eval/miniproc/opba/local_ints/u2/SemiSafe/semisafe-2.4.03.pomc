@@ -1,0 +1,2 @@
+formulas = F ( G (sorted));
+include = "../SemiSafe_Programs/SemiSafeQuicksort_4.inc";

@@ -1,0 +1,2 @@
+formulas = F (ret And main And (sorted));
+include = "../Correct_Programs/CorrectQuicksort_3.inc";
