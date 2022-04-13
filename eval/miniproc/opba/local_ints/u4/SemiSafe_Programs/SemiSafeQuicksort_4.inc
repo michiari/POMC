@@ -73,8 +73,8 @@ qs(s4 left, s4 right) {
 				lo = lo + 1s4;
 			}
 		}
-		quicksort(left,eq-1s4);
-		quicksort(lo,right);	
+		qs(left,eq-1s4);
+		qs(lo,right);	
 	}
 }
 
