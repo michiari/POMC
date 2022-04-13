@@ -126,9 +126,6 @@ qs() {
 	}
 }
 
-qsif() { 
-}
-
 swapElements() {
 	accessValues();
 	tmp = a[swapLeft];
@@ -215,7 +212,6 @@ qsRec8() {
 	right = 4s4;
 	qs();
 }
-
 
 qsRec9() {
 	right = eq - 1s4;
