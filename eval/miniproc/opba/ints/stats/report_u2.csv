@@ -60,12 +60,12 @@ correct                      2               5         03   102.56              
 correct                      2               5         04  1178.5                   73646100        3.51416e+07  True
 correct                      2               5         05   108.73                   7576200        3.55849e+06  True
 correct                      2               5         06  2750.6                  142340768        6.79559e+07  True
-correct                      2               6         01   285.45                  21209844        9.34413e+06  True
-correct                      2               6         02    -1                           -1       -1            Time Out
-correct                      2               6         03   416.17                  22337752        1.04996e+07  False
-correct                      2               6         04    -1                           -1       -1            Time Out
-correct                      2               6         05   403.79                  22275928        1.04398e+07  False
-correct                      2               6         06    -1                           -1       -1            Time Out
+correct                      2               6         01      392.12              21307336        9.39062e+06   True
+correct                      2               6         02       -1                       -1       -1             Time Out
+correct                      2               6         03      729.08              37143436        1.68656e+07   True
+correct                      2               6         04       -1                       -1       -1             Time Out
+correct                      2               6         05      759.78              39311244        1.7741e+07    True
+correct                      2               6         06       -1                       -1       -1             Time Out
 correct                      2               7         01  1259.3                   76410548        3.65105e+07  True
 correct                      2               7         02    -1                           -1       -1            Time Out
 correct                      2               7         03  2613.7                  132748468        6.32202e+07  True
@@ -128,9 +128,9 @@ semisafe                     2               5         11    -1                 
 semisafe                     2               5         12    -1                           -1       -1            Time Out
 semisafe                     2               5         13    -1                           -1       -1            Time Out
 semisafe                     2               5         14    -1                           -1       -1            Time Out
-semisafe                     2               6         01  1107.6                   49118988        2.27876e+07  False
+semisafe                     2               6         01      1532.7              49119060        2.27876e+07   False
 semisafe                     2               6         02    -1                           -1       -1            Time Out
-semisafe                     2               6         03  2586                     89389728        4.05303e+07  False
+semisafe                     2               6         03    -1                           -1       -1            Time Out
 semisafe                     2               6         04    -1                           -1       -1            Time Out
 semisafe                     2               6         05    -1                           -1       -1            Time Out
 semisafe                     2               6         06    -1                           -1       -1            Time Out

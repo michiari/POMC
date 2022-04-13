@@ -1,8 +1,0 @@
-Program      Array values bits    Array length    Formula    Time (s)    Total memory (KiB)    GC Memory (KiB)  Result
----------  -------------------  --------------  ---------  ----------  --------------------  -----------------  --------
-correct                      1               6         01      3.4477                254644   104963            True
-correct                      1               6         02     68.677                5105252        2.22222e+06  True
-correct                      1               6         03      6.0811                444128   187951            True
-correct                      1               6         04     70.157                5231188        2.27324e+06  True
-correct                      1               6         05      6.808                 466572   195243            True
-correct                      1               6         06    139.62                10311220        4.32759e+06  True

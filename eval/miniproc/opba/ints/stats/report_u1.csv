@@ -60,12 +60,12 @@ correct                      1               5         03     1.9031            
 correct                      1               5         04    23.668                  2702912        1.139e+06    True
 correct                      1               5         05     2.2644                  272656   109772            True
 correct                      1               5         06    46.312                  3998992        1.89562e+06  True
-correct                      1               6         01     2.4162                  255036   105136            True
-correct                      1               6         02    48.595                  5067500        2.20711e+06  True
-correct                      1               6         03     4.3659                  431996   178811            True
-correct                      1               6         04    51.121                  5230260        2.24543e+06  True
-correct                      1               6         05     4.8982                  464752   194688            True
-correct                      1               6         06   102.65                  10408696        4.37689e+06  True
+correct                      1               6         01      3.4477                254644   104963             True
+correct                      1               6         02     68.677                5105252        2.22222e+06   True
+correct                      1               6         03      6.0811                444128   187951             True
+correct                      1               6         04     70.157                5231188        2.27324e+06   True
+correct                      1               6         05      6.808                 466572   195243             True
+correct                      1               6         06    139.62                10311220        4.32759e+06   True
 correct                      1               7         01     5.6741                  672036   284933            True
 correct                      1               7         02   104.23                  10033840        4.3522e+06   True
 correct                      1               7         03    10.489                  1111692   464858            True
@@ -142,6 +142,20 @@ semisafe                     1               6         11    -1                 
 semisafe                     1               6         12  1129.6                   65766540        2.85013e+07  True
 semisafe                     1               6         13    -1                           -1       -1            Time Out
 semisafe                     1               6         14  1240.9                   81224604        3.49687e+07  True
+semisafe                     1               6         01      12.651                760508   347924             False
+semisafe                     1               6         02     301.89               13449568        6.39617e+06   False
+semisafe                     1               6         03      22.487               1291072   617580             False
+semisafe                     1               6         04     263.71                9562656        4.32716e+06   False
+semisafe                     1               6         05    1228.3                40922776        1.87912e+07   False
+semisafe                     1               6         06    1396.2                44600792        2.13656e+07   False
+semisafe                     1               6         07      -1                        -1       -1             Time Out
+semisafe                     1               6         08      -1                        -1       -1             Time Out
+semisafe                     1               6         09      70.238               3487460        1.64844e+06   True
+semisafe                     1               6         10     698.36               36164420        1.70194e+07   True
+semisafe                     1               6         11      -1                        -1       -1             Time Out
+semisafe                     1               6         12    1467.6                62038956        2.8318e+07    True
+semisafe                     1               6         13      -1                        -1       -1             Time Out
+semisafe                     1               6         14    1721.9                81554600        3.52372e+07   True
 semisafe                     1               7         01    21.795                  1483492   685499            False
 semisafe                     1               7         02   508.09                  23451076        1.11039e+07  False
 semisafe                     1               7         03    40.41                   2375284        1.10728e+06  False
