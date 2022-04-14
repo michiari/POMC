@@ -25,7 +25,7 @@
 */
 
 program:
-bool  okay;
+bool  sorted;
 s3 left, right, lo, hi, eq, swapLeft, swapRight;
 u4 piv, tmp;
 u4[3] a;
@@ -84,7 +84,7 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s3] <= a[1s3] && a[1s3] <= a[2s3];
+	sorted = a[0s3] <= a[1s3] && a[1s3] <= a[2s3];
 }
 
 //recursive cases depending on the value of lo and right for a three-elements array

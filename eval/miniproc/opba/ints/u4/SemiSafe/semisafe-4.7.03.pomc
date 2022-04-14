@@ -1,2 +1,2 @@
-formulas = F ( G (okay));
+formulas = F ( G (sorted));
 include = "../SemiSafe_Programs/SemiSafeQuicksort_7.inc";

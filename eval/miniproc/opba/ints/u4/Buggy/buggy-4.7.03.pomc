@@ -1,2 +1,2 @@
-formulas = F ( G (okay));
+formulas = F ( G (sorted));
 include = "../Buggy_Programs/BuggyQuicksort_7.inc";

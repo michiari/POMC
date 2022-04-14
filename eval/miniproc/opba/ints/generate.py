@@ -1,35 +1,34 @@
 #!/usr/bin/env python3
 import fileinput
 
-Buggy_formulas =  [   "F (ret And main)",
-                "XNu (ret And main)",
-                #"(F (G (~ dup))) <--> (F (ret And main))",
-                "F ( G (okay))",
-                "XNu (okay)",
-                "F (ret And main And (okay))",
-                "XNu (ret And main And (okay))"]
+Buggy_formulas =  [   "F (ret And main)",        #01
+                "XNu (ret And main)",            #02
+                "F ( G (sorted))",                 #03
+                "XNu (sorted)",                    #04
+                "F (ret And main And (sorted))",   #05
+                "XNu (ret And main And (sorted))"] #06
 
-Correct_formulas = [    "F (ret And main)",
-                "XNu (ret And main)",
-                "F ( G (okay))",
-                "XNu (okay)",
-                "F (ret And main And (okay))",
-                "XNu (ret And main And (okay))" ]
+Correct_formulas = [    "F (ret And main)",      #01
+                "XNu (ret And main)",            #02
+                "F ( G (sorted))",                 #03
+                "XNu (sorted)",                    #04
+                "F (ret And main And (sorted))",   #05
+                "XNu (ret And main And (sorted))"] #06
 
-SemiSafe_formulas = [   "F (ret And main)",
-                        "XNu (ret And main)", 
-                        "F ( G (okay))",
-                        "XNu (okay)", 
-                        "G ((call And main) --> ~ (PNu exc Or XNu exc))", 
-                        "G ((call And qs) --> ~ (PNu exc Or XNu exc))", 
-                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed)))", 
-                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And okay)) Or (XNu (exc And okay)))", 
-                        "G ( (call And accessValues) --> (hasParsed) Or (T Sd han ))", 
-                        "(F (ret And main)) Or (XNu (exc And hasParsed))", 
-                        "(XNu (ret And main)) Or (XNu (exc And hasParsed))", 
-                        "(F ( G (okay))) Or (XNu (exc And hasParsed))", 
-                        "(XNu (okay)) Or (XNu (exc And hasParsed))", 
-                        "(F (ret And main And (okay))) Or (XNu (exc And hasParsed))"]
+SemiSafe_formulas = [   "F (ret And main)",                                                                         #01
+                        "XNu (ret And main)",                                                                       #02
+                        "F ( G (sorted))",                                                                            #03
+                        "XNu (sorted)",                                                                               #04
+                        "G ((call And main) --> ~ (PNu exc Or XNu exc))",                                           #05
+                        "G ((call And qs) --> ~ (PNu exc Or XNu exc))",                                             #06
+                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed)))",    #07
+                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)))",              #08
+                        "G ( (call And accessValues) --> (hasParsed) Or (T Sd han ))",                              #09
+                        "(F (ret And main)) Or (XNu (exc And hasParsed))",                                          #10
+                        "(XNu (ret And main)) Or (XNu (exc And hasParsed))",                                        #11
+                        "(F ( G (sorted))) Or (XNu (exc And hasParsed))",                                             #12
+                        "(XNu (sorted)) Or (XNu (exc And hasParsed))",                                                #13
+                        "(F (ret And main And (sorted))) Or (XNu (exc And hasParsed))"]                               #14
 
 
 

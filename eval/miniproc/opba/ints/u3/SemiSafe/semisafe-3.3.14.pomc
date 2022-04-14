@@ -1,2 +1,2 @@
-formulas = (F (ret And main And (okay))) Or (XNu (exc And hasParsed));
+formulas = (F (ret And main And (sorted))) Or (XNu (exc And hasParsed));
 include = "../SemiSafe_Programs/SemiSafeQuicksort_3.inc";

@@ -32,7 +32,7 @@
 */		
 
 program:
-bool  okay, hasParsed;
+bool  sorted, hasParsed;
 s4 left, right, lo, hi, eq, swapLeft, swapRight;
 u4 piv, tmp;
 u4[6] a;
@@ -151,7 +151,7 @@ swapElements() {
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	okay = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4] && a[3s4] <= a[4s4] && a[4s4] <= a[5s4];
+	sorted = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4] && a[3s4] <= a[4s4] && a[4s4] <= a[5s4];
 }
 
 accessValues(){

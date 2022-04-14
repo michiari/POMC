@@ -1,2 +1,2 @@
-formulas = XNu (okay);
+formulas = XNu (sorted);
 include = "../Correct_Programs/CorrectQuicksort_6.inc";

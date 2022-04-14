@@ -1,2 +1,2 @@
-formulas = F (ret And main And (okay));
+formulas = F (ret And main And (sorted));
 include = "../Buggy_Programs/BuggyQuicksort_6.inc";

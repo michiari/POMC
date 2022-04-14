@@ -1,2 +1,2 @@
-formulas = XNu (okay);
+formulas = XNu (sorted);
 include = "../SemiSafe_Programs/SemiSafeQuicksort_2.inc";

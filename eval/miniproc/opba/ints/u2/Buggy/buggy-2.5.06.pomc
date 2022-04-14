@@ -1,2 +1,2 @@
-formulas = XNu (ret And main And (okay));
+formulas = XNu (ret And main And (sorted));
 include = "../Buggy_Programs/BuggyQuicksort_5.inc";
