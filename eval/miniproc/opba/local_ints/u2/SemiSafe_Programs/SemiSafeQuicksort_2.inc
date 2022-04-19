@@ -43,8 +43,6 @@ main() {
 	 	qs(0s3, 1s3);
 	} catch {
 		hasParsed = true;
-		left = 0s3;
-		right = 1s3;
 		qs(0s3, 1s3);
 	}
 }
