@@ -1,0 +1,32 @@
+Program      Array values bits    Array length    Formula    Time (s)    Total memory (KiB)    GC Memory (KiB)  Result
+---------  -------------------  --------------  ---------  ----------  --------------------  -----------------  --------
+buggy                       10               2         01    1.1095                  102956    37032.2          False
+buggy                       10               2         02    8.6776                  668296   238373            False
+buggy                       10               2         03   -1                           -1       -1            Time Out
+buggy                       10               2         04    9.0059                  668056   238383            False
+buggy                       10               2         05    2.1265                  182960    69701.9          False
+buggy                       10               2         06   17.759                  1244624   467305            False
+buggy                       32               2         01   -1                           -1       -1            Time Out
+buggy                       32               2         02   -1                           -1       -1            Time Out
+buggy                       32               2         03   -1                           -1       -1            Time Out
+buggy                       32               2         04   -1                           -1       -1            Time Out
+buggy                       32               2         05   -1                           -1       -1            Time Out
+buggy                       32               2         06   -1                           -1       -1            Time Out
+buggy                        4               2         01    0.026957                 51884     1259.51         False
+buggy                        4               2         02    0.3825                   51876    13317.6          False
+buggy                        4               2         03   11.875                   913756   401442            True
+buggy                        4               2         04    0.38993                  51156    13499.7          False
+buggy                        4               2         05    0.12316                  51160     3161.83         False
+buggy                        4               2         06    0.74983                  51256    21084.9          False
+buggy                        6               2         01    0.063833                 51156     3251.41         False
+buggy                        6               2         02    0.7183                   64220    27271.1          False
+buggy                        6               2         03  255.46                  11026944        5.21302e+06  True
+buggy                        6               2         04    0.75056                  63088    27263.3          False
+buggy                        6               2         05    0.12968                  51160     5110.88         False
+buggy                        6               2         06    1.4916                  104060    39550.5          False
+buggy                        8               2         01    0.22771                  51876     9427.38         False
+buggy                        8               2         02    2.2363                  200568    72470.1          False
+buggy                        8               2         03   -1                           -1       -1            Time Out
+buggy                        8               2         04    2.4636                  200016    71012.8          False
+buggy                        8               2         05    0.59356                  57892    19782.2          False
+buggy                        8               2         06    4.6711                  306704   117510            False
