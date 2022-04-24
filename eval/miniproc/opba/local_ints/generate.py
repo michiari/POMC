@@ -59,7 +59,7 @@ for u_size in range(1,5):
 # generate experiments for comparing POMC with Vera
 for u_size in [4,6,8,10,32]:
     filein = 'Buggy_Programs/BuggyQuicksort_2.inc';
-    fileout = 'Vera_Comparison/u' + str(u_size) + '/Buggy_Programs/Buggy_Quicksort_2' + '.inc'
+    fileout = 'Vera_Comparison/u' + str(u_size) + '/Buggy_Programs/BuggyQuicksort_2' + '.inc'
     f1 = open(filein, 'r')
     f2 = open(fileout, 'w')
     for line in f1:
