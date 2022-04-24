@@ -1,0 +1,158 @@
+Program      Array values bits    Array length    Formula     Time (s)    Total memory (KiB)    GC Memory (KiB)  Result
+---------  -------------------  --------------  ---------  -----------  --------------------  -----------------  --------
+buggy                        4               2         01     0.02662                  53328     1260.36         False
+buggy                        4               2         02     0.39062                  51148    13317.3          False
+buggy                        4               2         03    11.828                   911708   401444            True
+buggy                        4               2         04     0.39374                  51076    13499.5          False
+buggy                        4               2         05     0.058496                 51148     3161.88         False
+buggy                        4               2         06     0.75811                  51076    21144.4          False
+buggy                        4               3         01     0.040101                 51080     2216.78         False
+buggy                        4               3         02     0.54654                  51084    18757.3          False
+buggy                        4               3         03   442.49                  17322596        8.19664e+06  True
+buggy                        4               3         04     0.56097                  51084    19753.1          False
+buggy                        4               3         05     0.076604                 51148     3332.42         False
+buggy                        4               3         06     1.0883                   73300    31848.8          False
+buggy                        4               4         01     0.050703                 51080     2733.54         False
+buggy                        4               4         02     0.76364                  69420    29645.9          False
+buggy                        4               4         03    34.417                  1855516   858787            False
+buggy                        4               4         04     0.82584                  65168    27338.3          False
+buggy                        4               4         05     0.097822                 51868     3351.87         False
+buggy                        4               4         06     1.4894                  102080    44833.7          False
+buggy                        4               5         01     0.07539                  51864     2641.18         False
+buggy                        4               5         02     0.88035                  65176    28069.2          False
+buggy                        4               5         03    50.602                  3130716        1.5179e+06   False
+buggy                        4               5         04     0.87238                  66212    28664.7          False
+buggy                        4               5         05     0.12929                  51148     6053.51         False
+buggy                        4               5         06     1.7387                  103464    44858.4          False
+buggy                        4               6         01     0.075276                 51148     3872.49         False
+buggy                        4               6         02     1.1158                   96848    42764.2          False
+buggy                        4               6         03    57.161                  3687352        1.80557e+06  False
+buggy                        4               6         04     1.15                     97456    42281.8          False
+buggy                        4               6         05     0.14541                  51084     5761.62         False
+buggy                        4               6         06     2.1209                  144224    64108.2          False
+buggy                        4               7         01     0.088815                 51084     4686.49         False
+buggy                        4               7         02     1.2463                   96980    42479            False
+buggy                        4               7         03    67.469                  3475960        1.62295e+06  False
+buggy                        4               7         04     1.2584                   94768    41521.9          False
+buggy                        4               7         05     0.17368                  51076     6404.86         False
+buggy                        4               7         06     2.5482                  180796    78991.5          False
+correct                      4               2         01     6.4754                  485060   197480            True
+correct                      4               2         02   115.33                   9015936        3.95535e+06  True
+correct                      4               2         03    12.58                    954332   413960            True
+correct                      4               2         04   119.32                   9544224        4.07731e+06  True
+correct                      4               2         05    13.519                  1044336   465757            True
+correct                      4               2         06   232.41                  13322220        6.32333e+06  True
+correct                      4               3         01   276.8                   15067292        7.19921e+06  True
+correct                      4               3         02    -1                           -1       -1            Time Out
+correct                      4               3         03   551.79                  29733096        1.24068e+07  True
+correct                      4               3         04    -1                           -1       -1            Time Out
+correct                      4               3         05   607.61                  34961256        1.46073e+07  True
+correct                      4               3         06    -1                           -1       -1            Time Out
+correct                      4               4         01    -1                           -1       -1            Time Out
+correct                      4               4         02    -1                           -1       -1            Time Out
+correct                      4               4         03    -1                           -1       -1            Time Out
+correct                      4               4         04    -1                           -1       -1            Time Out
+correct                      4               4         05    -1                           -1       -1            Time Out
+correct                      4               4         06    -1                           -1       -1            Time Out
+correct                      4               5         01    -1                           -1       -1            Time Out
+correct                      4               5         02    -1                           -1       -1            Time Out
+correct                      4               5         03    -1                           -1       -1            Time Out
+correct                      4               5         04    -1                           -1       -1            Time Out
+correct                      4               5         05    -1                           -1       -1            Time Out
+correct                      4               5         06    -1                           -1       -1            Time Out
+correct                      4               6         01    -1                           -1       -1            Time Out
+correct                      4               6         02    -1                           -1       -1            Time Out
+correct                      4               6         03    -1                           -1       -1            Time Out
+correct                      4               6         04    -1                           -1       -1            Time Out
+correct                      4               6         05    -1                           -1       -1            Time Out
+correct                      4               6         06    -1                           -1       -1            Time Out
+correct                      4               7         01    -1                           -1       -1            Time Out
+correct                      4               7         02    -1                           -1       -1            Time Out
+correct                      4               7         03    -1                           -1       -1            Time Out
+correct                      4               7         04    -1                           -1       -1            Time Out
+correct                      4               7         05    -1                           -1       -1            Time Out
+correct                      4               7         06    -1                           -1       -1            Time Out
+semisafe                     4               2         01    17.516                   826116   356645            False
+semisafe                     4               2         02   322.54                  14103692        6.66762e+06  False
+semisafe                     4               2         03    31.14                   1722072   798602            False
+semisafe                     4               2         04   318.09                  15388284        7.203e+06    False
+semisafe                     4               2         05  1387                     41875892        1.92271e+07  False
+semisafe                     4               2         06  1598.5                   42746520        1.9682e+07   False
+semisafe                     4               2         07    -1                           -1       -1            Time Out
+semisafe                     4               2         08    -1                           -1       -1            Time Out
+semisafe                     4               2         09   105.93                   7428828        3.11108e+06  True
+semisafe                     4               2         10   874.69                  39914816        1.89769e+07  True
+semisafe                     4               2         11    -1                           -1       -1            Time Out
+semisafe                     4               2         12  2087.1                   85754300        3.7406e+07   True
+semisafe                     4               2         13    -1                           -1       -1            Time Out
+semisafe                     4               2         14  2349.6                   77006456        3.66147e+07  True
+semisafe                     4               3         01   950.14                  26457888        1.21646e+07  False
+semisafe                     4               3         02    -1                           -1       -1            Time Out
+semisafe                     4               3         03  1707.1                   57879776        2.73232e+07  False
+semisafe                     4               3         04    -1                           -1       -1            Time Out
+semisafe                     4               3         05    -1                           -1       -1            Time Out
+semisafe                     4               3         06    -1                           -1       -1            Time Out
+semisafe                     4               3         07    -1                           -1       -1            Time Out
+semisafe                     4               3         08    -1                           -1       -1            Time Out
+semisafe                     4               3         09    -1                           -1       -1            Time Out
+semisafe                     4               3         10    -1                           -1       -1            Time Out
+semisafe                     4               3         11    -1                           -1       -1            Time Out
+semisafe                     4               3         12    -1                           -1       -1            Time Out
+semisafe                     4               3         13    -1                           -1       -1            Time Out
+semisafe                     4               3         14    -1                           -1       -1            Time Out
+semisafe                     4               4         01    -1                           -1       -1            Time Out
+semisafe                     4               4         02    -1                           -1       -1            Time Out
+semisafe                     4               4         03    -1                           -1       -1            Time Out
+semisafe                     4               4         04    -1                           -1       -1            Time Out
+semisafe                     4               4         05    -1                           -1       -1            Time Out
+semisafe                     4               4         06    -1                           -1       -1            Time Out
+semisafe                     4               4         07    -1                           -1       -1            Time Out
+semisafe                     4               4         08    -1                           -1       -1            Time Out
+semisafe                     4               4         09    -1                           -1       -1            Time Out
+semisafe                     4               4         10    -1                           -1       -1            Time Out
+semisafe                     4               4         11    -1                           -1       -1            Time Out
+semisafe                     4               4         12    -1                           -1       -1            Time Out
+semisafe                     4               4         13    -1                           -1       -1            Time Out
+semisafe                     4               4         14    -1                           -1       -1            Time Out
+semisafe                     4               5         01    -1                           -1       -1            Time Out
+semisafe                     4               5         02    -1                           -1       -1            Time Out
+semisafe                     4               5         03    -1                           -1       -1            Time Out
+semisafe                     4               5         04    -1                           -1       -1            Time Out
+semisafe                     4               5         05    -1                           -1       -1            Time Out
+semisafe                     4               5         06    -1                           -1       -1            Time Out
+semisafe                     4               5         07    -1                           -1       -1            Time Out
+semisafe                     4               5         08    -1                           -1       -1            Time Out
+semisafe                     4               5         09    -1                           -1       -1            Time Out
+semisafe                     4               5         10    -1                           -1       -1            Time Out
+semisafe                     4               5         11    -1                           -1       -1            Time Out
+semisafe                     4               5         12    -1                           -1       -1            Time Out
+semisafe                     4               5         13    -1                           -1       -1            Time Out
+semisafe                     4               5         14    -1                           -1       -1            Time Out
+semisafe                     4               6         01    -1                           -1       -1            Time Out
+semisafe                     4               6         02    -1                           -1       -1            Time Out
+semisafe                     4               6         03    -1                           -1       -1            Time Out
+semisafe                     4               6         04    -1                           -1       -1            Time Out
+semisafe                     4               6         05    -1                           -1       -1            Time Out
+semisafe                     4               6         06    -1                           -1       -1            Time Out
+semisafe                     4               6         07    -1                           -1       -1            Time Out
+semisafe                     4               6         08    -1                           -1       -1            Time Out
+semisafe                     4               6         09    -1                           -1       -1            Time Out
+semisafe                     4               6         10    -1                           -1       -1            Time Out
+semisafe                     4               6         11    -1                           -1       -1            Time Out
+semisafe                     4               6         12    -1                           -1       -1            Time Out
+semisafe                     4               6         13    -1                           -1       -1            Time Out
+semisafe                     4               6         14    -1                           -1       -1            Time Out
+semisafe                     4               7         01    -1                           -1       -1            Time Out
+semisafe                     4               7         02    -1                           -1       -1            Time Out
+semisafe                     4               7         03    -1                           -1       -1            Time Out
+semisafe                     4               7         04    -1                           -1       -1            Time Out
+semisafe                     4               7         05    -1                           -1       -1            Time Out
+semisafe                     4               7         06    -1                           -1       -1            Time Out
+semisafe                     4               7         07    -1                           -1       -1            Time Out
+semisafe                     4               7         08    -1                           -1       -1            Time Out
+semisafe                     4               7         09    -1                           -1       -1            Time Out
+semisafe                     4               7         10    -1                           -1       -1            Time Out
+semisafe                     4               7         11    -1                           -1       -1            Time Out
+semisafe                     4               7         12    -1                           -1       -1            Time Out
+semisafe                     4               7         13    -1                           -1       -1            Time Out
+semisafe                     4               7         14    -1                           -1       -1            Time Out
