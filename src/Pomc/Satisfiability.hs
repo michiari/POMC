@@ -444,7 +444,8 @@ isSatisfiable :: Bool
               -> Alphabet APType
               -> (Bool, [PropSet])
 isSatisfiable isOmega phi alphabet =
-  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) = makeOpa phi isOmega alphabet
+  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) =
+        makeOpa phi isOmega alphabet (\_ _ -> True)
       delta = Delta
         { bitenc = be
         , prec = precf

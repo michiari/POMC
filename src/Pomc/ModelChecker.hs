@@ -82,6 +82,7 @@ modelCheck :: (Ord s, Hashable s, Show s)
            => Bool -- is it the infinite case?
            -> Formula APType -- input formula to check
            -> Alphabet APType -- structural OP alphabet
+           -> (E.BitEncoding -> Input -> Bool)
            -> [s] -- OPA initial states
            -> (s -> Bool) -- OPA isFinal
            -> (E.BitEncoding -> s -> Input -> [s]) -- OPA Delta Push
@@ -91,14 +92,15 @@ modelCheck :: (Ord s, Hashable s, Show s)
            -> PropConv a
 #endif
            -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
-modelCheck isOmega phi alphabet opaInitials opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
+modelCheck isOmega phi alphabet inputFilter
+  opaInitials opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
   pconv
 #endif
   =
   let -- generate the OPA associated to the negation of the input formula
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
-      makeOpa (Not phi) isOmega alphabet
+      makeOpa (Not phi) isOmega alphabet inputFilter
 
     -- compute the cartesian product between the initials of the two opas
     cInitials = cartesian opaInitials phiInitials
@@ -168,7 +170,7 @@ modelCheckExplicit isOmega phi opa =
         maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (eoDeltaShift opa)
       opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (eoDeltaPop opa)
 
-  in modelCheck isOmega phi (eoAlphabet opa) (eoInitials opa)
+  in modelCheck isOmega phi (eoAlphabet opa) (\_ _ -> True) (eoInitials opa)
      opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
      pconv
@@ -217,10 +219,10 @@ modelCheckProgram :: Bool
                   -> Program
                   -> (Bool, [(VarState, Set (Prop Text))])
 modelCheckProgram isOmega phi prog =
-  let (pconv, alphabet, ini, isfin, dpush, dshift, dpop) =
+  let (pconv, alphabet, inputFilter, ini, isfin, dpush, dshift, dpop) =
         programToOpa isOmega prog (Set.fromList $ getProps phi)
       transPhi = encodeFormula pconv phi
-      (sat, trace) = modelCheck isOmega transPhi alphabet ini isfin dpush dshift dpop
+      (sat, trace) = modelCheck isOmega transPhi alphabet inputFilter ini isfin dpush dshift dpop
 #ifndef NDEBUG
                      pconv
 #endif

@@ -1521,6 +1521,7 @@ fastcheckGen phi precr ts =
 makeOpa :: Formula APType -- the input formula
         -> Bool -- is it opba?
         -> Alphabet APType -- OP alphabet
+        -> (BitEncoding -> Input -> Bool)
         -> ( BitEncoding -- data for encoding and decoding between bitsets and formulas and props
            , EncPrecFunc -- OPM on bitsets
            , [State] -- initial states
@@ -1530,7 +1531,7 @@ makeOpa :: Formula APType -- the input formula
            , State -> State -> [State] -- deltaPop
            , [Formula APType] -- closure
            )
-makeOpa phi isOmega (sls, sprs) =
+makeOpa phi isOmega (sls, sprs) inputFilter =
   ( bitenc
   , prec
   , is
@@ -1548,7 +1549,7 @@ makeOpa phi isOmega (sls, sprs) =
         -- all the APs which make up the language (L is in powerset(AP))
         tsprops = sls ++ als
         -- generate the powerset of AP, each time taking a prop from the structural list
-        inputSet = E.generateInputs bitenc sls als
+        inputSet = filter (inputFilter bitenc) $ E.generateInputs bitenc sls als
         -- generate the closure of the normalized input formulas
         cl = closure nphi tsprops
         -- generate a BitEncoding from the closure

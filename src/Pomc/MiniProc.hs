@@ -40,7 +40,7 @@ module Pomc.MiniProc ( Program(..)
 import Pomc.Prop (Prop(..))
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
-import qualified Pomc.Encoding as E (BitEncoding, decodeInput)
+import qualified Pomc.Encoding as E
 import Pomc.State (Input)
 
 import Data.Text (Text)
@@ -467,6 +467,7 @@ initialValuation getIdx svars avars = (scalars, arrays)
 programToOpa :: Bool -> Program -> Set (Prop Text)
              -> ( PropConv Text
                 , Alphabet APType
+                , (E.BitEncoding -> Input -> Bool)
                 , [VarState]
                 , VarState -> Bool
                 , (E.BitEncoding -> VarState -> Input -> [VarState])
@@ -515,8 +516,21 @@ programToOpa isOmega prog additionalProps =
                 $ filter (`S.member` allProps)
                 $ map Prop $ ilStruct il : ilFunction il : ilModules il
 
+      inputFilter bitenc b =
+        let encFunLabel sk = E.encodeInput bitenc
+              $ S.fromList
+              $ map (encodeProp pconv)
+              $ filter (`S.member` allProps)
+              $ map Prop
+              $ skName sk : skModules sk
+            flabels = S.insert (E.encodeInput bitenc S.empty)
+              $ S.fromList $ map encFunLabel $ pSks prog
+            flmask = S.foldl E.union (E.encodeInput bitenc S.empty) flabels
+        in (b `E.intersect` flmask) `S.member` flabels
+
   in ( pconv
      , encodeAlphabet pconv miniProcAlphabet
+     , inputFilter
      , eInitials
      , if isOmega then const True else eIsFinal
      , decodeDeltaInput $ lsDPush lowerState
