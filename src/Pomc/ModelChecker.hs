@@ -26,7 +26,7 @@ import Pomc.SatUtil (SatState(..))
 import Pomc.Satisfiability (isEmpty, isEmptyOmega)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, PropConv(..), convProps, encodeFormula)
-import qualified Pomc.Encoding as E (PropSet, BitEncoding, encodeInput)
+import qualified Pomc.Encoding as E
 import Pomc.MiniProc (Program, VarState, programToOpa)
 #ifndef NDEBUG
 import Pomc.Satisfiability (toInputTrace, showTrace)
@@ -171,14 +171,23 @@ modelCheckExplicit isOmega phi opa =
       makeDeltaMapI bitenc delta = Map.fromListWith (++) $
         map (\(q', b', ps) -> ((q', E.encodeInput bitenc $ Set.intersection essentialAP b'), ps))
             delta
+      deltaPush bitenc = makeDeltaMapI bitenc (eoDeltaPush opa)
+      deltaShift bitenc = makeDeltaMapI bitenc (eoDeltaShift opa)
+      opaDeltaPush bitenc q b = maybeList $ Map.lookup (q, b) $ deltaPush bitenc
+      opaDeltaShift bitenc q b = maybeList $ Map.lookup (q, b) $ deltaShift bitenc
+
       makeDeltaMapS delta = Map.fromList $ map (\(q', b', ps) -> ((q', b'), ps)) delta
-      opaDeltaPush bitenc q b =
-        maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (eoDeltaPush opa)
-      opaDeltaShift bitenc q b =
-        maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (eoDeltaShift opa)
       opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (eoDeltaPop opa)
 
-  in modelCheck isOmega phi (eoAlphabet opa) (\_ _ -> True) (\_ _ _ -> True) (eoInitials opa)
+      inputFilter bitenc b =
+        let labels = Set.insert (E.encodeInput bitenc Set.empty)
+              $ Set.fromList
+              $ map snd
+              $ Map.keys (deltaPush bitenc) ++ Map.keys (deltaShift bitenc)
+            lmask = Set.foldl E.union (E.encodeInput bitenc Set.empty) labels
+        in (b `E.intersect` lmask) `Set.member` labels
+
+  in modelCheck isOmega phi (eoAlphabet opa) inputFilter (\_ _ _ -> True) (eoInitials opa)
      opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
      pconv
