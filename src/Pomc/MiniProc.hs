@@ -507,34 +507,32 @@ programToOpa isOmega prog additionalProps =
                 $ map (\var -> (Prop $ encodeAP pconv $ varName var, varId var))
                 $ filter (\var -> Prop (varName var) `S.member` additionalProps)
                 $ S.toList varSet
-      decodeDeltaInput delta bitenc q b =
-        applyDeltaInput gvii allVarProps localsInfo remappedDelta q $ E.decodeInput bitenc b
-        where remappedDelta =
-                M.map (\(ilabel, States s) -> (ilabelToPropSet ilabel, ilabel, s)) delta
-              ilabelToPropSet il = S.fromList
+      remapDelta delta =
+        M.map (\(ilabel, States s) -> (ilabelToPropSet ilabel, ilabel, s)) delta
+        where ilabelToPropSet il = S.fromList
                 $ map (encodeProp pconv)
                 $ filter (`S.member` allProps)
                 $ map Prop $ ilStruct il : ilFunction il : ilModules il
+      remappedDPush = remapDelta $ lsDPush lowerState
+      remappedDShift = remapDelta $ lsDShift lowerState
+      decodeDeltaInput remappedDelta bitenc q b =
+        applyDeltaInput gvii allVarProps localsInfo remappedDelta q $ E.decodeInput bitenc b
 
       inputFilter bitenc b =
-        let encFunLabel sk = E.encodeInput bitenc
-              $ S.fromList
-              $ map (encodeProp pconv)
-              $ filter (`S.member` allProps)
-              $ map Prop
-              $ skName sk : skModules sk
-            flabels = S.insert (E.encodeInput bitenc S.empty)
-              $ S.fromList $ map encFunLabel $ pSks prog
-            flmask = S.foldl E.union (E.encodeInput bitenc S.empty) flabels
-        in (b `E.intersect` flmask) `S.member` flabels
+        let pLabels = map (\(l, _, _) -> l) $ M.elems remappedDPush
+            sLabels = map (\(l, _, _) -> l) $ M.elems remappedDShift
+            labels = S.insert (E.encodeInput bitenc S.empty)
+              $ S.fromList $ map (E.encodeInput bitenc) $ pLabels ++ sLabels
+            lmask = S.foldl E.union (E.encodeInput bitenc S.empty) labels
+        in (b `E.intersect` lmask) `S.member` labels
 
   in ( pconv
      , encodeAlphabet pconv miniProcAlphabet
      , inputFilter
      , eInitials
      , if isOmega then const True else eIsFinal
-     , decodeDeltaInput $ lsDPush lowerState
-     , decodeDeltaInput $ lsDShift lowerState
+     , decodeDeltaInput remappedDPush
+     , decodeDeltaInput remappedDShift
      , applyDeltaPop gvii $ lsDPop lowerState
      )
 
