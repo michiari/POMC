@@ -21,8 +21,8 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
 import Pomc.Potl (Formula(..), getProps)
 import Pomc.Check (makeOpa)
-import Pomc.State(Input, State(..))
-import Pomc.SatUtil(SatState(..))
+import Pomc.State (Input, State(..))
+import Pomc.SatUtil (SatState(..))
 import Pomc.Satisfiability (isEmpty, isEmptyOmega)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, PropConv(..), convProps, encodeFormula)
@@ -70,9 +70,14 @@ instance SatState (MCState s) where
   getStateProps bitenc (MCState _ p) = getStateProps bitenc p
   {-# INLINABLE getStateProps #-}
 
--- generate the cartesian product between two lists of states (the first list has a generic type)
-cartesian :: [a] -> [State] -> [MCState a]
-cartesian xs ys = [MCState x y | x <- xs, y <- ys]
+-- generate the cartesian product between two lists of states, applying a filter
+cartesianFilter :: (s -> State -> Bool) -> [s] -> [State] -> [MCState s]
+cartesianFilter stateFilter xs ys =
+  [MCState x y | x <- xs, y <- ys, stateFilter x y]
+
+-- generate the cartesian product between two lists of states
+cartesian :: [s] -> [State] -> [MCState s]
+cartesian xs ys = cartesianFilter (\_ _ -> True) xs ys
 
 #ifndef NDEBUG
 modelCheck :: (Ord s, Hashable s, Show s, Show a)
@@ -82,7 +87,8 @@ modelCheck :: (Ord s, Hashable s, Show s)
            => Bool -- is it the infinite case?
            -> Formula APType -- input formula to check
            -> Alphabet APType -- structural OP alphabet
-           -> (E.BitEncoding -> Input -> Bool)
+           -> (E.BitEncoding -> Input -> Bool) -- filter for impossible inputs
+           -> (E.BitEncoding -> s -> State -> Bool) -- filter for inconsistent states
            -> [s] -- OPA initial states
            -> (s -> Bool) -- OPA isFinal
            -> (E.BitEncoding -> s -> Input -> [s]) -- OPA Delta Push
@@ -92,7 +98,7 @@ modelCheck :: (Ord s, Hashable s, Show s)
            -> PropConv a
 #endif
            -> (Bool, [(s, E.PropSet)]) -- (does the OPA satisfy the formula?, counterexample trace)
-modelCheck isOmega phi alphabet inputFilter
+modelCheck isOmega phi alphabet inputFilter stateFilter
   opaInitials opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
   pconv
@@ -111,8 +117,10 @@ modelCheck isOmega phi alphabet inputFilter
       (any (\(MCState q _) -> opaIsFinal q) states) &&
       (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) cl)
 
-    cDeltaPush (MCState q p) b = cartesian (opaDeltaPush bitenc q b) (phiDeltaPush p Nothing)
-    cDeltaShift (MCState q p) b = cartesian (opaDeltaShift bitenc q b) (phiDeltaShift p Nothing)
+    cDeltaPush (MCState q p) b =
+      cartesianFilter (stateFilter bitenc) (opaDeltaPush bitenc q b) (phiDeltaPush p Nothing)
+    cDeltaShift (MCState q p) b =
+      cartesianFilter (stateFilter bitenc) (opaDeltaShift bitenc q b) (phiDeltaShift p Nothing)
     cDeltaPop (MCState q p) (MCState q' p') = cartesian (opaDeltaPop q q') (phiDeltaPop p p')
 
     cDelta = Sat.Delta
@@ -170,7 +178,7 @@ modelCheckExplicit isOmega phi opa =
         maybeList $ Map.lookup (q, b) $ makeDeltaMapI bitenc (eoDeltaShift opa)
       opaDeltaPop q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS (eoDeltaPop opa)
 
-  in modelCheck isOmega phi (eoAlphabet opa) (\_ _ -> True) (eoInitials opa)
+  in modelCheck isOmega phi (eoAlphabet opa) (\_ _ -> True) (\_ _ _ -> True) (eoInitials opa)
      opaIsFinal opaDeltaPush opaDeltaShift opaDeltaPop
 #ifndef NDEBUG
      pconv
@@ -219,10 +227,11 @@ modelCheckProgram :: Bool
                   -> Program
                   -> (Bool, [(VarState, Set (Prop Text))])
 modelCheckProgram isOmega phi prog =
-  let (pconv, alphabet, inputFilter, ini, isfin, dpush, dshift, dpop) =
+  let (pconv, alphabet, inputFilter, stateFilter, ini, isfin, dpush, dshift, dpop) =
         programToOpa isOmega prog (Set.fromList $ getProps phi)
       transPhi = encodeFormula pconv phi
-      (sat, trace) = modelCheck isOmega transPhi alphabet inputFilter ini isfin dpush dshift dpop
+      (sat, trace) = modelCheck isOmega transPhi alphabet inputFilter stateFilter
+                     ini isfin dpush dshift dpop
 #ifndef NDEBUG
                      pconv
 #endif

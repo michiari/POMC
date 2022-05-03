@@ -41,7 +41,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import qualified Pomc.Encoding as E
-import Pomc.State (Input)
+import Pomc.State (Input, State(..))
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -468,6 +468,7 @@ programToOpa :: Bool -> Program -> Set (Prop Text)
              -> ( PropConv Text
                 , Alphabet APType
                 , (E.BitEncoding -> Input -> Bool)
+                , (E.BitEncoding -> VarState -> State -> Bool)
                 , [VarState]
                 , VarState -> Bool
                 , (E.BitEncoding -> VarState -> Input -> [VarState])
@@ -526,9 +527,17 @@ programToOpa isOmega prog additionalProps =
             lmask = S.foldl E.union (E.encodeInput bitenc S.empty) labels
         in (b `E.intersect` lmask) `S.member` labels
 
+      stateFilter bitenc q@(sid, _) atom =
+        sid `S.member` popStates
+        || (not $ null $ decodeDeltaInput remappedDPush bitenc q b)
+        || (not $ null $ decodeDeltaInput remappedDShift bitenc q b)
+        where b = E.extractInput bitenc $ current atom
+              popStates = S.map fst $ M.keysSet $ lsDPop lowerState
+
   in ( pconv
      , encodeAlphabet pconv miniProcAlphabet
      , inputFilter
+     , stateFilter
      , eInitials
      , if isOmega then const True else eIsFinal
      , decodeDeltaInput remappedDPush
