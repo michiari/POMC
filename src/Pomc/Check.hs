@@ -5,19 +5,15 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Check ( -- * Checking functions
-                    check
-                  , checkGen
-                  , fastcheck
+module Pomc.Check ( fastcheck
                   , fastcheckGen
-                    -- * Checking helpers
                   , EncPrecFunc
                   , makeOpa
                   ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
-import Pomc.Opa (run, parAugRun)
+import Pomc.Opa (parAugRun)
 import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, future, getProps)
 import Pomc.Util (safeHead, xor, implies, iff)
 import Pomc.Encoding (EncodedSet, PropSet, BitEncoding(..))
@@ -1375,65 +1371,7 @@ isFinalF bitenc s =
     -- only XBack Up formulas are allowed in pending part of final states
 
 ---------------------------------------------------------------------------------
-check :: Formula APType
-      -> [StructPrecRel APType]
-      -> [PropSet]
-      -> Bool
-check phi sprs ts =
-  run
-    prec
-    is
-    (isFinalF bitenc)
-    (deltaShift as pcs scs shiftRules)
-    (deltaPush  as pcs scs pushRules)
-    (deltaPop   as pcs scs popRules)
-    encTs
-  where nphi = normalize phi
-        tsprops = S.toList $ foldl' (S.union) S.empty (sl:ts)
-        encTs = map (E.encodeInput bitenc) ts
-        inputSet = S.toList . S.fromList
-          $ (E.singletonInput bitenc End):encTs
-
-        -- generate the closure of the normalized input formulas
-        cl = closure nphi tsprops
-        -- generate a BitEncoding from the closure
-        bitenc = makeBitEncoding cl
-        -- generate an EncPrecFunc from a StructPrecRel
-        (prec, sl) = fromStructEnc bitenc sprs
-        -- generate all consistent subsets of cl
-        as = genAtoms bitenc cl inputSet
-        -- generate all possible pending obligations
-        pcs = pendCombs bitenc cl
-        -- generate all possible stack obligations for the omega case
-        scs = stackCombs bitenc cl
-        -- generate initial states
-        is = initials False bitenc nphi cl as
-        -- generate all delta rules of the OPA
-        (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
-        deltaShift atoms pcombs scombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs scombs state
-                                (Just props) Nothing Nothing
-        -- generate the deltaShift relation ( state and props are the parameters of the function)
-        deltaPush atoms pcombs scombs rgroup state props = fstates
-          where fstates = delta rgroup atoms pcombs scombs state
-                                (Just props) Nothing Nothing
-        -- generate the deltaPop relation ( state and popped are the parameters of the function)
-        deltaPop atoms pcombs scombs rgroup state popped = fstates
-          where fstates = delta rgroup atoms pcombs scombs state
-                                Nothing (Just popped) Nothing
-
--- checkGen is just check, but parametric in the type of atomic propositions
-checkGen :: (Ord a, Show a)
-         => Formula a
-         -> [StructPrecRel a]
-         -> [Set (Prop a)]
-         -> Bool
-checkGen phi precr ts =
-  let (tphi, tprecr, tts) = convPropTokens phi precr ts
-  in check tphi tprecr tts
-
-
--- fastCheck uses the next input to generate less future states
+-- fastCheck performs trace checking using a lookahead to predict future inputs
 fastcheck :: Formula APType -- the input formula phi
           -> [StructPrecRel APType] -- OPM
           -> [PropSet] -- input tokens
