@@ -1196,57 +1196,48 @@ deltaRules bitenc cl precFunc =
 -- present
 data PrInfo = PrInfo
   { prState     :: State -- current state
-  , prProps     :: Maybe (Input) -- current input
-  , prPopped    :: Maybe (State) -- state to pop
-  , prNextProps :: Maybe (Input) -- next input
+  , prProps     :: Maybe Input -- current input
   }
 -- future current
 data FcrInfo  = FcrInfo
   { fcrState      :: State-- current state
-  , fcrProps      :: Maybe (Input) -- input
-  , fcrPopped     :: Maybe (State) -- state to pop
   , fcrFutureCurr :: Atom -- future current holding formulas
-  , fcrNextProps  :: Maybe (Input) -- next input
+  , fcrNextProps  :: Maybe Input -- next input
   }
 -- future pending
 data FprInfo  = FprInfo
   { fprState          :: State -- current state
-  , fprProps          :: Maybe (Input) -- input
-  , fprPopped         :: Maybe (State)  -- state to pop
+  , fprPopped         :: Maybe State  -- state to pop
   , fprFuturePendComb :: (EncodedSet, Bool, Bool, Bool) -- future pending obligations (set of formulas to satisfy, mustPush, mustShift, afterPop)
-  , fprNextProps      :: Maybe (Input) -- next input
   }
 -- future
 data FrInfo = FrInfo
   { frState          :: State -- current state
-  , frProps          :: Maybe (Input) -- input
-  , frPopped         :: Maybe (State) -- state to pop
+  , frProps          :: Maybe Input -- input
+  , frPopped         :: Maybe State -- state to pop
   , frFutureCurr     :: Atom -- future current holding formulas
   , frFuturePendComb :: (EncodedSet, Bool, Bool, Bool) -- future pending obligations (set of formulas to satisfy, mustPush, mustShift, afterPop)
-  , frNextProps      :: Maybe (Input) -- next input
   }
 
 -- future stack
 data FsrInfo = FsrInfo
   { fsrState          :: State -- current state
-  , fsrProps          :: Maybe (Input) -- input
-  , fsrPopped         :: Maybe (State)  -- state to pop
+  , fsrPopped         :: Maybe State  -- state to pop
   , fsrFutureStack    :: EncodedSet -- future stack obligations (set of formulas to satisfy)
-  , fsrNextProps      :: Maybe (Input) -- next input
   }
 
-type PresentRule         = (PrInfo    -> Bool)
-type FutureCurrentRule   = (FcrInfo   -> Bool)
-type FuturePendingRule   = (FprInfo   -> Bool)
-type FutureRule          = (FrInfo    -> Bool)
-type FutureStackRule     = (FsrInfo   -> Bool)
+type PresentRule       = (PrInfo  -> Bool)
+type FutureCurrentRule = (FcrInfo -> Bool)
+type FuturePendingRule = (FprInfo -> Bool)
+type FutureRule        = (FrInfo  -> Bool)
+type FutureStackRule   = (FsrInfo -> Bool)
 
 
-data RuleGroup = RuleGroup { ruleGroupPrs    :: [PresentRule       ]
-                           , ruleGroupFcrs   :: [FutureCurrentRule ]
-                           , ruleGroupFprs   :: [FuturePendingRule ]
-                           , ruleGroupFrs    :: [FutureRule        ]
-                           , ruleGroupFsrs   :: [FutureStackRule   ]
+data RuleGroup = RuleGroup { ruleGroupPrs  :: [PresentRule      ]
+                           , ruleGroupFcrs :: [FutureCurrentRule]
+                           , ruleGroupFprs :: [FuturePendingRule]
+                           , ruleGroupFrs  :: [FutureRule       ]
+                           , ruleGroupFsrs :: [FutureStackRule  ]
                            }
 
 
@@ -1285,18 +1276,14 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
 
     -- all present rules must be satisfied by the current state
     pvalid = all ($ info) prs
-      where info = PrInfo { prState     = state,
-                            prProps     = mprops,
-                            prPopped    = mpopped,
-                            prNextProps = mnextprops
+      where info = PrInfo { prState = state
+                          , prProps = mprops
                           }
     -- all future current rules must be satisfied by (candidate) future states
     vas = filter valid nextAtoms
-      where makeInfo curr = FcrInfo { fcrState      = state,
-                                      fcrProps      = mprops,
-                                      fcrPopped     = mpopped,
-                                      fcrFutureCurr = curr,
-                                      fcrNextProps  = mnextprops
+      where makeInfo curr = FcrInfo { fcrState      = state
+                                    , fcrFutureCurr = curr
+                                    , fcrNextProps  = mnextprops
                                     }
             valid atom = let info = makeInfo atom
                          in all ($ info) fcrs
@@ -1305,11 +1292,9 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                         else [current state] -- during pops, the current set cannot change
     -- all future pending rules must be satisfied
     vpcs = filter valid pcombs
-      where makeFprInfo pendComb = FprInfo { fprState          = state,
-                                             fprProps          = mprops,
-                                             fprPopped         = mpopped,
-                                             fprFuturePendComb = pendComb,
-                                             fprNextProps      = mnextprops
+      where makeFprInfo pendComb = FprInfo { fprState          = state
+                                           , fprPopped         = mpopped
+                                           , fprFuturePendComb = pendComb
                                            }
             valid pcomb = let info = makeFprInfo pcomb
                           in all ($ info) fprs
@@ -1320,23 +1305,20 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                                               , valid curr pc]
               else []
       -- all future rules must be satisfied
-      where makeInfo curr pendComb = FrInfo { frState          = state,
-                                              frProps          = mprops,
-                                              frPopped         = mpopped,
-                                              frFutureCurr     = curr,
-                                              frFuturePendComb = pendComb,
-                                              frNextProps      = mnextprops
+      where makeInfo curr pendComb = FrInfo { frState          = state
+                                            , frProps          = mprops
+                                            , frPopped         = mpopped
+                                            , frFutureCurr     = curr
+                                            , frFuturePendComb = pendComb
                                             }
             valid curr pcomb = let info = makeInfo curr pcomb
                                in all ($ info) frs
     -- omega case
     -- all future stack rules must be satisfied
     vscs = filter valid scombs
-      where makeFsrInfo stackComb = FsrInfo {fsrState           = state,
-                                             fsrProps           = mprops,
-                                             fsrPopped          = mpopped,
-                                             fsrFutureStack     = stackComb,
-                                             fsrNextProps       = mnextprops
+      where makeFsrInfo stackComb = FsrInfo { fsrState       = state
+                                            , fsrPopped      = mpopped
+                                            , fsrFutureStack = stackComb
                                             }
             valid scomb = let info = makeFsrInfo scomb
                           in all ($ info) fsrs
@@ -1348,12 +1330,11 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
                                                      valid curr pc]
                 else []
       -- all future rules must be satisfied
-      where makeInfo curr pendComb = FrInfo { frState          = state,
-                                              frProps          = mprops,
-                                              frPopped         = mpopped,
-                                              frFutureCurr     = curr,
-                                              frFuturePendComb = pendComb,
-                                              frNextProps      = mnextprops
+      where makeInfo curr pendComb = FrInfo { frState          = state
+                                            , frProps          = mprops
+                                            , frPopped         = mpopped
+                                            , frFutureCurr     = curr
+                                            , frFuturePendComb = pendComb
                                             }
             valid curr pcomb = let info = makeInfo curr pcomb
                                in all ($ info) frs
