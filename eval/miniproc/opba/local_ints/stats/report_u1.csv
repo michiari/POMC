@@ -128,20 +128,20 @@ semisafe                     1               5         11    -1                 
 semisafe                     1               5         12   241.07                  12678584        6.00148e+06  True
 semisafe                     1               5         13    -1                           -1       -1            Time Out
 semisafe                     1               5         14   299.4                   12645560        6.00031e+06  True
-semisafe                     1               6         01    -1                           -1       -1            Error
-semisafe                     1               6         02    -1                           -1       -1            Error
-semisafe                     1               6         03    -1                           -1       -1            Error
-semisafe                     1               6         04    -1                           -1       -1            Error
-semisafe                     1               6         05    -1                           -1       -1            Error
-semisafe                     1               6         06    -1                           -1       -1            Error
-semisafe                     1               6         07    -1                           -1       -1            Error
-semisafe                     1               6         08    -1                           -1       -1            Error
-semisafe                     1               6         09    -1                           -1       -1            Error
-semisafe                     1               6         10    -1                           -1       -1            Error
-semisafe                     1               6         11    -1                           -1       -1            Error
-semisafe                     1               6         12    -1                           -1       -1            Error
-semisafe                     1               6         13    -1                           -1       -1            Error
-semisafe                     1               6         14    -1                           -1       -1            Error
+semisafe                     1               6         01     4.1271                  393244   188246            False
+semisafe                     1               6         02    86.127                  6599016        3.15163e+06  False
+semisafe                     1               6         03     7.3075                  674648   321556            False
+semisafe                     1               6         04    85.595                  6512456        3.10955e+06  False
+semisafe                     1               6         05   305.83                  18420420        8.82628e+06  False
+semisafe                     1               6         06   353.68                  19822432        9.50215e+06  False
+semisafe                     1               6         07    -1                           -1       -1            Time Out
+semisafe                     1               6         08    -1                           -1       -1            Time Out
+semisafe                     1               6         09    21.281                  1839932   871176            True
+semisafe                     1               6         10   200.87                  14532672        6.91132e+06  True
+semisafe                     1               6         11    -1                           -1       -1            Time Out
+semisafe                     1               6         12   412.18                  21330520        1.00981e+07  True
+semisafe                     1               6         13    -1                           -1       -1            Time Out
+semisafe                     1               6         14   484.33                  30955308        1.46531e+07  True
 semisafe                     1               7         01    11.122                   706432   337761            False
 semisafe                     1               7         02   260.32                  12583780        5.95859e+06  False
 semisafe                     1               7         03    22.391                  1275780   609476            False
