@@ -399,7 +399,7 @@ resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
 
 -- given a BitEncoding, the closure of phi, and the precedence function, generate all Rule groups: (shift rules, push rules, pop rules)
-deltaRules ::  BitEncoding -> [Formula APType] -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
+deltaRules :: BitEncoding -> [Formula APType] -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
 deltaRules bitenc cl precFunc =
   let
       -- SHIFT RULES

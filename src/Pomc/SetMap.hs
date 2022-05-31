@@ -34,7 +34,7 @@ insert smref idx val = do
     then MV.unsafeModify sm (Set.insert val) idx
     else let newLen = computeLen len idx
              computeLen size newIdx | newIdx < size = size
-                                 | otherwise = computeLen (size*2) newIdx
+                                    | otherwise = computeLen (size*2) newIdx
          in do { grown <- MV.grow sm (newLen-len)
                ; mapM_ (\i -> MV.unsafeWrite grown i Set.empty) [len..(newLen-1)]
                ; MV.unsafeModify grown (Set.insert val) idx
