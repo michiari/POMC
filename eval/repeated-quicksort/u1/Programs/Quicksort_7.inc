@@ -1,6 +1,6 @@
 /*  Corresponding Procedure in Java syntax:
 	static int stackCounter;
-	static int MAX;
+	static int MAX_STACK;
 
 	main(){
 		stackCounter = 0;
@@ -23,7 +23,7 @@
 	}
 
 	pushCounter(){
-		if (stackCounter == MAX){
+		if (stackCounter == MAX_STACK){
 			throw();
 		} else {
 			stackCounter++;
@@ -36,13 +36,13 @@
 */
 
 program:
-u2 stackCounter;
-u2 MAX = 3u2;
+u2 stackCounter, MAX_STACK;
 bool sorted;
 u1[7] a;
 
 main() {
 	stackCounter = 0u2;
+	MAX_STACK = 3u2;
 	while(true) {
 		a[0s4] = *;
 		a[1s4] = *;
@@ -59,10 +59,10 @@ main() {
 }
 
 qs(s4 left, s4 right) {
-	pushCounter();
 	s4 lo, hi, eq;
 	u1 piv;
 
+	pushCounter();
 	if (left >= right) {
 	} else {
 		piv = a[right]; 
@@ -97,8 +97,8 @@ swapElements(s4 swapLeft, s4 swapRight) {
 }
 
 pushCounter() {
-	if (stackCounter == MAX) {
-		throw();
+	if (stackCounter == MAX_STACK) {
+		throw;
 	} else {
 		stackCounter = stackCounter + 1u2;
 	}

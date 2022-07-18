@@ -1,2 +1,2 @@
 formulas = ~ (XNu (ret And main));
-include = "../Programs/Quicksort_2.inc";
+include = "Programs/Quicksort_2.inc";

@@ -1,2 +1,2 @@
 formulas = ~ (F (ret And main));
-include = "../Programs/Quicksort_4.inc";
+include = "Programs/Quicksort_4.inc";
