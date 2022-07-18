@@ -1,64 +1,64 @@
 Program      Array values bits    Array length    Formula     Time (s)    Total memory (KiB)    GC Memory (KiB)  Result
 ---------  -------------------  --------------  ---------  -----------  --------------------  -----------------  --------
-buggy                        3               2         01     0.015792                 53048       61.8594       False
-buggy                        3               2         02     0.25633                  52052     9992.06         False
-buggy                        3               2         03     1.8883                  141776    57605.6          True
-buggy                        3               2         04     0.27027                  51324    10428.2          False
-buggy                        3               2         05     0.044028                 52044     2065.14         False
-buggy                        3               2         06     0.51007                  52048    19075.6          False
-buggy                        3               3         01     0.024129                 52056     1235.11         False
-buggy                        3               3         02     0.33999                  52052     9474.13         False
-buggy                        3               3         03    28.009                  2004928   866636            True
-buggy                        3               3         04     0.38676                  52048    16791.4          False
-buggy                        3               3         05     0.048006                 52056     2562.96         False
-buggy                        3               3         06     0.73996                  70500    29595.1          False
-buggy                        3               4         01     0.029129                 51332     1280.22         False
-buggy                        3               4         02     0.44345                  52056    13242.2          False
-buggy                        3               4         03     6.6244                  464864   213490            False
-buggy                        3               4         04     0.46439                  52048    14095.2          False
-buggy                        3               4         05     0.056935                 52052     2459.35         False
-buggy                        3               4         06     0.90616                  64084    25652            False
-buggy                        3               5         01     0.038875                 52056     2263.3          False
-buggy                        3               5         02     0.57029                  52056    21208.4          False
-buggy                        3               5         03     7.779                   484964   223690            False
-buggy                        3               5         04     0.59011                  56128    22764.7          False
-buggy                        3               5         05     0.077066                 52056     4110.62         False
-buggy                        3               5         06     1.1841                   97980    42753.8          False
-buggy                        3               6         01     0.042644                 52052     2320.52         False
-buggy                        3               6         02     0.66499                  53040    21586.7          False
-buggy                        3               6         03     9.7442                  485848   211109            False
-buggy                        3               6         04     0.68415                  55980    23628.1          False
-buggy                        3               6         05     0.087026                 52056     4540.24         False
-buggy                        3               6         06     1.3502                   95300    41384.5          False
-buggy                        3               7         01     0.050041                 52064     2179.98         False
-buggy                        3               7         02     0.7792                   56076    23227.2          False
-buggy                        3               7         03    11.252                   552428   240109            False
-buggy                        3               7         04     0.78377                  57148    23086.3          False
-buggy                        3               7         05     0.098676                 51332     3792.96         False
-buggy                        3               7         06     1.5695                   92372    39715.3          False
-correct                      3               2         01     1.1637                   92964    40859.7          True
-correct                      3               2         02    20.746                  1388420   647413            True
-correct                      3               2         03     2.1037                  205776    83925.9          True
-correct                      3               2         04    21.719                  1886944   785716            True
-correct                      3               2         05     2.2939                  224044    91552.1          True
-correct                      3               2         06    44.711                  3615820        1.49363e+06  True
-correct                      3               3         01    18.916                  1524624   614012            True
-correct                      3               3         02   370.94                  21501824        1.02602e+07  True
-correct                      3               3         03    33.152                  2421392        1.02935e+06  True
-correct                      3               3         04   373.05                  21671868        1.03428e+07  True
-correct                      3               3         05    38.655                  2789896        1.1224e+06   True
-correct                      3               3         06   798.08                  37588920        1.79e+07     True
-correct                      3               4         01   244.29                  13612084        6.31071e+06  True
+buggy                        3               2         01     0.010673                 52800       68.4297       False
+buggy                        3               2         02     0.16409                  52796    10421            False
+buggy                        3               2         03     1.3342                  153824    59727.7          True
+buggy                        3               2         04     0.19242                  52808    12030.6          False
+buggy                        3               2         05     0.02065                  52796     1340.91         False
+buggy                        3               2         06     0.30733                  52804    12208.4          False
+buggy                        3               3         01     0.015224                 52804     1334.81         False
+buggy                        3               3         02     0.21471                  52800     9061.96         False
+buggy                        3               3         03    19.54                   2031432   859639            True
+buggy                        3               3         04     0.26892                  52804    15875.8          False
+buggy                        3               3         05     0.029559                 52804     2316.99         False
+buggy                        3               3         06     0.47263                  64040    26152.9          False
+buggy                        3               4         01     0.018633                 52800     1325.51         False
+buggy                        3               4         02     0.27808                  52808    13769.4          False
+buggy                        3               4         03     4.6048                  447832   204149            False
+buggy                        3               4         04     0.32324                  52804    14944.7          False
+buggy                        3               4         05     0.03687                  52804     2393.89         False
+buggy                        3               4         06     0.56456                  59156    25013.9          False
+buggy                        3               5         01     0.022604                 52808     1288.16         False
+buggy                        3               5         02     0.34533                  52808    14272.6          False
+buggy                        3               5         03     5.3892                  416192   187687            False
+buggy                        3               5         04     0.43051                  59620    24905.6          False
+buggy                        3               5         05     0.045171                 52808     2519.04         False
+buggy                        3               5         06     0.70061                  67396    28356.3          False
+buggy                        3               6         01     0.028358                 52808     2305.9          False
+buggy                        3               6         02     0.43906                  60784    25169.7          False
+buggy                        3               6         03     6.7703                  504276   214564            False
+buggy                        3               6         04     0.4786                   57028    23505            False
+buggy                        3               6         05     0.051168                 52808     2494.53         False
+buggy                        3               6         06     0.8354                   80756    35299.7          False
+buggy                        3               7         01     0.033393                 52808     2670.53         False
+buggy                        3               7         02     0.48624                  57048    23089.9          False
+buggy                        3               7         03     8.2885                  791640   376280            False
+buggy                        3               7         04     0.54848                  57040    23177.2          False
+buggy                        3               7         05     0.064271                 52812     4588.37         False
+buggy                        3               7         06     0.96143                  87152    36456.4          False
+correct                      3               2         01     0.6973                   86624    38956.2          True
+correct                      3               2         02    13.442                  1435416   617479            True
+correct                      3               2         03     1.4222                  139844    56557.6          True
+correct                      3               2         04    14.82                   1451812   640179            True
+correct                      3               2         05     1.4825                  162184    64416.9          True
+correct                      3               2         06    26.543                  2492236        1.14109e+06  True
+correct                      3               3         01    13.026                  1337188   577830            True
+correct                      3               3         02   248.25                  20217808        9.52942e+06  True
+correct                      3               3         03    24.721                  2531856        1.0204e+06   True
+correct                      3               3         04   262.16                  22785968        1.05896e+07  True
+correct                      3               3         05    25.654                  2179472        1.06476e+06  True
+correct                      3               3         06   497.15                  36685292        1.75097e+07  True
+correct                      3               4         01   158.73                  13457720        5.72013e+06  True
 correct                      3               4         02    -1                           -1       -1            Time Out
-correct                      3               4         03   452.97                  19700456        9.32529e+06  True
+correct                      3               4         03   306.68                  21227500        1.01843e+07  True
 correct                      3               4         04    -1                           -1       -1            Time Out
-correct                      3               4         05   480.47                  24533068        1.15542e+07  True
+correct                      3               4         05   315.18                  25829700        1.10151e+07  True
 correct                      3               4         06    -1                           -1       -1            Time Out
-correct                      3               5         01  2953                    131633136        5.5846e+07   True
+correct                      3               5         01  1685.2                   91582464        3.81787e+07  True
 correct                      3               5         02    -1                           -1       -1            Time Out
 correct                      3               5         03    -1                           -1       -1            Time Out
 correct                      3               5         04    -1                           -1       -1            Time Out
-correct                      3               5         05    -1                           -1       -1            Time Out
+correct                      3               5         05  3531.7                  178382340        8.52906e+07  True
 correct                      3               5         06    -1                           -1       -1            Time Out
 correct                      3               6         01    -1                           -1       -1            Time Out
 correct                      3               6         02    -1                           -1       -1            Time Out
@@ -72,43 +72,43 @@ correct                      3               7         03    -1                 
 correct                      3               7         04    -1                           -1       -1            Time Out
 correct                      3               7         05    -1                           -1       -1            Time Out
 correct                      3               7         06    -1                           -1       -1            Time Out
-semisafe                     3               2         01     2.5398                  148440    56930            False
-semisafe                     3               2         02    50.295                  2845972        1.3554e+06   False
-semisafe                     3               2         03     4.6457                  240500    99597            False
-semisafe                     3               2         04    47.495                  2160900   978467            False
-semisafe                     3               2         05   172.79                   7018748        3.17355e+06  False
-semisafe                     3               2         06   191.58                   6953792        3.09941e+06  False
-semisafe                     3               2         07    -1                           -1       -1            Time Out
-semisafe                     3               2         08  3128.5                   64333704        2.98508e+07  False
-semisafe                     3               2         09    14.81                    986984   437420            True
-semisafe                     3               2         10   126.57                   9156060        3.77031e+06  True
-semisafe                     3               2         11    -1                           -1       -1            Time Out
-semisafe                     3               2         12   238.54                  15352960        6.49755e+06  True
-semisafe                     3               2         13  2805.5                  105372012        4.96055e+07  True
-semisafe                     3               2         14   207.55                  14864436        7.07047e+06  True
-semisafe                     3               3         01    32.316                  2367148        1.15382e+06  False
-semisafe                     3               3         02   672.05                  28995580        1.3387e+07   False
-semisafe                     3               3         03    57.896                  4232292        1.99377e+06  False
-semisafe                     3               3         04   658.57                  36358584        1.73011e+07  False
-semisafe                     3               3         05  3284.7                  108497516        5.03197e+07  False
-semisafe                     3               3         06    -1                           -1       -1            Time Out
+semisafe                     3               2         01     1.5581                  156912    63441            False
+semisafe                     3               2         02    29.782                  2131428   989704            False
+semisafe                     3               2         03     2.9768                  248596   111147            False
+semisafe                     3               2         04    36.709                  3081272        1.51255e+06  False
+semisafe                     3               2         05   111.99                   6936568        3.27529e+06  False
+semisafe                     3               2         06   123.53                   6852608        3.24804e+06  False
+semisafe                     3               2         07  2332.4                  115372672        4.95695e+07  True
+semisafe                     3               2         08  2112.7                   69478876        3.35867e+07  False
+semisafe                     3               2         09     7.9548                  637908   289410            True
+semisafe                     3               2         10    75.095                  5276532        2.48317e+06  True
+semisafe                     3               2         11  2095.2                  134425764        5.78131e+07  True
+semisafe                     3               2         12   172.09                  13598580        5.96091e+06  True
+semisafe                     3               2         13  2359.4                  124836244        5.96525e+07  True
+semisafe                     3               2         14   180.71                  10816092        5.11407e+06  True
+semisafe                     3               3         01    26.948                  1694500   779964            False
+semisafe                     3               3         02   596.07                  35348488        1.65877e+07  False
+semisafe                     3               3         03    60.412                  4095120        1.92639e+06  False
+semisafe                     3               3         04   646.02                  41433672        1.97933e+07  False
+semisafe                     3               3         05  2571.9                   96389868        4.64292e+07  False
+semisafe                     3               3         06  3229                     95533372        4.68057e+07  False
 semisafe                     3               3         07    -1                           -1       -1            Time Out
 semisafe                     3               3         08    -1                           -1       -1            Time Out
-semisafe                     3               3         09   178.5                   14832960        6.534e+06    True
-semisafe                     3               3         10  2109.5                  112536232        5.33022e+07  True
+semisafe                     3               3         09   138.8                   10337112        4.86596e+06  True
+semisafe                     3               3         10  1974.5                   73649692        3.5124e+07   True
 semisafe                     3               3         11    -1                           -1       -1            Time Out
 semisafe                     3               3         12    -1                           -1       -1            Time Out
 semisafe                     3               3         13    -1                           -1       -1            Time Out
 semisafe                     3               3         14    -1                           -1       -1            Time Out
-semisafe                     3               4         01   416.85                  26346676        1.25902e+07  False
+semisafe                     3               4         01   329.82                  17915968        8.33565e+06  False
 semisafe                     3               4         02    -1                           -1       -1            Time Out
-semisafe                     3               4         03   773.79                  41499992        2.02848e+07  False
+semisafe                     3               4         03   742.82                  42927148        2.11279e+07  False
 semisafe                     3               4         04    -1                           -1       -1            Time Out
 semisafe                     3               4         05    -1                           -1       -1            Time Out
 semisafe                     3               4         06    -1                           -1       -1            Time Out
 semisafe                     3               4         07    -1                           -1       -1            Time Out
 semisafe                     3               4         08    -1                           -1       -1            Time Out
-semisafe                     3               4         09  2878.5                  132193288        6.02557e+07  True
+semisafe                     3               4         09  2091.5                  106711180        4.67763e+07  True
 semisafe                     3               4         10    -1                           -1       -1            Time Out
 semisafe                     3               4         11    -1                           -1       -1            Time Out
 semisafe                     3               4         12    -1                           -1       -1            Time Out
