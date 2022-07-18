@@ -1,4 +1,4 @@
-*  Corresponding Procedure in Java syntax:
+/*  Corresponding Procedure in Java syntax:
 	static int stackCounter;
 	static int MAX_STACK;
 
