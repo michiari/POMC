@@ -1,0 +1,2 @@
+formulas = G ( exc Implies (XNu han));
+include = "../Programs/Quicksort_5.inc";

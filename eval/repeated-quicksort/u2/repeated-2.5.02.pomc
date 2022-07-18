@@ -1,0 +1,2 @@
+formulas = XNu (ret And main);
+include = "../Programs/Quicksort_5.inc";
