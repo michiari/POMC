@@ -133,13 +133,13 @@ semisafe                     1               6         03     6.1586            
 semisafe                     1               6         04    74.143                   4529940        2.17554e+06  False
 semisafe                     1               6         05   241.61                   12794936        6.06954e+06  False
 semisafe                     1               6         06   292.26                   12801560        5.87829e+06  False
-semisafe                     1               6         07    -1                            -1       -1            Time Out
-semisafe                     1               6         08    -1                            -1       -1            Time Out
+semisafe                     1               6         07    -1                            -1       -1            Time_Out
+semisafe                     1               6         08    -1                            -1       -1            Time_Out
 semisafe                     1               6         09    16.093                   1389512   616845            True
 semisafe                     1               6         10   181.64                   16415124        6.75541e+06  True
-semisafe                     1               6         11    -1                            -1       -1            Time Out
+semisafe                     1               6         11    -1                            -1       -1            Time_Out
 semisafe                     1               6         12   379.19                   21235044        1.00247e+07  True
-semisafe                     1               6         13    -1                            -1       -1            Time Out
+semisafe                     1               6         13    -1                            -1       -1            Time_Out
 semisafe                     1               6         14   394.19                   24711224        1.17145e+07  True
 semisafe                     1               7         01     6.5792                   456032   201004            False
 semisafe                     1               7         02   149.3                     8004588        3.66438e+06  False
@@ -147,11 +147,11 @@ semisafe                     1               7         03    15.668             
 semisafe                     1               7         04   163.17                    8423528        3.8147e+06   False
 semisafe                     1               7         05   546.41                   23368196        1.06132e+07  False
 semisafe                     1               7         06   721.21                   40927988        1.97003e+07  False
-semisafe                     1               7         07    -1                            -1       -1            Time Out
-semisafe                     1               7         08    -1                            -1       -1            Time Out
+semisafe                     1               7         07    -1                            -1       -1            Time_Out
+semisafe                     1               7         08    -1                            -1       -1            Time_Out
 semisafe                     1               7         09    33.552                   2442920        1.14402e+06  True
 semisafe                     1               7         10   374.57                   21628840        1.02485e+07  True
-semisafe                     1               7         11    -1                            -1       -1            Time Out
+semisafe                     1               7         11    -1                            -1       -1            Time_Out
 semisafe                     1               7         12   849.81                   51999028        2.46871e+07  True
-semisafe                     1               7         13    -1                            -1       -1            Time Out
+semisafe                     1               7         13    -1                            -1       -1            Time_Out
 semisafe                     1               7         14   900.06                   44280080        2.09696e+07  True

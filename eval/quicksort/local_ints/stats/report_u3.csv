@@ -1,4 +1,4 @@
-Program      Array_values_bits    Arrayt_length    Formula     Time(s)    Total_memory(KiB)    GC_Memory_(KiB)  Result
+Program      Array_values_bits    Array_length    Formula      Time(s)      Total_memory(KiB)   GC_Memory(KiB)    Result
 buggy                        3               2         01     0.010673                 52800       68.4297       False
 buggy                        3               2         02     0.16409                  52796    10421            False
 buggy                        3               2         03     1.3342                  153824    59727.7          True
@@ -48,29 +48,29 @@ correct                      3               3         04   262.16              
 correct                      3               3         05    25.654                  2179472        1.06476e+06  True
 correct                      3               3         06   497.15                  36685292        1.75097e+07  True
 correct                      3               4         01   158.73                  13457720        5.72013e+06  True
-correct                      3               4         02    -1                           -1       -1            Time Out
+correct                      3               4         02    -1                           -1       -1            Time_Out
 correct                      3               4         03   306.68                  21227500        1.01843e+07  True
-correct                      3               4         04    -1                           -1       -1            Time Out
+correct                      3               4         04    -1                           -1       -1            Time_Out
 correct                      3               4         05   315.18                  25829700        1.10151e+07  True
-correct                      3               4         06    -1                           -1       -1            Time Out
+correct                      3               4         06    -1                           -1       -1            Time_Out
 correct                      3               5         01  1685.2                   91582464        3.81787e+07  True
-correct                      3               5         02    -1                           -1       -1            Time Out
-correct                      3               5         03    -1                           -1       -1            Time Out
-correct                      3               5         04    -1                           -1       -1            Time Out
+correct                      3               5         02    -1                           -1       -1            Time_Out
+correct                      3               5         03    -1                           -1       -1            Time_Out
+correct                      3               5         04    -1                           -1       -1            Time_Out
 correct                      3               5         05  3531.7                  178382340        8.52906e+07  True
-correct                      3               5         06    -1                           -1       -1            Time Out
-correct                      3               6         01    -1                           -1       -1            Time Out
-correct                      3               6         02    -1                           -1       -1            Time Out
-correct                      3               6         03    -1                           -1       -1            Time Out
-correct                      3               6         04    -1                           -1       -1            Time Out
-correct                      3               6         05    -1                           -1       -1            Time Out
-correct                      3               6         06    -1                           -1       -1            Time Out
-correct                      3               7         01    -1                           -1       -1            Time Out
-correct                      3               7         02    -1                           -1       -1            Time Out
-correct                      3               7         03    -1                           -1       -1            Time Out
-correct                      3               7         04    -1                           -1       -1            Time Out
-correct                      3               7         05    -1                           -1       -1            Time Out
-correct                      3               7         06    -1                           -1       -1            Time Out
+correct                      3               5         06    -1                           -1       -1            Time_Out
+correct                      3               6         01    -1                           -1       -1            Time_Out
+correct                      3               6         02    -1                           -1       -1            Time_Out
+correct                      3               6         03    -1                           -1       -1            Time_Out
+correct                      3               6         04    -1                           -1       -1            Time_Out
+correct                      3               6         05    -1                           -1       -1            Time_Out
+correct                      3               6         06    -1                           -1       -1            Time_Out
+correct                      3               7         01    -1                           -1       -1            Time_Out
+correct                      3               7         02    -1                           -1       -1            Time_Out
+correct                      3               7         03    -1                           -1       -1            Time_Out
+correct                      3               7         04    -1                           -1       -1            Time_Out
+correct                      3               7         05    -1                           -1       -1            Time_Out
+correct                      3               7         06    -1                           -1       -1            Time_Out
 semisafe                     3               2         01     1.5581                  156912    63441            False
 semisafe                     3               2         02    29.782                  2131428   989704            False
 semisafe                     3               2         03     2.9768                  248596   111147            False
@@ -91,67 +91,67 @@ semisafe                     3               3         03    60.412             
 semisafe                     3               3         04   646.02                  41433672        1.97933e+07  False
 semisafe                     3               3         05  2571.9                   96389868        4.64292e+07  False
 semisafe                     3               3         06  3229                     95533372        4.68057e+07  False
-semisafe                     3               3         07    -1                           -1       -1            Time Out
-semisafe                     3               3         08    -1                           -1       -1            Time Out
+semisafe                     3               3         07    -1                           -1       -1            Time_Out
+semisafe                     3               3         08    -1                           -1       -1            Time_Out
 semisafe                     3               3         09   138.8                   10337112        4.86596e+06  True
 semisafe                     3               3         10  1974.5                   73649692        3.5124e+07   True
-semisafe                     3               3         11    -1                           -1       -1            Time Out
-semisafe                     3               3         12    -1                           -1       -1            Time Out
-semisafe                     3               3         13    -1                           -1       -1            Time Out
-semisafe                     3               3         14    -1                           -1       -1            Time Out
+semisafe                     3               3         11    -1                           -1       -1            Time_Out
+semisafe                     3               3         12    -1                           -1       -1            Time_Out
+semisafe                     3               3         13    -1                           -1       -1            Time_Out
+semisafe                     3               3         14    -1                           -1       -1            Time_Out
 semisafe                     3               4         01   329.82                  17915968        8.33565e+06  False
-semisafe                     3               4         02    -1                           -1       -1            Time Out
+semisafe                     3               4         02    -1                           -1       -1            Time_Out
 semisafe                     3               4         03   742.82                  42927148        2.11279e+07  False
-semisafe                     3               4         04    -1                           -1       -1            Time Out
-semisafe                     3               4         05    -1                           -1       -1            Time Out
-semisafe                     3               4         06    -1                           -1       -1            Time Out
-semisafe                     3               4         07    -1                           -1       -1            Time Out
-semisafe                     3               4         08    -1                           -1       -1            Time Out
+semisafe                     3               4         04    -1                           -1       -1            Time_Out
+semisafe                     3               4         05    -1                           -1       -1            Time_Out
+semisafe                     3               4         06    -1                           -1       -1            Time_Out
+semisafe                     3               4         07    -1                           -1       -1            Time_Out
+semisafe                     3               4         08    -1                           -1       -1            Time_Out
 semisafe                     3               4         09  2091.5                  106711180        4.67763e+07  True
-semisafe                     3               4         10    -1                           -1       -1            Time Out
-semisafe                     3               4         11    -1                           -1       -1            Time Out
-semisafe                     3               4         12    -1                           -1       -1            Time Out
-semisafe                     3               4         13    -1                           -1       -1            Time Out
-semisafe                     3               4         14    -1                           -1       -1            Time Out
-semisafe                     3               5         01    -1                           -1       -1            Time Out
-semisafe                     3               5         02    -1                           -1       -1            Time Out
-semisafe                     3               5         03    -1                           -1       -1            Time Out
-semisafe                     3               5         04    -1                           -1       -1            Time Out
-semisafe                     3               5         05    -1                           -1       -1            Time Out
-semisafe                     3               5         06    -1                           -1       -1            Time Out
-semisafe                     3               5         07    -1                           -1       -1            Time Out
-semisafe                     3               5         08    -1                           -1       -1            Time Out
-semisafe                     3               5         09    -1                           -1       -1            Time Out
-semisafe                     3               5         10    -1                           -1       -1            Time Out
-semisafe                     3               5         11    -1                           -1       -1            Time Out
-semisafe                     3               5         12    -1                           -1       -1            Time Out
-semisafe                     3               5         13    -1                           -1       -1            Time Out
-semisafe                     3               5         14    -1                           -1       -1            Time Out
-semisafe                     3               6         01    -1                           -1       -1            Time Out
-semisafe                     3               6         02    -1                           -1       -1            Time Out
-semisafe                     3               6         03    -1                           -1       -1            Time Out
-semisafe                     3               6         04    -1                           -1       -1            Time Out
-semisafe                     3               6         05    -1                           -1       -1            Time Out
-semisafe                     3               6         06    -1                           -1       -1            Time Out
-semisafe                     3               6         07    -1                           -1       -1            Time Out
-semisafe                     3               6         08    -1                           -1       -1            Time Out
-semisafe                     3               6         09    -1                           -1       -1            Time Out
-semisafe                     3               6         10    -1                           -1       -1            Time Out
-semisafe                     3               6         11    -1                           -1       -1            Time Out
-semisafe                     3               6         12    -1                           -1       -1            Time Out
-semisafe                     3               6         13    -1                           -1       -1            Time Out
-semisafe                     3               6         14    -1                           -1       -1            Time Out
-semisafe                     3               7         01    -1                           -1       -1            Time Out
-semisafe                     3               7         02    -1                           -1       -1            Time Out
-semisafe                     3               7         03    -1                           -1       -1            Time Out
-semisafe                     3               7         04    -1                           -1       -1            Time Out
-semisafe                     3               7         05    -1                           -1       -1            Time Out
-semisafe                     3               7         06    -1                           -1       -1            Time Out
-semisafe                     3               7         07    -1                           -1       -1            Time Out
-semisafe                     3               7         08    -1                           -1       -1            Time Out
-semisafe                     3               7         09    -1                           -1       -1            Time Out
-semisafe                     3               7         10    -1                           -1       -1            Time Out
-semisafe                     3               7         11    -1                           -1       -1            Time Out
-semisafe                     3               7         12    -1                           -1       -1            Time Out
-semisafe                     3               7         13    -1                           -1       -1            Time Out
-semisafe                     3               7         14    -1                           -1       -1            Time Out
+semisafe                     3               4         10    -1                           -1       -1            Time_Out
+semisafe                     3               4         11    -1                           -1       -1            Time_Out
+semisafe                     3               4         12    -1                           -1       -1            Time_Out
+semisafe                     3               4         13    -1                           -1       -1            Time_Out
+semisafe                     3               4         14    -1                           -1       -1            Time_Out
+semisafe                     3               5         01    -1                           -1       -1            Time_Out
+semisafe                     3               5         02    -1                           -1       -1            Time_Out
+semisafe                     3               5         03    -1                           -1       -1            Time_Out
+semisafe                     3               5         04    -1                           -1       -1            Time_Out
+semisafe                     3               5         05    -1                           -1       -1            Time_Out
+semisafe                     3               5         06    -1                           -1       -1            Time_Out
+semisafe                     3               5         07    -1                           -1       -1            Time_Out
+semisafe                     3               5         08    -1                           -1       -1            Time_Out
+semisafe                     3               5         09    -1                           -1       -1            Time_Out
+semisafe                     3               5         10    -1                           -1       -1            Time_Out
+semisafe                     3               5         11    -1                           -1       -1            Time_Out
+semisafe                     3               5         12    -1                           -1       -1            Time_Out
+semisafe                     3               5         13    -1                           -1       -1            Time_Out
+semisafe                     3               5         14    -1                           -1       -1            Time_Out
+semisafe                     3               6         01    -1                           -1       -1            Time_Out
+semisafe                     3               6         02    -1                           -1       -1            Time_Out
+semisafe                     3               6         03    -1                           -1       -1            Time_Out
+semisafe                     3               6         04    -1                           -1       -1            Time_Out
+semisafe                     3               6         05    -1                           -1       -1            Time_Out
+semisafe                     3               6         06    -1                           -1       -1            Time_Out
+semisafe                     3               6         07    -1                           -1       -1            Time_Out
+semisafe                     3               6         08    -1                           -1       -1            Time_Out
+semisafe                     3               6         09    -1                           -1       -1            Time_Out
+semisafe                     3               6         10    -1                           -1       -1            Time_Out
+semisafe                     3               6         11    -1                           -1       -1            Time_Out
+semisafe                     3               6         12    -1                           -1       -1            Time_Out
+semisafe                     3               6         13    -1                           -1       -1            Time_Out
+semisafe                     3               6         14    -1                           -1       -1            Time_Out
+semisafe                     3               7         01    -1                           -1       -1            Time_Out
+semisafe                     3               7         02    -1                           -1       -1            Time_Out
+semisafe                     3               7         03    -1                           -1       -1            Time_Out
+semisafe                     3               7         04    -1                           -1       -1            Time_Out
+semisafe                     3               7         05    -1                           -1       -1            Time_Out
+semisafe                     3               7         06    -1                           -1       -1            Time_Out
+semisafe                     3               7         07    -1                           -1       -1            Time_Out
+semisafe                     3               7         08    -1                           -1       -1            Time_Out
+semisafe                     3               7         09    -1                           -1       -1            Time_Out
+semisafe                     3               7         10    -1                           -1       -1            Time_Out
+semisafe                     3               7         11    -1                           -1       -1            Time_Out
+semisafe                     3               7         12    -1                           -1       -1            Time_Out
+semisafe                     3               7         13    -1                           -1       -1            Time_Out
+semisafe                     3               7         14    -1                           -1       -1            Time_Out
