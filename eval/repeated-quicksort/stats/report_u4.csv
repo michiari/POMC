@@ -1,0 +1,32 @@
+Program      Array values bits    Array length    Formula    Time (s)    Total memory (KiB)    GC Memory (KiB)  Result
+---------  -------------------  --------------  ---------  ----------  --------------------  -----------------  --------
+repeated                     4               2         01      5.7632                497328   227859            False
+repeated                     4               2         02    139.28                 9104844        4.369e+06    False
+repeated                     4               2         03     10.257                 997764   420919            True
+repeated                     4               2         04     79.214                5682948        2.67491e+06  True
+repeated                     4               2         05     27.987                2774000        1.14936e+06  True
+repeated                     4               3         01    188.69                 9123288        4.13207e+06  False
+repeated                     4               3         02     -1                         -1       -1            Time Out
+repeated                     4               3         03    314.59                24073360        1.02644e+07  True
+repeated                     4               3         04   3152.8                132692060        6.17998e+07  True
+repeated                     4               3         05    955.53                48916004        2.11542e+07  True
+repeated                     4               4         01   2313.8                111628032        5.28087e+07  False
+repeated                     4               4         02     -1                         -1       -1            Time Out
+repeated                     4               4         03     -1                         -1       -1            Time Out
+repeated                     4               4         04     -1                         -1       -1            Time Out
+repeated                     4               4         05     -1                         -1       -1            Time Out
+repeated                     4               5         01     -1                         -1       -1            Time Out
+repeated                     4               5         02     -1                         -1       -1            Time Out
+repeated                     4               5         03     -1                         -1       -1            Time Out
+repeated                     4               5         04     -1                         -1       -1            Time Out
+repeated                     4               5         05     -1                         -1       -1            Time Out
+repeated                     4               6         01     -1                         -1       -1            Time Out
+repeated                     4               6         02     -1                         -1       -1            Time Out
+repeated                     4               6         03     -1                         -1       -1            Time Out
+repeated                     4               6         04     -1                         -1       -1            Time Out
+repeated                     4               6         05     -1                         -1       -1            Time Out
+repeated                     4               7         01     -1                         -1       -1            Time Out
+repeated                     4               7         02     -1                         -1       -1            Time Out
+repeated                     4               7         03     -1                         -1       -1            Time Out
+repeated                     4               7         04     -1                         -1       -1            Time Out
+repeated                     4               7         05     -1                         -1       -1            Time Out
