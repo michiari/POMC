@@ -1,0 +1,32 @@
+Program      Array values bits    Array length    Formula    Time (s)    Total memory (KiB)    GC Memory (KiB)  Result
+---------  -------------------  --------------  ---------  ----------  --------------------  -----------------  --------
+repeated                     2               2         01     0.23808                 52932    11718.7          False
+repeated                     2               2         02     4.9751                 423296   190180            False
+repeated                     2               2         03     0.42864                 52932    20698.5          True
+repeated                     2               2         04     3.4448                 412484   174377            True
+repeated                     2               2         05     1.1773                 132272    60529.7          True
+repeated                     2               3         01     1.4659                 149568    60375.6          False
+repeated                     2               3         02    32.446                 1905432   890377            False
+repeated                     2               3         03     2.5938                 242376   106322            True
+repeated                     2               3         04    20.405                 1734356   798368            True
+repeated                     2               3         05     7.0753                 712196   317665            True
+repeated                     2               4         01     1.7132                 171584    73329.4          False
+repeated                     2               4         02    83.176                 6087720        2.92215e+06  False
+repeated                     2               4         03    15.581                 1589136   653872            True
+repeated                     2               4         04   117.38                  7872744        3.6417e+06   True
+repeated                     2               4         05    40.565                 3907304        1.63957e+06  True
+repeated                     2               5         01     8.1711                 821928   381342            False
+repeated                     2               5         02   387.76                 17000548        7.9038e+06   False
+repeated                     2               5         03    75.484                 7086836        2.89441e+06  True
+repeated                     2               5         04   557                    38326552        1.71433e+07  True
+repeated                     2               5         05   199.59                 13830500        6.45549e+06  True
+repeated                     2               6         01    43.577                 2971464        1.3991e+06   False
+repeated                     2               6         02  2308.4                  93216928        4.55418e+07  False
+repeated                     2               6         03   356.7                  21842212        1.01007e+07  True
+repeated                     2               6         04  3392.3                 142522252        6.64057e+07  True
+repeated                     2               6         05  1109.9                  69163996        2.84175e+07  True
+repeated                     2               7         01   275.36                 14346820        6.81658e+06  False
+repeated                     2               7         02    -1                          -1       -1            Time Out
+repeated                     2               7         03  1810.3                  85238432        3.93218e+07  True
+repeated                     2               7         04    -1                          -1       -1            Time Out
+repeated                     2               7         05    -1                          -1       -1            Time Out
