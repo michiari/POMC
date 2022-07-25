@@ -16,19 +16,19 @@ Correct_formulas = [    "F (ret And main)",      #01
                 "XNu (ret And main And (sorted))"] #06
 
 SemiSafe_formulas = [   "F (ret And main)",                                                                         #01
-                        "XNu (ret And main)",                                                                       #02
-                        "F ( G (sorted))",                                                                            #03
-                        "XNu (sorted)",                                                                               #04
-                        "G ((call And main) --> ~ (PNu exc Or XNu exc))",                                           #05
-                        "G ((call And qs) --> ~ (PNu exc Or XNu exc))",                                             #06
-                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed)))",    #07
-                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)))",              #08
-                        "G ( (call And accessValues) --> (hasParsed) Or (T Sd han ))",                              #09
+                        "XNu (ret And main)",                                                                       #02   Q1 - False
+                        "F ( G (sorted))",                                                                          #03
+                        "XNu (sorted)",                                                                             #04   Q2 - False
+                        "G ((call And main) --> ~ (PNu exc Or XNu exc))",                                           #05   Q3 - False
+                        "G ((call And qs) --> ~ (PNu exc Or XNu exc))",                                             #06   Q4 - False
+                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed)))",    #07   Q5 - True
+                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)))",          #08   Q6 - False
+                        "G ( (call And accessValues) --> (hasParsed) Or (T Sd han ))",                              #09   Q7 - True
                         "(F (ret And main)) Or (XNu (exc And hasParsed))",                                          #10
-                        "(XNu (ret And main)) Or (XNu (exc And hasParsed))",                                        #11
-                        "(F ( G (sorted))) Or (XNu (exc And hasParsed))",                                             #12
-                        "(XNu (sorted)) Or (XNu (exc And hasParsed))",                                                #13
-                        "(F (ret And main And (sorted))) Or (XNu (exc And hasParsed))"]                               #14
+                        "(XNu (ret And main)) Or (XNu (exc And hasParsed))",                                        #11   Q8 - True
+                        "(F ( G (sorted))) Or (XNu (exc And hasParsed))",                                           #12   
+                        "(XNu (sorted)) Or (XNu (exc And hasParsed))",                                              #13   Q9 - True
+                        "(F (ret And main And (sorted))) Or (XNu (exc And hasParsed))"]                             #14   Q10 - True 
 
 
 
