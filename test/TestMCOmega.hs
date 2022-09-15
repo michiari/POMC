@@ -12,6 +12,7 @@ tests = testGroup "ModelChecking.hs Omega Tests" [ sasEvalTests, lREvalTests
                                                  , inspectionTest, overflowTest
                                                  , jensenTests, jensenFullTests
                                                  , stackExcTests, stackExcSwapTests
+                                                 , xnextdRegressionTests
                                                  ]
 
 sasEvalTests :: TestTree
@@ -794,6 +795,44 @@ stackExcSwap = ExplicitOpa
       , (75, 61, [62])
       , (75, 58, [59])
       , (6, 6, [6])
+      ]
+  }
+
+
+xnextdRegressionTests :: TestTree
+xnextdRegressionTests = testGroup "XNext Down Regression Tests" [ xnextdRegressionTestYield
+                                                                , xnextdRegressionTestEqual
+                                                                , xnextdRegressionTestUntil
+                                                                ]
+
+xnextdRegressionTestYield :: TestTree
+xnextdRegressionTestYield = makeTestCase xnextdRegressionOpa
+  (("XNext Down Regression Test Omega Yield", XNext Down $ ap "call"), False)
+
+xnextdRegressionTestEqual :: TestTree
+xnextdRegressionTestEqual = makeTestCase xnextdRegressionOpa
+  (("XNext Down Regression Test Omega Equal", Not $ XNext Down $ ap "ret"), False)
+
+xnextdRegressionTestUntil :: TestTree
+xnextdRegressionTestUntil = makeTestCase xnextdRegressionOpa
+  (("XNext Down Regression Test Omega Until", Not $ Until Down T $ ap "call"), False)
+
+xnextdRegressionOpa :: ExplicitOpa Word String
+xnextdRegressionOpa = ExplicitOpa
+  { eoAlphabet = stlV2Alphabet
+  , eoInitials = [0]
+  , eoFinals = [0, 1, 2, 3, 4]
+  , eoDeltaPush =
+      [ (0, makeInputSet ["call"], [1])
+      , (1, makeInputSet ["han"],  [2])
+      ]
+  , eoDeltaShift =
+      [ (2, makeInputSet ["exc"], [3])
+      , (3, makeInputSet ["ret"], [4])
+      ]
+  , eoDeltaPop =
+      [ (3, 1, [3])
+      , (4, 0, [0])
       ]
   }
 

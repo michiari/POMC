@@ -19,7 +19,7 @@ import Pomc.Prec (Prec(..), Alphabet)
 import Pomc.Potl (Formula(..))
 import Pomc.Check (EncPrecFunc, makeOpa)
 import Pomc.PropConv (APType, PropConv(..), convProps)
-import Pomc.State(Input, State(..), showState, showAtom)
+import Pomc.State (Input, State(..), showState, showAtom)
 import Pomc.Encoding (PropSet, BitEncoding, extractInput, decodeInput)
 import Pomc.SatUtil
 import Pomc.SCCAlgorithm
