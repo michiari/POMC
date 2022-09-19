@@ -467,8 +467,7 @@ deltaRules bitenc cl precFunc =
                                      , (pnCond,     pnPushFr)
                                      , (pbCond,     pbPushFr)
                                      ]
-        , ruleGroupFsrs = resolve cl [(xnCond, xnPushFsr1)
-                                     ,(xnCond, xnPushFsr2)]
+        , ruleGroupFsrs = resolve cl [(xnCond, xnPushFsr)]
         }
       -- POP RULES
       popGroup = RuleGroup
@@ -656,9 +655,9 @@ deltaRules bitenc cl precFunc =
 
     pbShiftFr = pbPushFr
 
-    --rules for the omega case
-    --XN: XNext _
-    --get a mask with all XNext _ formulas set to one
+    -- rules for the omega case
+    -- XN: XNext _
+    -- get a mask with all XNext _ formulas set to one
     maskXn = E.suchThat bitenc checkXn
     checkXn (XNext _ _) = True
     checkXn _ = False
@@ -668,29 +667,28 @@ deltaRules bitenc cl precFunc =
     -- rules only for the omega case
     -- stack sets can contain only XNext _ _ formulas,
     -- so there is no need to intersect pPend with maskxn
-    -- xnPush1 :: FsrInfo -> Bool
-    xnPushFsr1 info =
+    xnPushFsr :: FsrInfo -> Bool
+    xnPushFsr info =
       let pPend = pending $ fsrState info
+          pStack = stack $ fsrState info
           pPendXnfs = E.intersect pPend maskXn
+          pStackXnfs = E.intersect pStack maskXn
           fStack = fsrFutureStack info
-      in E.intersect pPendXnfs fStack == pPendXnfs
+      in E.union pPendXnfs pStackXnfs == fStack
 
-    -- xnPush2 :: FsrInfo -> Bool
-    xnPushFsr2 info =
+    xnShiftFsr :: FsrInfo -> Bool
+    xnShiftFsr info = -- will become shift
       let pStack = stack $ fsrState info
           fStack = fsrFutureStack info
-      in E.intersect pStack fStack == pStack
+      in fStack == pStack
 
-    -- xnShiftFsr :: FsrInfo -> Bool
-    xnShiftFsr = xnPushFsr2
-
-    -- xnPopFsr :: FsrInfo -> Bool
+    xnPopFsr :: FsrInfo -> Bool
     xnPopFsr info =
       let pStack = stack $ fsrState info
           ppStack = stack $ fromJust (fsrPopped info)
           fStack = fsrFutureStack info
           checkSet = E.intersect pStack ppStack
-      in  E.intersect checkSet fStack == checkSet
+      in  fStack == checkSet
     -- end of rules for the omega case
 
     -- XND: XNext Down --
