@@ -18,7 +18,7 @@ tests = testGroup "ModelChecking.hs Omega Tests" [ sasEvalTests, lREvalTests
 sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS OPA MC Omega Eval Tests" $
   map (makeTestCase simpleExc) (zipExpected sasFormulas expectedSasEval)
-  where sasFormulas = excludeIndices formulas [18, 38, 44]
+  where sasFormulas = excludeIndices formulas [44]
 
 lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Omega Eval Tests" $
@@ -75,11 +75,12 @@ expectedSasEval =
   [ True,  False,  True, False, False, False
   , False, False, False, False, False, False
   , False, False, False, False, False, False
-  , False, False, False, False, False -- base_tests
+  , False, False, False, False, False, False -- base_tests
   , False, False, False, False, True -- chain_next
   , False, False, False, True        -- contains_exc
   , True                             -- data_access
   , False, False, False, False       -- empty_frame
+  , True                             -- exception_safety
   , False, False, False, False       -- hier_down
   , False                            -- hier_insp
   , False, False, False, False       -- hier_up
@@ -479,6 +480,7 @@ jensenFull = ExplicitOpa
 stackExcTests :: TestTree
 stackExcTests = testGroup "Exception Safety Unsafe Stack" [ stackExcConsistent
                                                           , stackExcNeutral
+                                                          , stackExcNeutralS
                                                           ]
 
 stackExcConsistent :: TestTree
@@ -840,15 +842,11 @@ xnextdRegressionOpa = ExplicitOpa
 slowTests :: TestTree
 slowTests = testGroup "ModelChecking.hs Omega Slow Tests" [ sasSlowTests
                                                           , lRSlowTests
-                                                          , stackExcNeutralS
                                                           ]
 
 sasSlowTests :: TestTree
 sasSlowTests = testGroup "SAS OPA MC Omega Slow Tests" $
-  map (makeTestCase simpleExc) [ (formulas !! 18, False)
-                               , (formulas !! 38, True)
-                               , (formulas !! 44, True)
-                               ]
+  map (makeTestCase simpleExc) [ (formulas !! 44, True) ]
 
 lRSlowTests :: TestTree
 lRSlowTests = testGroup "LargerRec OPA MC Omega Slow Tests" $

@@ -677,7 +677,7 @@ deltaRules bitenc cl precFunc =
       in E.union pPendXnfs pStackXnfs == fStack
 
     xnShiftFsr :: FsrInfo -> Bool
-    xnShiftFsr info = -- will become shift
+    xnShiftFsr info =
       let pStack = stack $ fsrState info
           fStack = fsrFutureStack info
       in fStack == pStack
