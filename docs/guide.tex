@@ -118,7 +118,7 @@ a summary of the resources used by POMC.
 It must be executed with a subdirectory of \verb|~/path/to/POMC-sources|
 as its working directory.
 If invoked with no arguments, it executes POMC on all input files in the current
-working directory. E.g.,
+working directory with the infinite-word semantics. E.g.,
 \begin{verbatim}
 $ cd ~/path/to/POMC-sources/eval
 $ ./mcbench.py opa-cav
@@ -133,17 +133,23 @@ $ ./mcbench.py 1-generic-small.pomc 2-generic-medium.pomc
 executes POMC on files \verb|1-generic-small.pomc| and \verb|2-generic-medium.pomc|.
 \texttt{mcbench.py} can be invoked with the following optional flags:
 \begin{description}
-\item[\texttt{-iter <\#iters>}]
+\item[\texttt{-f, -{}-finite}]
+  Only check finite execution traces (infinite-word model checking is the default)
+\item[\texttt{-i, -{}-iters <\#iters>}]
   Number of iterations of the benchmarks to be performed.
   The final table printed by the script contains the mean time
   and memory values computed on all iterations. (Default: 1)
-\item[\texttt{-jobs <\#jobs>}]
+\item[\texttt{-j, -{}-jobs <\#jobs>}]
   Number of benchmarks to be run in parallel.
   If you provide a value greater than 1, make sure you have
   enough CPU cores on your machine.
   (Default: 1)
-\item[\texttt{-ms}]
+\item[\texttt{-m, -{}-ms}]
   Output time in milliseconds instead of seconds.
+\item[\texttt{-v, -{}-verbose <level>}]
+  Verbosity level can be 0 (no additional info),
+  1 (print POMC output, e.g.\ counterexamples), or
+  2 (print POMC output and time/memory statistics).
 \end{description}
 
 
@@ -473,7 +479,7 @@ If you wish to repeat such experiments, you may run the following
 commands:
 \begin{verbatim}
 $ cd ~/path/to/POMC-sources/eval
-$ ./mcbench.py opa-cav
+$ ./mcbench.py -f opa-cav
 \end{verbatim}
 
 \begin{table}
@@ -632,7 +638,7 @@ If you wish to repeat such experiments, you may run the following
 commands:
 \begin{verbatim}
 $ cd ~/path/to/POMC-sources/eval
-$ ./mcbench.py opa-more/generic-larger
+$ ./mcbench.py -f opa-more/generic-larger
 \end{verbatim}
 Of course, a machine with an appropriate amount of RAM is needed.
 
