@@ -1,0 +1,2 @@
+formulas = XNu (ret And main);
+include = "../Correct_Programs/CorrectQuicksort_2.7.inc";

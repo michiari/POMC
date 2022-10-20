@@ -31,48 +31,36 @@ SemiSafe_formulas = [   "F (ret And main)",                                     
                         "(F (ret And main And (sorted))) Or (XNu (exc And hasParsed))"]                             #14   Q10 - True 
 
 
-
 Experiments = [(Buggy_formulas,"Buggy") , (Correct_formulas,"Correct"), (SemiSafe_formulas,"SemiSafe")]
 
 for u_size in range(1,5):
     for (exp,name) in Experiments:
         for arr_size in range(2,8):
             filein = name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
-            fileout = 'u' + str(u_size) + '/' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
+            fileout = 'benchmark/u' + str(u_size) + '/' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
             f1 = open(filein, 'r')
             f2 = open(fileout, 'w')
             for line in f1:
                 f2.write(line.replace('u*', 'u' + str(u_size)))
             f1.close()
             f2.close()
-            n = 1;
-            m = 0;
-            for form in exp:
-                with open('u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(m) + str(n) +'.pomc', 'w') as f:
+            for index,form in enumerate(exp, start=1):
+                with open('benchmark/u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(index).zfill(2) +'.pomc', 'w') as f:
                     f.write('formulas = ' + form + ';\n')
-                    f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
-                n += 1
-                if n==10:
-                    m +=1;
-                    n = 0;
+                    f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(u_size) + '.' + str(arr_size) + '.inc";')
 
 # generate experiments for comparing POMC with Vera
 for u_size in [4,6,8,10,32]:
     filein = 'Buggy_Programs/BuggyQuicksort_2.inc';
-    fileout = 'Vera_Comparison/u' + str(u_size) + '/Buggy_Programs/BuggyQuicksort_2' + '.inc'
+    fileout = 'Vera_Comparison/u' + str(u_size) + '/BuggyQuicksort_2.inc'
     f1 = open(filein, 'r')
     f2 = open(fileout, 'w')
     for line in f1:
         f2.write(line.replace('u*', 'u' + str(u_size)))
     f1.close()
     f2.close()
-    n = 1;
-    m = 0;
-    for form in Buggy_formulas:
-                with open( 'Vera_Comparison/u' + str(u_size) + '/Buggy/buggy-' + str(u_size) + '.2.' + str(m) + str(n) +'.pomc', 'w') as f:
-                    f.write('formulas = ' + form + ';\n')
-                    f.write('include = "../Buggy_Programs/BuggyQuicksort_2.inc";')
-                n += 1
-                if n==10:
-                    m +=1;
-                    n = 0;
+    with open( 'Vera_Comparison/u' + str(u_size) + '/buggy-' + str(u_size) + '.2.01.pomc', 'w') as f:
+        f.write('formulas = ' + Buggy_formulas[0] + ';\n')
+        f.write('include = "/BuggyQuicksort_2.inc";')
+
+# experiments for comparison POMC with MOPED have been hadnwritten

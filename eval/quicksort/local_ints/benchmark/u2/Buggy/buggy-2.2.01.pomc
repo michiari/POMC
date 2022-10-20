@@ -1,0 +1,2 @@
+formulas = F (ret And main);
+include = "../Buggy_Programs/BuggyQuicksort_2.2.inc";

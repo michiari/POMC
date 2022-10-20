@@ -1,2 +1,0 @@
-formulas = F (ret And main);
-include = "../Buggy_Programs/BuggyQuicksort_7.inc";

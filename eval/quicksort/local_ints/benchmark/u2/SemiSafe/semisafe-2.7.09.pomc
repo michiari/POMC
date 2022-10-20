@@ -1,0 +1,2 @@
+formulas = G ( (call And accessValues) --> (hasParsed) Or (T Sd han ));
+include = "../SemiSafe_Programs/SemiSafeQuicksort_2.7.inc";

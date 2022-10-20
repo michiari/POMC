@@ -1,2 +1,0 @@
-formulas = ((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)));
-include = "../SemiSafe_Programs/SemiSafeQuicksort_5.inc";

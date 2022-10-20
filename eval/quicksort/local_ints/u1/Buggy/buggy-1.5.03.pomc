@@ -1,2 +1,0 @@
-formulas = F ( G (sorted));
-include = "../Buggy_Programs/BuggyQuicksort_5.inc";

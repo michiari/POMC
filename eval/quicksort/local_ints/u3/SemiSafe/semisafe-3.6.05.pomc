@@ -1,2 +1,0 @@
-formulas = G ((call And main) --> ~ (PNu exc Or XNu exc));
-include = "../SemiSafe_Programs/SemiSafeQuicksort_6.inc";
