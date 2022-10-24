@@ -61,6 +61,6 @@ for u_size in [4,6,8,10,32]:
     f2.close()
     with open( 'Vera_Comparison/u' + str(u_size) + '/buggy-' + str(u_size) + '.2.01.pomc', 'w') as f:
         f.write('formulas = ' + Buggy_formulas[0] + ';\n')
-        f.write('include = "/BuggyQuicksort_2.inc";')
+        f.write('include = "BuggyQuicksort_2.inc";')
 
 # experiments for comparison POMC with MOPED have been hadnwritten
