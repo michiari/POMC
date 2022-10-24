@@ -1,0 +1,2 @@
+formulas = F (ret And main);
+include = "../Moped_Buggy_Programs/Moped_BuggyQuicksort.inc";
