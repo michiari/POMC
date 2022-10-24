@@ -26,13 +26,13 @@ bool sorted;
 u4[2] a;
 
 main() {
-	a[0u2] = *;
-	a[1u2] = *;
-	qs(0u2, 1u2);
+	a[0s3] = *;
+	a[1s3] = *;
+	qs(0s3, 1s3);
 }
 
-qs(u2 left, u2 right) {
-	u2 lo, hi;
+qs(s3 left, s3 right) {
+	s3 lo, hi;
 	u4 piv;
 
 	if (left >= right) {
@@ -42,10 +42,10 @@ qs(u2 left, u2 right) {
 		hi = right;
 		while (lo <= hi) { 
 			if (a[hi] > piv){
-				hi = hi - 1u2; 
+				hi = hi - 1s3; 
 			} else {
 				swapElements(lo, hi);
-				lo = lo + 1u2;
+				lo = lo + 1s3;
 			}
 		}
 		qs(left, hi);
@@ -53,11 +53,11 @@ qs(u2 left, u2 right) {
 	}
 }
 
-swapElements(u2 swapLeft, u2 swapRight) {
+swapElements(s3 swapLeft, s3 swapRight) {
     u4 tmp;
     
 	tmp = a[swapLeft];
 	a[swapLeft] = a[swapRight];
 	a[swapRight] = tmp;
-	sorted = a[0u2] <= a[1u2];
+	sorted = a[0s3] <= a[1s3];
 }

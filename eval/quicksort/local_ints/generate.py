@@ -47,7 +47,7 @@ for u_size in range(1,5):
             for index,form in enumerate(exp, start=1):
                 with open('benchmark/u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(index).zfill(2) +'.pomc', 'w') as f:
                     f.write('formulas = ' + form + ';\n')
-                    f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(u_size) + '.' + str(arr_size) + '.inc";')
+                    f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
 
 # generate experiments for comparing POMC with Vera
 for u_size in [4,6,8,10,32]:

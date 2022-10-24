@@ -1,2 +1,2 @@
 formulas = (F (ret And main And (sorted))) Or (XNu (exc And hasParsed));
-include = "../SemiSafe_Programs/SemiSafeQuicksort_2.6.inc";
+include = "../SemiSafe_Programs/SemiSafeQuicksort_6.inc";

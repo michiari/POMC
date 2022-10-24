@@ -1,2 +1,2 @@
 formulas = F ( G (sorted));
-include = "../Correct_Programs/CorrectQuicksort_1.6.inc";
+include = "../Correct_Programs/CorrectQuicksort_6.inc";

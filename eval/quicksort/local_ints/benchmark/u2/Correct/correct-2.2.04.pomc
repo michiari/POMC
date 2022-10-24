@@ -1,2 +1,2 @@
 formulas = XNu (sorted);
-include = "../Correct_Programs/CorrectQuicksort_2.2.inc";
+include = "../Correct_Programs/CorrectQuicksort_2.inc";

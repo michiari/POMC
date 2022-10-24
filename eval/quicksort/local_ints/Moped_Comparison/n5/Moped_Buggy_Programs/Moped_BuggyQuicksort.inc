@@ -23,13 +23,13 @@
 program:
 
 main() {
-	u3 left  = *;
-	u3 right = *;
+	u5 left  = *;
+	u5 right = *;
 	qs(left, right);
 }
 
-qs(u3 left, u3 right) {
-	u3 lo, hi;
+qs(u5 left, u5 right) {
+	u5 lo, hi;
 
 	if (left >= right) {
 	} else {
@@ -37,9 +37,9 @@ qs(u3 left, u3 right) {
 		hi = right;
 		while (lo <= hi) { 
 			if (hi == right || *){
-				lo = lo + 1u3; 
+				lo = lo + 1u5; 
 			} else {
-				hi = hi - 1u3;
+				hi = hi - 1u5;
 			}
 		}
 		qs(left, hi);

@@ -1,2 +1,2 @@
 formulas = XNu (sorted);
-include = "../Buggy_Programs/BuggyQuicksort_1.6.inc";
+include = "../Buggy_Programs/BuggyQuicksort_6.inc";
