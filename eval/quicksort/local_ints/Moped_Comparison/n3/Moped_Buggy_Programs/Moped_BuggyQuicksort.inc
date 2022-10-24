@@ -23,20 +23,27 @@
 program:
 
 main() {
-	u3 left  = *;
-	u3 right = *;
+ 	u3 left, right;
+	left  = *;
+	right = *;
 	qs(left, right);
 }
 
 qs(u3 left, u3 right) {
 	u3 lo, hi;
+	bool nondet;
 
 	if (left >= right) {
 	} else {
 		lo = left;
 		hi = right;
 		while (lo <= hi) { 
-			if (hi == right || *){
+			if (*) {
+				nondet = true;
+			} else {
+				nondet = false;
+			}
+			if (hi == right || nondet) {
 				lo = lo + 1u3; 
 			} else {
 				hi = hi - 1u3;
