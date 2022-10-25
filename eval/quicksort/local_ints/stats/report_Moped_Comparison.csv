@@ -1,0 +1,19 @@
+Program         Array values bits  Array length      Formula    Time (s)    Total memory (KiB)    GC Memory (KiB)  Result
+------------  -------------------  --------------  ---------  ----------  --------------------  -----------------  --------
+mopedbuggy                      3  X                      01    0.010624                 52972            60.1172  False
+mopedbuggy                      4  X                      01    0.014635                 52972          1181.16    False
+mopedbuggy                      5  X                      01    0.022022                 52972          1840.1     False
+mopedbuggy                      6  X                      01    0.033011                 52972          2143.62    False
+mopedbuggy                      7  X                      01    0.071819                 52964          4910.32    False
+mopedbuggy                      8  X                      01    0.13956                  52968          8462.65    False
+mopedbuggy                      9  X                      01    0.32033                  55920         18023.6     False
+mopedcorrect                    1  20                     01   -1                           -1            -1       Time Out
+mopedcorrect                    1  30                     01   -1                           -1            -1       Time Out
+mopedcorrect                    1  40                     01   -1                           -1            -1       Time Out
+mopedcorrect                    1  60                     01   -1                           -1            -1       Time Out
+mopedcorrect                    2  08                     01   -1                           -1            -1       Time Out
+mopedcorrect                    2  10                     01   -1                           -1            -1       Time Out
+mopedcorrect                    2  12                     01   -1                           -1            -1       Time Out
+mopedcorrect                    3  06                     01   -1                           -1            -1       Time Out
+mopedcorrect                    4  06                     01   -1                           -1            -1       Time Out
+mopedcorrect                    4  07                     01   -1                           -1            -1       Time Out
