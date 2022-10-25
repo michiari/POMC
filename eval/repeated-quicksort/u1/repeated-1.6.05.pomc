@@ -1,2 +1,2 @@
-formulas = G ((call And qs) --> ( (XNu (ret And qs And sorted)) Or (XNu(exc And)))) ;
+formulas = G ((call And qs) --> ( (XNu (ret And qs And sorted)) Or (XNu(exc And max_reached)))) ;
 include = "../Repeated_Programs/Repeated_Quicksort_6.inc";
