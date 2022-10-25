@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import fileinput
 
-Buggy_formulas =  [   "F (ret And main)",        #01
+Buggy_formulas =  [   "F (ret And main)",        #01 (also the formula for VEra Comparison)
                 "XNu (ret And main)",            #02
                 "F ( G (sorted))",                 #03
                 "XNu (sorted)",                    #04
@@ -63,4 +63,7 @@ for u_size in [4,6,8,10,32]:
         f.write('formulas = ' + Buggy_formulas[0] + ';\n')
         f.write('include = "BuggyQuicksort_2.inc";')
 
-# experiments for comparison POMC with MOPED have been hadnwritten
+# experiments for comparison POMC with MOPED have been handwritten
+# the MOPED formula we verify are 
+#   1) F (ret And main) for the buggy version, and
+#   2) F (ok) for the correct version, which both verify correctness and termination.

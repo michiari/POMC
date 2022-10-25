@@ -1,2 +1,2 @@
-formulas = ~ (XNu (ret And main));
-include = "Programs/Quicksort_7.inc";
+formulas = G (F (call And qs));
+include = "../Repeated_Programs/Repeated_Quicksort_7.inc";

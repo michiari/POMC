@@ -1,2 +1,2 @@
-formulas = G ( exc Implies (XBu han));
-include = "Programs/Quicksort_5.inc";
+formulas = G ((call And qs) --> ( (XNu (ret And qs And sorted)) Or (XNu(exc And)))) ;
+include = "../Repeated_Programs/Repeated_Quicksort_5.inc";
