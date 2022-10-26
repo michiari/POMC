@@ -21,9 +21,9 @@ for u_size in range(1,5):
         n = 1;
         m = 0;
         for form in formulas:
-            with open('u' + str(u_size) +  '/' + "repeated" + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(m) + str(n) +'.pomc', 'w') as f:
+            with open('u' + str(u_size) +  '/Repeated/' + "repeated" + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(m) + str(n) +'.pomc', 'w') as f:
                 f.write('formulas = ' + form + ';\n')
-                f.write('include = "' + '../Repeated_Programs/'  +'Repeated_Quicksort_' + str(arr_size) + '.inc";')
+                f.write('include = "' + '../Repeated_Programs/'  +'RepeatedQuicksort_' + str(arr_size) + '.inc";')
             n += 1
             if n==10:
                 m +=1;

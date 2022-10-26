@@ -1,2 +1,0 @@
-formulas = G (F (call And qs));
-include = "../Repeated_Programs/Repeated_Quicksort_7.inc";
