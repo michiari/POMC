@@ -5,7 +5,7 @@ formulas = ["XNu ((ret And main) Or (exc))",       #01
             "~ (XNu ((ret And main) Or (exc)))",   #02
             "G ( exc Implies (XBu han))",     #03
             "G (F (call And qs))",    #04
-            "G ((call And qs) --> ( (XNu (ret And qs And sorted)) Or (XNu(exc And max_reached)))) " #05
+            "G ((call And qs) --> ( (XNu (ret And qs And sorted)) Or (XNu (exc And maxReached)))) " #05
             ] 
 
 for u_size in range(1,5):

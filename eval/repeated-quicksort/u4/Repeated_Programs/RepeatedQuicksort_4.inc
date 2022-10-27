@@ -37,7 +37,7 @@
 
 program:
 u2 stackCounter, MAX_STACK;
-bool sorted, max_reached;
+bool sorted, maxReached;
 u4[4] a;
 
 main() {
@@ -49,7 +49,7 @@ main() {
 		a[3s4] = *;
 		stackCounter = 0u2;
 		sorted = a[0s4] <= a[1s4] && a[1s4] <= a[2s4] && a[2s4] <= a[3s4];
-		max_reached = false;
+		maxReached = false;
 		try {
 		 	qs(0s4, 3s4);
 		} catch {
@@ -97,7 +97,7 @@ swapElements(s4 swapLeft, s4 swapRight) {
 
 pushCounter() {
 	if (stackCounter == MAX_STACK) {
-		max_reached = true;
+		maxReached = true;
 		throw;
 	} else {
 		stackCounter = stackCounter + 1u2;
