@@ -1,2 +1,0 @@
-formulas = G ( exc Implies (XBu han));
-include = "Programs/Quicksort_7.inc";
