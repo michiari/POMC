@@ -4,7 +4,7 @@ import fileinput
 formulas = ["~ (XNu ((ret And main) Or (exc)))",   #01
             "G ( exc Implies (XBu han))",     #02
             "G (F (call And qs))",    #03
-            "G ((call And qs And ((~ (call And qs)) Sd (call And main))) --> ( (XNu (ret And qs And sorted)) Or (XNu (exc And maxReached)))) " #04
+            "G ((call And qs And (XBd (call And main))) --> ( (XNu (ret And qs And sorted)) Or (XNu (exc And maxReached)))) " #04
             ] 
 
 for u_size in range(1,5):
