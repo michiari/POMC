@@ -64,6 +64,6 @@ for u_size in [4,6,8,10,32]:
         f.write('include = "BuggyQuicksort_2.inc";')
 
 # experiments for comparison POMC with MOPED have been handwritten
-# the MOPED formula we verify are 
+# the MOPED formulae we verify are 
 #   1) F (ret And main) for the buggy version, and
 #   2) F (ok) for the correct version, which both verify correctness and termination.

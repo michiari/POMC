@@ -10,7 +10,7 @@ formulas = ["~ (XNu ((ret And main) Or (exc)))",   #01
 for u_size in range(1,5):
     for arr_size in range(2,8):
         filein = 'Repeated_Programs/' + 'RepeatedQuicksort_' + str(arr_size) + '.inc';
-        fileout = 'u' + str(u_size) + '/' +'Repeated_Programs/' +'RepeatedQuicksort_' + str(arr_size) + '.inc';
+        fileout = 'benchmark/u' + str(u_size) + '/' +'Repeated_Programs/' +'RepeatedQuicksort_' + str(arr_size) + '.inc';
         f1 = open(filein, 'r')
         f2 = open(fileout, 'w')
         for line in f1:
@@ -20,7 +20,7 @@ for u_size in range(1,5):
         n = 1;
         m = 0;
         for form in formulas:
-            with open('u' + str(u_size) +  '/Repeated/' + "repeated" + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(m) + str(n) +'.pomc', 'w') as f:
+            with open('benchmark/u' + str(u_size) +  '/Repeated/' + "repeated" + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(m) + str(n) +'.pomc', 'w') as f:
                 f.write('formulas = ' + form + ';\n')
                 f.write('include = "' + '../Repeated_Programs/'  +'RepeatedQuicksort_' + str(arr_size) + '.inc";')
             n += 1

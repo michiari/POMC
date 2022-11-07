@@ -120,7 +120,7 @@ def expand_files(arglist):
 
 def pretty_print(results, ms):
     timeh = "Time (ms)" if ms else "Time (s)"
-    header = ["Program", "Array values bits", "Array length", "Formula", timeh, "Total memory (KiB)", "GC Memory (KiB)", "Result"]
+    header = ["Program", "Array_values_bits", "Array_length", "Formula", timeh, "Total_memory(KiB)", "GC_Memory(KiB)", "Result"]
 
     if ms:
         for r in results:
