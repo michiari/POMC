@@ -49,19 +49,9 @@ for u_size in range(1,5):
                     f.write('formulas = ' + form + ';\n')
                     f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
 
-# generate experiments for comparing POMC with Vera
-for u_size in [4,6,8,10,32]:
-    filein = 'Buggy_Programs/BuggyQuicksort_2.inc';
-    fileout = 'Vera_Comparison/u' + str(u_size) + '/BuggyQuicksort_2.inc'
-    f1 = open(filein, 'r')
-    f2 = open(fileout, 'w')
-    for line in f1:
-        f2.write(line.replace('u*', 'u' + str(u_size)))
-    f1.close()
-    f2.close()
-    with open( 'Vera_Comparison/u' + str(u_size) + '/buggy-' + str(u_size) + '.2.01.pomc', 'w') as f:
-        f.write('formulas = ' + Buggy_formulas[0] + ';\n')
-        f.write('include = "BuggyQuicksort_2.inc";')
+# experiments for comparison POMC with VERA have been handwritten
+# the VERA formula we verify is:
+#   1) F (ret And main)
 
 # experiments for comparison POMC with MOPED have been handwritten
 # the MOPED formulae we verify are 
