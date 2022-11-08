@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import fileinput
 
-Buggy_formulas =  [   "F (ret And main)",        #01 (also the formula for VEra Comparison)
+Buggy_formulas =  [   "F (ret And main)",        #01
                 "XNu (ret And main)",            #02
                 "F ( G (sorted))",                 #03
                 "XNu (sorted)",                    #04
