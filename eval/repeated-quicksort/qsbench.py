@@ -119,7 +119,7 @@ def expand_files(arglist):
     return sorted(files)
 
 def pretty_print(results, ms):
-    timeh = "Time (ms)" if ms else "Time (s)"
+    timeh = "Time(ms)" if ms else "Time(s)"
     header = ["Program", "Array_values_bits", "Array_length", "Formula", timeh, "Total_memory(KiB)", "GC_Memory(KiB)", "Result"]
 
     if ms:
