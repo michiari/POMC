@@ -1,4 +1,4 @@
-/*  Corresponding procedure in C syntax:
+/*  Corresponding (abstracted) procedure in C syntax:
 
 	void quicksort (int left,int right)
 	{
