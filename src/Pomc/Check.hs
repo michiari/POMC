@@ -108,6 +108,9 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
         Eventually g       -> [f, Not f] ++ closList g
         AuxBack _ g        -> [f, Not f] ++ closList g
         Always _           -> error "Always formulas must be transformed to Eventually formulas."
+        WPNext _ _         -> error "Weak operators not supported in explicit-state model checking."
+        WXNext _ _         -> error "Weak operators not supported in explicit-state model checking."
+        Release _ _ _      -> error "Weak operators not supported in explicit-state model checking."
 
 
 -- given a formula closure, generate a bitEncoding
