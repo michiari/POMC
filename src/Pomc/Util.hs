@@ -10,7 +10,6 @@ module Pomc.Util ( any'
                  , implies
                  , xor
                  , safeHead
-                 , safeHeads
                  , safeTail
                  , timeAction
                  , timeToString
@@ -43,11 +42,6 @@ iff = (==)
 safeHead :: [a] -> Maybe a
 safeHead [] = Nothing
 safeHead (x:_) = Just x
-
-safeHeads :: [a] -> (Maybe a, Maybe a)
-safeHeads [] = (Nothing, Nothing)
-safeHeads [x] = (Just x, Nothing)
-safeHeads (x:y:_) = (Just x, Just y)
 
 safeTail :: [a] -> Maybe [a]
 safeTail [] = Nothing

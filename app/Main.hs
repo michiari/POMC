@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# OPTIONS_GHC -fno-cse #-}
 {- |
    Module      : Main
    Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari
@@ -12,14 +14,14 @@ import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.Util (safeHeads, timeAction, timeToString, prettyTrace)
+import Pomc.Util (timeAction, timeToString, prettyTrace)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
 
-import System.Environment
 import System.Exit
 import System.FilePath
+import System.Console.CmdArgs
 
 import Text.Megaparsec
 import Data.Text.IO (readFile)
@@ -32,15 +34,31 @@ import qualified Data.Set as S
 
 import Control.Monad
 
+data PomcArgs = PomcArgs
+  { finite :: Bool
+  , infinite :: Bool
+  , fileName :: FilePath
+  } deriving (Data,Typeable,Show,Eq)
+
+pomcArgs :: PomcArgs
+pomcArgs = PomcArgs
+  { finite = False &= help "Use finite-word semantics"
+  , infinite = False &= help "Use infinite-word (omega) semantics (default)"
+  , fileName = def &= args &= typFile -- &= help "Input file"
+  }
+  &= summary "POMC v2.0.0"
+  &= details [ "Only one input file can be specified."
+             , "--finite and --infinite cannot be specified together."
+             ]
+
 main :: IO ()
 main = do
-  args <- getArgs
-  (fname, isOmega) <- case safeHeads args of
-                         (Just "--help", _) -> exitHelp
-                         (Just fname, Just "--finite")   -> return (fname, False)
-                         (Just fname, Just "--infinite") -> return (fname, True)
-                         (Just fname, Nothing) -> return (fname, True) -- omega is the default case
-                         _ -> exitHelp
+  pargs <- cmdArgs pomcArgs
+  if infinite pargs && finite pargs
+    then die "--finite and --infinite cannot be specified together."
+    else return ()
+  let isOmega = not $ finite pargs
+      fname = fileName pargs
 
   fcontent <- readFile fname
   prepcontent <- preprocess fname fcontent
@@ -119,11 +137,6 @@ main = do
         showpset pset = let showpset' = concat . intersperse " " . map showp . S.toList
                         in concat ["(", showpset' pset, ")"]
         showstring = concat . intersperse " " . map showpset
-
-
-exitHelp :: IO a
-exitHelp = do progName <- getProgName
-              die ("USAGE:    " ++ progName ++ " -- FILE [--finite]")
 
 
 preprocess :: String -> T.Text -> IO T.Text
