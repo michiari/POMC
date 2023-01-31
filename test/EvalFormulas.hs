@@ -14,7 +14,7 @@ type TestCase = (String, Formula String)
 ap :: a -> Formula a
 ap = Atomic . Prop
 
-zipExpected :: [TestCase] -> [Bool] -> [(TestCase, Bool)]
+zipExpected :: [TestCase] -> [a] -> [(TestCase, a)]
 zipExpected cases expected
   | length cases == length expected = zip cases expected
   | otherwise = error "TestCases and Expected values of different lengths!"
