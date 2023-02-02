@@ -142,8 +142,9 @@ encodeFormula sym alphabet phi = do
   unravelPhik <- bigAndPred sym [phiAxioms, phiOPM, xnfPhi0, smb0EqEnd, forallx]
 
   emptyk <- emptyTerm formulaSymMap gamma stack kExpr
-  unravelPhikAndEmptyk <- W4.andPred sym unravelPhik emptyk
-  W4.existsPred sym kSym unravelPhikAndEmptyk
+  kgt0 <- W4.intLt sym sym0 kExpr
+  outerAnd <- bigAndPred sym [kgt0, unravelPhik, emptyk]
+  W4.existsPred sym kSym outerAnd
   where
     gammaArgCtx :: Assignment W4.BaseTypeRepr (EmptyCtx ::> SType ::> NodeType)
     gammaArgCtx = W4.knownRepr
