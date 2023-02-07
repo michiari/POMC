@@ -1,4 +1,4 @@
-Program      Array_values_bits  Array_length      Formula    Time (s)    Total_memory(KiB)    GC_Memory(KiB)  Result
+Program                      N  Array_length      Formula    Time (s)    Total_memory(KiB)    GC_Memory(KiB)  Result
 ---------  -------------------  --------------  ---------  ----------  -------------------  ----------------  --------
 verabuggy                   10  X                      01    0.64936                 92576          33605.6   False
 verabuggy                   32  X                      01   -1                          -1             -1     Time Out
