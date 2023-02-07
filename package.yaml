@@ -54,6 +54,7 @@ library:
   - filepath
   - what4
   - parameterized-utils
+  - bv-sized
 
 executables:
   pomc:

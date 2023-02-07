@@ -1,6 +1,9 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications #-}
 {- |
    Module      : Pomc.SMTEncoding
    Copyright   : 2020-2022 Michele Chiari
@@ -12,34 +15,49 @@ module Pomc.SMTEncoding ( SMTResult(..)
                         , isSatisfiable
                         ) where
 
-import Prelude hiding (take)
+import Prelude hiding (take, pred)
+import qualified Prelude as P
+import Control.Exception (assert)
+import Control.Monad (filterM)
+-- import System.IO (stderr)
 
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Dir(..), Formula(..), pnf)
-import Pomc.Prec (Prec(..), Alphabet)
+import Pomc.Prec (Prec(..), Alphabet, isComplete)
 
--- import System.IO (FilePath)
+import qualified What4.Config as W4
+import qualified What4.Expr as W4
+import qualified What4.Interface as W4
+import qualified What4.Solver as W4
+import qualified What4.Protocol.SMTLib2 as W4
 
+import GHC.TypeNats (type (<=))
 import Data.Parameterized.Nonce (newIONonceGenerator)
 import Data.Parameterized.Some (Some(..))
 import Data.Parameterized.Context hiding (take)
+import qualified Data.Parameterized.NatRepr as NR
 
-import What4.Config (extendConfig)
-import qualified What4.Expr as W4
-import qualified What4.Interface as W4
-import qualified What4.Concrete as W4
-import What4.Solver (defaultLogData, z3Options, withZ3)
-import qualified What4.Solver as W4
-import What4.Protocol.SMTLib2 (assume, sessionWriter, runCheckSat)
-
+import Data.Bits (finiteBitSize, countLeadingZeros)
+import qualified Data.BitVector.Sized as BV
+import Data.Tuple (swap)
 import Data.List ((\\))
 import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
 import Data.Foldable (foldlM)
 
--- import qualified Debug.Trace as DBG
+import qualified Debug.Trace as DBG
 
 data SMTResult = Sat | Unsat | Unknown deriving (Eq, Show)
+
+data TableauNode a = TableauNode { nodeGammaC :: [Formula a]
+                                 , nodeSmb    :: Prop a
+                                 , nodeStack  :: Integer
+                                 , nodeCtx    :: Integer
+                                 , nodeIdx    :: Integer
+                                 } deriving Show
+newtype SymEvalFn sym = SymEvalFn {
+  symEval :: forall tp . W4.SymExpr sym tp -> IO (W4.GroundValue tp) }
+
 
 z3executable :: FilePath
 z3executable = "z3"
@@ -52,51 +70,71 @@ isSatisfiable alphabet phi = do
   Some ng <- newIONonceGenerator
   sym <- W4.newExprBuilder W4.FloatIEEERepr W4.EmptyExprBuilderState ng
   -- We use z3 for the time being, might try more backends later
-  extendConfig z3Options (W4.getConfiguration sym)
+  W4.extendConfig W4.z3Options (W4.getConfiguration sym)
 
-  fenc <- encodeFormula sym alphabet (pnf phi)
+  (fenc, modelQuery) <- encodeFormula sym alphabet (pnf phi)
 
-  withZ3 sym z3executable defaultLogData $ \session -> do
+  let logData = W4.defaultLogData -- { W4.logHandle = Just stderr }
+  W4.withZ3 sym z3executable logData $ \session -> do
     -- Assume fenc is true
-    assume (sessionWriter session) fenc
-    runCheckSat session $ \result ->
+    W4.assume (W4.sessionWriter session) fenc
+    W4.runCheckSat session $ \result ->
       case result of
-        W4.Sat _ -> return Sat
+        W4.Sat (gef, _) -> do
+          tableau <- modelQuery (SymEvalFn $ W4.groundEval gef)
+            (\pred -> do
+                W4.assume (W4.sessionWriter session) pred
+                W4.runCheckSat session $ \newResult ->
+                  case newResult of
+                    W4.Sat (newSef, _) -> return $ SymEvalFn $ W4.groundEval newSef
+                    _ -> error "Unexpected unsat or unknown."
+            ) 10
+          DBG.traceShowM tableau
+          return Sat
         W4.Unsat _ -> return Unsat
         W4.Unknown -> return Unknown
 
-type SType = W4.BaseIntegerType
-sRepr :: W4.BaseTypeRepr W4.BaseIntegerType
-sRepr = W4.BaseIntegerRepr
+type SType w = W4.BaseBVType w
+sRepr :: 1 <= w => BV.NatRepr w -> W4.BaseTypeRepr (W4.BaseBVType w)
+sRepr = W4.BaseBVRepr
 
 type NodeType = W4.BaseIntegerType
 nodeRepr :: W4.BaseTypeRepr W4.BaseIntegerType
 nodeRepr = W4.BaseIntegerRepr
 type SymNode sym = W4.SymInteger sym
 
-type PrecFunType sym = W4.SymFn sym (EmptyCtx ::> SType ::> SType) W4.BaseBoolType
+type PrecFunType sym w = W4.SymFn sym (EmptyCtx ::> SType w ::> SType w) W4.BaseBoolType
 
 encodeFormula :: forall a sym.
                  (Ord a, Show a, W4.IsSymExprBuilder sym)
               => sym
               -> Alphabet a
               -> Formula a
-              -> IO (W4.Pred sym)
+              -> IO (W4.Pred sym, SymEvalFn sym -> (W4.Pred sym -> IO (SymEvalFn sym)) -> Integer -> IO [TableauNode a])
 encodeFormula sym alphabet phi = do
-  formulaSyms <- mapM (W4.concreteToSym sym . W4.ConcreteInteger) [0..(toInteger $ length clos)]
+  let closLen = length clos
+  Some bvWidth <- return $ NR.mkNatRepr $ toEnum
+    $ finiteBitSize closLen - countLeadingZeros closLen
+  Just NR.LeqProof <- return $ NR.isPosNat bvWidth
+  let formulaIndices = assert (closLen < 2^(NR.intValue bvWidth))
+        $ map (BV.mkBV bvWidth) [0..(toInteger closLen - 1)]
+  formulaSyms <- mapM (W4.bvLit sym bvWidth) formulaIndices
   let formulaSymMap = Map.fromList $ zip clos formulaSyms
+      formulaIdxMap = Map.fromList $ zip clos formulaIndices
   -- Uninterpreted Function Symbols
-  gamma  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "Gamma") gammaArgCtx W4.BaseBoolRepr
-  sigma  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "sigma") sigmaArgCtx W4.BaseBoolRepr
-  struct <- W4.freshTotalUninterpFn sym (W4.safeSymbol "struct") nodeArgCtx sRepr
-  smb    <- W4.freshTotalUninterpFn sym (W4.safeSymbol "smb") nodeArgCtx sRepr
-  yield  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "yield") precArgCtx W4.BaseBoolRepr
-  equal  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "equal") precArgCtx W4.BaseBoolRepr
-  take   <- W4.freshTotalUninterpFn sym (W4.safeSymbol "take") precArgCtx W4.BaseBoolRepr
+  gamma  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "Gamma")
+            (Empty :> sRepr bvWidth :> nodeRepr) W4.BaseBoolRepr
+  sigma  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "sigma")
+            (Empty :> sRepr bvWidth) W4.BaseBoolRepr
+  struct <- W4.freshTotalUninterpFn sym (W4.safeSymbol "struct") nodeArgCtx $ sRepr bvWidth
+  smb    <- W4.freshTotalUninterpFn sym (W4.safeSymbol "smb") nodeArgCtx $ sRepr bvWidth
+  yield  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "yield") (precArgCtx bvWidth) W4.BaseBoolRepr
+  equal  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "equal") (precArgCtx bvWidth) W4.BaseBoolRepr
+  take   <- W4.freshTotalUninterpFn sym (W4.safeSymbol "take") (precArgCtx bvWidth) W4.BaseBoolRepr
   stack  <- W4.freshTotalUninterpFn sym (W4.safeSymbol "stack") nodeArgCtx nodeRepr
   ctx    <- W4.freshTotalUninterpFn sym (W4.safeSymbol "ctx") nodeArgCtx nodeRepr
   -- Encoding
-  phiAxioms <- makePhiAxioms sigma struct smb formulaSymMap
+  phiAxioms <- makePhiAxioms bvWidth sigma struct smb formulaSymMap
   phiOPM <- makePhiOPM yield equal take formulaSymMap
 
   -- xnf(φ)(0)
@@ -105,18 +143,25 @@ encodeFormula sym alphabet phi = do
 
   -- smb(0) = #
   smb0 <- W4.applySymFn sym smb (Empty :> sym0)
-  smb0EqEnd <- W4.intEq sym smb0 (formulaSymMap Map.! (Atomic End))
+  smb0EqEnd <- W4.bvEq sym smb0 (formulaSymMap Map.! (Atomic End))
+
+  -- stack(0) = 0
+  stack0 <- W4.applySymFn sym stack (Empty :> sym0)
+  stack0Eq0 <- W4.intEq sym stack0 sym0
+
+  -- ctx(0) = 0
+  ctx0 <- W4.applySymFn sym ctx (Empty :> sym0)
+  ctx0Eq0 <- W4.intEq sym ctx0 sym0
 
   -- ∀x (...)
   xSym <- W4.freshBoundVar sym (W4.safeSymbol "x") nodeRepr
-  kSym <- W4.freshBoundVar sym (W4.safeSymbol "k") nodeRepr
   let xExpr = W4.varExpr sym xSym
-      kExpr = W4.varExpr sym kSym
+  kExpr <- W4.freshConstant sym (W4.safeSymbol "k") nodeRepr
   -- x < k
   xltk <- W4.intLt sym xExpr kExpr
 
   endx <- endTerm formulaSymMap gamma xExpr
-  conflictx <- conflict sigma gamma xExpr
+  conflictx <- conflict bvWidth sigma gamma xExpr
   pnextx <- pnext formulaSymMap gamma struct yield take xExpr
   -- push(x) → PUSH(x)
   checkPushx <- checkPrec smb struct yield xExpr
@@ -128,7 +173,7 @@ encodeFormula sym alphabet phi = do
   shiftxImpliesShiftx <- W4.impliesPred sym checkShiftx shiftx
   -- pop(x) → POP(x)
   checkPopx <- checkPrec smb struct take xExpr
-  popx <- pop gamma smb stack ctx xExpr
+  popx <- pop bvWidth gamma smb stack ctx xExpr
   popxImpliesPopx <- W4.impliesPred sym checkPopx popx
 
   quantifiedAnd <- bigAndPred sym [ endx, conflictx, pnextx
@@ -139,34 +184,38 @@ encodeFormula sym alphabet phi = do
   quantifiedImplies <- W4.impliesPred sym xltk quantifiedAnd
   forallx <- W4.forallPred sym xSym quantifiedImplies
 
-  unravelPhik <- bigAndPred sym [phiAxioms, phiOPM, xnfPhi0, smb0EqEnd, forallx]
+  unravelPhik <- bigAndPred sym [ phiAxioms, phiOPM
+                                , xnfPhi0, smb0EqEnd, stack0Eq0, ctx0Eq0
+                                , forallx
+                                ]
 
   emptyk <- emptyTerm formulaSymMap gamma stack kExpr
   kgt0 <- W4.intLt sym sym0 kExpr
-  outerAnd <- bigAndPred sym [kgt0, unravelPhik, emptyk]
-  W4.existsPred sym kSym outerAnd
+  -- kltn <- W4.intLit sym 10 >>= W4.intLt sym kExpr
+  keqn <- W4.intLit sym 2 >>= W4.intEq sym kExpr
+  existsk <- bigAndPred sym [kgt0, unravelPhik, emptyk, keqn]
+  -- kExpr is implicitly existentially quantified
+  return (existsk, queryTableau sym formulaSymMap formulaIdxMap bvWidth gamma smb stack ctx kExpr)
   where
-    gammaArgCtx :: Assignment W4.BaseTypeRepr (EmptyCtx ::> SType ::> NodeType)
-    gammaArgCtx = W4.knownRepr
-
-    sigmaArgCtx :: Assignment W4.BaseTypeRepr (EmptyCtx ::> SType)
-    sigmaArgCtx = W4.knownRepr
-
     nodeArgCtx :: Assignment W4.BaseTypeRepr (EmptyCtx ::> NodeType)
     nodeArgCtx = W4.knownRepr
 
-    precArgCtx :: Assignment W4.BaseTypeRepr (EmptyCtx ::> SType ::> SType)
-    precArgCtx = W4.knownRepr
+    precArgCtx :: 1 <= w
+               => NR.NatRepr w
+               -> Assignment W4.BaseTypeRepr (EmptyCtx ::> SType w ::> SType w)
+    precArgCtx bvWidth = Empty :> sRepr bvWidth :> sRepr bvWidth
 
     (structClos, clos) = closure alphabet phi
 
     -- φ_axioms
-    makePhiAxioms :: W4.SymFn sym (EmptyCtx ::> SType) W4.BaseBoolType
-                  -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
-                  -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
-                  -> Map.Map (Formula a) (W4.SymExpr sym SType)
+    makePhiAxioms :: 1 <= w
+                  => BV.NatRepr w
+                  -> W4.SymFn sym (EmptyCtx ::> SType w) W4.BaseBoolType
+                  -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
+                  -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
+                  -> Map.Map (Formula a) (W4.SymExpr sym (SType w))
                   -> IO (W4.Pred sym)
-    makePhiAxioms sigma struct smb formulaSymMap = do
+    makePhiAxioms bvWidth sigma struct smb formulaSymMap = do
       -- ∧_(p∈Σ) Σ(p)
       allStructInSigma <- bigAnd sym (W4.applySymFn sym sigma . (Empty :>))
         $ map (formulaSymMap Map.!) structClos
@@ -174,6 +223,21 @@ encodeFormula sym alphabet phi = do
       allOtherNotInSigma <- bigAnd sym
         (\p -> W4.applySymFn sym sigma (Empty :> p) >>= W4.notPred sym)
         $ map (formulaSymMap Map.!) (clos \\ structClos)
+      -- Needed because we use BitVectors for S
+      -- ySym <- W4.freshBoundVar sym (W4.safeSymbol "y") $ sRepr bvWidth
+      -- let yExpr = W4.varExpr sym ySym
+      -- sigmaY <- W4.applySymFn sym sigma (Empty :> yExpr)
+      -- maxSLit <- W4.bvLit sym bvWidth $ BV.mkBV bvWidth $ toInteger $ Map.size formulaSymMap
+      -- yLeqMaxSLit <- W4.bvUle sym yExpr maxSLit
+      -- sigmaYImpl <- W4.impliesPred sym sigmaY yLeqMaxSLit
+      -- onlyFormulasInSigma <- W4.forallPred sym ySym sigmaYImpl
+      -- Another way of doing it
+      onlyFormulasInSigma <- bigAnd sym
+        (\p -> do
+            pLit <- W4.bvLit sym bvWidth $ BV.mkBV bvWidth p
+            sigmaP <- W4.applySymFn sym sigma (Empty :> pLit)
+            W4.notPred sym sigmaP)
+        [(toInteger $ Map.size formulaSymMap)..(2^(NR.intValue bvWidth) - 1)]
       -- ∀x(Σ(struct(x)) ∧ Σ(smb(x)))
       xSym         <- W4.freshBoundVar sym (W4.safeSymbol "x") nodeRepr
       structX      <- W4.applySymFn sym struct (Empty :> W4.varExpr sym xSym)
@@ -183,16 +247,17 @@ encodeFormula sym alphabet phi = do
       forallArg    <- W4.andPred sym sigmaStructX sigmaSmbX
       assertForall <- W4.forallPred sym xSym forallArg
 
-      bigAndPred sym [allStructInSigma, allOtherNotInSigma, assertForall]
+      bigAndPred sym [allStructInSigma, allOtherNotInSigma, assertForall, onlyFormulasInSigma]
 
     -- φ_OPM -- Assumes (snd $ alphabet) is a complete OPM
-    makePhiOPM :: PrecFunType sym
-               -> PrecFunType sym
-               -> PrecFunType sym
-               -> Map.Map (Formula a) (W4.SymExpr sym SType)
+    makePhiOPM :: PrecFunType sym w
+               -> PrecFunType sym w
+               -> PrecFunType sym w
+               -> Map.Map (Formula a) (W4.SymExpr sym (SType w))
                -> IO (W4.Pred sym)
-    makePhiOPM yield equal take formulaSymMap =
-      bigAnd sym assertPrecPair $ snd alphabet
+    makePhiOPM yield equal take formulaSymMap = assert (isComplete alphabet)
+      $ bigAnd sym assertPrecPair
+      $ snd alphabet ++ [(End, p, Yield) | p <- fst alphabet] ++ [(End, End, Equal)]
       where assertPrecPair (p, q, prec) = do
               let pqArg = Empty
                           :> (formulaSymMap Map.! Atomic p)
@@ -212,9 +277,9 @@ encodeFormula sym alphabet phi = do
             getNegPrec Take = (yield, equal)
 
     -- push(xExpr), shift(xExpr), pop(xExpr)
-    checkPrec :: W4.SymFn sym (EmptyCtx ::> NodeType) SType
-              -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
-              -> PrecFunType sym
+    checkPrec :: W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
+              -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
+              -> PrecFunType sym w
               -> SymNode sym
               -> IO (W4.SymExpr sym W4.BaseBoolType)
     checkPrec smb struct precRel xExpr = do
@@ -223,8 +288,8 @@ encodeFormula sym alphabet phi = do
       W4.applySymFn sym precRel (Empty :> smbX :> structX)
 
     -- xnf(f)_G(xExpr)
-    groundxnf :: Map.Map (Formula a) (W4.SymExpr sym SType)
-              -> W4.SymFn sym (EmptyCtx ::> SType ::> NodeType) W4.BaseBoolType
+    groundxnf :: Map.Map (Formula a) (W4.SymExpr sym (SType w))
+              -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
               -> Formula a
               -> SymNode sym
               -> IO (W4.Pred sym)
@@ -266,15 +331,16 @@ encodeFormula sym alphabet phi = do
               (Empty :> (fsm Map.! g) :> xExpr)
 
     -- PUSH(xExpr)
-    push :: Map.Map (Formula a) (W4.SymExpr sym SType)
-         -> W4.SymFn sym (EmptyCtx ::> SType ::> NodeType) W4.BaseBoolType
-         -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
-         -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
+    push :: 1 <= w
+         => Map.Map (Formula a) (W4.SymExpr sym (SType w))
+         -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
+         -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
+         -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
          -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
          -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
-         -> PrecFunType sym
-         -> PrecFunType sym
-         -> PrecFunType sym
+         -> PrecFunType sym w
+         -> PrecFunType sym w
+         -> PrecFunType sym w
          -> SymNode sym
          -> IO (W4.Pred sym)
     push formulaSymMap gamma smb struct stack ctx yield equal take xExpr = do
@@ -290,7 +356,7 @@ encodeFormula sym alphabet phi = do
       xp1 <- ioxp1
       smbxp1 <- W4.applySymFn sym smb (Empty :> xp1)
       structx <- W4.applySymFn sym struct (Empty :> xExpr)
-      smbRule <- W4.intEq sym smbxp1 structx
+      smbRule <- W4.bvEq sym smbxp1 structx
       -- stack(x + 1) = x
       stackxp1 <- W4.applySymFn sym stack (Empty :> xp1)
       stackRule <- W4.intEq sym stackxp1 xExpr
@@ -324,10 +390,11 @@ encodeFormula sym alphabet phi = do
                      ]
 
     -- SHIFT(xExpr)
-    shift :: Map.Map (Formula a) (W4.SymExpr sym SType)
-          -> W4.SymFn sym (EmptyCtx ::> SType ::> NodeType) W4.BaseBoolType
-          -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
-          -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
+    shift :: 1 <= w
+          => Map.Map (Formula a) (W4.SymExpr sym (SType w))
+          -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
+          -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
+          -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
           -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
           -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
           -> SymNode sym
@@ -345,7 +412,7 @@ encodeFormula sym alphabet phi = do
       xp1 <- ioxp1
       smbxp1 <- W4.applySymFn sym smb (Empty :> xp1)
       structx <- W4.applySymFn sym struct (Empty :> xExpr)
-      smbRule <- W4.intEq sym smbxp1 structx
+      smbRule <- W4.bvEq sym smbxp1 structx
       -- stack(x + 1) = x
       stackxp1 <- W4.applySymFn sym stack (Empty :> xp1)
       stackx <- W4.applySymFn sym stack (Empty :> xExpr)
@@ -358,16 +425,18 @@ encodeFormula sym alphabet phi = do
       bigAndPred sym [pnextRule, wpnextRule, smbRule, stackRule, ctxRule]
 
     -- POP(xExpr)
-    pop :: W4.SymFn sym (EmptyCtx ::> SType ::> NodeType) W4.BaseBoolType
-        -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
+    pop :: 1 <= w
+        => BV.NatRepr w
+        -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
+        -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
         -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
         -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
         -> SymNode sym
         -> IO (W4.Pred sym)
-    pop gamma smb stack ctx xExpr = do
+    pop bvWidth gamma smb stack ctx xExpr = do
       xp1 <- W4.intLit sym 1 >>= W4.intAdd sym xExpr
       -- ∀p(Γ(p, x) ↔ Γ(p, x + 1))
-      pSym <- W4.freshBoundVar sym (W4.safeSymbol "p") sRepr
+      pSym <- W4.freshBoundVar sym (W4.safeSymbol "p") $ sRepr bvWidth
       let pExpr = W4.varExpr sym pSym
       gammapx <- W4.applySymFn sym gamma (Empty :> pExpr :> xExpr)
       gammapxp1 <- W4.applySymFn sym gamma (Empty :> pExpr :> xp1)
@@ -377,7 +446,7 @@ encodeFormula sym alphabet phi = do
       smbxp1 <- W4.applySymFn sym smb (Empty :> xp1)
       stackx <- W4.applySymFn sym stack (Empty :> xExpr)
       smbstackx <- W4.applySymFn sym smb (Empty :> stackx)
-      smbRule <- W4.intEq sym smbxp1 smbstackx
+      smbRule <- W4.bvEq sym smbxp1 smbstackx
       -- stack(x + 1) = stack(stack(x))
       stackxp1 <- W4.applySymFn sym stack (Empty :> xp1)
       stackstackx <- W4.applySymFn sym stack (Empty :> stackx)
@@ -390,8 +459,8 @@ encodeFormula sym alphabet phi = do
       bigAndPred sym [gammaRule, smbRule, stackRule, ctxRule]
 
     -- END(xExpr)
-    endTerm :: Map.Map (Formula a) (W4.SymExpr sym SType)
-            -> W4.SymFn sym (EmptyCtx ::> SType ::> NodeType) W4.BaseBoolType
+    endTerm :: Map.Map (Formula a) (W4.SymExpr sym (SType w))
+            -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
             -> SymNode sym
             -> IO (W4.Pred sym)
     endTerm fsm gamma xExpr = do
@@ -408,13 +477,15 @@ encodeFormula sym alphabet phi = do
       W4.impliesPred sym gammaEndx noGammaPNextAndnoGammaAP
 
     -- CONFLICT(xExpr)
-    conflict :: W4.SymFn sym (EmptyCtx ::> SType) W4.BaseBoolType
-             -> W4.SymFn sym (EmptyCtx ::> SType ::> NodeType) W4.BaseBoolType
+    conflict :: 1 <= w
+             => BV.NatRepr w
+             -> W4.SymFn sym (EmptyCtx ::> SType w) W4.BaseBoolType
+             -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
              -> SymNode sym
              -> IO (W4.Pred sym)
-    conflict sigma gamma xExpr = do
-      pSym <- W4.freshBoundVar sym (W4.safeSymbol "p") sRepr
-      qSym <- W4.freshBoundVar sym (W4.safeSymbol "q") sRepr
+    conflict bvWidth sigma gamma xExpr = do
+      pSym <- W4.freshBoundVar sym (W4.safeSymbol "p") $ sRepr bvWidth
+      qSym <- W4.freshBoundVar sym (W4.safeSymbol "q") $ sRepr bvWidth
       let pExpr = W4.varExpr sym pSym
           qExpr = W4.varExpr sym qSym
       sigmap <- W4.applySymFn sym sigma (Empty :> pExpr)
@@ -422,17 +493,17 @@ encodeFormula sym alphabet phi = do
       gammapx <- W4.applySymFn sym gamma (Empty :> pExpr :> xExpr)
       gammaqx <- W4.applySymFn sym gamma (Empty :> qExpr :> xExpr)
       andAll <- bigAndPred sym [sigmap, sigmaq, gammapx, gammaqx]
-      pEqq <- W4.intEq sym pExpr qExpr
+      pEqq <- W4.bvEq sym pExpr qExpr
       pqImpl <- W4.impliesPred sym andAll pEqq
       forallq <- W4.forallPred sym qSym pqImpl
       W4.forallPred sym pSym forallq
 
     -- PNEXT(xExpr)
-    pnext :: Map.Map (Formula a) (W4.SymExpr sym SType)
-          -> W4.SymFn sym (EmptyCtx ::> SType ::> NodeType) W4.BaseBoolType
-          -> W4.SymFn sym (EmptyCtx ::> NodeType) SType
-          -> PrecFunType sym
-          -> PrecFunType sym
+    pnext :: Map.Map (Formula a) (W4.SymExpr sym (SType w))
+          -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
+          -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
+          -> PrecFunType sym w
+          -> PrecFunType sym w
           -> SymNode sym
           -> IO (W4.Pred sym)
     pnext fsm gamma struct yield take xExpr = do
@@ -454,8 +525,8 @@ encodeFormula sym alphabet phi = do
       W4.andPred sym pnextDown pnextUp
 
     -- EMPTY(xExpr)
-    emptyTerm :: Map.Map (Formula a) (W4.SymExpr sym SType)
-              -> W4.SymFn sym (EmptyCtx ::> SType ::> NodeType) W4.BaseBoolType
+    emptyTerm :: Map.Map (Formula a) (W4.SymExpr sym (SType w))
+              -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
               -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
               -> SymNode sym
               -> IO (W4.Pred sym)
@@ -537,3 +608,63 @@ bigAnd sym predGen items =
 
 bigAndPred :: W4.IsExprBuilder t => t -> [W4.Pred t] -> IO (W4.Pred t)
 bigAndPred sym = bigAnd sym (id . return)
+
+queryTableau :: forall a sym w. (Show a, Ord a, W4.IsSymExprBuilder sym, 1 <= w)
+             => sym
+             -> Map.Map (Formula a) (W4.SymExpr sym (SType w))
+             -> Map.Map (Formula a) (BV.BV w)
+             -> BV.NatRepr w
+             -> W4.SymFn sym (EmptyCtx ::> SType w ::> NodeType) W4.BaseBoolType
+             -> W4.SymFn sym (EmptyCtx ::> NodeType) (SType w)
+             -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
+             -> W4.SymFn sym (EmptyCtx ::> NodeType) NodeType
+             -> SymNode sym
+             -> SymEvalFn sym
+             -> (W4.Pred sym -> IO (SymEvalFn sym))
+             -> Integer
+             -> IO [TableauNode a]
+queryTableau sym fsm fim bvWidth gamma smb stack ctx kExpr sef solver maxLen = do
+  traceLen <- symEval sef kExpr
+  let unrollLen = min traceLen maxLen
+  nodeQueries <- mapM queryTableauNode [0..unrollLen]
+  let (preds, evalQueries) = P.unzip nodeQueries
+  queryPred <- bigAndPred sym preds
+  newSef <- solver queryPred
+  mapM ($ newSef) evalQueries
+  where queryTableauNode :: Integer -> IO (W4.Pred sym, SymEvalFn sym -> IO (TableauNode a))
+        queryTableauNode idx = do
+          idxExpr <- W4.intLit sym idx
+          let mkGammaConst (f, fSym) = do
+                gammaConst <- W4.freshConstant sym
+                              (W4.safeSymbol $ "gamma_" ++ show (fim Map.! f) ++ show idx)
+                              W4.BaseBoolRepr
+                return (f, fSym, gammaConst)
+              mkGammaPred (_, fSym, gammaConst) = do
+                gammaApply <- W4.applySymFn sym gamma (Empty :> fSym :> idxExpr)
+                W4.eqPred sym gammaConst gammaApply
+          gammaConsts <- mapM mkGammaConst $ Map.toList fsm
+          gammaPreds <- bigAnd sym mkGammaPred gammaConsts
+          smbConst <- W4.freshConstant sym (W4.safeSymbol $ "smb_" ++ show idx) $ sRepr bvWidth
+          smbApply <- W4.applySymFn sym smb (Empty :> idxExpr)
+          smbPred <- W4.bvEq sym smbConst smbApply
+          stackConst <- W4.freshConstant sym (W4.safeSymbol $ "stack_" ++ show idx) nodeRepr
+          stackApply <- W4.applySymFn sym stack (Empty :> idxExpr)
+          stackPred <- W4.intEq sym stackConst stackApply
+          ctxConst <- W4.freshConstant sym (W4.safeSymbol $ "ctx_" ++ show idx) nodeRepr
+          ctxApply <- W4.applySymFn sym ctx (Empty :> idxExpr)
+          ctxPred <- W4.intEq sym ctxConst ctxApply
+          allPreds <- bigAndPred sym [smbPred, stackPred, ctxPred, gammaPreds]
+          let doQuery newSef = do
+                smbVal <- symEval newSef smbConst
+                let idxFormulaMap = Map.fromList $ map swap $ Map.toList fim
+                    Atomic smbProp = idxFormulaMap Map.! smbVal
+                stackVal <- symEval newSef stackConst
+                ctxVal <- symEval newSef ctxConst
+                gammaVals <- filterM (\(_, _, gammaConst) -> symEval newSef gammaConst) gammaConsts
+                return TableauNode { nodeGammaC = map (\(f, _, _) -> f) gammaVals
+                                   , nodeSmb = smbProp
+                                   , nodeStack = stackVal
+                                   , nodeCtx = ctxVal
+                                   , nodeIdx = idx
+                                   }
+          return (allPreds, doQuery)

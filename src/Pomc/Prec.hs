@@ -29,6 +29,7 @@ module Pomc.Prec ( -- * Main precedence type
                  , fromStructPR
                  , extractSLs
                  , addEnd
+                 , isComplete
                  ) where
 
 import Pomc.Prop (Prop(..))
@@ -126,3 +127,9 @@ extractSLs sprs = nubOrd $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) sprs
 
 addEnd :: Ord a => [StructPrecRel a] -> [StructPrecRel a]
 addEnd sprs = sprs ++ map (\p -> (p, End, Take)) (extractSLs sprs)
+
+-- Check if the OPM of the given alphabet is complete,
+-- except for relations of the form (End, q, Yield)
+isComplete :: Ord a => Alphabet a -> Bool
+isComplete (sls, sprs) = all (\p -> all (\q -> (p, q) `S.member` sprsSet) $ End:sls) sls
+  where sprsSet = S.fromList $ map (\(p, q, _) -> (p, q)) sprs
