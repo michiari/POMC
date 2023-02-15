@@ -3,7 +3,8 @@ module TestSMT ( tests ) where
 import EvalFormulas (TestCase, zipExpected, formulas)
 import OPMs (stlV2Alphabet)
 import Pomc.SMTEncoding (isSatisfiable, SMTResult(..))
-import Pomc.Potl (Formula(..))
+import Pomc.Potl (Formula(..), Prop(..))
+import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -16,7 +17,7 @@ tests = testGroup "SMTEncoding Satisfiability Tests"
 makeTestCase :: (TestCase, SMTResult)
              -> TestTree
 makeTestCase ((name, phi), expected) =
-  let sat = isSatisfiable stlV2Alphabet phi
+  let sat = isSatisfiable simpleAlphabet phi
   in testCase (name ++ " (" ++ show phi ++ ")") $ sat >>= (expected @=?)
 
 isSupported :: Formula a -> Bool
@@ -53,3 +54,13 @@ expectedRes =
   , Sat, Sat -- until_exc
   , Sat, Sat -- until_misc
   ]
+
+
+simplePrecRel :: [StructPrecRel String]
+simplePrecRel = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
+               ++ map (\p -> (Prop p, End, Take)) sl
+  where precs = [ ("call", "call", Take) ]
+        sl = ["call"]
+
+simpleAlphabet :: Alphabet String
+simpleAlphabet = ([Prop "call"], simplePrecRel)
