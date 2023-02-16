@@ -1,5 +1,5 @@
-Program      Array_values_bits    Array_length    Formula    Time (s)    Total_memory(KiB)    GC_Memory(KiB)  Result
----------  -------------------  --------------  ---------  ----------  -------------------  ----------------  --------
+Program   Array_values_bits(K) Array_length(M)    Formula     Time(s)    Total_memory(KiB)    GC_Memory(KiB)  Result
+--------- -------------------- ---------------  ---------  ----------  -------------------  ----------------  --------
 repeated                     1               2         01     0.45687                53976   21542.1          True
 repeated                     1               2         02     0.19393                52952   11801.3          True
 repeated                     1               2         03     0.25961                52952   16737.6          True

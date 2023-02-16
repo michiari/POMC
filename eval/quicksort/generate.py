@@ -33,6 +33,7 @@ SemiSafe_formulas = [   "F (ret And main)",                                     
 
 Benchmark = [(Buggy_formulas,"Buggy") , (Correct_formulas,"Correct"), (SemiSafe_formulas,"SemiSafe")]
 
+# we take programs and we instantiate them with different values of K (aka u_size)
 for u_size in range(1,5):
     for (exp,name) in Benchmark:
         for arr_size in range(2,8):

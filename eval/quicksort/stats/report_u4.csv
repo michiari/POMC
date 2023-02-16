@@ -1,5 +1,5 @@
-Program                      K               M  Formula      Time(s)      Total_memory(KiB)   GC_Memory(KiB)    Result
----------  -------------------  --------------  ---------  ----------  -------------------  ----------------  --------
+Program   Array_values_bits(K)  Array_length(M)   Formula      Time(s)     Total_memory(KiB)   GC_Memory(KiB)    Result
+--------- --------------------  ---------------  --------   ----------   -------------------  ----------------  --------
 buggy                        4               2         01     0.014223                 54396     1235.7          False
 buggy                        4               2         02     0.19877                  52940    11976.8          False
 buggy                        4               2         03     6.5431                  653152   282813            True

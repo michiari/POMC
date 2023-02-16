@@ -1,3 +1,4 @@
+# this R script can be used to generate the graphs that are shown in the journal paper
 require(ggplot2)
 require(ggrepel)
 require(dplyr)
@@ -134,49 +135,49 @@ dev.off()
 q1.table.alt <- q1[, c(2,3,5)]
 q1.table.alt <- q1.table.alt %>% spread(M, Time)
 q1.table.alt <- q1.table.alt[, -1]
-write.csv(q1.table.alt,"journal_tables\\q1.csv", row.names = TRUE)
+write.csv(q1.table.alt,"tables\\q1.csv", row.names = TRUE)
 
 q2.table.alt <- q2[, c(2,3,5)]
 q2.table.alt <- q2.table.alt %>% spread(M, Time)
 q2.table.alt <- q2.table.alt[, -1]
-write.csv(q2.table.alt,"journal_tables\\q2.csv", row.names = TRUE)
+write.csv(q2.table.alt,"tables\\q2.csv", row.names = TRUE)
 
 q3.table.alt <- q3[, c(2,3,5)]
 q3.table.alt <- q3.table.alt %>% spread(M, Time)
 q3.table.alt <- q3.table.alt[, -1]
-write.csv(q3.table.alt,"journal_tables\\q3.csv", row.names = TRUE)
+write.csv(q3.table.alt,"tables\\q3.csv", row.names = TRUE)
 
 q4.table.alt <- q4[, c(2,3,5)]
 q4.table.alt <- q4.table.alt %>% spread(M, Time)
 q4.table.alt <- q4.table.alt[, -1]
-write.csv(q4.table.alt,"journal_tables\\q4.csv", row.names = TRUE)
+write.csv(q4.table.alt,"tables\\q4.csv", row.names = TRUE)
 
 q5.table.alt <- q5[, c(2,3,5)]
 q5.table.alt <- q5.table.alt %>% spread(M, Time)
 q5.table.alt <- q5.table.alt[, -1]
-write.csv(q5.table.alt,"journal_tables\\q5.csv", row.names = TRUE)
+write.csv(q5.table.alt,"tables\\q5.csv", row.names = TRUE)
 
 q6.table.alt <- q6[, c(2,3,5)]
 q6.table.alt <- q6.table.alt %>% spread(M, Time)
 q6.table.alt <- q6.table.alt[, -1]
-write.csv(q6.table.alt,"journal_tables\\q6.csv", row.names = TRUE)
+write.csv(q6.table.alt,"tables\\q6.csv", row.names = TRUE)
 
 q7.table.alt <- q7[, c(2,3,5)]
 q7.table.alt <- q7.table.alt %>% spread(M, Time)
 q7.table.alt <- q7.table.alt[, -1]
-write.csv(q7.table.alt,"journal_tables\\q7.csv", row.names = TRUE)
+write.csv(q7.table.alt,"tables\\q7.csv", row.names = TRUE)
 
 q8.table.alt <- q8[, c(2,3,5)]
 q8.table.alt <- q8.table.alt %>% spread(M, Time)
 q8.table.alt <- q8.table.alt[, -1]
-write.csv(q8.table.alt,"journal_tables\\q8.csv", row.names = TRUE)
+write.csv(q8.table.alt,"tables\\q8.csv", row.names = TRUE)
 
 q9.table.alt <- q9[, c(2,3,5)]
 q9.table.alt <- q9.table.alt %>% spread(M, Time)
 q9.table.alt <- q9.table.alt[, -1]
-write.csv(q9.table.alt,"journal_tables\\q9.csv", row.names = TRUE)
+write.csv(q9.table.alt,"tables\\q9.csv", row.names = TRUE)
 
 q10.table.alt <- q10[, c(2,3,5)]
 q10.table.alt <- q10.table.alt %>% spread(M, Time)
 q10.table.alt <- q10.table.alt[, -1]
-write.csv(q10.table.alt,"journal_tables\\q10.csv", row.names = TRUE)
+write.csv(q10.table.alt,"tables\\q10.csv", row.names = TRUE)
