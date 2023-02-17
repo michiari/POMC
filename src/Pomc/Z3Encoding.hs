@@ -97,11 +97,15 @@ assertFormulaEncoding alphabet phi kWidth = do
   xApp <- toApp xVar
   -- kVar is implicitly existentially quantified
   kVar <- mkFreshConst "k" nodeSort
-  -- x < k
-  xltk <- mkBvult xVar kVar
 
+  -- x <= k
+  xlek <- mkBvule xVar kVar
   endx <- mkEndTerm fConstMap gamma xVar
   conflictx <- mkConflict sSort sigma gamma xVar
+  xlekImplies <- mkImplies xlek =<< mkAnd [endx, conflictx]
+
+  -- x < k
+  xltk <- mkBvult xVar kVar
   pnextx <- mkPnext nodeSort fConstMap gamma struct yield take xVar
   -- push(x) → PUSH(x)
   checkPushx <- mkCheckPrec smb struct yield xVar
@@ -116,12 +120,12 @@ assertFormulaEncoding alphabet phi kWidth = do
   popx <- mkPop sSort nodeSort gamma smb stack ctx xVar
   popxImpliesPopx <- mkImplies checkPopx popx
 
-  quantifiedAnd <- mkAnd [ endx, conflictx, pnextx
-                         , pushxImpliesPushx
-                         , shiftxImpliesShiftx
-                         , popxImpliesPopx
-                         ]
-  assert =<< mkForallConst [] [xApp] =<< mkImplies xltk quantifiedAnd
+  xltkImplies <- mkImplies xltk =<< mkAnd [ pnextx
+                                          , pushxImpliesPushx
+                                          , shiftxImpliesShiftx
+                                          , popxImpliesPopx
+                                          ]
+  assert =<< mkForallConst [] [xApp] =<< mkAnd [xlekImplies, xltkImplies]
   -- end ∀x (...)
 
   -- EMPTY(k)
