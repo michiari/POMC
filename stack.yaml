@@ -34,13 +34,8 @@ packages:
 # forks / in-progress versions pinned to a git hash. For example:
 #
 extra-deps:
-  - what4-1.3@sha256:cc0b7a8ca310f1bfa41d5a8cee6c53529707955c7a70000f016819e04004f30f,9183
-  - bv-sized-1.0.4@sha256:ddb32f807240f79e89bd85d9de16d663cb328d981015523bdf0d88d84e332d4f,2099
-  - config-value-0.8.3@sha256:94f504c5c7ad950f7154950e2850ee7db80bd0c0271e945d452332192cb1a4b8,1905
-  - panic-0.4.0.1@sha256:fb46577c9e0ca38c37960572f958a8469f2b577e963ed4f3ea1904d8400d828b,702
-  - parameterized-utils-2.1.6.0@sha256:edd033954350f38f95b8d4f98ac54e6fd6f58a25d0925dc5494c1ebc82aba6e2,4573
-  - zenc-0.1.2@sha256:2b32c40a3c11f07f466604526aacad2a535309da11b203334dbf586333c13534,1350
-  - bitwise-1.0.0.1@sha256:6ee22ada4e0b605fa433bec6a340703033e3cfe15edcf8f9feef7d446be49a54,3110
+  - git: https://github.com/IagoAbal/haskell-z3.git
+    commit: 6368e451e45359563106da7e917f6594453c5161
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a

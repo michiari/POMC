@@ -32,7 +32,7 @@ library:
   - Pomc.MiniProc
   - Pomc.MiniProcParse
   - Pomc.Util
-  - Pomc.SMTEncoding
+  - Pomc.Z3Encoding
   ghc-options:
   - -Wall
   - -O2
@@ -52,9 +52,7 @@ library:
   - unordered-containers
   - random
   - filepath
-  - what4
-  - parameterized-utils
-  - bv-sized
+  - z3
 
 executables:
   pomc:

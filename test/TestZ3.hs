@@ -1,23 +1,23 @@
-module TestSMT ( tests ) where
+module TestZ3 ( tests ) where
 
 import EvalFormulas (TestCase, zipExpected, formulas)
 import OPMs (stlV2Alphabet)
-import Pomc.SMTEncoding (isSatisfiable, SMTResult(..))
+import Pomc.Z3Encoding (isSatisfiable, SMTResult(..))
 import Pomc.Potl (Formula(..))
 
 import Test.Tasty
 import Test.Tasty.HUnit
 
 tests :: TestTree
-tests = testGroup "SMTEncoding Satisfiability Tests"
+tests = testGroup "Z3Encoding Satisfiability Tests"
   $ map makeTestCase
   $ zipExpected (filter (isSupported . snd) formulas) expectedRes
 
 makeTestCase :: (TestCase, SMTResult)
              -> TestTree
 makeTestCase ((name, phi), expected) =
-  let sat = isSatisfiable stlV2Alphabet phi
-  in testCase (name ++ " (" ++ show phi ++ ")") $ sat >>= (expected @=?)
+  let sat = isSatisfiable stlV2Alphabet phi 5
+  in testCase (name ++ " (" ++ show phi ++ ")") $ fmap fst sat >>= (expected @=?)
 
 isSupported :: Formula a -> Bool
 isSupported f = case f of
