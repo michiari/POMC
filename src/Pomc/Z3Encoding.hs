@@ -22,7 +22,7 @@ import qualified Z3.Monad as Z3
 
 import qualified Control.Exception as E
 import Control.Monad ((<=<), filterM)
-import Data.List ((\\))
+import Data.List ((\\), intercalate)
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
@@ -37,7 +37,16 @@ data TableauNode a = TableauNode { nodeGammaC :: [Formula a]
                                  , nodeStack  :: Integer
                                  , nodeCtx    :: Integer
                                  , nodeIdx    :: Integer
-                                 } deriving (Eq, Show)
+                                 } deriving Eq
+
+instance Show a => Show (TableauNode a) where
+  show tn = "(" ++ (intercalate ", " [ show $ nodeIdx tn
+                                     , show $ nodeGammaC tn
+                                     , "smb = " ++ show (nodeSmb tn)
+                                     , "stack = " ++ show (nodeStack tn)
+                                     , "ctx = " ++ show (nodeCtx tn)
+                                     ]) ++ ")"
+
 
 isSatisfiable :: (Eq a, Ord a, Show a)
               => Alphabet a
