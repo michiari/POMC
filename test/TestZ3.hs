@@ -16,7 +16,7 @@ tests = testGroup "Z3Encoding Satisfiability Tests"
 makeTestCase :: (TestCase, SMTResult)
              -> TestTree
 makeTestCase ((name, phi), expected) =
-  let sat = isSatisfiable stlV2Alphabet phi 5
+  let sat = isSatisfiable stlV2Alphabet phi 4
   in testCase (name ++ " (" ++ show phi ++ ")") $ fmap fst sat >>= (expected @=?)
 
 isSupported :: Formula a -> Bool

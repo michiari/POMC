@@ -73,7 +73,7 @@ assertFormulaEncoding alphabet phi kWidth = do
   stack  <- mkFreshFuncDecl "stack" [nodeSort] nodeSort
   ctx    <- mkFreshFuncDecl "ctx" [nodeSort] nodeSort
   -- Encoding
-  assert =<< mkPhiAxioms nodeSort fConstMap sigma struct smb
+  assert =<< mkPhiAxioms nodeSort fConstMap sigma struct smb gamma
   assert =<< mkPhiOPM fConstMap yield equal take
 
   -- xnf(φ)(0)
@@ -150,19 +150,22 @@ assertFormulaEncoding alphabet phi kWidth = do
       consts <- mapM (flip mkApp []) constrFns
       return (sSort, Map.fromList $ zip clos consts)
 
-    mkPhiAxioms :: Sort -> Map (Formula a) AST -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
-    mkPhiAxioms nodeSort fConstMap sigma struct smb = do
+    mkPhiAxioms :: Sort -> Map (Formula a) AST
+                -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
+    mkPhiAxioms nodeSort fConstMap sigma struct smb gamma = do
       -- ∧_(p∈Σ) Σ(p)
       allStructInSigma <- mkAndWith (mkApp1 sigma . (fConstMap Map.!)) structClos
       -- ∧_(p∈S \ Σ) ¬Σ(p)
       allOtherNotInSigma <- mkAndWith (mkNot <=< mkApp1 sigma . (fConstMap Map.!))
                             (clos \\ structClos)
-      -- ∀x(Σ(struct(x)) ∧ Σ(smb(x)))
+      -- ∀x(Σ(struct(x)) ∧ Σ(smb(x)) ∧ Γ(struct(x), x))
       xVar <- mkFreshConst "x" nodeSort
       xApp <- toApp xVar
-      sigmaStructX <- mkApp1 sigma =<< mkApp struct [xVar]
-      sigmaSmbX    <- mkApp1 sigma =<< mkApp smb [xVar]
-      forall <- mkForallConst [] [xApp] =<< mkAnd [sigmaStructX, sigmaSmbX]
+      structX <- mkApp1 struct xVar
+      sigmaStructX <- mkApp1 sigma structX
+      sigmaSmbX    <- mkApp1 sigma =<< mkApp1 smb xVar
+      gammaStructXX <- mkApp gamma [structX, xVar]
+      forall <- mkForallConst [] [xApp] =<< mkAnd [sigmaStructX, sigmaSmbX, gammaStructXX]
       mkAnd [allStructInSigma, allOtherNotInSigma, forall]
 
     mkPhiOPM :: Map (Formula a) AST -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
@@ -201,9 +204,9 @@ assertFormulaEncoding alphabet phi kWidth = do
       PNext _ _        -> applyGamma f
       PBack _ _        -> error "Past operators not supported yet."
       WPNext _ _       -> applyGamma f
-      XNext _ _        -> applyGamma f
+      XNext _ _        -> mkFalse -- applyGamma f
       XBack _ _        -> error "Past operators not supported yet."
-      WXNext _ _       -> applyGamma f
+      WXNext _ _       -> mkFalse -- applyGamma f
       HNext _ _        -> error "Hierarchical operators not supported yet."
       HBack _ _        -> error "Hierarchical operators not supported yet."
       Until _ _ _      -> error "Supplied formula is not in Next Normal Form."
@@ -470,6 +473,7 @@ queryTableau :: Sort -> Map (Formula a) AST
              -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
              -> AST -> Maybe Int -> Model -> Z3 [TableauNode a]
 queryTableau nodeSort fConstMap gamma smb stack ctx kVar maxLen model = do
+  -- DBG.traceM =<< showModel model
   Just kVal <- fmap fromInteger <$> evalBv False model kVar
   let unrollLength = case maxLen of
         Just ml -> min kVal ml
