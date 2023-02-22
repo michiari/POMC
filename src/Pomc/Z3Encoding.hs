@@ -29,6 +29,7 @@ import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
 import Data.Maybe (fromJust)
+import Data.Bits (finiteBitSize, countLeadingZeros)
 
 import qualified Debug.Trace as DBG
 
@@ -62,31 +63,39 @@ isSatisfiable :: (Eq a, Ord a, Show a)
               -> Formula a
               -> Int
               -> IO (SMTResult a)
-isSatisfiable alphabet phi maxDepthExp = evalZ3 $ do
-  (tableauQuery, assertTime) <- timeAction $ assertFormulaEncoding alphabet (pnf phi) maxDepthExp
-  ((res, maybeModel), checkTime) <- timeAction $ solverCheckAndGetModel
-  let smtRes = SMTResult { smtStatus = Unsat
-                         , smtTableau = Nothing
-                         , smtTimeAssert = assertTime
-                         , smtTimeCheck = checkTime
-                         , smtTimeModel = 0
-                         }
-  case res of
-    Z3.Sat -> do
-      (tableau, modelTime) <- timeAction $ tableauQuery Nothing $ fromJust maybeModel
-      return smtRes { smtStatus = Sat
-                    , smtTableau = Just tableau
-                    , smtTimeModel = modelTime
-                    }
-    Z3.Unsat -> return smtRes
-    Z3.Undef -> return smtRes { smtStatus = Unsat }
+isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
+  where
+    incrementalCheck assertTime checkTime k
+      | k > maxDepth = return SMTResult { smtStatus = Unknown
+                                        , smtTableau = Nothing
+                                        , smtTimeAssert = assertTime
+                                        , smtTimeCheck = checkTime
+                                        , smtTimeModel = 0
+                                        }
+      | otherwise = do
+          reset
+          (tableauQuery, newAssertTime) <-
+            timeAction $ assertFormulaEncoding alphabet (pnf phi) maxDepth
+          ((res, maybeModel), newCheckTime) <- timeAction $ solverCheckAndGetModel
+          if res == Z3.Sat
+            then do
+            (tableau, modelTime) <- timeAction $ tableauQuery Nothing $ fromJust maybeModel
+            return SMTResult { smtStatus = Sat
+                             , smtTableau = Just tableau
+                             , smtTimeAssert = assertTime + newAssertTime
+                             , smtTimeCheck = checkTime + newCheckTime
+                             , smtTimeModel = modelTime
+                             }
+            else incrementalCheck (assertTime + newAssertTime) (checkTime + newCheckTime) (k + 1)
+
 
 assertFormulaEncoding :: forall a. (Show a, Eq a, Ord a)
                       => Alphabet a
                       -> Formula a
                       -> Int
                       -> Z3 (Maybe Int -> Model -> Z3 [TableauNode a])
-assertFormulaEncoding alphabet phi kWidth = do
+assertFormulaEncoding alphabet phi k = do
+  let kWidth = finiteBitSize k - countLeadingZeros k
   -- Sorts
   boolSort <- mkBoolSort
   nodeSort <- mkBvSort kWidth
@@ -124,8 +133,7 @@ assertFormulaEncoding alphabet phi kWidth = do
   -- ∀x (...)
   xVar <- mkFreshConst "x" nodeSort
   xApp <- toApp xVar
-  -- kVar is implicitly existentially quantified
-  kVar <- mkFreshConst "k" nodeSort
+  kVar <- mkInt k nodeSort
 
   -- x <= k
   xlek <- mkBvule xVar kVar
@@ -160,7 +168,6 @@ assertFormulaEncoding alphabet phi kWidth = do
   -- EMPTY(k)
   assert =<< mkEmpty nodeSort fConstMap gamma stack kVar
   -- k > 0
-  assert =<< mkBvugt kVar node0
   return $ queryTableau nodeSort fConstMap gamma smb stack ctx kVar
   where
     (structClos, clos) = closure alphabet phi

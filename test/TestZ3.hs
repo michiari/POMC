@@ -18,7 +18,7 @@ tests = testGroup "Z3Encoding Satisfiability Tests"
 makeTestCase :: (TestCase, SMTStatus)
              -> TestTree
 makeTestCase ((name, phi), expected) =
-  let sat = DBG.traceShowId <$> isSatisfiable stlV2Alphabet phi 4
+  let sat = DBG.traceShowId <$> isSatisfiable stlV2Alphabet phi 10
   in testCase (name ++ " (" ++ show phi ++ ")") $ fmap smtStatus sat >>= (expected @=?)
 
 isSupported :: Formula a -> Bool
@@ -50,7 +50,7 @@ isSupported f = case f of
 
 expectedRes :: [SMTStatus]
 expectedRes =
-  [ Sat, Sat, Unsat, Unsat, Sat, Sat, Sat, Unsat, Sat, Unsat -- base_tests
+  [ Sat, Sat, Unknown, Unknown, Sat, Sat, Sat, Unknown, Sat, Unknown -- base_tests
   , Sat, Sat, Sat, Sat -- contains_exc
   , Sat, Sat -- until_exc
   , Sat, Sat -- until_misc
