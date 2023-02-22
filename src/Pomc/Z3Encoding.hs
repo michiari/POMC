@@ -75,7 +75,7 @@ isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
       | otherwise = do
           reset
           (tableauQuery, newAssertTime) <-
-            timeAction $ assertFormulaEncoding alphabet (pnf phi) maxDepth
+            timeAction $ assertFormulaEncoding alphabet (pnf phi) k
           ((res, maybeModel), newCheckTime) <- timeAction $ solverCheckAndGetModel
           if res == Z3.Sat
             then do
