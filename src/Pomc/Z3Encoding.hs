@@ -6,7 +6,8 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Z3Encoding ( SMTResult(..)
+module Pomc.Z3Encoding ( SMTStatus(..)
+                       , SMTResult(..)
                        , TableauNode(..)
                        , isSatisfiable
                        ) where
@@ -16,6 +17,7 @@ import Prelude hiding (take)
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Dir(..), Formula(..), pnf, atomic)
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
+import Pomc.Util (timeAction)
 
 import Z3.Monad hiding (Result(..))
 import qualified Z3.Monad as Z3
@@ -30,7 +32,7 @@ import Data.Maybe (fromJust)
 
 import qualified Debug.Trace as DBG
 
-data SMTResult = Sat | Unsat | Unknown deriving (Eq, Show)
+data SMTStatus = Sat | Unsat | Unknown deriving (Eq, Show)
 
 data TableauNode a = TableauNode { nodeGammaC :: [Formula a]
                                  , nodeSmb    :: Prop a
@@ -38,6 +40,13 @@ data TableauNode a = TableauNode { nodeGammaC :: [Formula a]
                                  , nodeCtx    :: Integer
                                  , nodeIdx    :: Integer
                                  } deriving Eq
+
+data SMTResult a = SMTResult { smtStatus :: SMTStatus
+                             , smtTableau :: Maybe [TableauNode a]
+                             , smtTimeAssert :: Double
+                             , smtTimeCheck :: Double
+                             , smtTimeModel :: Double
+                             } deriving (Eq, Show)
 
 instance Show a => Show (TableauNode a) where
   show tn = "(" ++ (intercalate ", " [ show $ nodeIdx tn
@@ -52,14 +61,25 @@ isSatisfiable :: (Eq a, Ord a, Show a)
               => Alphabet a
               -> Formula a
               -> Int
-              -> IO (SMTResult, Maybe [TableauNode a])
+              -> IO (SMTResult a)
 isSatisfiable alphabet phi maxDepthExp = evalZ3 $ do
-  tableauQuery <- assertFormulaEncoding alphabet (pnf phi) maxDepthExp
-  (res, maybeTableau) <- withModel $ tableauQuery Nothing
+  (tableauQuery, assertTime) <- timeAction $ assertFormulaEncoding alphabet (pnf phi) maxDepthExp
+  ((res, maybeModel), checkTime) <- timeAction $ solverCheckAndGetModel
+  let smtRes = SMTResult { smtStatus = Unsat
+                         , smtTableau = Nothing
+                         , smtTimeAssert = assertTime
+                         , smtTimeCheck = checkTime
+                         , smtTimeModel = 0
+                         }
   case res of
-    Z3.Sat -> DBG.traceShowM maybeTableau >> return (Sat, maybeTableau)
-    Z3.Unsat -> return (Unsat, Nothing)
-    Z3.Undef -> return (Unknown, Nothing)
+    Z3.Sat -> do
+      (tableau, modelTime) <- timeAction $ tableauQuery Nothing $ fromJust maybeModel
+      return smtRes { smtStatus = Sat
+                    , smtTableau = Just tableau
+                    , smtTimeModel = modelTime
+                    }
+    Z3.Unsat -> return smtRes
+    Z3.Undef -> return smtRes { smtStatus = Unsat }
 
 assertFormulaEncoding :: forall a. (Show a, Eq a, Ord a)
                       => Alphabet a

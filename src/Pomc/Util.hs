@@ -25,6 +25,7 @@ import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
 import Control.Parallel.Strategies (using, parList, parListChunk, rdeepseq)
 import Control.DeepSeq(NFData(..))
+import Control.Monad.IO.Class (MonadIO, liftIO)
 
 
 any' :: Foldable t => (a -> Bool) -> t a -> Bool
@@ -47,12 +48,13 @@ safeTail :: [a] -> Maybe [a]
 safeTail [] = Nothing
 safeTail (_:xs) = Just xs
 
-timeAction :: IO a -> IO (a, Double)
-timeAction action = do initializeTime
-                       t1 <- getTime
-                       a  <- action
-                       t2 <- getTime
-                       return (a, (t2 - t1))
+timeAction :: MonadIO m => m a -> m (a, Double)
+timeAction action = do
+  liftIO initializeTime
+  t1 <- liftIO getTime
+  a  <- action
+  t2 <- liftIO getTime
+  return (a, (t2 - t1))
 
 timeToString :: Double -> String
 timeToString = secs
