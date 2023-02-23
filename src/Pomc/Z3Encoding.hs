@@ -29,7 +29,7 @@ import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
 import Data.Maybe (fromJust)
-import Data.Bits (finiteBitSize, countLeadingZeros)
+import Data.Word (Word64)
 
 import qualified Debug.Trace as DBG
 
@@ -61,10 +61,11 @@ instance Show a => Show (TableauNode a) where
 isSatisfiable :: (Eq a, Ord a, Show a)
               => Alphabet a
               -> Formula a
-              -> Int
+              -> Word64
               -> IO (SMTResult a)
 isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
   where
+    pnfPhi = pnf phi
     incrementalCheck assertTime checkTime k
       | k > maxDepth = return SMTResult { smtStatus = Unknown
                                         , smtTableau = Nothing
@@ -74,8 +75,7 @@ isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
                                         }
       | otherwise = do
           reset
-          (tableauQuery, newAssertTime) <-
-            timeAction $ assertFormulaEncoding alphabet (pnf phi) k
+          (tableauQuery, newAssertTime) <- timeAction $ assertEncoding alphabet pnfPhi k
           ((res, maybeModel), newCheckTime) <- timeAction $ solverCheckAndGetModel
           if res == Z3.Sat
             then do
@@ -89,16 +89,16 @@ isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
             else incrementalCheck (assertTime + newAssertTime) (checkTime + newCheckTime) (k + 1)
 
 
-assertFormulaEncoding :: forall a. (Show a, Eq a, Ord a)
-                      => Alphabet a
-                      -> Formula a
-                      -> Int
-                      -> Z3 (Maybe Int -> Model -> Z3 [TableauNode a])
-assertFormulaEncoding alphabet phi k = do
-  let kWidth = finiteBitSize k - countLeadingZeros k
+assertEncoding :: forall a. (Show a, Eq a, Ord a)
+               => Alphabet a
+               -> Formula a
+               -> Word64
+               -> Z3 (Maybe Word64 -> Model -> Z3 [TableauNode a])
+assertEncoding alphabet phi k = do
   -- Sorts
   boolSort <- mkBoolSort
-  nodeSort <- mkBvSort kWidth
+  nodeSortSymbol <- mkStringSymbol "NodeSort"
+  nodeSort <- mkFiniteDomainSort nodeSortSymbol nodeSortSize
   (sSort, fConstMap) <- mkSSort
   -- Uninterpreted functions
   gamma  <- mkFreshFuncDecl "gamma" [sSort, nodeSort] boolSort
@@ -114,62 +114,54 @@ assertFormulaEncoding alphabet phi k = do
   assert =<< mkPhiAxioms nodeSort fConstMap sigma struct smb gamma
   assert =<< mkPhiOPM fConstMap yield equal take
 
-  -- xnf(φ)(0)
-  node0 <- mkInt 0 nodeSort
-  assert =<< groundxnf fConstMap gamma (xnf phi) node0
+  -- xnf(φ)(1)
+  node1 <- mkUnsignedInt64 1 nodeSort
+  assert =<< groundxnf fConstMap gamma (xnf phi) node1
 
-  -- smb(0) = #
-  smb0 <- mkApp1 smb node0
-  assert =<< mkEq smb0 (fConstMap Map.! Atomic End)
+  -- smb(1) = #
+  assert =<< mkEq (fConstMap Map.! Atomic End) =<< mkApp1 smb node1
 
-  -- stack(0) = 0
-  stack0 <- mkApp1 stack node0
-  assert =<< mkEq stack0 node0
+  -- stack(1) = ⊥
+  nodeBot <- mkUnsignedInt64 0 nodeSort
+  assert =<< mkEq nodeBot =<< mkApp1 stack node1
 
-  -- ctx(0) = 0
-  ctx0 <- mkApp1 ctx node0
-  assert =<< mkEq ctx0 node0
+  -- ctx(1) = ⊥
+  assert =<< mkEq nodeBot =<< mkApp1 ctx node1
 
-  -- ∀x (...)
-  xVar <- mkFreshConst "x" nodeSort
-  xApp <- toApp xVar
-  kVar <- mkInt k nodeSort
-
+  -- start ∀x (...)
   -- x <= k
-  xlek <- mkBvule xVar kVar
-  endx <- mkEndTerm fConstMap gamma xVar
-  conflictx <- mkConflict sSort sigma gamma xVar
-  xlekImplies <- mkImplies xlek =<< mkAnd [endx, conflictx]
+  assert =<< mkAndWith (\x -> do
+                           xLit <- mkUnsignedInt64 x nodeSort
+                           endx <- mkEndTerm fConstMap gamma xLit
+                           conflictx <- mkConflict sSort sigma gamma xLit
+                           mkAnd [endx, conflictx]
+                       ) [1..k]
 
   -- x < k
-  xltk <- mkBvult xVar kVar
-  pnextx <- mkPnext nodeSort fConstMap gamma struct yield take xVar
-  -- push(x) → PUSH(x)
-  checkPushx <- mkCheckPrec smb struct yield xVar
-  pushx <- mkPush nodeSort fConstMap gamma smb struct stack ctx yield equal take xVar
-  pushxImpliesPushx <- mkImplies checkPushx pushx
-  -- shift(x) → SHIFT(x)
-  checkShiftx <- mkCheckPrec smb struct equal xVar
-  shiftx <- mkShift nodeSort fConstMap gamma smb struct stack ctx xVar
-  shiftxImpliesShiftx <- mkImplies checkShiftx shiftx
-  -- pop(x) → POP(x)
-  checkPopx <- mkCheckPrec smb struct take xVar
-  popx <- mkPop sSort nodeSort gamma smb stack ctx xVar
-  popxImpliesPopx <- mkImplies checkPopx popx
-
-  xltkImplies <- mkImplies xltk =<< mkAnd [ pnextx
-                                          , pushxImpliesPushx
-                                          , shiftxImpliesShiftx
-                                          , popxImpliesPopx
-                                          ]
-  assert =<< mkForallConst [] [xApp] =<< mkAnd [xlekImplies, xltkImplies]
+  let mkTransitions x = do
+        pnextx <- mkPnext nodeSort fConstMap gamma struct yield take x
+        xLit <- mkUnsignedInt64 x nodeSort
+        -- push(x) → PUSH(x)
+        checkPushx <- mkCheckPrec smb struct yield xLit
+        pushx <- mkPush nodeSort fConstMap gamma smb struct stack ctx yield equal take x
+        pushxImpliesPushx <- mkImplies checkPushx pushx
+        -- shift(x) → SHIFT(x)
+        checkShiftx <- mkCheckPrec smb struct equal xLit
+        shiftx <- mkShift nodeSort fConstMap gamma smb struct stack ctx x
+        shiftxImpliesShiftx <- mkImplies checkShiftx shiftx
+        -- pop(x) → POP(x)
+        checkPopx <- mkCheckPrec smb struct take xLit
+        popx <- mkPop sSort nodeSort gamma smb stack ctx x
+        popxImpliesPopx <- mkImplies checkPopx popx
+        mkAnd [pnextx, pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx]
+  assert =<< mkAndWith mkTransitions [1..(k - 1)]
   -- end ∀x (...)
 
-  -- EMPTY(k)
-  assert =<< mkEmpty nodeSort fConstMap gamma stack kVar
-  -- k > 0
-  return $ queryTableau nodeSort fConstMap gamma smb stack ctx kVar
+  -- EMPTY(k+1)
+  assert =<< mkEmpty nodeSort fConstMap gamma stack k
+  return $ queryTableau nodeSort fConstMap gamma smb stack ctx k
   where
+    nodeSortSize = k + 1
     (structClos, clos) = closure alphabet phi
 
     mkSSort :: Z3 (Sort, Map (Formula a) AST)
@@ -195,13 +187,14 @@ assertFormulaEncoding alphabet phi k = do
       allOtherNotInSigma <- mkAndWith (mkNot <=< mkApp1 sigma . (fConstMap Map.!))
                             (clos \\ structClos)
       -- ∀x(Σ(struct(x)) ∧ Σ(smb(x)) ∧ Γ(struct(x), x))
-      xVar <- mkFreshConst "x" nodeSort
-      xApp <- toApp xVar
-      structX <- mkApp1 struct xVar
-      sigmaStructX <- mkApp1 sigma structX
-      sigmaSmbX    <- mkApp1 sigma =<< mkApp1 smb xVar
-      gammaStructXX <- mkApp gamma [structX, xVar]
-      forall <- mkForallConst [] [xApp] =<< mkAnd [sigmaStructX, sigmaSmbX, gammaStructXX]
+      forall <- mkAndWith (\x -> do
+                              xLit <- mkUnsignedInt64 x nodeSort
+                              structX <- mkApp1 struct xLit
+                              sigmaStructX <- mkApp1 sigma structX
+                              sigmaSmbX    <- mkApp1 sigma =<< mkApp1 smb xLit
+                              gammaStructXX <- mkApp gamma [structX, xLit]
+                              mkAnd [sigmaStructX, sigmaSmbX, gammaStructXX]
+                          ) [1..k]
       mkAnd [allStructInSigma, allOtherNotInSigma, forall]
 
     mkPhiOPM :: Map (Formula a) AST -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
@@ -292,15 +285,16 @@ assertFormulaEncoding alphabet phi k = do
 
     -- PNEXT(xExpr)
     mkPnext :: Sort -> Map (Formula a) AST
-            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> AST
+            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
             -> Z3 AST
     mkPnext nodeSort fConstMap gamma struct yield take x = do
       let pnextPrec prec g = do
+            xLit <- mkUnsignedInt64 x nodeSort
             -- Γ(g, x)
-            gammagx <- mkApp gamma [fConstMap Map.! g, x]
+            gammagx <- mkApp gamma [fConstMap Map.! g, xLit]
             -- struct(x) prec struct(x + 1)
-            structx <- mkApp1 struct x
-            xp1 <- mkBvadd x =<< mkInt 1 nodeSort
+            structx <- mkApp1 struct xLit
+            xp1 <- mkUnsignedInt64 (x + 1) nodeSort
             structxp1 <- mkApp1 struct xp1
             structPrec <- mkApp prec [structx, structxp1]
             -- Final negated and
@@ -321,95 +315,97 @@ assertFormulaEncoding alphabet phi k = do
     -- PUSH(x)
     mkPush :: Sort -> Map (Formula a) AST
            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
-           -> FuncDecl -> FuncDecl -> FuncDecl -> AST -> Z3 AST
+           -> FuncDecl -> FuncDecl -> FuncDecl -> Word64 -> Z3 AST
     mkPush nodeSort fConstMap gamma smb struct stack ctx yield equal take x = do
-      let mxp1 = mkBvadd x =<< mkInt 1 nodeSort
-          propagateNext (next, arg) = do
-            lhs <- mkApp gamma [fConstMap Map.! next, x]
-            rhs <- groundxnf fConstMap gamma (xnf arg) =<< mxp1
+      xLit <- mkUnsignedInt64 x nodeSort
+      xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+      let propagateNext (next, arg) = do
+            lhs <- mkApp gamma [fConstMap Map.! next, xLit]
+            rhs <- groundxnf fConstMap gamma (xnf arg) xp1
             mkEq lhs rhs
       -- big ands
       pnextRule <- mkAndWith propagateNext [(g, alpha) | g@(PNext _ alpha) <- clos]
       wpnextRule <- mkAndWith propagateNext [(g, alpha) | g@(WPNext _ alpha) <- clos]
       -- smb(x + 1) = struct(x)
-      xp1 <- mxp1
       smbxp1 <- mkApp1 smb xp1
-      structx <- mkApp1 struct x
+      structx <- mkApp1 struct xLit
       smbRule <- mkEq smbxp1 structx
       -- stack(x + 1) = x
       stackxp1 <- mkApp1 stack xp1
-      stackRule <- mkEq stackxp1 x
-      -- stack(x) = 0 → ctx(x + 1) = 0
-      node0 <- mkInt 0 nodeSort
-      stackx <- mkApp1 stack x
+      stackRule <- mkEq stackxp1 xLit
+      -- stack(x) = ⊥ → ctx(x + 1) = ⊥
+      nodeBot <- mkUnsignedInt64 0 nodeSort
+      stackx <- mkApp1 stack xLit
       ctxxp1 <- mkApp1 ctx xp1
-      stackxEq0 <- mkEq stackx node0
-      ctxxp1Eq0 <- mkEq ctxxp1 node0
-      rootCtxRule <- mkImplies stackxEq0 ctxxp1Eq0
-      -- (stack(x) != 0 ∧ (push(x − 1) ∨ shift(x − 1))) → ctx(x + 1) = x − 1
-      stackxNeq0 <- mkNot =<< mkEq stackx node0
-      xm1 <- mkBvsub x =<< mkInt 1 nodeSort
+      stackxEqBot <- mkEq stackx nodeBot
+      ctxxp1EqBot <- mkEq ctxxp1 nodeBot
+      botCtxRule <- mkImplies stackxEqBot ctxxp1EqBot
+      -- (stack(x) != ⊥ ∧ (push(x − 1) ∨ shift(x − 1))) → ctx(x + 1) = x − 1
+      stackxNeqBot <- mkNot =<< mkEq stackx nodeBot
+      xm1 <- mkUnsignedInt64 (x - 1) nodeSort
       pushxm1 <- mkCheckPrec smb struct yield xm1
       shiftxm1 <- mkCheckPrec smb struct equal xm1
       pushOrShiftxm1 <- mkOr [pushxm1, shiftxm1]
-      stackxNeq0AndpushOrShiftxm1 <- mkAnd [stackxNeq0, pushOrShiftxm1]
+      stackxNeqBotAndpushOrShiftxm1 <- mkAnd [stackxNeqBot, pushOrShiftxm1]
       ctxxp1Eqxm1 <- mkEq ctxxp1 xm1
-      pushShiftCtxRule <- mkImplies stackxNeq0AndpushOrShiftxm1 ctxxp1Eqxm1
-      -- (stack(x) != 0 ∧ pop(x − 1)) → ctx(x + 1) = ctx(x)
+      pushShiftCtxRule <- mkImplies stackxNeqBotAndpushOrShiftxm1 ctxxp1Eqxm1
+      -- (stack(x) != ⊥ ∧ pop(x − 1)) → ctx(x + 1) = ctx(x)
       popxm1 <- mkCheckPrec smb struct take xm1
-      stackxNeq0AndPopxm1 <- mkAnd [stackxNeq0, popxm1]
-      ctxx <- mkApp1 ctx x
+      stackxNeqBotAndPopxm1 <- mkAnd [stackxNeqBot, popxm1]
+      ctxx <- mkApp1 ctx xLit
       ctxxp1Eqctxx <- mkEq ctxxp1 ctxx
-      popCtxRule <- mkImplies stackxNeq0AndPopxm1 ctxxp1Eqctxx
+      popCtxRule <- mkImplies stackxNeqBotAndPopxm1 ctxxp1Eqctxx
       -- Final and
       mkAnd [ pnextRule, wpnextRule
             , smbRule, stackRule
-            , rootCtxRule, pushShiftCtxRule, popCtxRule
+            , botCtxRule, pushShiftCtxRule, popCtxRule
             ]
 
     -- SHIFT(x)
     mkShift :: Sort -> Map (Formula a) AST
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
-            -> AST -> Z3 AST
+            -> Word64 -> Z3 AST
     mkShift nodeSort fConstMap gamma smb struct stack ctx x = do
-      let mxp1 = mkBvadd x =<< mkInt 1 nodeSort
-          propagateNext (next, arg) = do
-            lhs <- mkApp gamma [fConstMap Map.! next, x]
-            rhs <- groundxnf fConstMap gamma (xnf arg) =<< mxp1
+      xLit <- mkUnsignedInt64 x nodeSort
+      xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+      let propagateNext (next, arg) = do
+            lhs <- mkApp gamma [fConstMap Map.! next, xLit]
+            rhs <- groundxnf fConstMap gamma (xnf arg) xp1
             mkImplies lhs rhs
       -- big ands
       pnextRule <- mkAndWith propagateNext [(g, alpha) | g@(PNext _ alpha) <- clos]
       wpnextRule <- mkAndWith propagateNext [(g, alpha) | g@(WPNext _ alpha) <- clos]
       -- smb(x + 1) = struct(x)
-      xp1 <- mxp1
       smbxp1 <- mkApp1 smb xp1
-      structx <- mkApp1 struct x
+      structx <- mkApp1 struct xLit
       smbRule <- mkEq smbxp1 structx
       -- stack(x + 1) = x
       stackxp1 <- mkApp1 stack xp1
-      stackx <- mkApp1 stack x
+      stackx <- mkApp1 stack xLit
       stackRule <- mkEq stackxp1 stackx
       -- ctx(x + 1) = ctx(x)
       ctxxp1 <- mkApp1 ctx xp1
-      ctxx <- mkApp1 ctx x
+      ctxx <- mkApp1 ctx xLit
       ctxRule <- mkEq ctxxp1 ctxx
       -- Final and
       mkAnd [pnextRule, wpnextRule, smbRule, stackRule, ctxRule]
 
     -- POP(xExpr)
-    mkPop :: Sort -> Sort -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> AST -> Z3 AST
+    mkPop :: Sort -> Sort -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
+          -> Z3 AST
     mkPop sSort nodeSort gamma smb stack ctx x = do
-      xp1 <- mkBvadd x =<< mkInt 1 nodeSort
+      xLit <- mkUnsignedInt64 x nodeSort
+      xp1 <- mkUnsignedInt64 (x + 1) nodeSort
       -- ∀p(Γ(p, x) ↔ Γ(p, x + 1))
       pVar <- mkFreshConst "p" sSort
       pApp <- toApp pVar
-      gammapx <- mkApp gamma [pVar, x]
+      gammapx <- mkApp gamma [pVar, xLit]
       gammapxp1 <- mkApp gamma [pVar, xp1]
       gammaIff <- mkIff gammapx gammapxp1
       gammaRule <- mkForallConst [] [pApp] gammaIff
       -- smb(x + 1) = smb(stack(x))
       smbxp1 <- mkApp1 smb xp1
-      stackx <- mkApp1 stack x
+      stackx <- mkApp1 stack xLit
       smbstackx <- mkApp1 smb stackx
       smbRule <- mkEq smbxp1 smbstackx
       -- stack(x + 1) = stack(stack(x))
@@ -424,14 +420,15 @@ assertFormulaEncoding alphabet phi k = do
       mkAnd [gammaRule, smbRule, stackRule, ctxRule]
 
     -- EMPTY(x)
-    mkEmpty :: Sort -> Map (Formula a) AST -> FuncDecl -> FuncDecl -> AST -> Z3 AST
+    mkEmpty :: Sort -> Map (Formula a) AST -> FuncDecl -> FuncDecl -> Word64 -> Z3 AST
     mkEmpty nodeSort fConstMap gamma stack x = do
+      xLit <- mkUnsignedInt64 x nodeSort
       -- Γ(#, x)
-      gammaEndx <- mkApp gamma [fConstMap Map.! Atomic End, x]
-      -- stack(x) = 0
-      stackx <- mkApp1 stack x
-      stackxEq0 <- mkEq stackx =<< mkInt 0 nodeSort
-      mkAnd [gammaEndx, stackxEq0]
+      gammaEndx <- mkApp gamma [fConstMap Map.! Atomic End, xLit]
+      -- stack(x) = ⊥
+      stackx <- mkApp1 stack xLit
+      stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
+      mkAnd [gammaEndx, stackxEqBot]
 
 
 mkApp1 :: FuncDecl -> AST -> Z3 AST
@@ -507,25 +504,23 @@ xnf f = case f of
 
 queryTableau :: Sort -> Map (Formula a) AST
              -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
-             -> AST -> Maybe Int -> Model -> Z3 [TableauNode a]
-queryTableau nodeSort fConstMap gamma smb stack ctx kVar maxLen model = do
-  -- DBG.traceM =<< showModel model
-  Just kVal <- fmap fromInteger <$> evalBv False model kVar
+             -> Word64 -> Maybe Word64 -> Model -> Z3 [TableauNode a]
+queryTableau nodeSort fConstMap gamma smb stack ctx k maxLen model = do
   let unrollLength = case maxLen of
-        Just ml -> min kVal ml
-        Nothing -> kVal
-  mapM queryTableauNode [0..unrollLength]
+        Just ml -> min k ml
+        Nothing -> k
+  mapM queryTableauNode [1..unrollLength]
   where
     fConstList = Map.toList fConstMap
     constPropMap = Map.fromList $ map (\(Atomic p, fConst) -> (fConst, p))
                    $ filter (atomic . fst) fConstList
     queryTableauNode idx = do
-      idxNode <- mkInt idx nodeSort
+      idxNode <- mkUnsignedInt64 idx nodeSort
       gammaVals <- filterM (\(_, fConst) -> fromJust <$>
                              (evalBool model =<< mkApp gamma [fConst, idxNode])) fConstList
       Just smbVal <- eval model =<< mkApp1 smb idxNode
-      Just stackVal <- evalBv False model =<< mkApp1 stack idxNode
-      Just ctxVal <- evalBv False model =<< mkApp1 ctx idxNode
+      Just stackVal <- evalInt model =<< mkApp1 stack idxNode
+      Just ctxVal <- evalInt model =<< mkApp1 ctx idxNode
       return TableauNode { nodeGammaC = map fst gammaVals
                          , nodeSmb = constPropMap Map.! smbVal
                          , nodeStack = stackVal
