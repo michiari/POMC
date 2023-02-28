@@ -15,7 +15,7 @@ module Pomc.Z3Encoding ( SMTStatus(..)
 import Prelude hiding (take)
 
 import Pomc.Prop (Prop(..))
-import Pomc.Potl (Dir(..), Formula(..), pnf, atomic)
+import Pomc.Potl (Dir(..), Formula(..), transform, pnf, atomic)
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
 import Pomc.Util (timeAction)
 
@@ -65,7 +65,7 @@ isSatisfiable :: (Eq a, Ord a, Show a)
               -> IO (SMTResult a)
 isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
   where
-    pnfPhi = pnf phi
+    pnfPhi = pnf $ transform translate phi
     incrementalCheck assertTime checkTime k
       | k > maxDepth = return SMTResult { smtStatus = Unknown
                                         , smtTableau = Nothing
@@ -497,9 +497,20 @@ xnf f = case f of
   Since _ _ _     -> error "Past operators not supported yet."
   HUntil _ _ _    -> error "Hierarchical operators not supported yet."
   HSince _ _ _    -> error "Hierarchical operators not supported yet."
-  Eventually _    -> error "LTL operators not supported yet."
-  Always _        -> error "LTL operators not supported yet."
+  Eventually g    -> error "LTL operators only supported through translation."
+  Always g        -> error "LTL operators only supported through translation."
   AuxBack _ _     -> error "AuxBack not supported in SMT encoding."
+
+translate :: Formula a -> Formula a
+translate phi = transform applyTransl phi
+  where applyTransl f = case f of
+          HNext dir g    -> error "Hierarchical operators not supported yet."
+          HBack dir g    -> error "Hierarchical operators not supported yet."
+          HUntil dir g h -> error "Hierarchical operators not supported yet."
+          HSince dir g h -> error "Hierarchical operators not supported yet."
+          Eventually g   -> Until Up T (Until Down T g)
+          Always g       -> Not . Until Up T . Until Down T . Not $ g
+          _              -> f
 
 
 queryTableau :: Sort -> Map (Formula a) AST

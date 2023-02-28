@@ -9,6 +9,7 @@
 module Pomc.Potl ( Dir(..)
                  , Prop(..)
                  , Formula(..)
+                 , transform
                  , getProps
                    -- * Predicates on formulas
                  , atomic
@@ -55,13 +56,13 @@ data Formula a =
   | HUntil Dir (Formula a) (Formula a)
   | HSince Dir (Formula a) (Formula a)
   -- Weak POTL
-  | WPNext    Dir (Formula a)
+  | WPNext Dir (Formula a)
   -- | WPBack    Dir (Formula a)
-  | WXNext    Dir (Formula a)
+  | WXNext Dir (Formula a)
   -- | WXBack    Dir (Formula a)
   -- | WHNext    Dir (Formula a)
   -- | WHBack    Dir (Formula a)
-  | Release   Dir (Formula a) (Formula a)
+  | Release Dir (Formula a) (Formula a)
   -- | PRelease  Dir (Formula a) (Formula a)
   -- | HRelease  Dir (Formula a) (Formula a)
   -- | HPRelease Dir (Formula a) (Formula a)
@@ -151,7 +152,35 @@ instance Functor Formula where
     AuxBack dir g   -> AuxBack dir (fmap func g)
 
 
---get all the atomic propositions used by a formula, removing duplicates
+transform :: (Formula a -> Formula a) -> Formula a -> Formula a
+transform t f = t $ case f of
+  T               -> f
+  Atomic _        -> f
+  Not g           -> Not $ transform t g
+  Or g h          -> Or (transform t g) (transform t h)
+  And g h         -> And (transform t g) (transform t h)
+  Xor g h         -> Xor (transform t g) (transform t h)
+  Implies g h     -> Implies (transform t g) (transform t h)
+  Iff g h         -> Iff (transform t g) (transform t h)
+  PNext dir g     -> PNext dir $ transform t g
+  PBack dir g     -> PBack dir $ transform t g
+  WPNext dir g    -> WPNext dir $ transform t g
+  XNext dir g     -> XNext dir $ transform t g
+  XBack dir g     -> XBack dir $ transform t g
+  WXNext dir g    -> WXNext dir $ transform t g
+  HNext dir g     -> HNext dir $ transform t g
+  HBack dir g     -> HBack dir $ transform t g
+  Until dir g h   -> Until dir (transform t g) (transform t h)
+  Release dir g h -> Release dir (transform t g) (transform t h)
+  Since dir g h   -> Since dir (transform t g) (transform t h)
+  HUntil dir g h  -> HUntil dir (transform t g) (transform t h)
+  HSince dir g h  -> HSince dir (transform t g) (transform t h)
+  Eventually g    -> Eventually $ transform t g
+  Always g        -> Always $ transform t g
+  AuxBack dir g   -> AuxBack dir $ transform t g
+
+
+-- get all the atomic propositions used by a formula, removing duplicates
 getProps :: (Eq a) => Formula a -> [Prop a]
 getProps formula = nub $ collectProps formula
   where collectProps f = case f of
@@ -219,7 +248,6 @@ formulaAtUp :: Int -> Formula a -> Formula a
 formulaAtUp n f
   | n <= 1         = f
   | otherwise = formulaAtDown (n-1) (PNext Up f)
-
 
 negation :: Formula a -> Formula a
 negation (Not f) = f

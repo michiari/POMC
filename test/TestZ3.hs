@@ -44,14 +44,15 @@ isSupported f = case f of
   Since _ _ _   -> False
   HUntil _ _ _  -> False
   HSince _ _ _  -> False
-  Eventually _  -> False
-  Always _      -> False
+  Eventually g  -> isSupported g
+  Always g      -> isSupported g
   AuxBack _ _   -> False
 
 expectedRes :: [SMTStatus]
 expectedRes =
-  [ Sat, Sat, Unknown, Unknown, Sat, Sat, Sat, Unknown, Sat, Unknown -- base_tests
+  [ Sat, Sat, Sat, Unknown, Unknown, Sat, Sat, Sat, Unknown, Sat, Unknown -- base_tests
   , Sat, Sat, Sat, Sat -- contains_exc
-  , Sat, Sat -- until_exc
+  , Sat -- normal_ret
+  , Sat, Sat, Sat -- until_exc
   , Sat, Sat -- until_misc
   ]
