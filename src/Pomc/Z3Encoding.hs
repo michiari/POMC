@@ -15,7 +15,7 @@ module Pomc.Z3Encoding ( SMTStatus(..)
 import Prelude hiding (take)
 
 import Pomc.Prop (Prop(..))
-import Pomc.Potl ( Dir(..), Formula(..), transformFold, transform, pnf, atomic
+import Pomc.Potl ( Dir(..), Formula(..), transformFold, pnf, atomic
                  , ltlNext, ltlBack, ltlPastAlways
                  )
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
@@ -66,7 +66,7 @@ isSatisfiable :: Alphabet String
               -> IO SMTResult
 isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
   where
-    pnfPhi = pnf $ transform translate phi
+    pnfPhi = pnf $ translate phi
     incrementalCheck assertTime checkTime k
       | k > maxDepth = return SMTResult { smtStatus = Unknown
                                         , smtTableau = Nothing

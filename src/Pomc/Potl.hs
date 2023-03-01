@@ -10,7 +10,6 @@ module Pomc.Potl ( Dir(..)
                  , Prop(..)
                  , Formula(..)
                  , transformFold
-                 , transform
                  , getProps
                    -- * Predicates on formulas
                  , atomic
@@ -155,34 +154,6 @@ instance Functor Formula where
     Eventually g    -> Eventually (fmap func g)
     Always g        -> Always (fmap func g)
     AuxBack dir g   -> AuxBack dir (fmap func g)
-
-
-transform :: (Formula a -> Formula a) -> Formula a -> Formula a
-transform t f = t $ case f of
-  T               -> f
-  Atomic _        -> f
-  Not g           -> Not $ transform t g
-  Or g h          -> Or (transform t g) (transform t h)
-  And g h         -> And (transform t g) (transform t h)
-  Xor g h         -> Xor (transform t g) (transform t h)
-  Implies g h     -> Implies (transform t g) (transform t h)
-  Iff g h         -> Iff (transform t g) (transform t h)
-  PNext dir g     -> PNext dir $ transform t g
-  PBack dir g     -> PBack dir $ transform t g
-  WPNext dir g    -> WPNext dir $ transform t g
-  XNext dir g     -> XNext dir $ transform t g
-  XBack dir g     -> XBack dir $ transform t g
-  WXNext dir g    -> WXNext dir $ transform t g
-  HNext dir g     -> HNext dir $ transform t g
-  HBack dir g     -> HBack dir $ transform t g
-  Until dir g h   -> Until dir (transform t g) (transform t h)
-  Release dir g h -> Release dir (transform t g) (transform t h)
-  Since dir g h   -> Since dir (transform t g) (transform t h)
-  HUntil dir g h  -> HUntil dir (transform t g) (transform t h)
-  HSince dir g h  -> HSince dir (transform t g) (transform t h)
-  Eventually g    -> Eventually $ transform t g
-  Always g        -> Always $ transform t g
-  AuxBack dir g   -> AuxBack dir $ transform t g
 
 
 transformFold :: (Formula a -> b -> (Formula a, b)) -> b -> Formula a
