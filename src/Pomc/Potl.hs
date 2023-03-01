@@ -9,6 +9,7 @@
 module Pomc.Potl ( Dir(..)
                  , Prop(..)
                  , Formula(..)
+                 , transformFold
                  , transform
                  , getProps
                    -- * Predicates on formulas
@@ -17,12 +18,16 @@ module Pomc.Potl ( Dir(..)
                  , negative
                    -- * Operations on formulas
                  , negation
-                 , normalize
-                 , pnf
                  , formulaAt
                  , formulaAfter
                  , formulaAtDown
                  , formulaAtUp
+                 , ltlNext
+                 , ltlBack
+                 , ltlPastEventually
+                 , ltlPastAlways
+                 , normalize
+                 , pnf
                  ) where
 
 import Pomc.Prop (Prop(..))
@@ -180,6 +185,40 @@ transform t f = t $ case f of
   AuxBack dir g   -> AuxBack dir $ transform t g
 
 
+transformFold :: (Formula a -> b -> (Formula a, b)) -> b -> Formula a
+              -> (Formula a, b)
+transformFold t e f = uncurry t $ case f of
+  T               -> (f, e)
+  Atomic _        -> (f, e)
+  Not g           -> goUnary Not g
+  Or g h          -> goBinary Or g h
+  And g h         -> goBinary And g h
+  Xor g h         -> goBinary Xor g h
+  Implies g h     -> goBinary Implies g h
+  Iff g h         -> goBinary Iff g h
+  PNext dir g     -> goUnary (PNext dir) g
+  PBack dir g     -> goUnary (PBack dir) g
+  WPNext dir g    -> goUnary (WPNext dir) g
+  XNext dir g     -> goUnary (XNext dir) g
+  XBack dir g     -> goUnary (XBack dir) g
+  WXNext dir g    -> goUnary (WXNext dir) g
+  HNext dir g     -> goUnary (HNext dir) g
+  HBack dir g     -> goUnary (HBack dir) g
+  Until dir g h   -> goBinary (Until dir) g h
+  Release dir g h -> goBinary (Release dir) g h
+  Since dir g h   -> goBinary (Since dir) g h
+  HUntil dir g h  -> goBinary (HUntil dir) g h
+  HSince dir g h  -> goBinary (HSince dir) g h
+  Eventually g    -> goUnary Eventually g
+  Always g        -> goUnary Always g
+  AuxBack dir g   -> goUnary (AuxBack dir) g
+  where goUnary constr g = let (newG, gRes) = transformFold t e g
+                           in (constr newG, gRes)
+        goBinary constr g h = let (newG, gRes) = transformFold t e g
+                                  (newH, hRes) = transformFold t gRes h
+                              in (constr newG newH, hRes)
+
+
 -- get all the atomic propositions used by a formula, removing duplicates
 getProps :: (Eq a) => Formula a -> [Prop a]
 getProps formula = nub $ collectProps formula
@@ -235,7 +274,7 @@ formulaAt n f
   | otherwise = formulaAt (n-1) (Or (PNext Up f) (PNext Down f))
 
 formulaAfter ::  [Dir] -> Formula a ->  Formula a
-formulaAfter  l f = case uncons l of
+formulaAfter l f = case uncons l of
     Nothing -> f
     Just (dir, dirs) -> PNext dir (formulaAfter dirs f)
 
@@ -252,6 +291,18 @@ formulaAtUp n f
 negation :: Formula a -> Formula a
 negation (Not f) = f
 negation f = Not f
+
+ltlNext :: Formula a -> Formula a
+ltlNext f = PNext Down f `Or` PNext Up f
+
+ltlBack :: Formula a -> Formula a
+ltlBack f = PBack Down f `Or` PBack Up f
+
+ltlPastEventually :: Formula a -> Formula a
+ltlPastEventually = Since Down T . Since Up T
+
+ltlPastAlways :: Formula a -> Formula a
+ltlPastAlways = Not . ltlPastEventually . Not
 
 -- remove double negation
 normalize :: Formula a -> Formula a

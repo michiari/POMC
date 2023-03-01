@@ -15,7 +15,9 @@ module Pomc.Z3Encoding ( SMTStatus(..)
 import Prelude hiding (take)
 
 import Pomc.Prop (Prop(..))
-import Pomc.Potl (Dir(..), Formula(..), transform, pnf, atomic)
+import Pomc.Potl ( Dir(..), Formula(..), transformFold, transform, pnf, atomic
+                 , ltlNext, ltlBack, ltlPastAlways
+                 )
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
 import Pomc.Util (timeAction)
 
@@ -35,21 +37,21 @@ import qualified Debug.Trace as DBG
 
 data SMTStatus = Sat | Unsat | Unknown deriving (Eq, Show)
 
-data TableauNode a = TableauNode { nodeGammaC :: [Formula a]
-                                 , nodeSmb    :: Prop a
-                                 , nodeStack  :: Integer
-                                 , nodeCtx    :: Integer
-                                 , nodeIdx    :: Integer
-                                 } deriving Eq
+data TableauNode = TableauNode { nodeGammaC :: [Formula String]
+                               , nodeSmb    :: Prop String
+                               , nodeStack  :: Integer
+                               , nodeCtx    :: Integer
+                               , nodeIdx    :: Integer
+                               } deriving Eq
 
-data SMTResult a = SMTResult { smtStatus :: SMTStatus
-                             , smtTableau :: Maybe [TableauNode a]
-                             , smtTimeAssert :: Double
-                             , smtTimeCheck :: Double
-                             , smtTimeModel :: Double
-                             } deriving (Eq, Show)
+data SMTResult = SMTResult { smtStatus :: SMTStatus
+                           , smtTableau :: Maybe [TableauNode]
+                           , smtTimeAssert :: Double
+                           , smtTimeCheck :: Double
+                           , smtTimeModel :: Double
+                           } deriving (Eq, Show)
 
-instance Show a => Show (TableauNode a) where
+instance Show TableauNode where
   show tn = "(" ++ (intercalate ", " [ show $ nodeIdx tn
                                      , show $ nodeGammaC tn
                                      , "smb = " ++ show (nodeSmb tn)
@@ -58,11 +60,10 @@ instance Show a => Show (TableauNode a) where
                                      ]) ++ ")"
 
 
-isSatisfiable :: (Eq a, Ord a, Show a)
-              => Alphabet a
-              -> Formula a
+isSatisfiable :: Alphabet String
+              -> Formula String
               -> Word64
-              -> IO (SMTResult a)
+              -> IO SMTResult
 isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
   where
     pnfPhi = pnf $ transform translate phi
@@ -89,11 +90,10 @@ isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
             else incrementalCheck (assertTime + newAssertTime) (checkTime + newCheckTime) (k + 1)
 
 
-assertEncoding :: forall a. (Show a, Eq a, Ord a)
-               => Alphabet a
-               -> Formula a
+assertEncoding :: Alphabet String
+               -> Formula String
                -> Word64
-               -> Z3 (Maybe Word64 -> Model -> Z3 [TableauNode a])
+               -> Z3 (Maybe Word64 -> Model -> Z3 [TableauNode])
 assertEncoding alphabet phi k = do
   -- Sorts
   boolSort <- mkBoolSort
@@ -164,7 +164,7 @@ assertEncoding alphabet phi k = do
     nodeSortSize = k + 1
     (structClos, clos) = closure alphabet phi
 
-    mkSSort :: Z3 (Sort, Map (Formula a) AST)
+    mkSSort :: Z3 (Sort, Map (Formula String) AST)
     mkSSort = do
       constructors <- mapM (\f -> do
                                let fstring = show f
@@ -178,7 +178,7 @@ assertEncoding alphabet phi k = do
       consts <- mapM (flip mkApp []) constrFns
       return (sSort, Map.fromList $ zip clos consts)
 
-    mkPhiAxioms :: Sort -> Map (Formula a) AST
+    mkPhiAxioms :: Sort -> Map (Formula String) AST
                 -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
     mkPhiAxioms nodeSort fConstMap sigma struct smb gamma = do
       -- ∧_(p∈Σ) Σ(p)
@@ -197,7 +197,7 @@ assertEncoding alphabet phi k = do
                           ) [1..k]
       mkAnd [allStructInSigma, allOtherNotInSigma, forall]
 
-    mkPhiOPM :: Map (Formula a) AST -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
+    mkPhiOPM :: Map (Formula String) AST -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
     mkPhiOPM fConstMap yield equal take = E.assert (isComplete alphabet)
       $ mkAndWith assertPrecPair
       $ snd alphabet ++ (End, End, Equal):[(End, p, Yield) | p <- fst alphabet]
@@ -218,7 +218,7 @@ assertEncoding alphabet phi k = do
             getNegPrec Take = (yield, equal)
 
     -- xnf(f)_G(x)
-    groundxnf :: Map (Formula a) AST -> FuncDecl -> Formula a -> AST -> Z3 AST
+    groundxnf :: Map (Formula String) AST -> FuncDecl -> Formula String -> AST -> Z3 AST
     groundxnf fConstMap gamma f x = case f of
       T                -> mkTrue
       Atomic _         -> applyGamma f
@@ -254,7 +254,7 @@ assertEncoding alphabet phi k = do
             applyGamma g = mkApp gamma [fConstMap Map.! g, x]
 
     -- END(xExpr)
-    mkEndTerm :: Map (Formula a) AST -> FuncDecl -> AST -> Z3 AST
+    mkEndTerm :: Map (Formula String) AST -> FuncDecl -> AST -> Z3 AST
     mkEndTerm fConstMap gamma x = do
       let noGamma g = mkNot =<< mkApp gamma [fConstMap Map.! g, x]
       -- Γ(#, x)
@@ -284,7 +284,7 @@ assertEncoding alphabet phi k = do
       mkForallConst [] [pApp, qApp] pqImpl
 
     -- PNEXT(xExpr)
-    mkPnext :: Sort -> Map (Formula a) AST
+    mkPnext :: Sort -> Map (Formula String) AST
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
             -> Z3 AST
     mkPnext nodeSort fConstMap gamma struct yield take x = do
@@ -313,7 +313,7 @@ assertEncoding alphabet phi k = do
       mkApp precRel [smbX, structX]
 
     -- PUSH(x)
-    mkPush :: Sort -> Map (Formula a) AST
+    mkPush :: Sort -> Map (Formula String) AST
            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
            -> FuncDecl -> FuncDecl -> FuncDecl -> Word64 -> Z3 AST
     mkPush nodeSort fConstMap gamma smb struct stack ctx yield equal take x = do
@@ -362,7 +362,7 @@ assertEncoding alphabet phi k = do
             ]
 
     -- SHIFT(x)
-    mkShift :: Sort -> Map (Formula a) AST
+    mkShift :: Sort -> Map (Formula String) AST
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
             -> Word64 -> Z3 AST
     mkShift nodeSort fConstMap gamma smb struct stack ctx x = do
@@ -420,7 +420,7 @@ assertEncoding alphabet phi k = do
       mkAnd [gammaRule, smbRule, stackRule, ctxRule]
 
     -- EMPTY(x)
-    mkEmpty :: Sort -> Map (Formula a) AST -> FuncDecl -> FuncDecl -> Word64 -> Z3 AST
+    mkEmpty :: Sort -> Map (Formula String) AST -> FuncDecl -> FuncDecl -> Word64 -> Z3 AST
     mkEmpty nodeSort fConstMap gamma stack x = do
       xLit <- mkUnsignedInt64 x nodeSort
       -- Γ(#, x)
@@ -439,7 +439,7 @@ mkAndWith :: (a -> Z3 AST) -> [a] -> Z3 AST
 mkAndWith predGen items = mapM predGen items >>= mkAnd
 
 
-closure :: Ord a => Alphabet a -> Formula a -> ([Formula a], [Formula a])
+closure :: Alphabet String -> Formula String -> ([Formula String], [Formula String])
 closure alphabet phi = (structClos, Set.toList . Set.fromList $ structClos ++ closList phi)
   where
     structClos = map Atomic $ End : (fst alphabet)
@@ -472,7 +472,7 @@ closure alphabet phi = (structClos, Set.toList . Set.fromList $ structClos ++ cl
         Always _         -> error "LTL operators not supported yet."
         AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
 
-xnf :: Formula a -> Formula a
+xnf :: Formula String -> Formula String
 xnf f = case f of
   T               -> f
   Atomic _        -> f
@@ -501,21 +501,45 @@ xnf f = case f of
   Always g        -> error "LTL operators only supported through translation."
   AuxBack _ _     -> error "AuxBack not supported in SMT encoding."
 
-translate :: Formula a -> Formula a
-translate phi = transform applyTransl phi
-  where applyTransl f = case f of
-          HNext dir g    -> error "Hierarchical operators not supported yet."
-          HBack dir g    -> error "Hierarchical operators not supported yet."
-          HUntil dir g h -> error "Hierarchical operators not supported yet."
-          HSince dir g h -> error "Hierarchical operators not supported yet."
-          Eventually g   -> Until Up T (Until Down T g)
-          Always g       -> Not . Until Up T . Until Down T . Not $ g
-          _              -> f
+translate :: Formula String -> Formula String
+translate phi = fst $ transformFold applyTransl 0 phi where
+  applyTransl f upId = case f of
+    HNext dir g    -> let qEta = mkUniqueProp upId
+      in ( gammaLR dir qEta
+           `And` ltlNext (Until Up (Not $ xOp dir qEta) ((Not $ xOp dir qEta) `And` g))
+         , upId + 1
+         )
+    HBack dir g    -> let qEta = mkUniqueProp upId
+      in ( gammaLR dir qEta
+           `And` ltlBack (Since Up (Not $ xOp dir qEta) ((Not $ xOp dir qEta) `And` g))
+         , upId + 1
+         )
+    HUntil dir g h -> let qEta = mkUniqueProp upId
+      in ( gammaLR dir qEta
+           `And` (Until Up (xOp dir qEta `Implies` g) (xOp dir qEta `And` h))
+         , upId + 1
+         )
+    HSince dir g h -> let qEta = mkUniqueProp upId
+      in ( gammaLR dir qEta
+           `And` (Since Up (xOp dir qEta `Implies` g) (xOp dir qEta `And` h))
+         , upId + 1
+         )
+    Eventually g   -> (Until Up T . Until Down T $ g, upId)
+    Always g       -> (Not . Until Up T . Until Down T . Not $ g, upId)
+    _              -> (f, upId)
+
+  -- xOp is correct only because qEta holds in a single position, not in general.
+  mkUniqueProp n = Atomic . Prop $ "@" ++ show n
+  xOp Up psi = XBack Down psi `And` Not (XBack Up psi)
+  xOp Down psi = XNext Up psi `And` Not (XNext Down psi)
+  gammaLR dir qEta = xOp dir $ qEta
+    `And` (ltlNext . Always . Not $ qEta)
+    `And` (ltlBack . ltlPastAlways . Not $ qEta)
 
 
-queryTableau :: Sort -> Map (Formula a) AST
+queryTableau :: Sort -> Map (Formula String) AST
              -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
-             -> Word64 -> Maybe Word64 -> Model -> Z3 [TableauNode a]
+             -> Word64 -> Maybe Word64 -> Model -> Z3 [TableauNode]
 queryTableau nodeSort fConstMap gamma smb stack ctx k maxLen model = do
   let unrollLength = case maxLen of
         Just ml -> min k ml
