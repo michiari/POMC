@@ -30,16 +30,19 @@ module Pomc.MiniProc ( Program(..)
                      , IdType
                      , VarIdInfo(..)
 
+                     , Guard(..)
                      , DeltaTarget(..)
+                     , Action(..)
                      , InputLabel(..)
                      , LowerState(..)
                      , sksToExtendedOpa
                      , miniProcAlphabet
+                     , miniProcStringAlphabet
                      ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
-import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
+import Pomc.Prec (Prec(..), Alphabet)
 import qualified Pomc.Encoding as E
 import Pomc.State (Input, State(..))
 
@@ -488,7 +491,7 @@ programToOpa isOmega prog additionalProps =
       eIsFinal (sid, _) = sid `S.member` finSet
         where finSet = S.fromList fin
 
-      allProps = foldr S.insert additionalProps miniProcSls
+      allProps = foldr S.insert additionalProps $ fst miniProcAlphabet
       pconv = makePropConv $ S.toList allProps
       allVarProps = S.map (\var -> Prop $ encodeAP pconv $ varName var)
         $ S.filter (\var -> Prop (varName var) `S.member` additionalProps)
@@ -703,38 +706,42 @@ toBool v = B.nat v /= 0
 
 
 -- OPM
-miniProcSls :: [Prop Text]
-miniProcSls = map (Prop . T.pack) ["call", "ret", "han", "exc", "stm"]
-
-miniProcPrecRel :: [StructPrecRel Text]
-miniProcPrecRel = map (\(sl1, sl2, pr) -> (Prop . T.pack $ sl1, Prop . T.pack $ sl2, pr)) precs
-                  ++ map (\p -> (p, End, Take)) miniProcSls
-  where precs = [ ("call", "call", Yield)
-                , ("call", "ret",  Equal)
-                , ("call", "han",  Yield)
-                , ("call", "exc",  Take)
-                , ("call", "stm",  Yield)
-                , ("ret",  "call", Take)
-                , ("ret",  "ret",  Take)
-                , ("ret",  "han",  Take)
-                , ("ret",  "exc",  Take)
-                , ("ret",  "stm",  Take)
-                , ("han",  "call", Yield)
-                , ("han",  "ret",  Take)
-                , ("han",  "han",  Yield)
-                , ("han",  "exc",  Equal)
-                , ("han",  "stm",  Yield)
-                , ("exc",  "call", Take)
-                , ("exc",  "ret",  Take)
-                , ("exc",  "han",  Take)
-                , ("exc",  "exc",  Take)
-                , ("exc",  "stm",  Take)
-                , ("stm",  "call", Take)
-                , ("stm",  "ret",  Take)
-                , ("stm",  "han",  Take)
-                , ("stm",  "exc",  Take)
-                , ("stm",  "stm",  Take)
-                ]
-
 miniProcAlphabet :: Alphabet Text
-miniProcAlphabet = (miniProcSls, miniProcPrecRel)
+miniProcAlphabet = (miniProcSls, miniProcPrecRel) where
+  (miniProcStringSls, miniProcStringPrecRel) = miniProcStringAlphabet
+  miniProcSls = map (fmap T.pack) miniProcStringSls
+  miniProcPrecRel =
+    map (\(sl1, sl2, pr) -> (fmap T.pack sl1, fmap T.pack sl2, pr)) miniProcStringPrecRel
+
+miniProcStringAlphabet :: Alphabet String
+miniProcStringAlphabet = (miniProcSls, miniProcPrecRel)
+  where miniProcSls = map Prop ["call", "ret", "han", "exc", "stm"]
+        miniProcPrecRel =
+          map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
+          ++ map (\p -> (p, End, Take)) miniProcSls
+          where precs = [ ("call", "call", Yield)
+                        , ("call", "ret",  Equal)
+                        , ("call", "han",  Yield)
+                        , ("call", "exc",  Take)
+                        , ("call", "stm",  Yield)
+                        , ("ret",  "call", Take)
+                        , ("ret",  "ret",  Take)
+                        , ("ret",  "han",  Take)
+                        , ("ret",  "exc",  Take)
+                        , ("ret",  "stm",  Take)
+                        , ("han",  "call", Yield)
+                        , ("han",  "ret",  Take)
+                        , ("han",  "han",  Yield)
+                        , ("han",  "exc",  Equal)
+                        , ("han",  "stm",  Yield)
+                        , ("exc",  "call", Take)
+                        , ("exc",  "ret",  Take)
+                        , ("exc",  "han",  Take)
+                        , ("exc",  "exc",  Take)
+                        , ("exc",  "stm",  Take)
+                        , ("stm",  "call", Take)
+                        , ("stm",  "ret",  Take)
+                        , ("stm",  "han",  Take)
+                        , ("stm",  "exc",  Take)
+                        , ("stm",  "stm",  Take)
+                        ]

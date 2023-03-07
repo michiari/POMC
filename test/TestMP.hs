@@ -1,6 +1,9 @@
 {-# LANGUAGE QuasiQuotes #-}
 
-module TestMP (tests) where
+module TestMP ( tests
+
+              , sasMPSource
+              ) where
 
 import Pomc.MiniProcParse (programP)
 import Pomc.Potl (Formula(..), Dir(..))

@@ -13,6 +13,7 @@ module Pomc.Potl ( Dir(..)
                  , getProps
                    -- * Predicates on formulas
                  , atomic
+                 , unAtomic
                  , future
                  , negative
                    -- * Operations on formulas
@@ -222,6 +223,10 @@ getProps formula = nub $ collectProps formula
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
 atomic _ = False
+
+unAtomic :: Formula a -> Prop a
+unAtomic (Atomic p) = p
+unAtomic _ = error "Not an Atomic formula."
 
 future :: Formula a -> Bool
 future (PNext      {})      = True

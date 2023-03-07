@@ -10,28 +10,34 @@ module Pomc.Z3Encoding ( SMTStatus(..)
                        , SMTResult(..)
                        , TableauNode(..)
                        , isSatisfiable
+                       , modelCheckProgram
                        ) where
 
 import Prelude hiding (take)
 
-import Pomc.Prop (Prop(..))
-import Pomc.Potl ( Dir(..), Formula(..), transformFold, pnf, atomic
+import Pomc.Prop (Prop(..), unprop)
+import Pomc.Potl ( Dir(..), Formula(..), transformFold, pnf, atomic, unAtomic
                  , ltlNext, ltlBack, ltlPastAlways
                  )
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
 import Pomc.Util (timeAction)
+import qualified Pomc.MiniProc as MP
 
 import Z3.Monad hiding (Result(..))
 import qualified Z3.Monad as Z3
 
 import qualified Control.Exception as E
 import Control.Monad ((<=<), filterM)
-import Data.List ((\\), intercalate)
+import Data.List ((\\), intercalate, find)
 import Data.Map.Lazy (Map)
-import qualified Data.Map.Lazy as Map
-import qualified Data.Set as Set
-import Data.Maybe (fromJust)
+import qualified Data.Map.Lazy as M
+import qualified Data.Set as S
+import Data.Maybe (isJust, fromJust)
 import Data.Word (Word64)
+import Data.Vector (Vector)
+import qualified Data.Vector as V
+import qualified Data.BitVector as BV
+import qualified Data.Text as T
 
 import qualified Debug.Trace as DBG
 
@@ -44,11 +50,11 @@ data TableauNode = TableauNode { nodeGammaC :: [Formula String]
                                , nodeIdx    :: Integer
                                } deriving Eq
 
-data SMTResult = SMTResult { smtStatus :: SMTStatus
-                           , smtTableau :: Maybe [TableauNode]
+data SMTResult = SMTResult { smtStatus     :: SMTStatus
+                           , smtTableau    :: Maybe [TableauNode]
                            , smtTimeAssert :: Double
-                           , smtTimeCheck :: Double
-                           , smtTimeModel :: Double
+                           , smtTimeCheck  :: Double
+                           , smtTimeModel  :: Double
                            } deriving (Eq, Show)
 
 instance Show TableauNode where
@@ -59,12 +65,29 @@ instance Show TableauNode where
                                      , "ctx = " ++ show (nodeCtx tn)
                                      ]) ++ ")"
 
+data Query = SatQuery { qAlphabet :: Alphabet String }
+             | MiniProcQuery { qProg :: MP.Program }
+             deriving Show
 
 isSatisfiable :: Alphabet String
               -> Formula String
               -> Word64
               -> IO SMTResult
-isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
+isSatisfiable alphabet phi maxDepth = checkQuery phi (SatQuery alphabet) maxDepth
+
+modelCheckProgram :: Formula String -> MP.Program -> Word64 -> IO SMTResult
+modelCheckProgram phi prog maxDepth = do
+  res <- checkQuery (Not phi) (MiniProcQuery prog) maxDepth
+  return res { smtStatus = flipStatus $ smtStatus res }
+  where flipStatus Sat = Unsat
+        flipStatus Unsat = Sat
+        flipStatus Unknown = Unknown
+
+checkQuery :: Formula String
+           -> Query
+           -> Word64
+           -> IO SMTResult
+checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 1
   where
     pnfPhi = pnf $ translate phi
     incrementalCheck assertTime checkTime k
@@ -76,7 +99,7 @@ isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
                                         }
       | otherwise = do
           reset
-          (tableauQuery, newAssertTime) <- timeAction $ assertEncoding alphabet pnfPhi k
+          (tableauQuery, newAssertTime) <- timeAction $ assertEncoding pnfPhi query k
           ((res, maybeModel), newCheckTime) <- timeAction $ solverCheckAndGetModel
           if res == Z3.Sat
             then do
@@ -90,11 +113,11 @@ isSatisfiable alphabet phi maxDepth = evalZ3 $ incrementalCheck 0 0 1
             else incrementalCheck (assertTime + newAssertTime) (checkTime + newCheckTime) (k + 1)
 
 
-assertEncoding :: Alphabet String
-               -> Formula String
+assertEncoding :: Formula String
+               -> Query
                -> Word64
                -> Z3 (Maybe Word64 -> Model -> Z3 [TableauNode])
-assertEncoding alphabet phi k = do
+assertEncoding phi query k = do
   -- Sorts
   boolSort <- mkBoolSort
   nodeSortSymbol <- mkStringSymbol "NodeSort"
@@ -119,7 +142,7 @@ assertEncoding alphabet phi k = do
   assert =<< groundxnf fConstMap gamma (xnf phi) node1
 
   -- smb(1) = #
-  assert =<< mkEq (fConstMap Map.! Atomic End) =<< mkApp1 smb node1
+  assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 smb node1
 
   -- stack(1) = ⊥
   nodeBot <- mkUnsignedInt64 0 nodeSort
@@ -159,9 +182,18 @@ assertEncoding alphabet phi k = do
 
   -- EMPTY(k+1)
   assert =<< mkEmpty nodeSort fConstMap gamma stack k
+
+  case query of
+    SatQuery _ -> return ()
+    MiniProcQuery prog ->
+      encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k
+
   return $ queryTableau nodeSort fConstMap gamma smb stack ctx k
   where
     nodeSortSize = k + 1
+    alphabet = case query of
+      SatQuery a -> a
+      MiniProcQuery _ -> MP.miniProcStringAlphabet
     (structClos, clos) = closure alphabet phi
 
     mkSSort :: Z3 (Sort, Map (Formula String) AST)
@@ -176,15 +208,15 @@ assertEncoding alphabet phi k = do
       sSort <- mkDatatype sSymbol constructors
       constrFns <- getDatatypeSortConstructors sSort
       consts <- mapM (flip mkApp []) constrFns
-      return (sSort, Map.fromList $ zip clos consts)
+      return (sSort, M.fromList $ zip clos consts)
 
     mkPhiAxioms :: Sort -> Map (Formula String) AST
                 -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
     mkPhiAxioms nodeSort fConstMap sigma struct smb gamma = do
       -- ∧_(p∈Σ) Σ(p)
-      allStructInSigma <- mkAndWith (mkApp1 sigma . (fConstMap Map.!)) structClos
+      allStructInSigma <- mkAndWith (mkApp1 sigma . (fConstMap M.!)) structClos
       -- ∧_(p∈S \ Σ) ¬Σ(p)
-      allOtherNotInSigma <- mkAndWith (mkNot <=< mkApp1 sigma . (fConstMap Map.!))
+      allOtherNotInSigma <- mkAndWith (mkNot <=< mkApp1 sigma . (fConstMap M.!))
                             (clos \\ structClos)
       -- ∀x(Σ(struct(x)) ∧ Σ(smb(x)) ∧ Γ(struct(x), x))
       forall <- mkAndWith (\x -> do
@@ -202,7 +234,7 @@ assertEncoding alphabet phi k = do
       $ mkAndWith assertPrecPair
       $ snd alphabet ++ (End, End, Equal):[(End, p, Yield) | p <- fst alphabet]
       where assertPrecPair (p, q, prec) = do
-              let pqArg = [fConstMap Map.! Atomic p, fConstMap Map.! Atomic q]
+              let pqArg = [fConstMap M.! Atomic p, fConstMap M.! Atomic q]
                   (nPrec1, nPrec2) = getNegPrec prec
               posPrec  <- mkApp (getPosPrec prec) pqArg
               negPrec1 <- mkNot =<< mkApp nPrec1 pqArg
@@ -251,14 +283,14 @@ assertEncoding alphabet phi k = do
               grhs <- groundxnf fConstMap gamma rhs x
               op glhs grhs
 
-            applyGamma g = mkApp gamma [fConstMap Map.! g, x]
+            applyGamma g = mkApp gamma [fConstMap M.! g, x]
 
     -- END(xExpr)
     mkEndTerm :: Map (Formula String) AST -> FuncDecl -> AST -> Z3 AST
     mkEndTerm fConstMap gamma x = do
-      let noGamma g = mkNot =<< mkApp gamma [fConstMap Map.! g, x]
+      let noGamma g = mkNot =<< mkApp gamma [fConstMap M.! g, x]
       -- Γ(#, x)
-      gammaEndx <- mkApp gamma [fConstMap Map.! Atomic End, x]
+      gammaEndx <- mkApp gamma [fConstMap M.! Atomic End, x]
       -- ∧_(PNext t α ∈ Cl(φ)) ¬Γ((PNext t α)_G, x)
       noGammaPNext <- mkAndWith noGamma [g | g@(PNext _ _) <- clos]
       -- ∧_(p ∈ AP) ¬Γ(p, x)
@@ -291,7 +323,7 @@ assertEncoding alphabet phi k = do
       let pnextPrec prec g = do
             xLit <- mkUnsignedInt64 x nodeSort
             -- Γ(g, x)
-            gammagx <- mkApp gamma [fConstMap Map.! g, xLit]
+            gammagx <- mkApp gamma [fConstMap M.! g, xLit]
             -- struct(x) prec struct(x + 1)
             structx <- mkApp1 struct xLit
             xp1 <- mkUnsignedInt64 (x + 1) nodeSort
@@ -305,13 +337,6 @@ assertEncoding alphabet phi k = do
       pnextUp <- mkAndWith (pnextPrec yield) [g | g@(PNext Up _) <- clos]
       mkAnd [pnextDown, pnextUp]
 
-    -- push(xExpr), shift(xExpr), pop(xExpr)
-    mkCheckPrec :: FuncDecl -> FuncDecl -> FuncDecl -> AST -> Z3 AST
-    mkCheckPrec smb struct precRel x = do
-      smbX <- mkApp1 smb x
-      structX <- mkApp1 struct x
-      mkApp precRel [smbX, structX]
-
     -- PUSH(x)
     mkPush :: Sort -> Map (Formula String) AST
            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
@@ -320,7 +345,7 @@ assertEncoding alphabet phi k = do
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
       let propagateNext (next, arg) = do
-            lhs <- mkApp gamma [fConstMap Map.! next, xLit]
+            lhs <- mkApp gamma [fConstMap M.! next, xLit]
             rhs <- groundxnf fConstMap gamma (xnf arg) xp1
             mkEq lhs rhs
       -- big ands
@@ -369,7 +394,7 @@ assertEncoding alphabet phi k = do
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
       let propagateNext (next, arg) = do
-            lhs <- mkApp gamma [fConstMap Map.! next, xLit]
+            lhs <- mkApp gamma [fConstMap M.! next, xLit]
             rhs <- groundxnf fConstMap gamma (xnf arg) xp1
             mkImplies lhs rhs
       -- big ands
@@ -424,23 +449,301 @@ assertEncoding alphabet phi k = do
     mkEmpty nodeSort fConstMap gamma stack x = do
       xLit <- mkUnsignedInt64 x nodeSort
       -- Γ(#, x)
-      gammaEndx <- mkApp gamma [fConstMap Map.! Atomic End, xLit]
+      gammaEndx <- mkApp gamma [fConstMap M.! Atomic End, xLit]
       -- stack(x) = ⊥
       stackx <- mkApp1 stack xLit
       stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
       mkAnd [gammaEndx, stackxEqBot]
 
 
+encodeProg :: Sort -> Map (Formula String) AST
+           -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+           -> FuncDecl -> FuncDecl -> FuncDecl
+           -> MP.Program -> Word64 -> Z3 ()
+encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = do
+  let (lowerState, ini, _) = MP.sksToExtendedOpa False (MP.pSks prog)
+  locSortSymbol <- mkStringSymbol "LocSort"
+  locSort <- mkFiniteDomainSort locSortSymbol $ fromIntegral $ MP.lsSid lowerState
+  -- Uninterpreted functions
+  pc <- mkFreshFuncDecl "pc" [nodeSort] locSort
+  sVarFunVec <- mkVarFunctions
+  -- Initial locations
+  node1 <- mkUnsignedInt64 1 nodeSort
+  assert =<< mkOrWith (\l -> do
+                          lLit <- mkUnsignedInt l locSort
+                          pc1 <- mkApp1 pc node1
+                          mkEq pc1 lLit
+                      ) ini
+  -- Initialize variables
+  nodeBot <- mkUnsignedInt64 0 nodeSort
+  assert =<< mkInit0 sVarFunVec allScalars nodeBot
+  assert =<< mkInit0 sVarFunVec allScalars node1
+  -- start ∀x (...)
+  -- x <= k
+  let apvars = map (\(v, Just vS) -> (v, vS))
+        $ filter (isJust . snd)
+        $ map (\v -> (v, (Atomic . Prop . T.unpack . MP.varName $ v)
+                       `M.lookup` fConstMap)) allScalars
+
+      varap x = do
+        xLit <- mkUnsignedInt64 x nodeSort
+        mkAndWith (\(v, vS) -> do
+                      let (vFunc, vSort) = sVarFunVec V.! MP.varId v
+                      gammavx <- mkApp gamma [vS, xLit]
+                      vx <- mkApp1 vFunc xLit
+                      val0 <-  mkUnsignedInt 0 vSort
+                      vxNeq0 <- mkNot =<< mkEq vx val0
+                      mkIff gammavx vxNeq0
+                  ) apvars
+  assert =<< mkAndWith varap [1..k]
+  -- x < k
+  let mkProgTransitions x = do
+        xLit <- mkUnsignedInt64 x nodeSort
+        -- push(x) → PUSH(x)
+        checkPushx <- mkCheckPrec smb struct yield xLit
+        pushProgx <- mkInput sVarFunVec locSort pc (MP.lsDPush lowerState) x
+        pushxImpliesPushProgx <- mkImplies checkPushx pushProgx
+        -- shift(x) → SHIFT(x)
+        checkShiftx <- mkCheckPrec smb struct equal xLit
+        shiftProgx <- mkInput sVarFunVec locSort pc (MP.lsDShift lowerState) x
+        shiftxImpliesShiftProgx <- mkImplies checkShiftx shiftProgx
+        -- pop(x) → POP(x)
+        checkPopx <- mkCheckPrec smb struct take xLit
+        popProgx <- mkPop sVarFunVec locSort pc (MP.lsDPop lowerState) x
+        popxImpliesPopProgx <- mkImplies checkPopx popProgx
+        mkAnd [pushxImpliesPushProgx, shiftxImpliesShiftProgx, popxImpliesPopProgx]
+  assert =<< mkAndWith mkProgTransitions [1..(k - 1)]
+  -- end ∀x (...)
+  where
+    apConstMap = M.fromList
+      $ map (\(p, c) -> (T.pack . unprop . unAtomic $ p, c))
+      $ filter (\(p, _) -> atomic p && p /= Atomic End)
+      $ M.toList fConstMap
+    allScalars = S.toList (MP.pGlobalScalars prog) ++ S.toList (MP.pLocalScalars prog)
+    mkVarFunctions =
+      let mkSVarFun varList vid = do
+            let var = fromJust $ find (\v -> MP.varId v == vid) varList
+            varSym <- mkIntSymbol $ MP.varId var
+            varSort <- mkBvSort $ MP.varWidth var
+            varFunc <- mkFuncDecl varSym [nodeSort] varSort
+            return (varFunc, varSort)
+
+      in V.generateM (length allScalars) (mkSVarFun allScalars)
+
+    mkInit0 :: Vector (FuncDecl, Sort) -> [MP.Variable] -> AST -> Z3 AST
+    mkInit0 sVarFunVec vars xLit =
+      mkAndWith (\v -> do
+                    let (vFunc, s) = sVarFunVec V.! MP.varId v
+                    val0 <- mkUnsignedInt 0 s
+                    vx <- mkApp1 vFunc xLit
+                    mkEq vx val0
+                ) vars
+
+    mkInput :: Vector (FuncDecl, Sort) -> Sort -> FuncDecl
+            -> Map Word (MP.InputLabel, MP.DeltaTarget) -> Word64 -> Z3 AST
+    mkInput sVarFunVec locSort pc lsDelta x =
+      mkOrWith mkTransition $ M.toList lsDelta where
+      mkTransition (l1, (il, MP.States dt)) = do
+        xLit <- mkUnsignedInt64 x nodeSort
+        xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+        -- pc(x) = l1
+        l1Lit <- mkUnsignedInt l1 locSort
+        pcX <- mkApp1 pc xLit
+        pcXEqL1 <- mkEq l1Lit pcX
+        -- ∧_(p∈b) Γ(p, x)
+        structX <- mkApp1 struct xLit
+        structXEqil <- mkEq (fConstMap M.! (Atomic . Prop . T.unpack . MP.ilStruct $ il)) structX
+        inputProps <- mkAndWith (\l -> mkApp gamma [apConstMap M.! l, xLit])
+          $ filter (`M.member` apConstMap) $ (MP.ilFunction il) : (MP.ilModules il)
+        -- ACTION(x, _, a)
+        action <- mkAction sVarFunVec x Nothing $ MP.ilAction il
+        -- g|x ∧ pc(x + 1) = l2
+        targets <- mkOrWith (\(g, l2) -> do
+                                -- pc(x + 1) = l2
+                                l2Lit <- mkUnsignedInt l2 locSort
+                                pcXp1 <- mkApp1 pc xp1
+                                nextPc <- mkEq pcXp1 l2Lit
+                                case g of
+                                  MP.NoGuard -> return nextPc
+                                  MP.Guard e -> do
+                                    guard <- evalGuard sVarFunVec e xLit
+                                    mkAnd [guard, nextPc]
+                            ) dt
+        mkAnd [pcXEqL1, structXEqil, inputProps, action, targets]
+
+    mkPop :: Vector (FuncDecl, Sort) -> Sort -> FuncDecl
+          -> Map (Word, Word) (MP.Action, MP.DeltaTarget) -> Word64 -> Z3 AST
+    mkPop sVarFunVec locSort pc lsDelta x =
+      mkOrWith mkTransition $ M.toList lsDelta where
+      mkTransition ((l1, ls), (act, MP.States dt)) = do
+        xLit <- mkUnsignedInt64 x nodeSort
+        xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+        -- pc(x) = l1
+        l1Lit <- mkUnsignedInt l1 locSort
+        pcX <- mkApp1 pc xLit
+        pcXEqL1 <- mkEq pcX l1Lit
+        -- pc(stack(x)) = ls
+        stackX <- mkApp1 stack xLit
+        lsLit <- mkUnsignedInt ls locSort
+        pcStackX <- mkApp1 pc stackX
+        pcStackXEqLs <- mkEq pcStackX lsLit
+        -- ACTION(x, stack(x), a)
+        action <- mkAction sVarFunVec x (Just lsLit) act
+        -- g|x ∧ pc(x + 1) = l2
+        targets <- mkOrWith (\(g, l2) -> do
+                                -- pc(x + 1) = l2
+                                l2Lit <- mkUnsignedInt l2 locSort
+                                pcXp1 <- mkApp1 pc xp1
+                                nextPc <- mkEq pcXp1 l2Lit
+                                case g of
+                                  MP.NoGuard -> return nextPc
+                                  MP.Guard e -> do
+                                    guard <- evalGuard sVarFunVec e xLit
+                                    mkAnd [guard, nextPc]
+                            ) dt
+        mkAnd [pcXEqL1, pcStackXEqLs, action, targets]
+
+    mkAction :: Vector (FuncDecl, Sort) -> Word64 -> Maybe AST -> MP.Action -> Z3 AST
+    mkAction sVarFunVec x poppedNode action = do
+      xLit <- mkUnsignedInt64 x nodeSort
+      xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+      let propvals :: [MP.Variable] -> Z3 AST
+          propvals except =
+            let excSet = S.fromList $ map MP.varId except
+            in mkAnd =<< V.ifoldM (\rest i (vf, _) -> if i `S.member` excSet
+                                    then return rest
+                                    else do
+                                      vfx <- mkApp1 vf xLit
+                                      vfxp1 <- mkApp1 vf xp1
+                                      vfxEqVfxp1 <- mkEq vfx vfxp1
+                                      return $ vfxEqVfxp1:rest
+                                  ) [] sVarFunVec
+      case action of
+        MP.Noop -> propvals []
+        MP.Assign (MP.LScalar lhs) rhs -> do
+          -- Do assignment
+          evalRhs <- evalExpr sVarFunVec rhs xLit
+          lhsXp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId lhs) xp1
+          lhsXp1EqRhs <- mkEq lhsXp1 evalRhs
+          -- Propagate all remaining variables
+          propagate <- propvals [lhs]
+          mkAnd [lhsXp1EqRhs, propagate]
+        MP.Assign (MP.LArray _var _idxExpr) _rhs -> error "Arrays not supported yet."
+        MP.Nondet (MP.LScalar var) -> propvals [var]
+        MP.Nondet (MP.LArray _var _idxExpr) -> error "Arrays not supported yet."
+        MP.CallOp fname fargs aargs -> do
+          -- Assign parameters
+          let assign (farg, aarg) = do
+                fxp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId (getFargVar farg)) xp1
+                evalAarg <- case aarg of
+                  MP.ActualVal e      -> evalExpr sVarFunVec e xLit
+                  MP.ActualValRes var -> mkApp1 (fst $ sVarFunVec V.! MP.varId var) xLit
+                mkEq fxp1 evalAarg
+          params <- mkAndWith assign $ zip fargs aargs
+          -- Initialize to 0 all remaining local variables
+          let locals = S.toList $ MP.skScalars $ fnameSksMap M.! fname
+              remLocals = locals \\ map getFargVar fargs
+          initLocals <- mkInit0 sVarFunVec remLocals xp1
+          -- Propagate all remaining variables
+          propagate <- propvals locals
+          mkAnd [params, initLocals, propagate]
+        MP.Return fname fargs aargs -> do
+          -- Assign result parameters
+          let resArgs = map (\(MP.ValueResult r, MP.ActualValRes t) -> (r, t))
+                $ filter (isValRes . fst) $ zip fargs aargs
+              assign (r, t) = do
+                txp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId t) xp1
+                rx <- mkApp1 (fst $ sVarFunVec V.! MP.varId r) xLit
+                mkEq txp1 rx
+          params <- mkAndWith assign resArgs
+          -- Restore remaining local variables (they may be overlapping if fname is recursive)
+          let locals = S.toList $ MP.skScalars $ fnameSksMap M.! fname
+              remLocals = locals \\ map snd resArgs
+              restore s = do
+                let sFunc = fst $ sVarFunVec V.! MP.varId s
+                sxp1 <- mkApp1 sFunc xp1
+                sPopped <- mkApp1 sFunc $ fromJust poppedNode
+                mkEq sxp1 sPopped
+          restoreLocals <- mkAndWith restore remLocals
+          -- Propagate all remaining variables
+          propagate <- propvals $ map snd resArgs ++ remLocals
+          mkAnd [params, restoreLocals, propagate]
+      where getFargVar (MP.Value var) = var
+            getFargVar (MP.ValueResult var) = var
+            isValRes (MP.ValueResult _) = True
+            isValRes _ = False
+            fnameSksMap = M.fromList $ map (\sk -> (MP.skName sk, sk)) $ MP.pSks prog
+
+    evalGuard :: Vector (FuncDecl, Sort) -> MP.Expr -> AST -> Z3 AST
+    evalGuard sVarFunVec g xLit = do
+      bitSort <- mkBvSort 1
+      true <- mkUnsignedInt 1 bitSort
+      bvg <- mkBvredor =<< evalExpr sVarFunVec g xLit
+      mkEq bvg true
+
+    evalExpr :: Vector (FuncDecl, Sort) -> MP.Expr -> AST -> Z3 AST
+    evalExpr sVarFunVec expr x = go expr where
+      go e = case e of
+        MP.Literal val     -> mkBitvector (BV.size val) (BV.nat val)
+        MP.Term var        -> mkApp1 (fst $ sVarFunVec V.! MP.varId var) x
+        MP.ArrayAccess _ _ -> error "Arrays not supported yet."
+        MP.Not b           -> mkBvnot =<< mkBvredor =<< go b
+        MP.And b1 b2       -> do
+          b1x <- mkBvredor =<< go b1
+          b2x <- mkBvredor =<< go b2
+          mkBvand b1x b2x
+        MP.Or b1 b2        -> do
+          b1x <- mkBvredor =<< go b1
+          b2x <- mkBvredor =<< go b2
+          mkBvor b1x b2x
+        MP.Add e1 e2       -> mkBinOp mkBvadd e1 e2
+        MP.Sub e1 e2       -> mkBinOp mkBvsub e1 e2
+        MP.Mul e1 e2       -> mkBinOp mkBvmul e1 e2
+        MP.UDiv e1 e2      -> mkBinOp mkBvudiv e1 e2
+        MP.SDiv e1 e2      -> mkBinOp mkBvsdiv e1 e2
+        MP.URem e1 e2      -> mkBinOp mkBvurem e1 e2
+        MP.SRem e1 e2      -> mkBinOp mkBvsrem e1 e2
+        MP.Eq e1 e2        -> mkBvFromBool =<< mkBinOp mkEq e1 e2
+        MP.ULt e1 e2       -> mkBvFromBool =<< mkBinOp mkBvult e1 e2
+        MP.ULeq e1 e2      -> mkBvFromBool =<< mkBinOp mkBvule e1 e2
+        MP.SLt e1 e2       -> mkBvFromBool =<< mkBinOp mkBvslt e1 e2
+        MP.SLeq e1 e2      -> mkBvFromBool =<< mkBinOp mkBvsle e1 e2
+        MP.UExt w e1       -> mkZeroExt w =<< go e1
+        MP.SExt w e1       -> mkSignExt w =<< go e1
+        MP.Trunc w e1      -> mkExtract (w - 1) 0 =<< go e1
+
+      mkBinOp op e1 e2 = do
+        e1x <- go e1
+        e2x <- go e2
+        op e1x e2x
+
+      mkBvFromBool b = do
+        bitSort <- mkBvSort 1
+        true <- mkUnsignedInt 1 bitSort
+        false <- mkUnsignedInt 0 bitSort
+        mkIte b true false
+
+
+-- push(x), shift(x), pop(x)
+mkCheckPrec :: FuncDecl -> FuncDecl -> FuncDecl -> AST -> Z3 AST
+mkCheckPrec smb struct precRel x = do
+  smbX <- mkApp1 smb x
+  structX <- mkApp1 struct x
+  mkApp precRel [smbX, structX]
+
+
 mkApp1 :: FuncDecl -> AST -> Z3 AST
 mkApp1 f x = mkApp f [x]
-
 
 mkAndWith :: (a -> Z3 AST) -> [a] -> Z3 AST
 mkAndWith predGen items = mapM predGen items >>= mkAnd
 
+mkOrWith :: (a -> Z3 AST) -> [a] -> Z3 AST
+mkOrWith predGen items = mapM predGen items >>= mkOr
+
 
 closure :: Alphabet String -> Formula String -> ([Formula String], [Formula String])
-closure alphabet phi = (structClos, Set.toList . Set.fromList $ structClos ++ closList phi)
+closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closList phi)
   where
     structClos = map Atomic $ End : (fst alphabet)
     closList f =
@@ -497,12 +800,13 @@ xnf f = case f of
   Since _ _ _     -> error "Past operators not supported yet."
   HUntil _ _ _    -> error "Hierarchical operators not supported yet."
   HSince _ _ _    -> error "Hierarchical operators not supported yet."
-  Eventually g    -> error "LTL operators only supported through translation."
-  Always g        -> error "LTL operators only supported through translation."
+  Eventually _g   -> error "LTL operators only supported through translation."
+  Always _g       -> error "LTL operators only supported through translation."
   AuxBack _ _     -> error "AuxBack not supported in SMT encoding."
 
 translate :: Formula String -> Formula String
 translate phi = fst $ transformFold applyTransl 0 phi where
+  applyTransl :: Formula String -> Word64 -> (Formula String, Word64)
   applyTransl f upId = case f of
     HNext dir g    -> let qEta = mkUniqueProp upId
       in ( gammaLR dir qEta
@@ -546,8 +850,8 @@ queryTableau nodeSort fConstMap gamma smb stack ctx k maxLen model = do
         Nothing -> k
   mapM queryTableauNode [1..unrollLength]
   where
-    fConstList = Map.toList fConstMap
-    constPropMap = Map.fromList $ map (\(Atomic p, fConst) -> (fConst, p))
+    fConstList = M.toList fConstMap
+    constPropMap = M.fromList $ map (\(Atomic p, fConst) -> (fConst, p))
                    $ filter (atomic . fst) fConstList
     queryTableauNode idx = do
       idxNode <- mkUnsignedInt64 idx nodeSort
@@ -557,7 +861,7 @@ queryTableau nodeSort fConstMap gamma smb stack ctx k maxLen model = do
       Just stackVal <- evalInt model =<< mkApp1 stack idxNode
       Just ctxVal <- evalInt model =<< mkApp1 ctx idxNode
       return TableauNode { nodeGammaC = map fst gammaVals
-                         , nodeSmb = constPropMap Map.! smbVal
+                         , nodeSmb = constPropMap M.! smbVal
                          , nodeStack = stackVal
                          , nodeCtx = ctxVal
                          , nodeIdx = fromIntegral idx

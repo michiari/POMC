@@ -212,6 +212,7 @@ declP (varmap, vii) = try $ do
       newVarMap = M.fromList
         $ map (\(name, vid) -> (name, Variable ty name vid))
         $ zip names [numIds + i | i <- [0..(numVars - 1)]]
+  -- TODO: raise error if variable name already declared
   return ( varmap `M.union` newVarMap
          , if isScalar ty
            then vii { scalarIds = numIds + numVars }

@@ -1,4 +1,4 @@
-module TestZ3 ( tests ) where
+module TestZ3Sat ( tests, isSupported ) where
 
 import EvalFormulas (TestCase, zipExpected, formulas)
 import OPMs (stlV2Alphabet)

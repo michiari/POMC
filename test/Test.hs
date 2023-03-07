@@ -7,7 +7,8 @@ import qualified TestMC       (tests, slowTests)
 import qualified TestMP       (tests)
 import qualified TestSatOmega (tests, slowTests)
 import qualified TestMCOmega  (tests, slowTests)
-import qualified TestZ3       (tests)
+import qualified TestZ3Sat    (tests)
+import qualified TestZ3MC     (tests)
 
 main :: IO ()
 main = defaultMain tests
@@ -23,7 +24,8 @@ normalTests = testGroup "Normal Tests" [ TestOpa.tests
                                        , TestMP.tests
                                        , TestSatOmega.tests
                                        , TestMCOmega.tests
-                                       , TestZ3.tests
+                                       , TestZ3Sat.tests
+                                       , TestZ3MC.tests
                                        ]
 
 slowTests :: TestTree
