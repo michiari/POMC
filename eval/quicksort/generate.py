@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import fileinput
 
-Buggy_formulas =  [   "F (ret And main)",        #01 (also the formula for VEra Comparison)
-                "XNu (ret And main)",            #02
+Buggy_formulas =  [   "F (ret And main)",        #01
+                "XNu (ret And main)",            #02  BQ.2 - False
                 "F ( G (sorted))",                 #03
                 "XNu (sorted)",                    #04
                 "F (ret And main And (sorted))",   #05
@@ -16,25 +16,26 @@ Correct_formulas = [    "F (ret And main)",      #01
                 "XNu (ret And main And (sorted))"] #06
 
 SemiSafe_formulas = [   "F (ret And main)",                                                                         #01
-                        "XNu (ret And main)",                                                                       #02   Q1 - False
+                        "XNu (ret And main)",                                                                       #02   Q.1 - False
                         "F ( G (sorted))",                                                                          #03
-                        "XNu (sorted)",                                                                             #04   Q2 - False
-                        "G ((call And main) --> ~ (PNu exc Or XNu exc))",                                           #05   Q3 - False
-                        "G ((call And qs) --> ~ (PNu exc Or XNu exc))",                                             #06   Q4 - False
-                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed)))",    #07   Q5 - True
-                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)))",          #08   Q6 - False
-                        "G ( (call And accessValues) --> (hasParsed) Or (T Sd han ))",                              #09   Q7 - True
+                        "XNu (sorted)",                                                                             #04   Q.2 - False
+                        "G ((call And main) --> ~ (PNu exc Or XNu exc))",                                           #05   Q.3 - False
+                        "G ((call And qs) --> ~ (PNu exc Or XNu exc))",                                             #06   Q.4 - False
+                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And hasParsed)) Or (XNu (exc And hasParsed)))",    #07   Q.5 - True
+                        "((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)))",          #08   Q.6 - False
+                        "G ( (call And accessValues) --> (hasParsed) Or (T Sd han ))",                              #09   Q.7 - True
                         "(F (ret And main)) Or (XNu (exc And hasParsed))",                                          #10
-                        "(XNu (ret And main)) Or (XNu (exc And hasParsed))",                                        #11   Q8 - True
+                        "(XNu (ret And main)) Or (XNu (exc And hasParsed))",                                        #11   Q.8 - True
                         "(F ( G (sorted))) Or (XNu (exc And hasParsed))",                                           #12   
-                        "(XNu (sorted)) Or (XNu (exc And hasParsed))",                                              #13   Q9 - True
-                        "(F (ret And main And (sorted))) Or (XNu (exc And hasParsed))"]                             #14   Q10 - True 
+                        "(XNu (sorted)) Or (XNu (exc And hasParsed))",                                              #13   Q.9 - True
+                        "(F (ret And main And (sorted))) Or (XNu (exc And hasParsed))"]                             #14   Q.10 - True 
 
 
-Experiments = [(Buggy_formulas,"Buggy") , (Correct_formulas,"Correct"), (SemiSafe_formulas,"SemiSafe")]
+Benchmark = [(Buggy_formulas,"Buggy") , (Correct_formulas,"Correct"), (SemiSafe_formulas,"SemiSafe")]
 
+# we take programs and we instantiate them with different values of K (aka u_size)
 for u_size in range(1,5):
-    for (exp,name) in Experiments:
+    for (exp,name) in Benchmark:
         for arr_size in range(2,8):
             filein = name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
             fileout = 'benchmark/u' + str(u_size) + '/' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
@@ -49,21 +50,19 @@ for u_size in range(1,5):
                     f.write('formulas = ' + form + ';\n')
                     f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
 
-# generate experiments for comparing POMC with Vera
-for u_size in [4,6,8,10,32]:
-    filein = 'Buggy_Programs/BuggyQuicksort_2.inc';
-    fileout = 'Vera_Comparison/u' + str(u_size) + '/BuggyQuicksort_2.inc'
-    f1 = open(filein, 'r')
-    f2 = open(fileout, 'w')
-    for line in f1:
-        f2.write(line.replace('u*', 'u' + str(u_size)))
-    f1.close()
-    f2.close()
-    with open( 'Vera_Comparison/u' + str(u_size) + '/buggy-' + str(u_size) + '.2.01.pomc', 'w') as f:
-        f.write('formulas = ' + Buggy_formulas[0] + ';\n')
-        f.write('include = "BuggyQuicksort_2.inc";')
+# experiments for comparing POMC with VERA have been handwritten
+# the VERA formula we verify is:
+#   1) F (ret And main)  ----- BQ.1 - False
 
-# experiments for comparison POMC with MOPED have been handwritten
-# the MOPED formula we verify are 
-#   1) F (ret And main) for the buggy version, and
-#   2) F (ok) for the correct version, which both verify correctness and termination.
+# experiments for comparing POMC with MOPED have been handwritten
+# the MOPED formulae we verify are 
+#   1) F (ret And main) for the buggy version, and   
+#   2) F (ok) for the correct version, which both verifies correctness and termination.
+
+# MODELS:
+# the model for VERA and MOPED-buggy are the same, modulo the parameter N
+# it represents an ABSTRACT version of the Buggy model from the benchmark
+
+# the model for MOPED-correct and Correct (from the benchmark) are the same, modulo the parameters (K,M) AND
+# a different way to establish if the array is sorted (MOPED uses variable "ok" and sets it just once at the end,
+# Correct uses variable "sorted" and updates it at every swap.)

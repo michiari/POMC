@@ -1,0 +1,2 @@
+formulas = G ((call And qs And (PBd han)) --> ( (XNu (ret And qs And sorted)) Or (XNu (exc And maxReached)))) ;
+include = "../Repeated_Programs/RepeatedQuicksort_4.inc";

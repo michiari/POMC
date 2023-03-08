@@ -18,7 +18,7 @@ slowTests = testGroup "OmegaSat Slow Tests"
   $ map (allTestCases !!) slowIndices
 
 slowIndices :: [Int]
-slowIndices = [17, 18, 19, 20, 21, 22, 23, 33, 38, 41, 42, 43, 44, 48, 53, 54, 58, 60, 61, 62]
+slowIndices = [17, 18, 19, 20, 21, 22, 23, 38, 41, 42, 43, 44, 48, 53, 58, 60, 61, 62]
 
 makeTestCase :: (TestCase, Bool)
              -> TestTree

@@ -1,2 +1,0 @@
-formulas = XNu ((ret And main) Or (exc));
-include = "../Repeated_Programs/RepeatedQuicksort_4.inc";

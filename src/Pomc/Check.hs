@@ -467,8 +467,7 @@ deltaRules bitenc cl precFunc =
                                      , (pnCond,     pnPushFr)
                                      , (pbCond,     pbPushFr)
                                      ]
-        , ruleGroupFsrs = resolve cl [(xnCond, xnPushFsr1)
-                                     ,(xnCond, xnPushFsr2)]
+        , ruleGroupFsrs = resolve cl [(xnCond, xnPushFsr)]
         }
       -- POP RULES
       popGroup = RuleGroup
@@ -656,41 +655,40 @@ deltaRules bitenc cl precFunc =
 
     pbShiftFr = pbPushFr
 
-    --rules for the omega case
-    --XN: XNext _
-    --get a mask with all XNext _ formulas set to one
+    -- rules for the omega case
+    -- XN: XNext _
+    -- get a mask with all XNext _ formulas set to one
     maskXn = E.suchThat bitenc checkXn
     checkXn (XNext _ _) = True
     checkXn _ = False
 
     xnCond clos = not (null [f | f@(XNext _ _) <- clos])
 
-    -- rules only for the omega case, safe due to haskell laziness
-    -- stack sets can contain only XNext _ formulas, so there is need to intersect pPend with maskxn, and use xnCond
-    -- note that stack
-    -- xnPush1 :: FsrInfo -> Bool
-    xnPushFsr1 info  =
+    -- rules only for the omega case
+    -- stack sets can contain only XNext _ _ formulas,
+    -- so there is no need to intersect pPend with maskxn
+    xnPushFsr :: FsrInfo -> Bool
+    xnPushFsr info =
       let pPend = pending $ fsrState info
+          pStack = stack $ fsrState info
           pPendXnfs = E.intersect pPend maskXn
+          pStackXnfs = E.intersect pStack maskXn
           fStack = fsrFutureStack info
-      in E.intersect pPendXnfs fStack == pPendXnfs
+      in E.union pPendXnfs pStackXnfs == fStack
 
-    -- xnPush2 :: FsrInfo -> Bool
-    xnPushFsr2 info  =
+    xnShiftFsr :: FsrInfo -> Bool
+    xnShiftFsr info =
       let pStack = stack $ fsrState info
           fStack = fsrFutureStack info
-      in E.intersect pStack fStack == pStack
+      in fStack == pStack
 
-    -- xnShiftFsr :: FsrInfo -> Bool
-    xnShiftFsr = xnPushFsr2
-
-    -- xnPopFsr :: FsrInfo -> Bool
+    xnPopFsr :: FsrInfo -> Bool
     xnPopFsr info =
-      let pStack= stack $ fsrState info
+      let pStack = stack $ fsrState info
           ppStack = stack $ fromJust (fsrPopped info)
           fStack = fsrFutureStack info
           checkSet = E.intersect pStack ppStack
-      in  E.intersect checkSet fStack == checkSet
+      in  fStack == checkSet
     -- end of rules for the omega case
 
     -- XND: XNext Down --
@@ -1218,7 +1216,7 @@ data FrInfo = FrInfo
 -- future stack
 data FsrInfo = FsrInfo
   { fsrState          :: State -- current state
-  , fsrPopped         :: Maybe State  -- state to pop
+  , fsrPopped         :: Maybe State -- state to pop
   , fsrFutureStack    :: EncodedSet -- future stack obligations (set of formulas to satisfy)
   }
 
@@ -1342,13 +1340,19 @@ isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
 
 -- determine whether a state is final for a formula, for the omega case
 isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
-isFinalW bitenc phi@(Until dir _ h) s  = (not $ E.member bitenc (XNext dir phi) (stack s))
-                                          && (not $ E.member bitenc (XNext dir phi) (pending s))
-                                          && ((not $ E.member bitenc phi  (current s)) || E.member bitenc h (current s))
-isFinalW bitenc phi@(XNext _ _) s      = (not $ E.member bitenc phi (stack s))
-                                          && (not $ E.member bitenc phi (pending s))
-                                          && (not $ E.member bitenc phi (current s))
-isFinalW bitenc phi@(Eventually g) s   = (E.member bitenc g (current s)) || (not $ E.member bitenc phi (current s))
+isFinalW bitenc phi@(XNext Down g) s =
+  (not $ E.member bitenc phi (stack s))
+  && ((not $ E.member bitenc phi (pending s)) || E.member bitenc g (current s))
+isFinalW bitenc phi@(XNext Up _) s =
+  (not $ E.member bitenc phi (stack s)) && (not $ E.member bitenc phi (pending s))
+isFinalW bitenc phi@(Until Down _ h) s =
+  isFinalW bitenc (XNext Down phi) s
+  && ((not $ E.member bitenc phi (current s)) || E.member bitenc h (current s))
+isFinalW bitenc phi@(Until Up _ h) s =
+  isFinalW bitenc (XNext Up phi) s
+  && ((not $ E.member bitenc phi (current s)) || E.member bitenc h (current s))
+isFinalW bitenc phi@(Eventually g) s =
+  (E.member bitenc g (current s)) || (not $ E.member bitenc phi (current s))
 isFinalW _ _ _ = True
 
 -- given a BitEncoding and a state, determine whether the state is final
