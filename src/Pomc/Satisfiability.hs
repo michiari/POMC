@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Satisfiability
-   Copyright   : 2020-2021 Michele Chiari
+   Copyright   : 2020-2023 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
@@ -201,11 +201,8 @@ reachPop isDestState isDestStack globals delta q g qState trace =
       doPop (False, _) p =
         let r = snd . fromJust $ g
             closeSupports res@(True, _) _ = return res
-            closeSupports (False, _) g'
-              | isNothing g' ||
-                ((prec delta) (fst . fromJust $ g') (current . getSatState . getState $ r)) == Just Yield
-              = reach isDestState isDestStack globals delta p g' ((Pop, q, g) : trace)
-              | otherwise = return (False, [])
+            closeSupports (False, _) g' =
+              reach isDestState isDestStack globals delta p g' ((Pop, q, g) : trace)
         in do
           SM.insert (suppEnds globals) (getId r) p
           currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
@@ -398,11 +395,7 @@ reachOmegaPop :: (NFData state, SatState state, Ord state, Hashable state, Show 
 reachOmegaPop globals delta (_,g) qState =
   let doPop p =
         let r = snd . fromJust $ g
-            closeSupports sb g'
-              | isNothing g' ||
-                ((prec delta) (fst . fromJust $ g') (getSidProps (bitenc delta) r)) == Just Yield
-              = discoverSummary (graph globals) (r,g') sb (p,g')
-              | otherwise = return ()
+            closeSupports sb g' = discoverSummary (graph globals) (r,g') sb (p,g')
         in do
           sb <- discoverSummaryBody (graph globals) r
           SM.insert (wSuppEnds globals) (getId r) (p,sb)

@@ -2,7 +2,7 @@
 
 {- |
    Module      : Pomc.MiniProc
-   Copyright   : 2020-2021 Michele Chiari
+   Copyright   : 2020-2023 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

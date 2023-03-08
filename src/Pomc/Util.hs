@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Util
-   Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari
+   Copyright   : 2020-2023 Davide Bergamaschi and Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

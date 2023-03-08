@@ -2,7 +2,7 @@
 
 {- |
    Module      : Pomc.Prop
-   Copyright   : 2020-2022 Davide Bergamaschi, Michele Chiari
+   Copyright   : 2020-2023 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

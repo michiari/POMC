@@ -71,14 +71,12 @@ All steps of the model checking process have been implemented
 for the infinite-word case too, using $\omega$OPBA instead of OPA.
 
 We used POMC to prove some interesting properties of programs which we
-modeled as OPA. Such experiments are contained in
+modeled both as OPA and MiniProc programs. Such experiments are contained in
 \texttt{\hyphenchar\font=`\-
   \hyphenpenalty=10000
   \exhyphenpenalty=-50
   pomc}
-files in the \texttt{opa} and \texttt{opa-more} subdirectories.
-Some more experiments where the model is written in MiniProc are
-contained in directory \texttt{miniproc}.
+files in the \texttt{eval} subdirectory.
 
 We show how to use POMC in Section~\ref{sec:quick-start}.
 If you wish to examine the input formulas and OPA for the experiments more carefully,
@@ -375,21 +373,35 @@ formulas = FORMULA [, FORMULA ...] ;
 program:
 PROGRAM
 \end{verbatim}
-MiniProc programs have the following syntax:
+The syntax of MiniProc programs is reported in Figure~\ref{fig:miniproc-syntax}.
+\begin{figure}
 \begin{verbatim}
-PROGRAM := [DECLS] FUNCTION [FUNCTION ...]
-DECLS := var IDENTIFIER [, IDENTIFIER ...] ;
-FUNCTION := IDENTIFIER () { STMT; [STMT ...] }
-STMT := IDENTIFIER := BEXPR
-      | while (BEXPR) { [STMT ...] }
-      | if (BEXPR) { [STMT ...] } else { [STMT ...] }
-      | try { [STMT ...] } catch { [STMT ...] }
-      | IDENTIFIER()
+PROGRAM := [DECL; ...] FUNCTION [FUNCTION ...]
+DECL := TYPE IDENTIFIER [, IDENTIFIER ...]
+TYPE := bool | uINT | sINT | uINT[INT] | sINT[INT]
+FUNCTION := IDENTIFIER ([FARG, ...]) { [DECL; ...] STMT; [STMT; ...] }
+FARG := TYPE IDENTIFIER | TYPE & IDENTIFIER
+STMT := LVALUE = BEXPR
+      | LVALUE = *
+      | while (GUARD) { [STMT; ...] }
+      | if (GUARD) { [STMT; ...] } else { [STMT; ...] }
+      | try { [STMT; ...] } catch { [STMT; ...] }
+      | IDENTIFIER([EXPR, ...])
       | throw
-BEXPR := BEXPR && BDISJ | BDISJ
-BDISJ := BDISJ || BTERM | BTERM
-BTERM := !BTERM | (BEXPR) | IDENTIFIER | true | false
+GUARD := * | EXPR
+LVALUE := IDENTIFIER | IDENTIFIER[EXPR]
+EXPR := EXPR || CONJ | CONJ
+CONJ := CONJ && BTERM | BTERM
+BTERM := IEXPR COMP IEXPR | IEXPR
+COMP := == | != | < | <= | > | >=
+IEXPR := IEXPR + PEXPR | IEXPR - PEXPR | PEXPR
+PEXPR := PEXPR * ITERM | PEXPR / ITERM | ITERM
+ITERM := !ITERM | (EXPR) | IDENTIFIER | IDENTIFIER[EXPR] | LITERAL
+LITERAL := [+|-] INT[u|s]INT | true | false
 \end{verbatim}
+\caption{MiniProc syntax.}
+\label{fig:miniproc-syntax}
+\end{figure}
 In the definition, non-terminal symbols are uppercase, and keywords lowercase.
 Parts surrounded by square brackets are optional, and ellipses mean that the enclosing
 group can be repeated zero or more times.
@@ -397,16 +409,33 @@ An \texttt{IDENTIFIER} is any sequence of letters, numbers, or characters `\text
 `\texttt{:}' and `\texttt{\_}', starting with a letter or an underscore.
 
 The program starts with a variable declaration, which must include all variables used in the program.
+Variables can be Boolean, or of signed or unsigned fixed-width integer types,
+or fixed-size arrays thereof.
 Then, a sequence of functions are defined, the first one being the entry-point to the program.
-Function bodies consist of semicolon-separated statements.
+Functions can have formal parameters that are passed by value or by value-result,%
+\footnote{When a parameter is passed by value-result, the actual parameter is copied into
+the formal parameter when the function is called and,
+when the function returns, the value of the formal parameter
+is copied back into the actual parameter (which must be a variable).}
+the latter being marked with the \texttt{\&} symbol.
+Function bodies consist of semicolon-separated statements,
+which start after zero or more lists of local variables.
 Assignments, while loops and ifs have the usual semantics.
 The try-catch statement executes the catch block whenever an exception is thrown by any statement
 in the try block (or any function it calls).
 Exceptions are thrown by the \texttt{throw} statement, and they are not typed
 (i.e., there is no way to distinguish different kinds of exceptions).
-Functions can be called by prepending their name to the \texttt{()} token
-(they do not admit arguments, as all variables are global).
-Since all variables are Boolean, expressions can be composed with the logical and (\texttt{\&\&}),
+Functions can be called by prepending their name to actual parameters enclosed in parentheses.
+Actual parameters passed by value-result can only be variable names.
+Expressions can be made of the usual arithmetic operations when they involve integer variables,
+and arrays can be indexed by integer expressions enclosed in square brackets,
+both for assigning and reading them.
+Integer literals can be specified by a decimal number followed by the type of the literal
+(e.g., \texttt{u8} for an 8-bit unsigned integer,
+\texttt{s16} for a 16-bit signed integer, etc.),
+possibly preceded by its sign.
+Boolean expressions can contain comparisons between integers,
+and can be composed through the logical and (\texttt{\&\&}),
 or (\texttt{||}) and negation (\texttt{!}) operators.
 
 POMC automatically translates such programs into OPA or $\omega$OPBA,
@@ -468,8 +497,11 @@ provided in the \texttt{eval} directory.
 The experiments were executed on a laptop with a 2.2 GHz Intel processor
 and 15 GiB of RAM, running Ubuntu GNU/Linux 20.04.
 
+These are only a few of the experiments shipped with this repository,
+and this section is intended to provide a sample of them,
+so it will not be updated frequently.
 
-\subsection{Directory \texttt{opa-cav}}
+\subsection{Directory \texttt{automata/opa-cav}}
 \label{sec:exp-opa}
 
 This directory contains a few programs modeled as OPA,
@@ -479,7 +511,7 @@ If you wish to repeat such experiments, you may run the following
 commands:
 \begin{verbatim}
 $ cd ~/path/to/POMC-sources/eval
-$ ./mcbench.py -f opa-cav
+$ ./mcbench.py -f automata/opa-cav
 \end{verbatim}
 
 \begin{table}
@@ -567,7 +599,7 @@ Additionally, we proved that both implementations are
 thrown by the underlying types.
 
 
-\subsection{Directory \texttt{opa-more}}
+\subsection{Directory \texttt{automata/opa-more}}
 
 \begin{table}[tb]
 \centering
@@ -643,7 +675,7 @@ $ ./mcbench.py -f opa-more/generic-larger
 Of course, a machine with an appropriate amount of RAM is needed.
 
 
-\subsection{Directory \texttt{miniproc}}
+\subsection{Directory \texttt{miniproc/finite}}
 
 This directory contains a few verification tasks in which the model
 has been expressed as a MiniProc program.
@@ -697,6 +729,7 @@ We describe the contents of each file below.
   and check for string acceptance. \texttt{makeOpa} returns
   a thunk containing an un-evaluated OPA, which is built on-the-fly
   while the calling context evaluates the transition functions.
+\item[DoubleSet.hs] a data structure used by the SCC-finding algorithm.
 \item[Encoding.hs] contains a data structure that represents a set of POTL
   formulas as a bit vector. We use it to encode OPA states in a
   memory-efficient form in Check.hs.
@@ -741,7 +774,9 @@ They can be run with
 \begin{verbatim}
 $ stack test
 \end{verbatim}
-
+but note that some of them may take a very long time or exhaust your memory.
+To learn how to execute just some of them, please consult the \texttt{README.md}
+file in the \texttt{test} directory.
 
 \section*{Acknowledgements}
 
@@ -760,6 +795,7 @@ for infinite words and performance optimizations.
 
 A MiniProc program can be converted to an equivalent OPA or $\omega$OPBA.
 This is done in two stages: first, we build an \emph{extended} OPA whose transitions are labeled with Boolean expressions and assignments; then, we convert such OPA to a normal one, ready for model checking.
+Note that this construction is outdated as it does not explain how we deal with things such as integer variables and function arguments, but it should still give a good overview of the process.
 
 \subsection{Extended OPA}
 Given a MiniProc program $P$ and the set $I_P$ of identifiers in $P$,

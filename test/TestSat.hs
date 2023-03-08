@@ -1,6 +1,6 @@
 {- |
    Module      : TestSat
-   Copyright   : 2021-22 Michele Chiari
+   Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

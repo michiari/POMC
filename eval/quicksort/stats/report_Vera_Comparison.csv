@@ -1,7 +1,0 @@
-Program      Array_values_bits  Array_length      Formula    Time (s)    Total_memory(KiB)    GC_Memory(KiB)  Result
----------  -------------------  --------------  ---------  ----------  -------------------  ----------------  --------
-verabuggy                   10  X                      01    0.64936                 92576          33605.6   False
-verabuggy                   32  X                      01   -1                          -1             -1     Time Out
-verabuggy                    4  X                      01    0.014615                53264           1181.23  False
-verabuggy                    6  X                      01    0.032298                53268           2143.95  False
-verabuggy                    8  X                      01    0.13663                 53264           8462.62  False

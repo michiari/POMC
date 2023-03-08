@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -fno-cse #-}
 {- |
    Module      : Main
-   Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari
+   Copyright   : 2020-2023 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
@@ -46,7 +46,7 @@ pomcArgs = PomcArgs
   , infinite = False &= help "Use infinite-word (omega) semantics (default)"
   , fileName = def &= args &= typFile -- &= help "Input file"
   }
-  &= summary "POMC v2.0.0"
+  &= summary "POMC v2.1.0"
   &= details [ "Only one input file can be specified."
              , "--finite and --infinite cannot be specified together."
              ]

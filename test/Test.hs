@@ -1,3 +1,10 @@
+{- |
+   Module      : TestSat
+   Copyright   : 2021-23 Michele Chiari
+   License     : MIT
+   Maintainer  : Michele Chiari
+-}
+
 import Test.Tasty
 
 import qualified TestOpa      (tests)

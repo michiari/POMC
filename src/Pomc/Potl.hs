@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {- |
    Module      : Pomc.Potl
-   Copyright   : 2020-2021 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
+   Copyright   : 2020-2023 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
    License     : MIT
    Maintainer  : Michele Chiari
 -}
