@@ -1,0 +1,29 @@
+formulas = XNd pErr;
+
+program:
+pA() {
+  bool foo;
+  foo = true;
+  try {
+    pB(foo);
+  } catch {
+    pErr();
+    pErr();
+  }
+}
+
+pB(bool bar) {
+  if (bar) {
+    pC();
+  } else { }
+}
+
+pC() {
+  if (*) {
+    throw;
+  } else {
+    pC();
+  }
+}
+
+pErr() { }
