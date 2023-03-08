@@ -35,6 +35,9 @@ library:
   - Pomc.Z3Encoding
   ghc-options:
   - -Wall
+  - -Wno-incomplete-patterns
+  - -Wno-incomplete-uni-patterns
+  - -Wno-orphans
   - -O2
   dependencies:
   - bv
