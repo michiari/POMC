@@ -1,4 +1,10 @@
 {-# LANGUAGE QuasiQuotes #-}
+{- |
+   Module      : TestSat
+   Copyright   : 2021-23 Michele Chiari
+   License     : MIT
+   Maintainer  : Michele Chiari
+-}
 
 module TestMP (tests) where
 

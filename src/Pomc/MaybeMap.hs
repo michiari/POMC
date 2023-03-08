@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.MaybeMap
-   Copyright   : 2021 Francesco Pontiggia
+   Copyright   : 2021-2023 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}

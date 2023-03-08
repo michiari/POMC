@@ -1,7 +1,7 @@
 # Changelog
 
 
-## Current development version
+## v2.1.0 (2023/03/08)
 
 - MiniProc now supports fixed-width integer variables and arrays
 - MiniProc now supports non-deterministic variable assignments

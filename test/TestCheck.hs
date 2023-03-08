@@ -1,3 +1,10 @@
+{- |
+   Module      : TestSat
+   Copyright   : 2021-23 Michele Chiari
+   License     : MIT
+   Maintainer  : Michele Chiari
+-}
+
 module TestCheck (tests) where
 
 import Pomc.Check (fastcheckGen)

@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.DoubleSet
-   Copyright   : 2022 Francesco Pontiggia
+   Copyright   : 2022-2023 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
