@@ -591,7 +591,7 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
         pcStackX <- mkApp1 pc stackX
         pcStackXEqLs <- mkEq pcStackX lsLit
         -- ACTION(x, stack(x), a)
-        action <- mkAction sVarFunVec x (Just lsLit) act
+        action <- mkAction sVarFunVec x (Just stackX) act
         -- g|x ∧ pc(x + 1) = l2
         targets <- mkOrWith (\(g, l2) -> do
                                 -- pc(x + 1) = l2
