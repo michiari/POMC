@@ -9,6 +9,7 @@
 module TestMP ( tests
 
               , sasMPSource
+              , nondetSrc
               ) where
 
 import Pomc.MiniProcParse (programP)
