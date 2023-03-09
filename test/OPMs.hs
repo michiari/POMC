@@ -1,5 +1,5 @@
 {- |
-   Module      : Pomc.OPMs
+   Module      : OPMs
    Copyright   : 2020-23 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari

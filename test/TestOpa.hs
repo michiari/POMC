@@ -1,5 +1,5 @@
 {- |
-   Module      : TestSat
+   Module      : TestOpa
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
