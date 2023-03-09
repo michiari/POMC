@@ -1,6 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {- |
-   Module      : TestSat
+   Module      : TestMP
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari

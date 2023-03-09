@@ -1,5 +1,5 @@
 {- |
-   Module      : Pomc.Util
+   Module      : Pomc.PropConv
    Copyright   : 2020-2023 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
