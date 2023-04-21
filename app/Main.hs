@@ -11,7 +11,8 @@ module Main (main) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
-import Pomc.Parse (checkRequestP, spaceP, CheckRequest(..), includeP)
+import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
+import Pomc.MiniProc (ExprProp(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 import Pomc.Util (timeAction, timeToString, prettyTrace)
@@ -26,7 +27,6 @@ import System.Console.CmdArgs
 import Text.Megaparsec
 import Data.Text.IO (readFile)
 import qualified Data.Text as T
-import Data.Maybe (fromJust)
 
 import Data.List (intersperse)
 
@@ -66,24 +66,22 @@ main = do
   creq <- case parse (spaceP *> checkRequestP <* eof) fname prepcontent of
             Left  errBundle -> die (errorBundlePretty errBundle)
             Right creq      -> return creq
+  totalTime <- case creq of
+    ExplCheckRequest phis rawPrecRels maybeStrings maybeOpa -> do
+      let precRels = addEndPrec rawPrecRels
+      stringTimes <- case maybeStrings of
+        Just strings -> forM [(phi, s) | phi <- phis, s <- strings]
+          (uncurry $ runString precRels)
+        Nothing -> return []
 
-  let phis = creqFormulas creq
-      precRels = addEndPrec . fromJust . creqPrecRels $ creq
+      mcTimes <- case maybeOpa of
+        Just opa -> forM phis (runMC isOmega opa)
+        Nothing -> return []
 
-  stringTimes <- case creqStrings creq of
-                   Just strings -> forM [(phi, s) | phi <- phis, s <- strings]
-                                   (uncurry $ runString precRels)
-                   Nothing -> return []
+      return $ sum stringTimes + sum mcTimes
 
-  mcTimes <- case creqOpa creq of
-               Just opa -> forM phis (runMC isOmega opa)
-               Nothing -> return []
+    ProgCheckRequest phis prog -> sum <$> forM phis (runProg isOmega prog)
 
-  progTime <- case creqMiniProc creq of
-                Just prog -> forM phis (runProg isOmega prog)
-                Nothing -> return []
-
-  let totalTime = sum stringTimes + sum mcTimes + sum progTime
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
 
@@ -122,7 +120,7 @@ main = do
              if sat
                then return ()
                else putStr $ "\nCounterexample: "
-                    ++ (show . prettyTrace (T.singleton '#') (T.pack "...") $ trace)
+                    ++ (show . prettyTrace (TextProp $ T.singleton '#') (TextProp $ T.pack "...") $ trace) -- TODO: fix this
              putStrLn (concat ["\nElapsed time: ", timeToString time])
              return time
 

@@ -11,10 +11,11 @@ module Pomc.OpaGen ( printFunctions
                    ) where
 
 import Pomc.Prop (Prop(..))
+import Pomc.Prec (Alphabet)
 import Pomc.ModelChecker (ExplicitOpa(..))
 import Pomc.MiniProc ( FunctionSkeleton(..), Statement(..), FunctionName
                      , DeltaTarget(..), LowerState(..), InputLabel(..), sksToExtendedOpa
-                     , miniProcAlphabet
+                     , ExprProp(..), miniProcAlphabet
                      )
 
 import System.Random
@@ -97,7 +98,7 @@ printFunctions nf maxCalls maxDepth = do
 -- Generate a plain OPA directly (without variables)
 skeletonsToOpa :: Bool -> [FunctionSkeleton] -> ExplicitOpa Word T.Text
 skeletonsToOpa omega sks = ExplicitOpa
-  { eoAlphabet = miniProcAlphabet
+  { eoAlphabet = miniProcTextAlphabet
   , eoInitials = ini
   , eoFinals = fin
   , eoDeltaPush = toListDelta normalizeInput $ lsDPush lowerState
@@ -196,3 +197,12 @@ evalHeader =
   \\n           XNd (call And ((call Or exc) Su p0));\
   \\n\
   \\nopa:"
+
+miniProcTextAlphabet :: Alphabet T.Text
+miniProcTextAlphabet =
+  let (sls, prs) = miniProcAlphabet
+      unTextProp (TextProp t) = t
+      unTextProp _ = error "Unexpected ExprProp."
+  in ( map (fmap unTextProp) sls
+     , map (\(sl1, sl2, pr) -> (fmap unTextProp sl1, fmap unTextProp sl2, pr)) prs
+     )

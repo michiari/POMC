@@ -1,31 +1,29 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
-   Module      : Pomc.Parse
+   Module      : Pomc.Parse.Parser
    Copyright   : 2020-2023 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Parse ( potlv2P
-                  , checkRequestP
-                  , spaceP
-                  , CheckRequest(..)
-                  , includeP
-                  ) where
+module Pomc.Parse.Parser ( checkRequestP
+                         , spaceP
+                         , CheckRequest(..)
+                         , includeP
+                         ) where
 
 import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.Potl as P
-import Pomc.MiniProc (Program)
-import Pomc.MiniProcParse (programP)
+import Pomc.MiniProc (Program(..), ExprProp(..))
+import Pomc.Parse.MiniProc
 import Pomc.ModelChecker (ExplicitOpa(..))
 
 import Data.Void (Void)
-import Data.Text
+import Data.Text (Text, pack)
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Maybe (isNothing, isJust, fromJust)
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -37,12 +35,15 @@ type Parser = Parsec Void Text
 type PFormula = P.Formula Text
 type PropString = [Set (Prop Text)]
 
-data CheckRequest = CheckRequest { creqPrecRels :: Maybe [StructPrecRel Text]
-                                 , creqFormulas :: [PFormula]
-                                 , creqStrings  :: Maybe [PropString]
-                                 , creqOpa      :: Maybe (ExplicitOpa Word Text)
-                                 , creqMiniProc :: Maybe Program
-                                 }
+data CheckRequest =
+  ExplCheckRequest { ecreqFormulas :: [PFormula]
+                   , ecreqPrecRels :: [StructPrecRel Text]
+                   , ecreqStrings  :: Maybe [PropString]
+                   , ecreqOpa      :: Maybe (ExplicitOpa Word Text)
+                   } |
+  ProgCheckRequest { pcreqFormulas :: [P.Formula ExprProp]
+                   , pcreqMiniProc :: Program
+                   }
 
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
@@ -56,6 +57,9 @@ symbolP = L.symbol spaceP
 parensP :: Parser a -> Parser a
 parensP = between (symbolP "(") (symbolP ")")
 
+bracketsP :: Parser a -> Parser a
+bracketsP = between (symbolP "[") (symbolP "]")
+
 quotesP :: Parser a -> Parser a
 quotesP = between (symbolP "\"") (symbolP "\"")
 
@@ -67,13 +71,22 @@ allPropChars = choice [ alphaNumChar
                       , char '~', char '='
                       , char '-', char '+'
                       , char '<', char '>'
-                      , char '_', char ';']
+                      , char '_', char ';'
+                      ]
 
 propP :: Parser (Prop Text)
 propP = choice [ End         <$  symbolP "#"
                , Prop . pack <$> lexemeP (some alphaNumChar <?> "atomic proposition")
                , Prop . pack <$> quotesP (some allPropChars <?> "atomic proposition")
                ]
+
+typedPropP :: Parser (Prop TypedProp)
+typedPropP = fmap (fmap TextTProp) propP <|> exprPropP
+  where exprPropP = bracketsP . label "expression proposition" $ do
+          scope <- optional identifierP
+          _ <- symbolP "|"
+          texpr <- typedExprP Nothing
+          return $ Prop $ ExprTProp scope texpr
 
 propSetP :: Parser (Set (Prop Text))
 propSetP = choice [ S.singleton <$> propP
@@ -95,26 +108,26 @@ precRelP = do sb1  <- propP
               sb2  <- propP
               return (sb1, sb2, prec)
 
-potlv2P :: Parser PFormula
-potlv2P = makeExprParser termParser operatorTable
-  where atomicP :: Parser PFormula
-        atomicP = P.Atomic <$> propP
+potlP :: Parser (P.Formula TypedProp)
+potlP = makeExprParser termParser operatorTable
+  where atomicP :: Parser (P.Formula TypedProp)
+        atomicP = P.Atomic <$> typedPropP
 
-        trueP :: Parser PFormula
+        trueP :: Parser (P.Formula TypedProp)
         trueP = P.T <$ symbolP "T"
 
-        termParser :: Parser PFormula
+        termParser :: Parser (P.Formula TypedProp)
         termParser = choice
           [ trueP
           , atomicP
-          , parensP potlv2P
+          , parensP potlP
           ]
 
         binaryL name f = InfixL (f <$ symbolP name)
         binaryR name f = InfixR (f <$ symbolP name)
         prefix name f = Prefix (f <$ symbolP name)
 
-        operatorTable :: [[Operator Parser PFormula]]
+        operatorTable :: [[Operator Parser (P.Formula TypedProp)]]
         operatorTable =
           [ [ prefix "Not" P.Not
             , prefix "~"   P.Not
@@ -189,13 +202,13 @@ deltaPopP = parensP deltaRel `sepBy1` symbolP ","
                       ps <- stateListP
                       return (q, s, ps)
 
-formulaSectionP :: Parser [PFormula]
+formulaSectionP :: Parser [P.Formula TypedProp]
 formulaSectionP = do _ <- symbolP "formulas"
                      _ <- symbolP "="
                      formulas <- formulasP
                      _ <- symbolP ";"
                      return formulas
-  where formulasP = potlv2P `sepBy1` symbolP ","
+  where formulasP = potlP `sepBy1` symbolP ","
 
 stringSectionP :: Parser [PropString]
 stringSectionP = do _ <- symbolP "strings"
@@ -239,22 +252,32 @@ opaSectionP = do
   _ <- symbolP ";"
   return (ExplicitOpa ([], []) opaInitials opaFinals opaDeltaPush opaDeltaShift opaDeltaPop)
 
-progSectionP :: Parser Program
-progSectionP = do
-  _ <- symbolP "program"
-  _ <- symbolP ":"
-  programP
-
 checkRequestP :: Parser CheckRequest
 checkRequestP = do
-  fs  <- formulaSectionP
-  prs <- optional precSectionP
-  pss <- optional stringSectionP
-  opa <- optional opaSectionP
-  prog <- optional progSectionP
-  if isNothing prs && (isJust pss || isJust opa)
-    then fail "If a string or an OPA is supplied, an OPM must also be specified."
-    else return (CheckRequest prs fs pss (fullOpa opa (fromJust prs)) prog)
+  fs <- formulaSectionP
+  opaStringP fs <|> progSectionP fs
+  where opaStringP fs = do
+          prs <- precSectionP
+          pss <- optional stringSectionP
+          opa <- optional opaSectionP
+          return ExplCheckRequest { ecreqFormulas = map untypePropFormula fs
+                                  , ecreqPrecRels = prs
+                                  , ecreqStrings = pss
+                                  , ecreqOpa = fullOpa opa prs
+                                  }
+        -- TODO: convert variable names to expressions in formulas
+        progSectionP fs = do
+          _ <- symbolP "program"
+          _ <- symbolP ":"
+          prog <- programP
+          return ProgCheckRequest { pcreqFormulas = map (untypeExprFormula prog) fs
+                                  , pcreqMiniProc = prog
+                                  }
+
+        untypePropFormula = fmap $ \p -> case p of
+          TextTProp t -> t
+          ExprTProp _ _ ->
+            error "Cannot use expressions in formulas to be checked on OPAs or strings."
 
 fullOpa :: Maybe (ExplicitOpa Word Text)
         -> [StructPrecRel Text]

@@ -19,6 +19,7 @@ module Pomc.MiniProc ( Program(..)
                      , FunctionName
                      , Type(..)
                      , VarState
+                     , ExprProp(..)
                      , isSigned
                      , isScalar
                      , isArray
@@ -37,7 +38,7 @@ module Pomc.MiniProc ( Program(..)
                      , miniProcAlphabet
                      ) where
 
-import Pomc.Prop (Prop(..))
+import Pomc.Prop (Prop(..), unprop)
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import qualified Pomc.Encoding as E
@@ -122,6 +123,12 @@ data Program = Program { pGlobalScalars :: Set Variable
                        , pLocalArrays   :: Set Variable
                        , pSks           :: [FunctionSkeleton]
                        } deriving Show
+
+data ExprProp = TextProp Text | ExprProp Expr deriving (Eq, Ord, Show)
+
+isExprProp :: ExprProp -> Bool
+isExprProp (ExprProp _) = True
+isExprProp _ = False
 
 instance Hashable Type
 instance Hashable Variable
@@ -464,8 +471,8 @@ initialValuation getIdx svars avars = (scalars, arrays)
         initialScalar = B.zeros . varWidth
         initialArray var = V.replicate (arraySize . varType $ var) (initialScalar var)
 
-programToOpa :: Bool -> Program -> Set (Prop Text)
-             -> ( PropConv Text
+programToOpa :: Bool -> Program -> Set (Prop ExprProp)
+             -> ( PropConv ExprProp
                 , Alphabet APType
                 , (E.BitEncoding -> Input -> Bool)
                 , (E.BitEncoding -> VarState -> State -> Bool)
@@ -490,34 +497,27 @@ programToOpa isOmega prog additionalProps =
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
-      allVarProps = S.map (\var -> Prop $ encodeAP pconv $ varName var)
-        $ S.filter (\var -> Prop (varName var) `S.member` additionalProps)
-        $ pGlobalScalars prog `S.union` pLocalScalars prog
+      allExprProps = S.map (encodeProp pconv)
+                     $ S.filter (isExprProp . unprop) additionalProps
       gvii = VarIdInfo { scalarIds = S.size . pGlobalScalars $ prog
                        , arrayIds = S.size . pGlobalArrays $ prog
                        }
-      localsInfo = M.insert T.empty (globalVarMap, V.empty, V.empty)
+      localsInfo = M.insert T.empty (V.empty, V.empty)
         $ M.fromList
         $ map (\sk -> let (liScalars, liArrays) =
                             initialValuation (getLocalIdx gvii) (skScalars sk) (skArrays sk)
-                      in (skName sk,
-                          (makeVarMap (skScalars sk) `M.union` globalVarMap, liScalars, liArrays)))
+                      in (skName sk, (liScalars, liArrays)))
         $ pSks prog
-        where globalVarMap = makeVarMap $ pGlobalScalars prog
-              makeVarMap varSet = M.fromList
-                $ map (\var -> (Prop $ encodeAP pconv $ varName var, varId var))
-                $ filter (\var -> Prop (varName var) `S.member` additionalProps)
-                $ S.toList varSet
       remapDelta delta =
         M.map (\(ilabel, States s) -> (ilabelToPropSet ilabel, ilabel, s)) delta
         where ilabelToPropSet il = S.fromList
                 $ map (encodeProp pconv)
                 $ filter (`S.member` allProps)
-                $ map Prop $ ilStruct il : ilFunction il : ilModules il
+                $ map (Prop . TextProp) $ ilStruct il : ilFunction il : ilModules il
       remappedDPush = remapDelta $ lsDPush lowerState
       remappedDShift = remapDelta $ lsDShift lowerState
       decodeDeltaInput remappedDelta bitenc q b =
-        applyDeltaInput gvii allVarProps localsInfo remappedDelta q $ E.decodeInput bitenc b
+        applyDeltaInput gvii allExprProps pconv localsInfo remappedDelta q $ E.decodeInput bitenc b
 
       inputFilter bitenc b =
         let pLabels = map (\(l, _, _) -> l) $ M.elems remappedDPush
@@ -547,22 +547,25 @@ programToOpa isOmega prog additionalProps =
 
 applyDeltaInput :: VarIdInfo
                 -> Set (Prop APType)
-                -> Map FunctionName (Map (Prop APType) IdType, Vector IntValue, Vector ArrayValue)
+                -> PropConv ExprProp
+                -> Map FunctionName (Vector IntValue, Vector ArrayValue)
                 -> Map Word (Set (Prop APType), InputLabel, [(Guard, Word)])
                 -> VarState
                 -> Set (Prop APType)
                 -> [VarState]
-applyDeltaInput gvii allVarProps localsInfo delta (sid, svval) lbl =
+applyDeltaInput gvii allExprProps pconv localsInfo delta (sid, svval) lbl =
   case M.lookup sid delta of
     Nothing -> []
     Just (lsProps, il, dsts) ->
-      let (localPropMap, initScalars, initArrays) = localsInfo M.! ilFunction il
+      let (initScalars, initArrays) = localsInfo M.! ilFunction il
           callVval = prepareForCall (ilAction il) initScalars initArrays
-          filterVars vid
-            | isGlobal gvii True vid = toBool $ vGlobalScalars callVval V.! vid
-            | otherwise = toBool $ vLocalScalars callVval V.! getLocalIdx gvii True vid
-          vvalPropSet = M.keysSet $ M.filter filterVars localPropMap
-      in if (vvalPropSet, lsProps) == S.partition (`S.member` allVarProps) lbl
+
+          evalExprProp (Prop (ExprProp expr)) = toBool $ evalExpr gvii callVval expr
+          evalExprProp _ = error "Unexpected Text Prop."
+
+          (exprProps, textProps) = S.partition (`S.member` allExprProps) lbl
+          decodedExprProps = map (decodeProp pconv) $ S.toList exprProps
+      in if lsProps == textProps && all evalExprProp decodedExprProps
          then computeDsts gvii callVval (ilAction il) dsts
          else []
   where prepareForCall (CallOp _ fargs aargs) initScalars initArrays =
@@ -703,12 +706,14 @@ toBool v = B.nat v /= 0
 
 
 -- OPM
-miniProcSls :: [Prop Text]
-miniProcSls = map (Prop . T.pack) ["call", "ret", "han", "exc", "stm"]
+miniProcSls :: [Prop ExprProp]
+miniProcSls = map (Prop . TextProp . T.pack) ["call", "ret", "han", "exc", "stm"]
 
-miniProcPrecRel :: [StructPrecRel Text]
-miniProcPrecRel = map (\(sl1, sl2, pr) -> (Prop . T.pack $ sl1, Prop . T.pack $ sl2, pr)) precs
-                  ++ map (\p -> (p, End, Take)) miniProcSls
+miniProcPrecRel :: [StructPrecRel ExprProp]
+miniProcPrecRel =
+  map (\(sl1, sl2, pr) ->
+         (Prop . TextProp . T.pack $ sl1, Prop . TextProp . T.pack $ sl2, pr)) precs
+  ++ map (\p -> (p, End, Take)) miniProcSls
   where precs = [ ("call", "call", Yield)
                 , ("call", "ret",  Equal)
                 , ("call", "han",  Yield)
@@ -736,5 +741,5 @@ miniProcPrecRel = map (\(sl1, sl2, pr) -> (Prop . T.pack $ sl1, Prop . T.pack $ 
                 , ("stm",  "stm",  Take)
                 ]
 
-miniProcAlphabet :: Alphabet Text
+miniProcAlphabet :: Alphabet ExprProp
 miniProcAlphabet = (miniProcSls, miniProcPrecRel)

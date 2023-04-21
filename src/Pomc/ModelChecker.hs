@@ -27,7 +27,7 @@ import Pomc.Satisfiability (isEmpty, isEmptyOmega)
 import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, PropConv(..), convProps, encodeFormula)
 import qualified Pomc.Encoding as E
-import Pomc.MiniProc (Program, VarState, programToOpa)
+import Pomc.MiniProc (Program, VarState, ExprProp, programToOpa)
 #ifndef NDEBUG
 import Pomc.Satisfiability (toInputTrace, showTrace)
 import qualified Debug.Trace as DBG
@@ -232,9 +232,9 @@ countStates opa =
   in Set.size $ popStates `Set.union` (Set.fromList $ eoInitials opa ++ eoFinals opa)
 
 modelCheckProgram :: Bool
-                  -> Formula Text
+                  -> Formula ExprProp
                   -> Program
-                  -> (Bool, [(VarState, Set (Prop Text))])
+                  -> (Bool, [(VarState, Set (Prop ExprProp))])
 modelCheckProgram isOmega phi prog =
   let (pconv, alphabet, inputFilter, stateFilter, ini, isfin, dpush, dshift, dpop) =
         programToOpa isOmega prog (Set.fromList $ getProps phi)

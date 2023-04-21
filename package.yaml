@@ -27,10 +27,9 @@ library:
   - Pomc.Prop
   - Pomc.Satisfiability
   - Pomc.ModelChecker
-  - Pomc.Parse
+  - Pomc.Parse.Parser
   - Pomc.OpaGen
   - Pomc.MiniProc
-  - Pomc.MiniProcParse
   - Pomc.Util
   ghc-options:
   - -Wall
