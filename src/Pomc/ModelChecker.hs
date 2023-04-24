@@ -39,7 +39,6 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import qualified Data.HashMap.Strict as Map
-import Data.Text (Text)
 
 import GHC.Generics (Generic)
 import Data.Hashable

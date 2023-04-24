@@ -265,7 +265,7 @@ checkRequestP = do
                                   , ecreqStrings = pss
                                   , ecreqOpa = fullOpa opa prs
                                   }
-        -- TODO: convert variable names to expressions in formulas
+
         progSectionP fs = do
           _ <- symbolP "program"
           _ <- symbolP ":"

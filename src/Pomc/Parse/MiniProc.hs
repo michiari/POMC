@@ -54,7 +54,7 @@ data TypedExpr = TLiteral TypedValue
                | TLeq TypedExpr TypedExpr
                deriving Show
 
-data TypedProp = TextTProp Text | ExprTProp (Maybe Text) TypedExpr deriving Show
+data TypedProp = TextTProp Text | ExprTProp (Maybe FunctionName) TypedExpr deriving Show
 
 -- Convert a TypedExpr to an Expr by inserting appropriate casts
 insertCasts :: TypedExpr -> (Expr, Type)
@@ -467,19 +467,29 @@ parseModules fname = joinModules (head splitModules) (tail splitModules) []
 
 untypeExprFormula :: Program -> Formula TypedProp -> Formula ExprProp
 untypeExprFormula prog = fmap $ \p -> case p of
-  TextTProp t -> TextProp t
+  -- Keep support for legacy feature of APs as variables without scope.
+  -- Note: if local variables from different functions share the same name,
+  -- will only recognize the one from the last function.
+  TextTProp t | t `M.member` varScopeMap -> let (scope, v) = varScopeMap M.! t
+                                            in ExprProp scope (Term v)
+              | otherwise -> TextProp t
   ExprTProp scope texpr ->
-    ExprProp . untypeExpr . resolveVars (makeEnv scope) $ texpr
+    (ExprProp scope) . untypeExpr . resolveVars (makeEnv scope) $ texpr
   where
-    toVarMap = M.fromList . map (\v -> (varName v, v)) . S.toList
-    gvarmap :: Map Text Variable
-    gvarmap = toVarMap (pGlobalScalars prog) `M.union` toVarMap (pGlobalArrays prog)
+    toVarMap vf = M.fromList . map (\v -> (varName v, vf v)) . S.toList
+
+    varScopeMap = M.fromList [(varName v, (Just $ skName sk, v))
+                              | sk <- pSks prog, v <- S.toList $ skScalars sk]
+                  `M.union` toVarMap (\v -> (Nothing, v)) (pGlobalScalars prog)
+
+    gvarmap = toVarMap id (pGlobalScalars prog) `M.union` toVarMap id (pGlobalArrays prog)
     makeEnv (Just fname) = case find (\fsk -> skName fsk == fname) (pSks prog) of
-      Just fsk -> toVarMap (skScalars fsk)
-                  `M.union` toVarMap (skArrays fsk)
+      Just fsk -> toVarMap id (skScalars fsk)
+                  `M.union` toVarMap id (skArrays fsk)
                   `M.union` gvarmap
       Nothing -> error $ "Undeclared function " ++ T.unpack fname
     makeEnv Nothing = gvarmap
+
     resolveVars varmap texpr = go texpr
       where go e = case e of
               tl@(TLiteral _) -> tl
@@ -489,7 +499,7 @@ untypeExprFormula prog = fmap $ \p -> case p of
               TArrayAccess v idx -> TArrayAccess nvar $ go idx
                 where nvar = case varmap M.!? varName v of
                         Just nv -> nv
-                        Nothing -> error $ "Undeclared variable " ++ T.unpack  (varName v)
+                        Nothing -> error $ "Undeclared variable " ++ T.unpack (varName v)
               TNot te      -> TNot $ go te
               TAnd te1 te2 -> goBinOp TAnd te1 te2
               TOr te1 te2  -> goBinOp TOr te1 te2

@@ -124,11 +124,15 @@ data Program = Program { pGlobalScalars :: Set Variable
                        , pSks           :: [FunctionSkeleton]
                        } deriving Show
 
-data ExprProp = TextProp Text | ExprProp Expr deriving (Eq, Ord, Show)
+data ExprProp = TextProp Text | ExprProp (Maybe FunctionName) Expr deriving (Eq, Ord, Show)
 
 isExprProp :: ExprProp -> Bool
-isExprProp (ExprProp _) = True
+isExprProp (ExprProp _ _) = True
 isExprProp _ = False
+
+getExpr :: ExprProp -> Expr
+getExpr (ExprProp _ e) = e
+getExpr _ = error "Unexpected TextProp"
 
 instance Hashable Type
 instance Hashable Variable
@@ -497,17 +501,24 @@ programToOpa isOmega prog additionalProps =
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
-      allExprProps = S.map (encodeProp pconv)
-                     $ S.filter (isExprProp . unprop) additionalProps
       gvii = VarIdInfo { scalarIds = S.size . pGlobalScalars $ prog
                        , arrayIds = S.size . pGlobalArrays $ prog
                        }
-      localsInfo = M.insert T.empty (V.empty, V.empty)
+      localsInfo = M.insert T.empty (globExprMap, V.empty, V.empty)
         $ M.fromList
         $ map (\sk -> let (liScalars, liArrays) =
                             initialValuation (getLocalIdx gvii) (skScalars sk) (skArrays sk)
-                      in (skName sk, (liScalars, liArrays)))
+                          exprMap = makeExprPropMap (Just . skName $ sk)
+                                    `M.union` globExprMap
+                      in (skName sk, (exprMap, liScalars, liArrays)))
         $ pSks prog
+        where makeExprPropMap scope = M.fromList
+                $ map (\p -> (encodeProp pconv p, getExpr . unprop $ p))
+                $ filter filterExpr
+                $ S.toList additionalProps
+                where filterExpr (Prop (ExprProp s _)) | s == scope = True
+                      filterExpr _ = False
+              globExprMap = makeExprPropMap Nothing
       remapDelta delta =
         M.map (\(ilabel, States s) -> (ilabelToPropSet ilabel, ilabel, s)) delta
         where ilabelToPropSet il = S.fromList
@@ -517,7 +528,7 @@ programToOpa isOmega prog additionalProps =
       remappedDPush = remapDelta $ lsDPush lowerState
       remappedDShift = remapDelta $ lsDShift lowerState
       decodeDeltaInput remappedDelta bitenc q b =
-        applyDeltaInput gvii allExprProps pconv localsInfo remappedDelta q $ E.decodeInput bitenc b
+        applyDeltaInput gvii localsInfo remappedDelta q $ E.decodeInput bitenc b
 
       inputFilter bitenc b =
         let pLabels = map (\(l, _, _) -> l) $ M.elems remappedDPush
@@ -546,26 +557,19 @@ programToOpa isOmega prog additionalProps =
      )
 
 applyDeltaInput :: VarIdInfo
-                -> Set (Prop APType)
-                -> PropConv ExprProp
-                -> Map FunctionName (Vector IntValue, Vector ArrayValue)
+                -> Map FunctionName (Map (Prop APType) Expr, Vector IntValue, Vector ArrayValue)
                 -> Map Word (Set (Prop APType), InputLabel, [(Guard, Word)])
                 -> VarState
                 -> Set (Prop APType)
                 -> [VarState]
-applyDeltaInput gvii allExprProps pconv localsInfo delta (sid, svval) lbl =
+applyDeltaInput gvii localsInfo delta (sid, svval) lbl =
   case M.lookup sid delta of
     Nothing -> []
     Just (lsProps, il, dsts) ->
-      let (initScalars, initArrays) = localsInfo M.! ilFunction il
+      let (exprPropMap, initScalars, initArrays) = localsInfo M.! ilFunction il
           callVval = prepareForCall (ilAction il) initScalars initArrays
-
-          evalExprProp (Prop (ExprProp expr)) = toBool $ evalExpr gvii callVval expr
-          evalExprProp _ = error "Unexpected Text Prop."
-
-          (exprProps, textProps) = S.partition (`S.member` allExprProps) lbl
-          decodedExprProps = map (decodeProp pconv) $ S.toList exprProps
-      in if lsProps == textProps && all evalExprProp decodedExprProps
+          trueExprProps = M.keysSet $ M.filter (toBool . evalExpr gvii callVval) exprPropMap
+      in if (trueExprProps, lsProps) == S.partition (`M.member` exprPropMap) lbl
          then computeDsts gvii callVval (ilAction il) dsts
          else []
   where prepareForCall (CallOp _ fargs aargs) initScalars initArrays =
