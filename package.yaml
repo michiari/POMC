@@ -28,6 +28,7 @@ library:
   - Pomc.Satisfiability
   - Pomc.ModelChecker
   - Pomc.Parse.Parser
+  - Pomc.Parse.MiniProc
   - Pomc.OpaGen
   - Pomc.MiniProc
   - Pomc.Util
