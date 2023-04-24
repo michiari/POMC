@@ -50,7 +50,7 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Maybe (isNothing, fromJust)
+import Data.Maybe (isNothing, fromJust, fromMaybe)
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as B
 import Data.Vector (Vector)
@@ -124,15 +124,12 @@ data Program = Program { pGlobalScalars :: Set Variable
                        , pSks           :: [FunctionSkeleton]
                        } deriving Show
 
-data ExprProp = TextProp Text | ExprProp (Maybe FunctionName) Expr deriving (Eq, Ord, Show)
+data ExprProp = TextProp Text | ExprProp (Maybe FunctionName) Expr deriving (Eq, Ord)
 
-isExprProp :: ExprProp -> Bool
-isExprProp (ExprProp _ _) = True
-isExprProp _ = False
-
-getExpr :: ExprProp -> Expr
-getExpr (ExprProp _ e) = e
-getExpr _ = error "Unexpected TextProp"
+instance Show ExprProp where
+  show (TextProp t) = T.unpack t
+  show (ExprProp s e) = "[" ++ T.unpack (fromMaybe T.empty s) ++ "| " ++ show e ++ "]"
+-- TODO: make pretty show for Exprs
 
 instance Hashable Type
 instance Hashable Variable
@@ -140,6 +137,10 @@ instance Hashable B.BV where
   hashWithSalt s bv = s `hashWithSalt` B.nat bv `hashWithSalt` B.size bv
 instance Hashable a => Hashable (Vector a) where
   hashWithSalt s v = V.foldl' hashWithSalt s v
+
+getExpr :: ExprProp -> Expr
+getExpr (ExprProp _ e) = e
+getExpr _ = error "Unexpected TextProp"
 
 isSigned :: Type -> Bool
 isSigned (SInt _) = True

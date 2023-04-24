@@ -12,10 +12,9 @@ module Main (main) where
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
-import Pomc.MiniProc (ExprProp(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.Util (timeAction, timeToString, prettyTrace)
+import Pomc.Util (timeAction, timeToString)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
@@ -84,57 +83,59 @@ main = do
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
+  where
+    runString precRels phi s = do
+      putStr (concat [ "\nFormula: ", show phi
+                     , "\nString:  ", showstring s
+                     , "\nResult:  "
+                     ])
+      (_, time) <- timeAction . putStr . show $ fastcheckGen phi precRels s
+      putStrLn (concat ["\nElapsed time: ", timeToString time])
+      return time
 
-  where runString precRels phi s =
-          do putStr (concat [ "\nFormula: ", show phi
-                            , "\nString:  ", showstring s
-                            , "\nResult:  "
-                            ])
-             (_, time) <- timeAction . putStr . show $ fastcheckGen phi precRels s
-             putStrLn (concat ["\nElapsed time: ", timeToString time])
-             return time
+    runMC isOmega opa phi = do
+      putStr (concat [ "\nModel Checking\nFormula: ", show phi
+                     , "\nInput OPA state count: ", show $ countStates opa
+                     , "\nResult:  "
+                     ])
+      ((sat, trace), time) <- timeAction $ do
+        let (s, t) = modelCheckExplicitGen isOmega phi opa
+        putStr $ show s
+        return (s, t)
+      unless sat $ putStr $ "\nCounterexample: " ++ showPrettyTrace "..." T.unpack trace
+      putStrLn (concat ["\nElapsed time: ", timeToString time])
+      return time
 
-        runMC isOmega opa phi =
-          do putStr (concat [ "\nModel Checking\nFormula: ", show phi
-                            , "\nInput OPA state count: ", show $ countStates opa
-                            , "\nResult:  "
-                            ])
-             ((sat, trace), time) <- timeAction $ do let (s, t) = modelCheckExplicitGen isOmega phi opa
-                                                     putStr $ show s
-                                                     return (s, t)
-             if sat
-               then return ()
-               else putStr $ "\nCounterexample: "
-                    ++ (show . prettyTrace (T.singleton '#') (T.pack "...") $ trace)
-             putStrLn (concat ["\nElapsed time: ", timeToString time])
-             return time
+    runProg isOmega prog phi = do
+      putStr (concat [ "\nModel Checking\nFormula: ", show phi
+                     , "\nResult:  "
+                     ])
+      ((sat, trace), time) <- timeAction $ do
+        let (s, t) = modelCheckProgram isOmega phi prog
+        putStr $ show s
+        return (s, t)
+      unless sat $ putStr $ "\nCounterexample: " ++ showPrettyTrace "..." show trace
+      putStrLn (concat ["\nElapsed time: ", timeToString time])
+      return time
 
-        runProg isOmega prog phi =
-          do putStr (concat [ "\nModel Checking\nFormula: ", show phi
-                            , "\nResult:  "
-                            ])
-             ((sat, trace), time) <- timeAction $
-               do let (s, t) = modelCheckProgram isOmega phi prog
-                  putStr $ show s
-                  return (s, t)
-             if sat
-               then return ()
-               else putStr $ "\nCounterexample: "
-                    ++ (show . prettyTrace (TextProp $ T.singleton '#') (TextProp $ T.pack "...") $ trace) -- TODO: fix this
-             putStrLn (concat ["\nElapsed time: ", timeToString time])
-             return time
+    addEndPrec precRels = noEndPR
+                          ++ map (\p -> (End, p, Yield)) sl
+                          ++ map (\p -> (p, End, Take)) sl
+      where sl = S.toList $ S.fromList $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) noEndPR
+            noEndPR = filter (\(p1, p2, _) -> p1 /= End && p2 /= End) precRels
 
-        addEndPrec precRels = noEndPR
-                              ++ map (\p -> (End, p, Yield)) sl
-                              ++ map (\p -> (p, End, Take)) sl
-          where sl = S.toList $ S.fromList $ concatMap (\(sl1, sl2, _) -> [sl1, sl2]) noEndPR
-                noEndPR = filter (\(p1, p2, _) -> p1 /= End && p2 /= End) precRels
+    showp showf prop = case prop of Prop p -> showf p
+                                    End    -> "#"
+    showpset pset = let showpset' = concat . intersperse " " . map (showp show) . S.toList
+                    in concat ["(", showpset' pset, ")"]
+    showstring = concat . intersperse " " . map showpset
 
-        showp prop = case prop of Prop p -> show p
-                                  End    -> "#"
-        showpset pset = let showpset' = concat . intersperse " " . map showp . S.toList
-                        in concat ["(", showpset' pset, ")"]
-        showstring = concat . intersperse " " . map showpset
+    showPrettyTrace :: (Show a, Show s)
+                    => String -> (a -> String) -> [(s, S.Set (Prop a))] -> String
+    showPrettyTrace summaryToken showap trace = show
+      $ map (\(q, b) -> (q, if S.null b
+                            then [summaryToken]
+                            else map (showp showap) $ S.toList b)) trace
 
 
 preprocess :: String -> T.Text -> IO T.Text
