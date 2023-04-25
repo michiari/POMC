@@ -8,7 +8,8 @@
 
 module TestMP (tests) where
 
-import Pomc.MiniProcParse (programP)
+import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
+import Pomc.Parse.MiniProc (programP, TypedProp(..), untypeExprFormula)
 import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (modelCheckProgram)
 import EvalFormulas (TestCase, ap, zipExpected, formulas)
@@ -19,6 +20,8 @@ import Test.Tasty.HUnit
 import Text.Megaparsec
 import Text.RawString.QQ
 import qualified Data.Text as T
+
+-- import qualified Debug.Trace as DBG
 
 tests :: TestTree
 tests = testGroup "MiniProc Tests" [ sasEvalTests
@@ -31,6 +34,7 @@ tests = testGroup "MiniProc Tests" [ sasEvalTests
                                    , jensenTests
                                    , stackTests
                                    , intTests
+                                   , exprPropTests
                                    ]
 
 sasEvalTests :: TestTree
@@ -51,20 +55,39 @@ simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
 
 
 -- only for the finite case
-makeTestCase :: T.Text
-             -> (TestCase, Bool)
-             -> TestTree
+makeTestCase :: T.Text -> (TestCase, Bool) -> TestTree
 makeTestCase filecont ((name, phi), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") assertion
   where assertion = do
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          let (sat, trace) = modelCheckProgram False (fmap T.pack phi) prog
+          let scopedPhi = untypeExprFormula prog $ fmap (TextTProp . T.pack) phi
+              (sat, trace) = modelCheckProgram False scopedPhi prog
               debugMsg False tr = "Expected True, got False. Trace:\n"
                                   ++ show (map (\(q, b) -> (q, S.toList b)) tr)
               debugMsg True _ = "Expected False, got True."
           assertBool (debugMsg sat trace) (sat == expected)
+
+
+makeParseTestCase :: T.Text -> String -> String -> Bool -> TestTree
+makeParseTestCase progSource name phi expected =
+  testCase (name ++ " (" ++ show phi ++ ")") assertion
+  where
+    filecont = T.concat [ T.pack "formulas = "
+                        , T.pack phi
+                        , T.pack ";\nprogram:\n"
+                        , progSource
+                        ]
+    assertion = do
+      pcreq <- case parse (checkRequestP <* eof) name filecont of
+                 Left  errBundle -> assertFailure (errorBundlePretty errBundle)
+                 Right pcreq      -> return pcreq
+      let (sat, trace) = modelCheckProgram False (head . pcreqFormulas $ pcreq) (pcreqMiniProc pcreq)
+          debugMsg False tr = "Expected True, got False. Trace:\n"
+                              ++ show (map (\(q, b) -> (q, S.toList b)) tr)
+          debugMsg True _ = "Expected False, got True."
+      assertBool (debugMsg sat trace) (sat == expected)
 
 
 expectedSasEval :: [Bool]
@@ -1334,5 +1357,93 @@ pB(u8 &r, u8 s, u8[2] &t, u8 &x) {
   x = 42u8;
 
   assertB1 = w + r + s + t[0u8] + t[1u8] + x == 90u8;
+}
+|]
+
+
+exprPropTests :: TestTree
+exprPropTests = testGroup "Expression Propositions Tests" [ exprPropMain0
+                                                          , exprPropMain1
+                                                          , exprPropA0
+                                                          , exprPropA1
+                                                          , exprPropB0
+                                                          , exprPropB1
+                                                          ]
+
+exprPropMain0 :: TestTree
+exprPropMain0 = makeParseTestCase exprPropTestsSrc
+  "Assert Main 0"
+  "T Ud (stm && [main| a + b + c[0u8] + c[1u8] == 28u8 ])"
+  True
+
+exprPropMain1 :: TestTree
+exprPropMain1 = makeParseTestCase exprPropTestsSrc
+  "Assert Main 1"
+  "T Ud (ret && [main|a + b + c[0u8] + c[1u8] + w == 84u8])"
+  True
+
+exprPropA0 :: TestTree
+exprPropA0 = makeParseTestCase exprPropTestsSrc
+  "Assert A 0"
+  "T Ud (stm && [pA| u == 70u8 ])"
+  True
+
+exprPropA1 :: TestTree
+exprPropA1 = makeParseTestCase exprPropTestsSrc
+  "Assert A 1"
+  "T Ud (ret && [pA| u == 13u8])"
+  True
+
+exprPropB0 :: TestTree
+exprPropB0 = makeParseTestCase exprPropTestsSrc
+  "Assert B 0"
+  "T Ud (stm && [pB| w + r + s + t[0u8] + t[1u8] + x == 29u8 ])"
+  True
+
+exprPropB1 :: TestTree
+exprPropB1 = makeParseTestCase exprPropTestsSrc
+  "Assert B 1"
+  "T Ud (ret && [pB| w + r + s + t[0u8] + t[1u8] + x == 90u8 ])"
+  True
+
+exprPropTestsSrc :: T.Text
+exprPropTestsSrc = T.pack [r|
+u8 a, w;
+
+main() {
+  u8 a, b;
+  u8[2] c;
+  bool placeholder;
+
+  a = 10u8;
+  b = 15u8;
+  c[0u8] = 1u8;
+  c[1u8] = 2u8;
+
+  pA(a + b, 42u8, c);
+
+  placeholder = true;
+
+  pB(a, b + 1u8, c, w);
+}
+
+pA(u8 r, u8 s, u8[2] t) {
+  u8 u;
+
+  u = a + r + s + t[0u8] + t[1u8];
+
+  r = 3u8;
+  s = 4u8;
+  t[0u8] = 3u8;
+  t[1u8] = 3u8;
+  u = r + s + t[0u8] + t[1u8];
+}
+
+pB(u8 &r, u8 s, u8[2] &t, u8 &x) {
+  r = 20u8;
+  s = 21u8;
+  t[0u8] = 3u8;
+  t[1u8] = 4u8;
+  x = 42u8;
 }
 |]

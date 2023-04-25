@@ -242,7 +242,8 @@ include = "path/to/file.inc";
 where the path is relative to the \texttt{pomc} file location.
 
 POTL formulas can be written by using the operators in the ``POMC Operator'' column
-of Table~\ref{tab:potl-syntax}, following the same syntax rules as in \cite{ChiariMP19,ChiariMP21}.
+of Table~\ref{tab:potl-syntax}, following the same syntax rules as in \cite{ChiariMP21}.
+Normal and structural labels can be expressed as normal atomic propositions.
 
 Once POMC is executed on an input file in the format above,
 it checks whether the given OPA satisfies the given formulas,
@@ -362,8 +363,8 @@ same group have the same precedence. Note that operators are case sensitive.}
 
 The second kind of input files also contain POTL formulas,
 and a program in the \emph{MiniProc} language to be checked against them.
-MiniProc is a simplified procedural programming language, where variables are all global
-and only take Boolean values (note that MiniProc is not Turing-complete,
+MiniProc is a simplified procedural programming language,
+where variables are all fixed-size (note that MiniProc is not Turing-complete,
 so any use of the word `program' when referring to it is a deliberate abuse of terminology).
 This limitation allows POMC to translate every MiniProc program into an OPA,
 that is then checked against the supplied formulas.
@@ -408,7 +409,7 @@ group can be repeated zero or more times.
 An \texttt{IDENTIFIER} is any sequence of letters, numbers, or characters `\texttt{.}',
 `\texttt{:}' and `\texttt{\_}', starting with a letter or an underscore.
 
-The program starts with a variable declaration, which must include all variables used in the program.
+The program starts with a variable declaration, which must include all global variables used in the program.
 Variables can be Boolean, or of signed or unsigned fixed-width integer types,
 or fixed-size arrays thereof.
 Then, a sequence of functions are defined, the first one being the entry-point to the program.
@@ -448,6 +449,20 @@ which is contained in \texttt{A}. In the OPA resulting from the program, the mod
 names hold whenever a contained function is called or returns.
 This is useful for referring to multiple functions at once in POTL formulas, hence drastically
 reducing formula length and closure size.
+
+When providing input models as programs,
+it is possible to use MiniProc expressions as atomic propositions in POTL formulas
+by using the syntax
+\begin{center}
+\verb![ IDENTIFIER | EXPR ]!
+\end{center}
+where \verb!IDENTIFIER!, which is optional, is a function name
+and \verb!EXPR! is any MiniProc expression as defined in Figure~\ref{fig:miniproc-syntax}.
+The expression will be evaluated in the scope of the specified function,
+or in the global scope if none is given;
+it will evaluate to false during the execution of all other functions.
+The expression may only refer to variables either global or local to the specified function,
+and an error is raised otherwise.
 
 An example input file is given below:
 \begin{verbatim}
