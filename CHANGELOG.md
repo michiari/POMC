@@ -1,5 +1,9 @@
 # Changelog
 
+## Latest
+
+- MiniProc expressions can now be embedded in POTL formulas as atomic propositions
+
 
 ## v2.1.0 (2023/03/08)
 
