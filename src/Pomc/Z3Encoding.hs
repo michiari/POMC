@@ -75,13 +75,15 @@ isSatisfiable :: Alphabet String
               -> IO SMTResult
 isSatisfiable alphabet phi maxDepth = checkQuery phi (SatQuery alphabet) maxDepth
 
-modelCheckProgram :: Formula String -> MP.Program -> Word64 -> IO SMTResult
+modelCheckProgram :: Formula MP.ExprProp -> MP.Program -> Word64 -> IO SMTResult
 modelCheckProgram phi prog maxDepth = do
-  res <- checkQuery (Not phi) (MiniProcQuery prog) maxDepth
+  res <- checkQuery (Not stringPhi) (MiniProcQuery prog) maxDepth
   return res { smtStatus = flipStatus $ smtStatus res }
   where flipStatus Sat = Unsat
         flipStatus Unsat = Sat
         flipStatus Unknown = Unknown
+
+        stringPhi = fmap (\(MP.TextProp t) -> T.unpack t) phi
 
 checkQuery :: Formula String
            -> Query

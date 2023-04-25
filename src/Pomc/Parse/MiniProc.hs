@@ -1,20 +1,28 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
-   Module      : Pomc.MiniProcParse
+   Module      : Pomc.Parse.MiniProc
    Copyright   : 2020-2023 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.MiniProcParse ( programP ) where
+module Pomc.Parse.MiniProc ( programP
+                           , TypedExpr(..)
+                           , TypedProp(..)
+                           , untypeExprFormula
+                           , identifierP
+                           , typedExprP
+                           ) where
 
 import Pomc.MiniProc
+import Pomc.Potl (Formula)
 
 import Data.Void (Void)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Maybe (isJust)
+import Data.List (find)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
@@ -45,6 +53,8 @@ data TypedExpr = TLiteral TypedValue
                | TLt TypedExpr TypedExpr
                | TLeq TypedExpr TypedExpr
                deriving Show
+
+data TypedProp = TextTProp Text | ExprTProp (Maybe FunctionName) TypedExpr deriving Show
 
 -- Convert a TypedExpr to an Expr by inserting appropriate casts
 insertCasts :: TypedExpr -> (Expr, Type)
@@ -132,15 +142,17 @@ literalP = boolLiteralP <|> intLiteralP
             then fail "Negative literal declared unsigned"
             else return (BV.bitVec (typeWidth ty) value, ty)
 
-variableP :: Map Text Variable -> Parser Variable
-variableP varmap = identifierP >>= variableLookup
+variableP :: Maybe (Map Text Variable) -> Parser Variable
+variableP (Just varmap) = identifierP >>= variableLookup
   where variableLookup :: Text -> Parser Variable
         variableLookup vname =
           case M.lookup vname varmap of
             Just var -> return var
             Nothing  -> fail $ "Undeclared identifier: " ++ show vname
+variableP Nothing = identifierP >>= -- Just return variable stub, to be replaced later
+  (\vname -> return Variable { varType = UInt 0, varName = vname, varId = 0 })
 
-arrayIndexP :: Map Text Variable -> Parser (Variable, TypedExpr)
+arrayIndexP :: Maybe (Map Text Variable) -> Parser (Variable, TypedExpr)
 arrayIndexP varmap = try $ do
   var <- variableP varmap
   _ <- symbolP "["
@@ -148,7 +160,7 @@ arrayIndexP varmap = try $ do
   _ <- symbolP "]"
   return (var, idxExpr)
 
-typedExprP :: Map Text Variable -> Parser TypedExpr
+typedExprP :: Maybe (Map Text Variable) -> Parser TypedExpr
 typedExprP varmap = makeExprParser termP opTable
   where termP :: Parser TypedExpr
         termP = choice
@@ -178,7 +190,7 @@ typedExprP varmap = makeExprParser termP opTable
                   ]
 
 exprP :: Map Text Variable -> Parser Expr
-exprP varmap = untypeExpr <$> typedExprP varmap
+exprP varmap = untypeExpr <$> typedExprP (Just varmap)
 
 intTypeP :: Parser Type
 intTypeP = fmap UInt (char 'u' *> L.decimal) <|> fmap SInt (char 's' *> L.decimal)
@@ -225,8 +237,9 @@ declsP vmi = composeMany declP vmi
 
 lValueP :: Map Text Variable -> Parser LValue
 lValueP varmap = lArrayP <|> lScalarP
-  where lScalarP = fmap LScalar $ variableP varmap
-        lArrayP = fmap (\(var, idxExpr) -> LArray var $ untypeExpr idxExpr) $ arrayIndexP varmap
+  where lScalarP = fmap LScalar $ variableP $ Just varmap
+        lArrayP = fmap (\(var, idxExpr) -> LArray var $ untypeExpr idxExpr)
+                  $ arrayIndexP $ Just varmap
 
 nondetP :: Map Text Variable -> Parser Statement
 nondetP varmap = try $ do
@@ -240,7 +253,7 @@ assP :: Map Text Variable -> Parser Statement
 assP varmap = try $ do
   lhs <- lValueP varmap
   _ <- symbolP "="
-  rhs <- typedExprP varmap
+  rhs <- typedExprP $ Just varmap
   _ <- symbolP ";"
   return $ Assignment lhs (untypeExprWithCast (lvalType lhs) rhs)
     where lvalType (LScalar var) = varType var
@@ -250,7 +263,7 @@ callP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 callP varmap = try $ do
   fname <- identifierP
   _ <- symbolP "("
-  aparams <- sepBy (typedExprP varmap) (symbolP ",")
+  aparams <- sepBy (typedExprP $ Just varmap) (symbolP ",")
   _ <- symbolP ")"
   _ <- symbolP ";"
   return (Call fname [], [aparams])
@@ -452,3 +465,51 @@ parseModules fname = joinModules (head splitModules) (tail splitModules) []
         joinModules container (m:ms) acc =
           let newModule = container `T.append` sep `T.append` m
           in joinModules newModule ms (container:acc)
+
+untypeExprFormula :: Program -> Formula TypedProp -> Formula ExprProp
+untypeExprFormula prog = fmap $ \p -> case p of
+  -- Keep support for legacy feature of APs as variables without scope.
+  -- Note: if local variables from different functions share the same name,
+  -- will only recognize the one from the last function.
+  TextTProp t | t `M.member` varScopeMap -> let (scope, v) = varScopeMap M.! t
+                                            in ExprProp scope (Term v)
+              | otherwise -> TextProp t
+  ExprTProp scope texpr ->
+    (ExprProp scope) . untypeExpr . resolveVars (makeEnv scope) $ texpr
+  where
+    toVarMap vf = M.fromList . map (\v -> (varName v, vf v)) . S.toList
+
+    varScopeMap = M.fromList [(varName v, (Just $ skName sk, v))
+                              | sk <- pSks prog, v <- S.toList $ skScalars sk]
+                  `M.union` toVarMap (\v -> (Nothing, v)) (pGlobalScalars prog)
+
+    gvarmap = toVarMap id (pGlobalScalars prog) `M.union` toVarMap id (pGlobalArrays prog)
+    makeEnv (Just fname) = case find (\fsk -> skName fsk == fname) (pSks prog) of
+      Just fsk -> toVarMap id (skScalars fsk)
+                  `M.union` toVarMap id (skArrays fsk)
+                  `M.union` gvarmap
+      Nothing -> error $ "Undeclared function " ++ T.unpack fname
+    makeEnv Nothing = gvarmap
+
+    resolveVars varmap texpr = go texpr
+      where go e = case e of
+              tl@(TLiteral _) -> tl
+              TTerm v      -> TTerm $ case varmap M.!? varName v of
+                Just nv -> nv
+                Nothing -> error $ "Undeclared variable " ++ T.unpack (varName v)
+              TArrayAccess v idx -> TArrayAccess nvar $ go idx
+                where nvar = case varmap M.!? varName v of
+                        Just nv -> nv
+                        Nothing -> error $ "Undeclared variable " ++ T.unpack (varName v)
+              TNot te      -> TNot $ go te
+              TAnd te1 te2 -> goBinOp TAnd te1 te2
+              TOr te1 te2  -> goBinOp TOr te1 te2
+              TAdd te1 te2 -> goBinOp TAdd te1 te2
+              TSub te1 te2 -> goBinOp TSub te1 te2
+              TMul te1 te2 -> goBinOp TMul te1 te2
+              TDiv te1 te2 -> goBinOp TDiv te1 te2
+              TRem te1 te2 -> goBinOp TRem te1 te2
+              TEq te1 te2  -> goBinOp TEq te1 te2
+              TLt te1 te2  -> goBinOp TLt te1 te2
+              TLeq te1 te2 -> goBinOp TLeq te1 te2
+            goBinOp op te1 te2 = op (go te1) (go te2)

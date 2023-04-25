@@ -1,13 +1,11 @@
-formulas = G (call && fib && pre --> XNd (ret && fib && post));
+formulas = G (call && fib && [fib|n < 31u6] --> XNd (ret && fib && [fib|result < bound]));
 
 program:
-bool pre, post;
 
 main() {
   u32 null;
   u6 n;
   n = *;
-  pre = n < 31u6;
   fib(n, null);
 }
 
@@ -17,16 +15,13 @@ fib(u32 n, u32 &result) {
   if (n <= 1u32) {
     result = n;
   } else {
-    pre = n - 1u32 < 31u32;
     fib(n - 1u32, fib1);
 
-    pre = n - 2u32 < 31u32;
     fib(n - 2u32, fib2);
     result = fib1 + fib2;
   }
 
   pow2(n, bound);
-  post = result < bound;
 }
 
 pow2(u32 n, u32 &res) {

@@ -13,7 +13,8 @@ import TestMP hiding (tests)
 import EvalFormulas (TestCase, zipExpected, formulas)
 import Pomc.Potl
 import Pomc.Z3Encoding (modelCheckProgram, SMTResult(..), SMTStatus(..))
-import Pomc.MiniProcParse (programP)
+import Pomc.MiniProc (ExprProp(..))
+import Pomc.Parse.MiniProc (programP)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -37,7 +38,7 @@ makeTestCase filecont ((name, phi), expected) =
     prog <- case parse (programP <* eof) name filecont of
               Left  errBundle -> assertFailure (errorBundlePretty errBundle)
               Right fsks      -> return fsks
-    smtres <- modelCheckProgram phi prog 18
+    smtres <- modelCheckProgram (fmap (TextProp . T.pack) phi) prog 18
     DBG.traceShowM smtres
     let debugMsg | smtStatus smtres == Unsat =
                    "Expected " ++ show expected ++ ", got Unsat. Trace:\n"

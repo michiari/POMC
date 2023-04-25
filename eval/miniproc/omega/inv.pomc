@@ -1,11 +1,10 @@
-formulas = G (call && loop --> inv), // Inv holds at the beginning of each iteration
-           XNd (call && loop && inv), // Inv holds before the loop starts
-           G (call && loop && guard && inv --> XNd (call && loop && inv) || ~(XNd (call && loop))), // {Inv && Guard} Body {Inv}
-           G (ret && loop --> ~guard && inv); // Inv holds at the end of the loop, but the guard does not
+formulas = G (call && loop --> [loop| i >= 1s8 && 1s8 <= i + k && i + k <= 2s8 ]), // Inv holds at the beginning of each iteration
+           XNd (call && loop && [loop| i >= 1s8 && 1s8 <= i + k && i + k <= 2s8 ]), // Inv holds before the loop starts
+           G (call && loop && [loop| i < 127s8 ] && [loop| i >= 1s8 && 1s8 <= i + k && i + k <= 2s8 ] --> XNd (call && loop && [loop| i >= 1s8 && 1s8 <= i + k && i + k <= 2s8 ]) || ~(XNd (call && loop))), // {Inv && Guard} Body {Inv}
+           G (ret && loop --> ~[loop| i < 127s8 ] && [loop| i >= 1s8 && 1s8 <= i + k && i + k <= 2s8 ]); // Inv holds at the end of the loop, but the guard does not
 
 program:
 s8 i, j, k;
-bool inv, guard;
 
 main() {
   u1 k_init;
@@ -14,9 +13,6 @@ main() {
   j = 1s8;
   k = k_init;
 
-  // Update assertions
-  inv = i >= 1s8 && 1s8 <= i + k && i + k <= 2s8;
-  guard = i < 127s8;
   loop();
 }
 
@@ -24,10 +20,6 @@ loop() {
   i = i + 1s8;
   j = j + k;
   k = k - 1s8;
-
-  // Update assertions
-  inv = i >= 1s8 && 1s8 <= i + k && i + k <= 2s8;
-  guard = i < 127s8;
 
   if (i < 127s8) {
     loop();

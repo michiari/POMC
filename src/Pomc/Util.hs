@@ -15,12 +15,8 @@ module Pomc.Util ( any'
                  , timeToString
                  , parMap
                  , parMapChunk
-                 , prettyTrace
                  ) where
 
-import Pomc.Prop (Prop(..))
-
-import qualified Data.Set as S
 import Data.Foldable (foldl')
 import Criterion.Measurement (initializeTime, getTime, secs)
 import Control.Parallel.Strategies (using, parList, parListChunk, rdeepseq)
@@ -65,11 +61,3 @@ parMap f xs = map f xs `using` parList rdeepseq
 
 parMapChunk :: (NFData b) => Int -> (a -> b) -> [a] -> [b]
 parMapChunk n f xs = map f xs `using` parListChunk n rdeepseq
-
-prettyTrace :: a -> a -> [(s, S.Set (Prop a))] -> [(s, [a])]
-prettyTrace end summary trace =
-  map (\(q, b) -> (q, if S.null b
-                      then [summary]
-                      else map unprop $ S.toList b)) trace
-  where unprop End = end
-        unprop (Prop p) = p

@@ -27,10 +27,10 @@ library:
   - Pomc.Prop
   - Pomc.Satisfiability
   - Pomc.ModelChecker
-  - Pomc.Parse
+  - Pomc.Parse.Parser
+  - Pomc.Parse.MiniProc
   - Pomc.OpaGen
   - Pomc.MiniProc
-  - Pomc.MiniProcParse
   - Pomc.Util
   - Pomc.Z3Encoding
   ghc-options:

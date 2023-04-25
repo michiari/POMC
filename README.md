@@ -1,6 +1,9 @@
 # POMC
+[![Release](https://img.shields.io/github/v/release/michiari/POMC?include_prereleases)](https://github.com/michiari/POMC/releases)
+[![License](https://img.shields.io/github/license/michiari/POMC)](COPYING.md)
 
 A model-checking tool for the temporal logic POTL.
+POTL is a temporal logic capable of expressing context-free specifications, particularly well-suited for procedural programs.
 
 ## Build
 
