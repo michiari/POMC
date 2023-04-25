@@ -99,7 +99,7 @@ data Expr = Literal IntValue
           | UExt Int Expr
           | SExt Int Expr
           | Trunc Int Expr
-          deriving (Eq, Ord, Show)
+          deriving (Eq, Ord)
 data LValue = LScalar Variable | LArray Variable Expr deriving (Eq, Ord, Show)
 data ActualParam = ActualVal Expr | ActualValRes Variable deriving (Eq, Ord, Show)
 data Statement = Assignment LValue Expr
@@ -125,11 +125,6 @@ data Program = Program { pGlobalScalars :: Set Variable
                        } deriving Show
 
 data ExprProp = TextProp Text | ExprProp (Maybe FunctionName) Expr deriving (Eq, Ord)
-
-instance Show ExprProp where
-  show (TextProp t) = T.unpack t
-  show (ExprProp s e) = "[" ++ T.unpack (fromMaybe T.empty s) ++ "| " ++ show e ++ "]"
--- TODO: make pretty show for Exprs
 
 instance Hashable Type
 instance Hashable Variable
@@ -748,3 +743,34 @@ miniProcPrecRel =
 
 miniProcAlphabet :: Alphabet ExprProp
 miniProcAlphabet = (miniProcSls, miniProcPrecRel)
+
+
+-- Show instances
+instance Show ExprProp where
+  show (TextProp t) = T.unpack t
+  show (ExprProp s e) = "[" ++ T.unpack (fromMaybe T.empty s) ++ "| " ++ show e ++ "]"
+
+instance Show Expr where
+  show expr = case expr of
+    Literal v           -> show v
+    Term var            -> T.unpack (varName var)
+    ArrayAccess var idx -> T.unpack (varName var) ++ "[" ++ show idx ++ "]"
+    Not e               -> "! " ++ show e
+    And e1 e2           -> showBin "&&" e1 e2
+    Or e1 e2            -> showBin "||" e1 e2
+    Add e1 e2           -> showBin "+" e1 e2
+    Sub e1 e2           -> showBin "-" e1 e2
+    Mul e1 e2           -> showBin "*" e1 e2
+    UDiv e1 e2          -> showBin "/u" e1 e2
+    SDiv e1 e2          -> showBin "/s" e1 e2
+    URem e1 e2          -> showBin "%u" e1 e2
+    SRem e1 e2          -> showBin "%s" e1 e2
+    Eq e1 e2            -> showBin "==" e1 e2
+    ULt e1 e2           -> showBin "<" e1 e2
+    ULeq e1 e2          -> showBin "<=" e1 e2
+    SLt e1 e2           -> showBin "<" e1 e2
+    SLeq e1 e2          -> showBin "<=" e1 e2
+    UExt w e            -> "(uext " ++ show e ++ " to " ++ show w ++ " bits)"
+    SExt w e            -> "(sext " ++ show e ++ " to " ++ show w ++ " bits)"
+    Trunc w e           -> "(trunc " ++ show e ++ " to " ++ show w ++ " bits)"
+    where showBin op e1 e2 = "(" ++ show e1 ++ " " ++ op ++ " " ++ show e2 ++ ")"
