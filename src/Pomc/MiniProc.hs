@@ -39,6 +39,7 @@ module Pomc.MiniProc ( Program(..)
                      , sksToExtendedOpa
                      , miniProcAlphabet
                      , miniProcStringAlphabet
+                     , stringToExprPropAlphabet
                      ) where
 
 import Pomc.Prop (Prop(..), unprop)
@@ -710,12 +711,7 @@ toBool v = B.nat v /= 0
 
 -- OPM
 miniProcAlphabet :: Alphabet ExprProp
-miniProcAlphabet = (miniProcSls, miniProcPrecRel) where
-  (miniProcStringSls, miniProcStringPrecRel) = miniProcStringAlphabet
-  miniProcSls = map toExprProp miniProcStringSls
-  miniProcPrecRel =
-    map (\(sl1, sl2, pr) -> (toExprProp sl1, toExprProp sl2, pr)) miniProcStringPrecRel
-  toExprProp = fmap (TextProp . T.pack)
+miniProcAlphabet = stringToExprPropAlphabet miniProcStringAlphabet
 
 miniProcStringAlphabet :: Alphabet String
 miniProcStringAlphabet = (miniProcSls, miniProcPrecRel)
@@ -749,6 +745,13 @@ miniProcStringAlphabet = (miniProcSls, miniProcPrecRel)
                         , ("stm",  "exc",  Take)
                         , ("stm",  "stm",  Take)
                         ]
+
+stringToExprPropAlphabet :: Alphabet String -> Alphabet ExprProp
+stringToExprPropAlphabet (stringSls, stringPrecRel) = (epSls, epPrecRel) where
+  epSls = map toExprProp stringSls
+  epPrecRel =
+    map (\(sl1, sl2, pr) -> (toExprProp sl1, toExprProp sl2, pr)) stringPrecRel
+  toExprProp = fmap (TextProp . T.pack)
 
 
 -- Show instances

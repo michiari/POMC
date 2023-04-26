@@ -15,8 +15,8 @@ module Pomc.Z3Encoding ( SMTStatus(..)
 
 import Prelude hiding (take)
 
-import Pomc.Prop (Prop(..), unprop)
-import Pomc.Potl ( Dir(..), Formula(..), transformFold, pnf, atomic, unAtomic
+import Pomc.Prop (Prop(..))
+import Pomc.Potl ( Dir(..), Formula(..), transformFold, pnf, atomic
                  , ltlNext, ltlBack, ltlPastAlways
                  )
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
@@ -32,7 +32,7 @@ import Data.List ((\\), intercalate, find)
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isNothing, fromJust)
 import Data.Word (Word64)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -43,8 +43,8 @@ import qualified Debug.Trace as DBG
 
 data SMTStatus = Sat | Unsat | Unknown deriving (Eq, Show)
 
-data TableauNode = TableauNode { nodeGammaC :: [Formula String]
-                               , nodeSmb    :: Prop String
+data TableauNode = TableauNode { nodeGammaC :: [Formula MP.ExprProp]
+                               , nodeSmb    :: Prop MP.ExprProp
                                , nodeStack  :: Integer
                                , nodeCtx    :: Integer
                                , nodeIdx    :: Integer
@@ -65,7 +65,7 @@ instance Show TableauNode where
                                      , "ctx = " ++ show (nodeCtx tn)
                                      ]) ++ ")"
 
-data Query = SatQuery { qAlphabet :: Alphabet String }
+data Query = SatQuery { qAlphabet :: Alphabet MP.ExprProp }
              | MiniProcQuery { qProg :: MP.Program }
              deriving Show
 
@@ -73,19 +73,21 @@ isSatisfiable :: Alphabet String
               -> Formula String
               -> Word64
               -> IO SMTResult
-isSatisfiable alphabet phi maxDepth = checkQuery phi (SatQuery alphabet) maxDepth
+isSatisfiable alphabet phi maxDepth =
+  checkQuery epPhi (SatQuery epAlphabet) maxDepth
+  where
+    epPhi = fmap (MP.TextProp . T.pack) phi
+    epAlphabet = MP.stringToExprPropAlphabet alphabet
 
 modelCheckProgram :: Formula MP.ExprProp -> MP.Program -> Word64 -> IO SMTResult
 modelCheckProgram phi prog maxDepth = do
-  res <- checkQuery (Not stringPhi) (MiniProcQuery prog) maxDepth
+  res <- checkQuery (Not phi) (MiniProcQuery prog) maxDepth
   return res { smtStatus = flipStatus $ smtStatus res }
   where flipStatus Sat = Unsat
         flipStatus Unsat = Sat
         flipStatus Unknown = Unknown
 
-        stringPhi = fmap (\(MP.TextProp t) -> T.unpack t) phi
-
-checkQuery :: Formula String
+checkQuery :: Formula MP.ExprProp
            -> Query
            -> Word64
            -> IO SMTResult
@@ -118,7 +120,7 @@ checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 minLength
             else incrementalCheck (assertTime + newAssertTime) (checkTime + newCheckTime) (k + 1)
 
 
-assertEncoding :: Formula String
+assertEncoding :: Formula MP.ExprProp
                -> Query
                -> Word64
                -> Z3 (Maybe Word64 -> Model -> Z3 [TableauNode])
@@ -198,10 +200,10 @@ assertEncoding phi query k = do
     nodeSortSize = k + 1
     alphabet = case query of
       SatQuery a -> a
-      MiniProcQuery _ -> MP.miniProcStringAlphabet
+      MiniProcQuery _ -> MP.miniProcAlphabet
     (structClos, clos) = closure alphabet phi
 
-    mkSSort :: Z3 (Sort, Map (Formula String) AST)
+    mkSSort :: Z3 (Sort, Map (Formula MP.ExprProp) AST)
     mkSSort = do
       constructors <- mapM (\f -> do
                                let fstring = show f
@@ -215,7 +217,7 @@ assertEncoding phi query k = do
       consts <- mapM (flip mkApp []) constrFns
       return (sSort, M.fromList $ zip clos consts)
 
-    mkPhiAxioms :: Sort -> Map (Formula String) AST
+    mkPhiAxioms :: Sort -> Map (Formula MP.ExprProp) AST
                 -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
     mkPhiAxioms nodeSort fConstMap sigma struct smb gamma = do
       -- ∧_(p∈Σ) Σ(p)
@@ -234,7 +236,8 @@ assertEncoding phi query k = do
                           ) [1..k]
       mkAnd [allStructInSigma, allOtherNotInSigma, forall]
 
-    mkPhiOPM :: Map (Formula String) AST -> FuncDecl -> FuncDecl -> FuncDecl -> Z3 AST
+    mkPhiOPM :: Map (Formula MP.ExprProp) AST -> FuncDecl -> FuncDecl -> FuncDecl
+             -> Z3 AST
     mkPhiOPM fConstMap yield equal take = E.assert (isComplete alphabet)
       $ mkAndWith assertPrecPair
       $ snd alphabet ++ (End, End, Equal):[(End, p, Yield) | p <- fst alphabet]
@@ -255,7 +258,8 @@ assertEncoding phi query k = do
             getNegPrec Take = (yield, equal)
 
     -- xnf(f)_G(x)
-    groundxnf :: Map (Formula String) AST -> FuncDecl -> Formula String -> AST -> Z3 AST
+    groundxnf :: Map (Formula MP.ExprProp) AST -> FuncDecl -> Formula MP.ExprProp
+              -> AST -> Z3 AST
     groundxnf fConstMap gamma f x = case f of
       T                -> mkTrue
       Atomic _         -> applyGamma f
@@ -291,7 +295,7 @@ assertEncoding phi query k = do
             applyGamma g = mkApp gamma [fConstMap M.! g, x]
 
     -- END(xExpr)
-    mkEndTerm :: Map (Formula String) AST -> FuncDecl -> AST -> Z3 AST
+    mkEndTerm :: Map (Formula MP.ExprProp) AST -> FuncDecl -> AST -> Z3 AST
     mkEndTerm fConstMap gamma x = do
       let noGamma g = mkNot =<< mkApp gamma [fConstMap M.! g, x]
       -- Γ(#, x)
@@ -321,7 +325,7 @@ assertEncoding phi query k = do
       mkForallConst [] [pApp, qApp] pqImpl
 
     -- PNEXT(xExpr)
-    mkPnext :: Sort -> Map (Formula String) AST
+    mkPnext :: Sort -> Map (Formula MP.ExprProp) AST
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
             -> Z3 AST
     mkPnext nodeSort fConstMap gamma struct yield take x = do
@@ -343,7 +347,7 @@ assertEncoding phi query k = do
       mkAnd [pnextDown, pnextUp]
 
     -- PUSH(x)
-    mkPush :: Sort -> Map (Formula String) AST
+    mkPush :: Sort -> Map (Formula MP.ExprProp) AST
            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
            -> FuncDecl -> FuncDecl -> FuncDecl -> Word64 -> Z3 AST
     mkPush nodeSort fConstMap gamma smb struct stack ctx yield equal take x = do
@@ -392,7 +396,7 @@ assertEncoding phi query k = do
             ]
 
     -- SHIFT(x)
-    mkShift :: Sort -> Map (Formula String) AST
+    mkShift :: Sort -> Map (Formula MP.ExprProp) AST
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
             -> Word64 -> Z3 AST
     mkShift nodeSort fConstMap gamma smb struct stack ctx x = do
@@ -450,7 +454,8 @@ assertEncoding phi query k = do
       mkAnd [gammaRule, smbRule, stackRule, ctxRule]
 
     -- EMPTY(x)
-    mkEmpty :: Sort -> Map (Formula String) AST -> FuncDecl -> FuncDecl -> Word64 -> Z3 AST
+    mkEmpty :: Sort -> Map (Formula MP.ExprProp) AST -> FuncDecl -> FuncDecl
+            -> Word64 -> Z3 AST
     mkEmpty nodeSort fConstMap gamma stack x = do
       xLit <- mkUnsignedInt64 x nodeSort
       -- Γ(#, x)
@@ -461,7 +466,7 @@ assertEncoding phi query k = do
       mkAnd [gammaEndx, stackxEqBot]
 
 
-encodeProg :: Sort -> Map (Formula String) AST
+encodeProg :: Sort -> Map (Formula MP.ExprProp) AST
            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
            -> FuncDecl -> FuncDecl -> FuncDecl
            -> MP.Program -> Word64 -> Z3 ()
@@ -484,23 +489,6 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
   assert =<< mkInit0 sVarFunVec allScalars nodeBot
   assert =<< mkInit0 sVarFunVec allScalars node1
   -- start ∀x (...)
-  -- x <= k
-  let apvars = map (\(v, Just vS) -> (v, vS))
-        $ filter (isJust . snd)
-        $ map (\v -> (v, (Atomic . Prop . T.unpack . MP.varName $ v)
-                       `M.lookup` fConstMap)) allScalars
-
-      varap x = do
-        xLit <- mkUnsignedInt64 x nodeSort
-        mkAndWith (\(v, vS) -> do
-                      let (vFunc, vSort) = sVarFunVec V.! MP.varId v
-                      gammavx <- mkApp gamma [vS, xLit]
-                      vx <- mkApp1 vFunc xLit
-                      val0 <-  mkUnsignedInt 0 vSort
-                      vxNeq0 <- mkNot =<< mkEq vx val0
-                      mkIff gammavx vxNeq0
-                  ) apvars
-  assert =<< mkAndWith varap [1..k]
   -- x < k
   let mkProgTransitions x = do
         xLit <- mkUnsignedInt64 x nodeSort
@@ -521,11 +509,18 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
   -- end ∀x (...)
   where
     apConstMap = M.fromList
-      $ map (\(p, c) -> (T.pack . unprop . unAtomic $ p, c))
-      $ filter (\(p, _) -> atomic p && p /= Atomic End)
+      $ foldr (\(p, c) rest -> case p of
+                  Atomic (Prop (MP.TextProp t)) -> (t, c):rest
+                  _ -> rest
+              ) []
       $ M.toList fConstMap
+    exprPropMap = foldr (\(exprF, exprS) rest -> case exprF of
+                            Atomic (Prop (MP.ExprProp s e)) -> (s, e, exprS):rest
+                            _ -> rest
+                        ) []
+                  $ M.toList fConstMap
     allScalars = S.toList (MP.pGlobalScalars prog) ++ S.toList (MP.pLocalScalars prog)
-    mkVarFunctions =
+    mkVarFunctions = -- TODO: fix ID clash in local variables
       let mkSVarFun varList vid = do
             let var = fromJust $ find (\v -> MP.varId v == vid) varList
             varSym <- mkIntSymbol $ MP.varId var
@@ -557,9 +552,16 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
         pcXEqL1 <- mkEq l1Lit pcX
         -- ∧_(p∈b) Γ(p, x)
         structX <- mkApp1 struct xLit
-        structXEqil <- mkEq (fConstMap M.! (Atomic . Prop . T.unpack . MP.ilStruct $ il)) structX
+        structXEqil <- mkEq (fConstMap M.! (Atomic . Prop . MP.TextProp . MP.ilStruct $ il)) structX
         inputProps <- mkAndWith (\l -> mkApp gamma [apConstMap M.! l, xLit])
           $ filter (`M.member` apConstMap) $ (MP.ilFunction il) : (MP.ilModules il)
+        -- assert ExprProps
+        let assertExprProp (scope, expr, exprS) = do
+              gammaExprx <- mkApp gamma [exprS, xLit]
+              if isNothing scope || fromJust scope == MP.ilFunction il
+                then mkIff gammaExprx =<< evalBoolExpr sVarFunVec expr xLit
+                else mkNot gammaExprx
+        exprProps <- mkAndWith assertExprProp exprPropMap
         -- ACTION(x, _, a)
         action <- mkAction sVarFunVec x Nothing $ MP.ilAction il
         -- g|x ∧ pc(x + 1) = l2
@@ -571,10 +573,10 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
                                 case g of
                                   MP.NoGuard -> return nextPc
                                   MP.Guard e -> do
-                                    guard <- evalGuard sVarFunVec e xLit
+                                    guard <- evalBoolExpr sVarFunVec e xLit
                                     mkAnd [guard, nextPc]
                             ) dt
-        mkAnd [pcXEqL1, structXEqil, inputProps, action, targets]
+        mkAnd [pcXEqL1, structXEqil, inputProps, action, exprProps, targets]
 
     mkPop :: Vector (FuncDecl, Sort) -> Sort -> FuncDecl
           -> Map (Word, Word) (MP.Action, MP.DeltaTarget) -> Word64 -> Z3 AST
@@ -603,7 +605,7 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
                                 case g of
                                   MP.NoGuard -> return nextPc
                                   MP.Guard e -> do
-                                    guard <- evalGuard sVarFunVec e xLit
+                                    guard <- evalBoolExpr sVarFunVec e xLit
                                     mkAnd [guard, nextPc]
                             ) dt
         mkAnd [pcXEqL1, pcStackXEqLs, action, targets]
@@ -679,8 +681,8 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
             isValRes _ = False
             fnameSksMap = M.fromList $ map (\sk -> (MP.skName sk, sk)) $ MP.pSks prog
 
-    evalGuard :: Vector (FuncDecl, Sort) -> MP.Expr -> AST -> Z3 AST
-    evalGuard sVarFunVec g xLit = do
+    evalBoolExpr :: Vector (FuncDecl, Sort) -> MP.Expr -> AST -> Z3 AST
+    evalBoolExpr sVarFunVec g xLit = do
       bitSort <- mkBvSort 1
       true <- mkUnsignedInt 1 bitSort
       bvg <- mkBvredor =<< evalExpr sVarFunVec g xLit
@@ -747,7 +749,8 @@ mkOrWith :: (a -> Z3 AST) -> [a] -> Z3 AST
 mkOrWith predGen items = mapM predGen items >>= mkOr
 
 
-closure :: Alphabet String -> Formula String -> ([Formula String], [Formula String])
+closure :: Alphabet MP.ExprProp -> Formula MP.ExprProp
+        -> ([Formula MP.ExprProp], [Formula MP.ExprProp])
 closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closList phi)
   where
     structClos = map Atomic $ End : (fst alphabet)
@@ -780,7 +783,7 @@ closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closLi
         Always _         -> error "LTL operators not supported yet."
         AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
 
-xnf :: Formula String -> Formula String
+xnf :: Formula MP.ExprProp -> Formula MP.ExprProp
 xnf f = case f of
   T               -> f
   Atomic _        -> f
@@ -809,9 +812,9 @@ xnf f = case f of
   Always _g       -> error "LTL operators only supported through translation."
   AuxBack _ _     -> error "AuxBack not supported in SMT encoding."
 
-translate :: Formula String -> Formula String
+translate :: Formula MP.ExprProp -> Formula MP.ExprProp
 translate phi = fst $ transformFold applyTransl 0 phi where
-  applyTransl :: Formula String -> Word64 -> (Formula String, Word64)
+  applyTransl :: Formula MP.ExprProp -> Word64 -> (Formula MP.ExprProp, Word64)
   applyTransl f upId = case f of
     HNext dir g    -> let qEta = mkUniqueProp upId
       in ( gammaLR dir qEta
@@ -838,7 +841,7 @@ translate phi = fst $ transformFold applyTransl 0 phi where
     _              -> (f, upId)
 
   -- xOp is correct only because qEta holds in a single position, not in general.
-  mkUniqueProp n = Atomic . Prop $ "@" ++ show n
+  mkUniqueProp n = Atomic . Prop . MP.TextProp . T.pack $ '@' : show n
   xOp Up psi = XBack Down psi `And` Not (XBack Up psi)
   xOp Down psi = XNext Up psi `And` Not (XNext Down psi)
   gammaLR dir qEta = xOp dir $ qEta
@@ -846,7 +849,7 @@ translate phi = fst $ transformFold applyTransl 0 phi where
     `And` (ltlBack . ltlPastAlways . Not $ qEta)
 
 
-queryTableau :: Sort -> Map (Formula String) AST
+queryTableau :: Sort -> Map (Formula MP.ExprProp) AST
              -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
              -> Word64 -> Maybe Word64 -> Model -> Z3 [TableauNode]
 queryTableau nodeSort fConstMap gamma smb stack ctx k maxLen model = do
