@@ -14,6 +14,7 @@ import EvalFormulas (TestCase, zipExpected, formulas, ap)
 import Pomc.Potl
 import Pomc.Z3Encoding (modelCheckProgram, SMTResult(..), SMTStatus(..))
 import Pomc.MiniProc (ExprProp(..))
+import Pomc.Parse.Parser (CheckRequest(..), checkRequestP)
 import Pomc.Parse.MiniProc (programP)
 
 import Test.Tasty
@@ -27,7 +28,7 @@ import qualified Debug.Trace as DBG
 
 tests :: TestTree
 tests = testGroup "Z3Encoding Model Checking Tests"
-  [ sasEvalTests, nondetTrue ]
+  [ sasEvalTests, nondetTrue, nondetExprProp ]
 
 makeTestCase :: T.Text
              -> (TestCase, SMTStatus)
@@ -46,6 +47,28 @@ makeTestCase filecont ((name, phi), expected) =
                  | otherwise =
                    "Expected " ++ show expected ++ ", got " ++ show (smtStatus smtres) ++ "."
     assertBool debugMsg (smtStatus smtres == expected)
+
+makeParseTestCase :: T.Text -> String -> String -> SMTStatus -> TestTree
+makeParseTestCase progSource name phi expected =
+  testCase (name ++ " (" ++ show phi ++ ")") assertion
+  where
+    filecont = T.concat [ T.pack "formulas = "
+                        , T.pack phi
+                        , T.pack ";\nprogram:\n"
+                        , progSource
+                        ]
+    assertion = do
+      pcreq <- case parse (checkRequestP <* eof) name filecont of
+                 Left  errBundle -> assertFailure (errorBundlePretty errBundle)
+                 Right pcreq      -> return pcreq
+      smtres <- modelCheckProgram (head . pcreqFormulas $ pcreq) (pcreqMiniProc pcreq) 18
+      DBG.traceShowM smtres
+      let debugMsg | smtStatus smtres == Unsat =
+                   "Expected " ++ show expected ++ ", got Unsat. Trace:\n"
+                   ++ show (fromJust $ smtTableau smtres)
+                 | otherwise =
+                   "Expected " ++ show expected ++ ", got " ++ show (smtStatus smtres) ++ "."
+      assertBool debugMsg (smtStatus smtres == expected)
 
 
 sasEvalTests :: TestTree
@@ -77,12 +100,16 @@ expectedSasEval =
 
 
 nondetTrue :: TestTree
-nondetTrue = testGroup "Nondeterministic Int"
+nondetTrue = testGroup "Nondeterministic Int Reachability"
   [ makeTestCase nondetSrc (("True", Not T), Unsat)
   , makeTestCase nondetSrcLong (("True", Not T), Unsat)
   , makeTestCase veryNondetSrc (("Very Nondet", Not T), Unsat)
   , makeTestCase nondetSrcLong (("Sbobinz", Not (PNext Down $ ap "stm")), Unsat)
   ]
+
+nondetExprProp :: TestTree
+nondetExprProp = testGroup "Nondeterministic Int Expressions"
+  [ makeParseTestCase nondetSrcLong "a != b" "~ (PNd (PNu (PNu (PNu [main| a != b ]))))" Unsat ]
 
 nondetSrcLong :: T.Text
 nondetSrcLong = T.pack [r|
