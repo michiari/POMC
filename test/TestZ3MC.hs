@@ -10,7 +10,7 @@ module TestZ3MC ( tests ) where
 
 import TestZ3Sat (isSupported)
 import TestMP hiding (tests)
-import EvalFormulas (TestCase, zipExpected, formulas)
+import EvalFormulas (TestCase, zipExpected, formulas, ap)
 import Pomc.Potl
 import Pomc.Z3Encoding (modelCheckProgram, SMTResult(..), SMTStatus(..))
 import Pomc.MiniProc (ExprProp(..))
@@ -81,6 +81,7 @@ nondetTrue = testGroup "Nondeterministic Int"
   [ makeTestCase nondetSrc (("True", Not T), Unsat)
   , makeTestCase nondetSrcLong (("True", Not T), Unsat)
   , makeTestCase veryNondetSrc (("Very Nondet", Not T), Unsat)
+  , makeTestCase nondetSrcLong (("Sbobinz", Not (PNext Down $ ap "stm")), Unsat)
   ]
 
 nondetSrcLong :: T.Text

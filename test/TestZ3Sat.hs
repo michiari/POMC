@@ -1,9 +1,9 @@
 module TestZ3Sat ( tests, isSupported ) where
 
-import EvalFormulas (TestCase, zipExpected, formulas)
+import EvalFormulas (TestCase, zipExpected, formulas, ap)
 import OPMs (stlV2Alphabet)
 import Pomc.Z3Encoding (isSatisfiable, SMTResult(..), SMTStatus(..))
-import Pomc.Potl (Formula(..))
+import Pomc.Potl (Formula(..), Dir(..))
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -11,15 +11,18 @@ import Test.Tasty.HUnit
 import qualified Debug.Trace as DBG
 
 tests :: TestTree
-tests = testGroup "Z3Encoding Satisfiability Tests"
-  $ map makeTestCase
-  $ zipExpected (filter (isSupported . snd) formulas) expectedRes
+tests = testGroup "Z3Encoding Satisfiability Tests" [efTests, regressionTests]
 
 makeTestCase :: (TestCase, SMTStatus)
              -> TestTree
 makeTestCase ((name, phi), expected) =
   let sat = DBG.traceShowId <$> isSatisfiable stlV2Alphabet phi 10
   in testCase (name ++ " (" ++ show phi ++ ")") $ fmap smtStatus sat >>= (expected @=?)
+
+efTests :: TestTree
+efTests = testGroup "EvalFormulas"
+  $ map makeTestCase
+  $ zipExpected (filter (isSupported . snd) formulas) expectedRes
 
 isSupported :: Formula a -> Bool
 isSupported f = case f of
@@ -56,3 +59,9 @@ expectedRes =
   , Sat, Sat, Sat -- until_exc
   , Sat, Sat -- until_misc
   ]
+
+regressionTests :: TestTree
+regressionTests = testGroup "Regression Tests" [wpnextBug]
+
+wpnextBug :: TestTree
+wpnextBug = makeTestCase (("WPNext bug", ap "call" `And` Not (PNext Down (ap "exc")) `And` PNext Up (Not (ap "ret") `And` PNext Up T)), Sat)

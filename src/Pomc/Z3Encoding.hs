@@ -169,7 +169,6 @@ assertEncoding phi query k = do
 
   -- x < k
   let mkTransitions x = do
-        pnextx <- mkPnext nodeSort fConstMap gamma struct yield take x
         xLit <- mkUnsignedInt64 x nodeSort
         -- push(x) → PUSH(x)
         checkPushx <- mkCheckPrec smb struct yield xLit
@@ -183,7 +182,11 @@ assertEncoding phi query k = do
         checkPopx <- mkCheckPrec smb struct take xLit
         popx <- mkPop sSort nodeSort gamma smb stack ctx x
         popxImpliesPopx <- mkImplies checkPopx popx
-        mkAnd [pnextx, pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx]
+        -- pnextx
+        pnextx <- mkPnext nodeSort fConstMap gamma struct yield take x
+        inputx <- mkOr [checkPushx, checkShiftx]
+        inputxImpliesPnextx <- mkImplies inputx pnextx
+        mkAnd [inputxImpliesPnextx, pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx]
   assert =<< mkAndWith mkTransitions [1..(k - 1)]
   -- end ∀x (...)
 
@@ -329,13 +332,13 @@ assertEncoding phi query k = do
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
             -> Z3 AST
     mkPnext nodeSort fConstMap gamma struct yield take x = do
+      xLit <- mkUnsignedInt64 x nodeSort
+      xp1 <- mkUnsignedInt64 (x + 1) nodeSort
       let pnextPrec prec g = do
-            xLit <- mkUnsignedInt64 x nodeSort
             -- Γ(g, x)
             gammagx <- mkApp gamma [fConstMap M.! g, xLit]
             -- struct(x) prec struct(x + 1)
             structx <- mkApp1 struct xLit
-            xp1 <- mkUnsignedInt64 (x + 1) nodeSort
             structxp1 <- mkApp1 struct xp1
             structPrec <- mkApp prec [structx, structxp1]
             -- Final negated and
@@ -344,7 +347,22 @@ assertEncoding phi query k = do
       pnextDown <- mkAndWith (pnextPrec take) [g | g@(PNext Down _) <- clos]
       -- ∧_(PNext u α ∈ Cl(φ)) (...)
       pnextUp <- mkAndWith (pnextPrec yield) [g | g@(PNext Up _) <- clos]
-      mkAnd [pnextDown, pnextUp]
+      let wpnextPrec prec (g, arg) = do
+            -- Γ(g, x)
+            gammagx <- mkApp gamma [fConstMap M.! g, xLit]
+            -- Γ(h, x + 1)
+            gammahxp1 <- groundxnf fConstMap gamma (xnf arg) xp1
+            -- struct(x) prec struct(x + 1)
+            structx <- mkApp1 struct xLit
+            structxp1 <- mkApp1 struct xp1
+            structPrec <- mkApp prec [structx, structxp1]
+            -- Final implication
+            notStructPrec <- mkNot structPrec
+            gammagxAndNotStructPrec <- mkAnd [gammagx, notStructPrec]
+            mkImplies gammagxAndNotStructPrec gammahxp1
+      wpnextDown <- mkAndWith (wpnextPrec take) [(g, arg) | g@(WPNext Down arg) <- clos]
+      wpnextUp <- mkAndWith (wpnextPrec yield) [(g, arg) | g@(WPNext Up arg) <- clos]
+      mkAnd [pnextDown, pnextUp, wpnextDown, wpnextUp]
 
     -- PUSH(x)
     mkPush :: Sort -> Map (Formula MP.ExprProp) AST
@@ -353,13 +371,12 @@ assertEncoding phi query k = do
     mkPush nodeSort fConstMap gamma smb struct stack ctx yield equal take x = do
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
-      let propagateNext (next, arg) = do
+      let propagatePNext (next, arg) = do
             lhs <- mkApp gamma [fConstMap M.! next, xLit]
             rhs <- groundxnf fConstMap gamma (xnf arg) xp1
-            mkEq lhs rhs
-      -- big ands
-      pnextRule <- mkAndWith propagateNext [(g, alpha) | g@(PNext _ alpha) <- clos]
-      wpnextRule <- mkAndWith propagateNext [(g, alpha) | g@(WPNext _ alpha) <- clos]
+            mkImplies lhs rhs
+      -- big and
+      pnextRule <- mkAndWith propagatePNext [(g, alpha) | g@(PNext _ alpha) <- clos]
       -- smb(x + 1) = struct(x)
       smbxp1 <- mkApp1 smb xp1
       structx <- mkApp1 struct xLit
@@ -390,7 +407,7 @@ assertEncoding phi query k = do
       ctxxp1Eqctxx <- mkEq ctxxp1 ctxx
       popCtxRule <- mkImplies stackxNeqBotAndPopxm1 ctxxp1Eqctxx
       -- Final and
-      mkAnd [ pnextRule, wpnextRule
+      mkAnd [ pnextRule
             , smbRule, stackRule
             , botCtxRule, pushShiftCtxRule, popCtxRule
             ]
@@ -402,13 +419,12 @@ assertEncoding phi query k = do
     mkShift nodeSort fConstMap gamma smb struct stack ctx x = do
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
-      let propagateNext (next, arg) = do
+      let propagatePNext (next, arg) = do
             lhs <- mkApp gamma [fConstMap M.! next, xLit]
             rhs <- groundxnf fConstMap gamma (xnf arg) xp1
             mkImplies lhs rhs
       -- big ands
-      pnextRule <- mkAndWith propagateNext [(g, alpha) | g@(PNext _ alpha) <- clos]
-      wpnextRule <- mkAndWith propagateNext [(g, alpha) | g@(WPNext _ alpha) <- clos]
+      pnextRule <- mkAndWith propagatePNext [(g, alpha) | g@(PNext _ alpha) <- clos]
       -- smb(x + 1) = struct(x)
       smbxp1 <- mkApp1 smb xp1
       structx <- mkApp1 struct xLit
@@ -422,7 +438,7 @@ assertEncoding phi query k = do
       ctxx <- mkApp1 ctx xLit
       ctxRule <- mkEq ctxxp1 ctxx
       -- Final and
-      mkAnd [pnextRule, wpnextRule, smbRule, stackRule, ctxRule]
+      mkAnd [pnextRule, smbRule, stackRule, ctxRule]
 
     -- POP(xExpr)
     mkPop :: Sort -> Sort -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
