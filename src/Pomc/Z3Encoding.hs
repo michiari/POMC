@@ -327,7 +327,7 @@ assertEncoding phi query k = do
       pqImpl <- mkImplies andAll pEqq
       mkForallConst [] [pApp, qApp] pqImpl
 
-    -- PNEXT(xExpr)
+    -- PNEXT(x) ∧ WPNEXT(x)
     mkPnext :: Sort -> Map (Formula MP.ExprProp) AST
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
             -> Z3 AST
