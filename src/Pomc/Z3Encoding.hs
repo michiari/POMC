@@ -152,7 +152,7 @@ assertEncoding phi query k = do
   assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 smb node1
 
   -- stack(1) = ⊥
-  nodeBot <- mkUnsignedInt64 0 nodeSort
+  nodeBot <- mkUnsignedInt64 0 nodeSort -- Note: all quantifiers on nodes should exclude 0
   assert =<< mkEq nodeBot =<< mkApp1 stack node1
 
   -- ctx(1) = ⊥
@@ -186,11 +186,16 @@ assertEncoding phi query k = do
         pnextx <- mkPnext nodeSort fConstMap gamma struct yield take x
         inputx <- mkOr [checkPushx, checkShiftx]
         inputxImpliesPnextx <- mkImplies inputx pnextx
-        mkAnd [inputxImpliesPnextx, pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx]
+        -- xnextx
+        xnextx <- mkXnext nodeSort fConstMap gamma smb struct stack ctx yield equal take x
+        popxImpliesXnextx <- mkImplies checkPopx xnextx
+        mkAnd [ inputxImpliesPnextx, pushxImpliesPushx, shiftxImpliesShiftx
+              , popxImpliesPopx, popxImpliesXnextx
+              ]
   assert =<< mkAndWith mkTransitions [1..(k - 1)]
   -- end ∀x (...)
 
-  -- EMPTY(k+1)
+  -- EMPTY(k)
   assert =<< mkEmpty nodeSort fConstMap gamma stack k
 
   case query of
@@ -277,7 +282,7 @@ assertEncoding phi query k = do
       PNext _ _        -> applyGamma f
       PBack _ _        -> error "Past operators not supported yet."
       WPNext _ _       -> applyGamma f
-      XNext _ _        -> mkFalse -- applyGamma f
+      XNext _ _        -> applyGamma f
       XBack _ _        -> error "Past operators not supported yet."
       WXNext _ _       -> mkFalse -- applyGamma f
       HNext _ _        -> error "Hierarchical operators not supported yet."
@@ -363,6 +368,37 @@ assertEncoding phi query k = do
       wpnextDown <- mkAndWith (wpnextPrec take) [(g, arg) | g@(WPNext Down arg) <- clos]
       wpnextUp <- mkAndWith (wpnextPrec yield) [(g, arg) | g@(WPNext Up arg) <- clos]
       mkAnd [pnextDown, pnextUp, wpnextDown, wpnextUp]
+
+    -- XNEXT(x)
+    mkXnext :: Sort -> Map (Formula MP.ExprProp) AST
+            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
+            -> Z3 AST
+    mkXnext nodeSort fConstMap gamma smb struct stack ctx yield equal take x = do
+      xLit <- mkUnsignedInt64 x nodeSort
+      -- y = stack(x)
+      y <- mkApp1 stack xLit
+      structy <- mkApp1 struct y
+      let xnextSat g@(XNext dir arg) = do
+            gammagy <- mkApp gamma [fConstMap M.! g, y]
+            let satisfied z = do
+                  zLit <- mkUnsignedInt64 z nodeSort
+                  checkPopz <- mkCheckPrec smb struct take zLit
+                  ctxz <- mkApp1 ctx zLit
+                  ctxzEqy <- mkEq ctxz y
+                  gammaArgz <- mkApp gamma [fConstMap M.! arg, zLit]
+                  structz <- mkApp1 struct zLit
+                  precYT <- case dir of
+                    Down -> mkApp yield [structy, structz]
+                    Up   -> mkApp take [structy, structz]
+                  precEq <- mkApp equal [structy, structz]
+                  orPrec <- mkOr [precYT, precEq]
+                  mkAnd [checkPopz, ctxzEqy, gammaArgz, orPrec]
+            exists <- mkExistsNodes [1..x] satisfied
+            -- Implies
+            mkImplies gammagy exists
+          xnextSat _ = error "XNext formula expected."
+      mkAndWith xnextSat [g | g@(XNext _ _) <- clos]
 
     -- PUSH(x)
     mkPush :: Sort -> Map (Formula MP.ExprProp) AST
@@ -763,6 +799,12 @@ mkAndWith predGen items = mapM predGen items >>= mkAnd
 
 mkOrWith :: (a -> Z3 AST) -> [a] -> Z3 AST
 mkOrWith predGen items = mapM predGen items >>= mkOr
+
+mkForallNodes :: [Word64] -> (Word64 -> Z3 AST) -> Z3 AST
+mkForallNodes nodes predGen = mkAndWith predGen nodes
+
+mkExistsNodes :: [Word64] -> (Word64 -> Z3 AST) -> Z3 AST
+mkExistsNodes nodes predGen = mkOrWith predGen nodes
 
 
 closure :: Alphabet MP.ExprProp -> Formula MP.ExprProp
