@@ -588,7 +588,8 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
   where
     apConstMap = M.fromList
       $ foldr (\(p, c) rest -> case p of
-                  Atomic (Prop (MP.TextProp t)) -> (t, c):rest
+                  Atomic tp@(Prop (MP.TextProp t))
+                    | tp `notElem` (fst MP.miniProcAlphabet) -> (t, c):rest
                   _ -> rest
               ) []
       $ M.toList fConstMap
@@ -631,8 +632,11 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
         -- ∧_(p∈b) Γ(p, x)
         structX <- mkApp1 struct xLit
         structXEqil <- mkEq (fConstMap M.! (Atomic . Prop . MP.TextProp . MP.ilStruct $ il)) structX
-        inputProps <- mkAndWith (\l -> mkApp gamma [apConstMap M.! l, xLit])
-          $ filter (`M.member` apConstMap) $ (MP.ilFunction il) : (MP.ilModules il)
+        let inputNames = (MP.ilFunction il) : (MP.ilModules il)
+        inputProps <- mkAndWith (\(l, c) -> let pn | l `elem` inputNames = return
+                                                   | otherwise = mkNot
+                                            in pn =<< mkApp gamma [c, xLit]
+                                ) $ M.toList apConstMap
         -- assert ExprProps
         let assertExprProp (scope, expr, exprS) = do
               gammaExprx <- mkApp gamma [exprS, xLit]
