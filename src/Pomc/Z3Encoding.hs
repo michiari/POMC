@@ -462,11 +462,11 @@ assertEncoding phi query k = do
       stackxNeqBotAndpushOrShiftxm1 <- mkAnd [stackxNeqBot, pushOrShiftxm1]
       ctxxp1Eqxm1 <- mkEq ctxxp1 xm1
       pushShiftCtxRule <- mkImplies stackxNeqBotAndpushOrShiftxm1 ctxxp1Eqxm1
-      -- (stack(x) != ⊥ ∧ pop(x − 1)) → ctx(x + 1) = ctx(x)
+      -- (stack(x) != ⊥ ∧ pop(x − 1)) → ctx(x + 1) = ctx(x - 1)
       popxm1 <- mkCheckPrec smb struct take xm1
       stackxNeqBotAndPopxm1 <- mkAnd [stackxNeqBot, popxm1]
-      ctxx <- mkApp1 ctx xLit
-      ctxxp1Eqctxx <- mkEq ctxxp1 ctxx
+      ctxxm1 <- mkApp1 ctx xm1
+      ctxxp1Eqctxx <- mkEq ctxxp1 ctxxm1
       popCtxRule <- mkImplies stackxNeqBotAndPopxm1 ctxxp1Eqctxx
       -- Final and
       mkAnd [ pnextRule
