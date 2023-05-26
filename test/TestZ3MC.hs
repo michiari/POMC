@@ -75,13 +75,21 @@ sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS MiniProc MC Eval Tests" $
   map (makeTestCase sasMPSource)
   $ zipExpected (filter (isSupported . snd) EvalFormulas.formulas) expectedSasEval
+  -- $ zip (filter (isSupported . snd) EvalFormulas.formulas) $ repeat Sat
 
 expectedSasEval :: [SMTStatus]
 expectedSasEval =
-  [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat
-  , Unsat, Unsat, Unsat, Unsat, Unknown   -- base_tests
+  [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat -- 5
+  , Unsat, Unsat, Unsat -- 8
+  , Unknown, Unknown, Unsat, Unknown -- 13
+  , Unknown, Unsat                 -- base_tests
+  , Unknown, Unknown               -- chain_next
   , Unknown, Unsat, Unsat, Unknown -- contains_exc
-  , Unsat                          -- normal_ret
+  , Unknown                        -- data_access
+  , Unknown                        -- exception_safety
+  , Unsat, Unsat                   -- normal_ret
+  , Unknown                        -- no_throw
+  , Unsat                          -- ininstall_han
   , Unsat, Unknown, Unknown        -- until_exc
   , Unknown, Unknown               -- until_misc
   ]
