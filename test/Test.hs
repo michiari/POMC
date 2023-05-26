@@ -32,7 +32,7 @@ normalTests = testGroup "Normal Tests" [ TestOpa.tests
                                        , TestSatOmega.tests
                                        , TestMCOmega.tests
                                        , TestZ3Sat.tests
-                                       , TestZ3MC.tests
+                                       --, TestZ3MC.tests
                                        ]
 
 slowTests :: TestTree

@@ -23,6 +23,7 @@ efTests :: TestTree
 efTests = testGroup "EvalFormulas"
   $ map makeTestCase
   $ zipExpected (filter (isSupported . snd) formulas) expectedRes
+  -- $ zip (filter (isSupported . snd) formulas) $ repeat Sat
 
 isSupported :: Formula a -> Bool
 isSupported f = case f of
@@ -37,7 +38,7 @@ isSupported f = case f of
   PNext _ g     -> isSupported g
   PBack _ _     -> False
   WPNext _ g    -> isSupported g
-  XNext _ _     -> False
+  XNext _ g     -> isSupported g
   XBack _ _     -> False
   WXNext _ _    -> False
   HNext _ _     -> False
@@ -53,9 +54,16 @@ isSupported f = case f of
 
 expectedRes :: [SMTStatus]
 expectedRes =
-  [ Sat, Sat, Sat, Unknown, Unknown, Sat, Sat, Sat, Unknown, Sat, Unknown -- base_tests
+  [ Sat, Sat, Sat, Unknown, Unknown, Sat
+  , Sat, Sat, Unknown, Sat, Sat
+  , Unknown, Sat, Sat, Unknown -- base_tests
+  , Sat, Sat -- chain_next
   , Sat, Sat, Sat, Sat -- contains_exc
-  , Sat -- normal_ret
+  , Sat -- data_access
+  , Sat -- exception_safety
+  , Sat, Sat -- normal_ret
+  , Sat -- no_throw
+  , Sat -- uninstall_han
   , Sat, Sat, Sat -- until_exc
   , Sat, Sat -- until_misc
   ]

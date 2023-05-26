@@ -182,16 +182,12 @@ assertEncoding phi query k = do
         checkPopx <- mkCheckPrec smb struct take xLit
         popx <- mkPop sSort nodeSort gamma smb stack ctx x
         popxImpliesPopx <- mkImplies checkPopx popx
-        -- pnextx
+        -- pnextx and xnextx
         pnextx <- mkPnext nodeSort fConstMap gamma struct yield take x
+        xnextx <- mkXnext nodeSort fConstMap gamma smb struct ctx yield equal take x
         inputx <- mkOr [checkPushx, checkShiftx]
-        inputxImpliesPnextx <- mkImplies inputx pnextx
-        -- xnextx
-        xnextx <- mkXnext nodeSort fConstMap gamma smb struct stack ctx yield equal take x
-        popxImpliesXnextx <- mkImplies checkPopx xnextx
-        mkAnd [ inputxImpliesPnextx, pushxImpliesPushx, shiftxImpliesShiftx
-              , popxImpliesPopx, popxImpliesXnextx
-              ]
+        inputxImpliesNextx <- mkImplies inputx =<< mkAnd [pnextx, xnextx]
+        mkAnd [pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx, inputxImpliesNextx]
   assert =<< mkAndWith mkTransitions [1..(k - 1)]
   -- end ∀x (...)
 
@@ -372,31 +368,29 @@ assertEncoding phi query k = do
     -- XNEXT(x)
     mkXnext :: Sort -> Map (Formula MP.ExprProp) AST
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
-            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
+            -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
             -> Z3 AST
-    mkXnext nodeSort fConstMap gamma smb struct stack ctx yield equal take x = do
+    mkXnext nodeSort fConstMap gamma smb struct ctx yield equal take x = do
       xLit <- mkUnsignedInt64 x nodeSort
-      -- y = stack(x)
-      y <- mkApp1 stack xLit
-      structy <- mkApp1 struct y
+      structx <- mkApp1 struct xLit
       let xnextSat g@(XNext dir arg) = do
-            gammagy <- mkApp gamma [fConstMap M.! g, y]
+            gammagx <- mkApp gamma [fConstMap M.! g, xLit]
             let satisfied z = do
                   zLit <- mkUnsignedInt64 z nodeSort
                   checkPopz <- mkCheckPrec smb struct take zLit
                   ctxz <- mkApp1 ctx zLit
-                  ctxzEqy <- mkEq ctxz y
-                  gammaArgz <- mkApp gamma [fConstMap M.! arg, zLit]
+                  ctxzEqx <- mkEq ctxz xLit
+                  xnfArgz <- groundxnf fConstMap gamma (xnf arg) zLit
                   structz <- mkApp1 struct zLit
                   precYT <- case dir of
-                    Down -> mkApp yield [structy, structz]
-                    Up   -> mkApp take [structy, structz]
-                  precEq <- mkApp equal [structy, structz]
+                    Down -> mkApp yield [structx, structz]
+                    Up   -> mkApp take [structx, structz]
+                  precEq <- mkApp equal [structx, structz]
                   orPrec <- mkOr [precYT, precEq]
-                  mkAnd [checkPopz, ctxzEqy, gammaArgz, orPrec]
-            exists <- mkExistsNodes [1..x] satisfied
+                  mkAnd [checkPopz, ctxzEqx, xnfArgz, orPrec]
+            exists <- mkExistsNodes [x..k] satisfied
             -- Implies
-            mkImplies gammagy exists
+            mkImplies gammagx exists
           xnextSat _ = error "XNext formula expected."
       mkAndWith xnextSat [g | g@(XNext _ _) <- clos]
 
