@@ -549,7 +549,7 @@ encodeProg :: Sort -> Map (Formula MP.ExprProp) AST
            -> FuncDecl -> FuncDecl -> FuncDecl
            -> MP.Program -> Word64 -> Z3 ()
 encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = do
-  let (lowerState, ini, _) = MP.sksToExtendedOpa False (MP.pSks prog)
+  let (lowerState, ini, fin) = MP.sksToExtendedOpa False (MP.pSks prog)
   locSortSymbol <- mkStringSymbol "LocSort"
   locSort <- mkFiniteDomainSort locSortSymbol $ fromIntegral $ MP.lsSid lowerState
   -- Uninterpreted functions
@@ -585,6 +585,13 @@ encodeProg nodeSort fConstMap gamma struct smb yield equal take stack prog k = d
         mkAnd [pushxImpliesPushProgx, shiftxImpliesShiftProgx, popxImpliesPopProgx]
   assert =<< mkAndWith mkProgTransitions [1..(k - 1)]
   -- end ∀x (...)
+  -- Final states
+  nodek <- mkUnsignedInt64 k nodeSort
+  assert =<< mkOrWith (\l -> do
+                          lLit <- mkUnsignedInt l locSort
+                          pck <- mkApp1 pc nodek
+                          mkEq pck lLit
+                      ) fin
   where
     apConstMap = M.fromList
       $ foldr (\(p, c) rest -> case p of
