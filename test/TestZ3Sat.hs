@@ -40,7 +40,7 @@ isSupported f = case f of
   WPNext _ g    -> isSupported g
   XNext _ g     -> isSupported g
   XBack _ _     -> False
-  WXNext _ _    -> False
+  WXNext _ g    -> isSupported g
   HNext _ _     -> False
   HBack _ _     -> False
   Until _ g h   -> isSupported g && isSupported h

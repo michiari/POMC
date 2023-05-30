@@ -9,6 +9,9 @@
 module TestMP ( tests
 
               , sasMPSource
+              , noHanSource
+              , simpleThenSource
+              , simpleElseSource
               , nondetSrc
               ) where
 

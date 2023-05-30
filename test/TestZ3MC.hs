@@ -23,23 +23,27 @@ import Text.RawString.QQ
 import Text.Megaparsec
 import qualified Data.Text as T
 import Data.Maybe (fromJust)
+import Data.Word (Word64)
 
 import qualified Debug.Trace as DBG
 
 tests :: TestTree
 tests = testGroup "Z3Encoding Model Checking Tests"
-  [ sasEvalTests, nondetTrue, nondetExprProp ]
+  [ sasEvalTests, noHanEvalTests, simpleThenEvalTests, simpleElseEvalTests
+  , nondetTrue, nondetExprProp
+  ]
 
 makeTestCase :: T.Text
+             -> Word64
              -> (TestCase, SMTStatus)
              -> TestTree
-makeTestCase filecont ((name, phi), expected) =
+makeTestCase filecont k ((name, phi), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") assertion where
   assertion = do
     prog <- case parse (programP <* eof) name filecont of
               Left  errBundle -> assertFailure (errorBundlePretty errBundle)
               Right fsks      -> return fsks
-    smtres <- modelCheckProgram (fmap (TextProp . T.pack) phi) prog 18
+    smtres <- modelCheckProgram (fmap (TextProp . T.pack) phi) prog k
     DBG.traceShowM smtres
     let debugMsg | smtStatus smtres == Unsat =
                    "Expected " ++ show expected ++ ", got Unsat. Trace:\n"
@@ -48,8 +52,8 @@ makeTestCase filecont ((name, phi), expected) =
                    "Expected " ++ show expected ++ ", got " ++ show (smtStatus smtres) ++ "."
     assertBool debugMsg (smtStatus smtres == expected)
 
-makeParseTestCase :: T.Text -> String -> String -> SMTStatus -> TestTree
-makeParseTestCase progSource name phi expected =
+makeParseTestCase :: T.Text -> Word64 -> String -> String -> SMTStatus -> TestTree
+makeParseTestCase progSource k name phi expected =
   testCase (name ++ " (" ++ show phi ++ ")") assertion
   where
     filecont = T.concat [ T.pack "formulas = "
@@ -61,7 +65,7 @@ makeParseTestCase progSource name phi expected =
       pcreq <- case parse (checkRequestP <* eof) name filecont of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                  Right pcreq      -> return pcreq
-      smtres <- modelCheckProgram (head . pcreqFormulas $ pcreq) (pcreqMiniProc pcreq) 18
+      smtres <- modelCheckProgram (head . pcreqFormulas $ pcreq) (pcreqMiniProc pcreq) k
       DBG.traceShowM smtres
       let debugMsg | smtStatus smtres == Unsat =
                    "Expected " ++ show expected ++ ", got Unsat. Trace:\n"
@@ -73,7 +77,7 @@ makeParseTestCase progSource name phi expected =
 
 sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS MiniProc MC Eval Tests" $
-  map (makeTestCase sasMPSource)
+  map (makeTestCase sasMPSource 17)
   $ zipExpected (filter (isSupported . snd) EvalFormulas.formulas) expectedSasEval
   -- $ zip (filter (isSupported . snd) EvalFormulas.formulas) $ repeat Sat
 
@@ -89,35 +93,88 @@ expectedSasEval =
   , Unknown                        -- exception_safety
   , Unsat, Unsat                   -- normal_ret
   , Unknown                        -- no_throw
-  , Unsat                          -- ininstall_han
+  , Unsat                          -- uninstall_han
   , Unsat, Unknown, Unknown        -- until_exc
   , Unknown, Unknown               -- until_misc
   ]
 
--- noHanEvalTests :: TestTree
--- noHanEvalTests = testGroup "NoHan MiniProc MC Eval Tests" $
---   map (makeTestCase noHanSource) (zipExpected EvalFormulas.formulas expectedNoHanEval)
+noHanEvalTests :: TestTree
+noHanEvalTests = testGroup "NoHan MiniProc MC Eval Tests" $
+  map (makeTestCase noHanSource 10)
+  $ zipExpected (filter (isSupported . snd) EvalFormulas.formulas) expectedNoHanEval
 
--- simpleThenEvalTests :: TestTree
--- simpleThenEvalTests = testGroup "SimpleThen MiniProc MC Eval Tests" $
---   map (makeTestCase simpleThenSource) (zipExpected EvalFormulas.formulas expectedSimpleThenEval)
+expectedNoHanEval :: [SMTStatus]
+expectedNoHanEval =
+  [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat -- 5
+  , Unsat, Unknown, Unsat                        -- 8
+  , Unsat, Unsat, Unsat, Unsat                   -- 13
+  , Unsat, Unsat                                 -- base_tests
+  , Unsat, Unsat                                 -- chain_next
+  , Unsat, Unsat, Unknown, Unsat                 -- contains_exc
+  , Unknown                                      -- data_access
+  , Unsat                                        -- exception_safety
+  , Unsat, Unsat                                 -- normal_ret
+  , Unsat                                        -- no_throw
+  , Unknown                                      -- uninstall_han
+  , Unknown, Unknown, Unknown                    -- until_exc
+  , Unsat, Unsat                                 -- until_misc
+  ]
 
--- simpleElseEvalTests :: TestTree
--- simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
---   map (makeTestCase simpleElseSource) (zipExpected EvalFormulas.formulas expectedSimpleElseEval)
+simpleThenEvalTests :: TestTree
+simpleThenEvalTests = testGroup "SimpleThen MiniProc MC Eval Tests" $
+  map (makeTestCase simpleThenSource 14)
+  $ zipExpected (filter (isSupported . snd) EvalFormulas.formulas) expectedSimpleThenEval
 
+expectedSimpleThenEval :: [SMTStatus]
+expectedSimpleThenEval =
+  [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat -- 5
+  , Unsat, Unsat, Unsat                          -- 8
+  , Unknown, Unknown, Unsat, Unknown             -- 13
+  , Unknown, Unsat                               -- base_tests
+  , Unsat, Unsat                                 -- chain_next
+  , Unknown, Unsat, Unsat, Unknown               -- contains_exc
+  , Unknown                                      -- data_access
+  , Unknown                                      -- exception_safety
+  , Unsat, Unsat                                 -- normal_ret
+  , Unknown                                      -- no_throw
+  , Unsat                                        -- uninstall_han
+  , Unsat, Unsat, Unsat                          -- until_exc
+  , Unsat, Unsat                                 -- until_misc
+  ]
+
+simpleElseEvalTests :: TestTree
+simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
+  map (makeTestCase simpleElseSource 12)
+  $ zipExpected (filter (isSupported . snd) EvalFormulas.formulas) expectedSimpleElseEval
+
+expectedSimpleElseEval :: [SMTStatus]
+expectedSimpleElseEval =
+  [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat -- 5
+  , Unsat, Unsat, Unsat                          -- 8
+  , Unknown, Unknown, Unsat, Unsat               -- 13
+  , Unknown, Unsat                               -- base_tests
+  , Unsat, Unsat                                 -- chain_next
+  , Unknown, Unsat, Unsat, Unknown               -- contains_exc
+  , Unknown                                      -- data_access
+  , Unknown                                      -- exception_safety
+  , Unsat, Unknown                               -- normal_ret
+  , Unknown                                      -- no_throw
+  , Unsat                                        -- uninstall_han
+  , Unsat, Unsat, Unsat                          -- until_exc
+  , Unsat, Unsat                                 -- until_misc
+  ]
 
 nondetTrue :: TestTree
 nondetTrue = testGroup "Nondeterministic Int Reachability"
-  [ makeTestCase nondetSrc (("True", Not T), Unsat)
-  , makeTestCase nondetSrcLong (("True", Not T), Unsat)
-  , makeTestCase veryNondetSrc (("Very Nondet", Not T), Unsat)
-  , makeTestCase nondetSrcLong (("Sbobinz", Not (PNext Down $ ap "stm")), Unsat)
+  [ makeTestCase nondetSrc 20 (("True", Not T), Unsat)
+  , makeTestCase nondetSrcLong 20 (("True", Not T), Unsat)
+  , makeTestCase veryNondetSrc 20 (("Very Nondet", Not T), Unsat)
+  , makeTestCase nondetSrcLong 20 (("Sbobinz", Not (PNext Down $ ap "stm")), Unsat)
   ]
 
 nondetExprProp :: TestTree
 nondetExprProp = testGroup "Nondeterministic Int Expressions"
-  [ makeParseTestCase nondetSrcLong "a != b" "~ (PNd (PNu (PNu (PNu [main| a != b ]))))" Unsat ]
+  [ makeParseTestCase nondetSrcLong 20 "a != b" "~ (PNd (PNu (PNu (PNu [main| a != b ]))))" Unsat ]
 
 nondetSrcLong :: T.Text
 nondetSrcLong = T.pack [r|
