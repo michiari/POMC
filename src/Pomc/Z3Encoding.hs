@@ -50,11 +50,12 @@ data TableauNode = TableauNode { nodeGammaC :: [Formula MP.ExprProp]
                                , nodeIdx    :: Integer
                                } deriving Eq
 
-data SMTResult = SMTResult { smtStatus     :: SMTStatus
-                           , smtTableau    :: Maybe [TableauNode]
-                           , smtTimeAssert :: Double
-                           , smtTimeCheck  :: Double
-                           , smtTimeModel  :: Double
+data SMTResult = SMTResult { smtStatus        :: SMTStatus
+                           , smtTableau       :: Maybe [TableauNode]
+                           , smtTimeAssert    :: Double
+                           , smtTimeCheck     :: Double
+                           , smtTimeModel     :: Double
+                           , smtTimeLastCheck :: Double
                            } deriving (Eq, Show)
 
 instance Show TableauNode where
@@ -97,12 +98,13 @@ checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 minLength
     minLength = case query of
       SatQuery {} -> 1
       MiniProcQuery {} -> 2
-    incrementalCheck assertTime checkTime k
+    incrementalCheck assertTime checkTime lastCheckTime k
       | k > maxDepth = return SMTResult { smtStatus = Unknown
                                         , smtTableau = Nothing
                                         , smtTimeAssert = assertTime
                                         , smtTimeCheck = checkTime
                                         , smtTimeModel = 0
+                                        , smtTimeLastCheck = lastCheckTime
                                         }
       | otherwise = do
           reset
@@ -111,13 +113,16 @@ checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 minLength
           if res == Z3.Sat
             then do
             (tableau, modelTime) <- timeAction $ tableauQuery Nothing $ fromJust maybeModel
+            -- DBG.traceM =<< showModel (fromJust maybeModel)
             return SMTResult { smtStatus = Sat
                              , smtTableau = Just tableau
                              , smtTimeAssert = assertTime + newAssertTime
                              , smtTimeCheck = checkTime + newCheckTime
                              , smtTimeModel = modelTime
+                             , smtTimeLastCheck = newCheckTime
                              }
-            else incrementalCheck (assertTime + newAssertTime) (checkTime + newCheckTime) (k + 1)
+            else incrementalCheck (assertTime + newAssertTime)
+                 (checkTime + newCheckTime) newCheckTime (k + 1)
 
 
 assertEncoding :: Formula MP.ExprProp
