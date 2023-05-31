@@ -16,9 +16,7 @@ module Pomc.Z3Encoding ( SMTStatus(..)
 import Prelude hiding (take)
 
 import Pomc.Prop (Prop(..))
-import Pomc.Potl ( Dir(..), Formula(..), transformFold, pnf, atomic
-                 , ltlNext, ltlBack, ltlPastAlways
-                 )
+import Pomc.Potl (Dir(..), Formula(..), transformFold, pnf, atomic)
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
 import Pomc.Util (timeAction)
 import qualified Pomc.MiniProc as MP
@@ -110,6 +108,7 @@ checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 0 minLength
           reset
           (tableauQuery, newAssertTime) <- timeAction $ assertEncoding pnfPhi query k
           ((res, maybeModel), newCheckTime) <- timeAction $ solverCheckAndGetModel
+          DBG.traceShowM newCheckTime
           if res == Z3.Sat
             then do
             (tableau, modelTime) <- timeAction $ tableauQuery Nothing $ fromJust maybeModel
@@ -879,8 +878,14 @@ closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closLi
         Since _ _ _      -> error "Past operators not supported yet."
         HUntil _ _ _     -> error "Hierarchical operators not supported yet."
         HSince _ _ _     -> error "Hierarchical operators not supported yet."
-        Eventually _     -> error "LTL operators not supported yet."
-        Always _         -> error "LTL operators not supported yet."
+        Next g           -> f : closList g
+        WNext g          -> f : closList g
+        Back g           -> f : closList g
+        WBack g          -> f : closList g
+        Eventually g     -> [f, Next f] ++ closList g
+        Always g         -> [f, WNext f] ++ closList g
+        Once g           -> [f, Back f] ++ closList g
+        Historically g   -> [f, WBack f] ++ closList g
         AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
 
 xnf :: Formula MP.ExprProp -> Formula MP.ExprProp
@@ -908,8 +913,14 @@ xnf f = case f of
   Since _ _ _     -> error "Past operators not supported yet."
   HUntil _ _ _    -> error "Hierarchical operators not supported yet."
   HSince _ _ _    -> error "Hierarchical operators not supported yet."
-  Eventually _g   -> error "LTL operators only supported through translation."
-  Always _g       -> error "LTL operators only supported through translation."
+  Next _          -> f
+  WNext _         -> f
+  Back _          -> f
+  WBack _         -> f
+  Eventually g    -> xnf g `Or` Next f
+  Always g        -> xnf g `And` WNext f
+  Once g          -> xnf g `Or` Back f
+  Historically g  -> xnf g `And` WBack f
   AuxBack _ _     -> error "AuxBack not supported in SMT encoding."
 
 translate :: Formula MP.ExprProp -> Formula MP.ExprProp
@@ -918,12 +929,12 @@ translate phi = fst $ transformFold applyTransl 0 phi where
   applyTransl f upId = case f of
     HNext dir g    -> let qEta = mkUniqueProp upId
       in ( gammaLR dir qEta
-           `And` ltlNext (Until Up (Not $ xOp dir qEta) ((Not $ xOp dir qEta) `And` g))
+           `And` Next (Until Up (Not $ xOp dir qEta) ((Not $ xOp dir qEta) `And` g))
          , upId + 1
          )
     HBack dir g    -> let qEta = mkUniqueProp upId
       in ( gammaLR dir qEta
-           `And` ltlBack (Since Up (Not $ xOp dir qEta) ((Not $ xOp dir qEta) `And` g))
+           `And` Back (Since Up (Not $ xOp dir qEta) ((Not $ xOp dir qEta) `And` g))
          , upId + 1
          )
     HUntil dir g h -> let qEta = mkUniqueProp upId
@@ -945,8 +956,8 @@ translate phi = fst $ transformFold applyTransl 0 phi where
   xOp Up psi = XBack Down psi `And` Not (XBack Up psi)
   xOp Down psi = XNext Up psi `And` Not (XNext Down psi)
   gammaLR dir qEta = xOp dir $ qEta
-    `And` (ltlNext . Always . Not $ qEta)
-    `And` (ltlBack . ltlPastAlways . Not $ qEta)
+    `And` (Next . Always . Not $ qEta)
+    `And` (Back . Historically . Not $ qEta)
 
 
 queryTableau :: Sort -> Map (Formula MP.ExprProp) AST

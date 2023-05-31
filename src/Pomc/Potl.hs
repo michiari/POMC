@@ -22,10 +22,6 @@ module Pomc.Potl ( Dir(..)
                  , formulaAfter
                  , formulaAtDown
                  , formulaAtUp
-                 , ltlNext
-                 , ltlBack
-                 , ltlPastEventually
-                 , ltlPastAlways
                  , normalize
                  , pnf
                  ) where
@@ -72,8 +68,14 @@ data Formula a =
   -- | HRelease  Dir (Formula a) (Formula a)
   -- | HPRelease Dir (Formula a) (Formula a)
   -- LTL
-  | Eventually (Formula a)
-  | Always     (Formula a)
+  | Next         (Formula a)
+  | WNext        (Formula a)
+  | Back         (Formula a)
+  | WBack        (Formula a)
+  | Eventually   (Formula a)
+  | Always       (Formula a)
+  | Once         (Formula a)
+  | Historically (Formula a)
   -- Auxiliary
   | AuxBack Dir (Formula a)  -- AuxBack Up is NEVER used
   deriving (Eq, Ord, Generic)
@@ -114,8 +116,14 @@ instance (Show a) => Show (Formula a) where
     WXNext Down g    -> concat ["WXNd ", showp g]
     Release Down g h -> concat [showp g, " Rd ", showp h]
     Release Up   g h -> concat [showp g, " Ru ", showp h]
+    Next g           -> concat ["N ", showp g]
+    WNext g          -> concat ["WN ", showp g]
+    Back g           -> concat ["B ", showp g]
+    WBack g          -> concat ["WB ", showp g]
     Eventually g     -> concat ["F ", showp g]
     Always g         -> concat ["G ", showp g]
+    Once g           -> concat ["O ", showp g]
+    Historically g   -> concat ["H ", showp g]
     AuxBack Down g   -> concat ["AuxBd ", showp g]
     AuxBack Up g     -> concat ["AuxBu ", showp g]
     where showp T = "T"
@@ -152,8 +160,14 @@ instance Functor Formula where
     WPNext dir g    -> WPNext dir (fmap func g)
     WXNext dir g    -> WXNext dir (fmap func g)
     Release dir g h -> Release dir (fmap func g) (fmap func h)
+    Next g          -> Next (fmap func g)
+    WNext g         -> WNext (fmap func g)
+    Back g          -> Back (fmap func g)
+    WBack g         -> WBack (fmap func g)
     Eventually g    -> Eventually (fmap func g)
     Always g        -> Always (fmap func g)
+    Once g          -> Once (fmap func g)
+    Historically g  -> Historically (fmap func g)
     AuxBack dir g   -> AuxBack dir (fmap func g)
 
 
@@ -181,8 +195,14 @@ transformFold t e f = uncurry t $ case f of
   Since dir g h   -> goBinary (Since dir) g h
   HUntil dir g h  -> goBinary (HUntil dir) g h
   HSince dir g h  -> goBinary (HSince dir) g h
+  Next g          -> goUnary Next g
+  WNext g         -> goUnary WNext g
+  Back g          -> goUnary Back g
+  WBack g         -> goUnary WBack g
   Eventually g    -> goUnary Eventually g
   Always g        -> goUnary Always g
+  Once g          -> goUnary Once g
+  Historically g  -> goUnary Historically g
   AuxBack dir g   -> goUnary (AuxBack dir) g
   where goUnary constr g = let (newG, gRes) = transformFold t e g
                            in (constr newG, gRes)
@@ -216,8 +236,14 @@ getProps formula = nub $ collectProps formula
           WPNext _ g         -> getProps g
           WXNext _ g         -> getProps g
           Release _ g h      -> getProps g ++ getProps h
+          Next g             -> getProps g
+          WNext g            -> getProps g
+          Back g             -> getProps g
+          WBack g            -> getProps g
           Eventually g       -> getProps g
           Always g           -> getProps g
+          Once g             -> getProps g
+          Historically g     -> getProps g
           AuxBack _ g        -> getProps g
 
 atomic :: Formula a -> Bool
@@ -229,15 +255,18 @@ unAtomic (Atomic p) = p
 unAtomic _ = error "Not an Atomic formula."
 
 future :: Formula a -> Bool
-future (PNext      {})      = True
-future (XNext      {})      = True
-future (HNext      {})      = True
-future (Until      {})      = True
-future (HUntil     {})      = True
-future (WPNext     {})      = True
-future (WXNext     {})      = True
-future (Release    {})      = True
-future (Eventually {})      = True
+future (PNext      {}) = True
+future (XNext      {}) = True
+future (HNext      {}) = True
+future (Until      {}) = True
+future (HUntil     {}) = True
+future (WPNext     {}) = True
+future (WXNext     {}) = True
+future (Release    {}) = True
+future (Next       {}) = True
+future (WNext      {}) = True
+future (Eventually {}) = True
+future (Always     {}) = True
 future _ = False
 
 negative :: Formula a -> Bool
@@ -248,6 +277,7 @@ formulaAt :: Int -> Formula a -> Formula a
 formulaAt n f
   | n <= 1    = f
   | otherwise = formulaAt (n-1) (Or (PNext Up f) (PNext Down f))
+-- TODO: use LTL Next when implemented in explicit-state MC
 
 formulaAfter ::  [Dir] -> Formula a ->  Formula a
 formulaAfter l f = case uncons l of
@@ -268,47 +298,42 @@ negation :: Formula a -> Formula a
 negation (Not f) = f
 negation f = Not f
 
-ltlNext :: Formula a -> Formula a
-ltlNext f = PNext Down f `Or` PNext Up f
-
-ltlBack :: Formula a -> Formula a
-ltlBack f = PBack Down f `Or` PBack Up f
-
-ltlPastEventually :: Formula a -> Formula a
-ltlPastEventually = Since Down T . Since Up T
-
-ltlPastAlways :: Formula a -> Formula a
-ltlPastAlways = Not . ltlPastEventually . Not
-
 -- remove double negation
 normalize :: Formula a -> Formula a
 normalize f = case f of
-  T                  -> f
-  Atomic _           -> f
-  Not (Not g)        -> normalize g
-  Not (Always g)     -> Eventually . normalize . Not $ g
-  Not g              -> Not (normalize g)
-  Or g h             -> Or  (normalize g) (normalize h)
-  And g h            -> And (normalize g) (normalize h)
-  Xor g h            -> Xor (normalize g) (normalize h)
-  Implies g h        -> Implies (normalize g) (normalize h)
-  Iff g h            -> Iff (normalize g) (normalize h)
-  PNext dir g        -> PNext dir (normalize g)
-  PBack dir g        -> PBack dir (normalize g)
-  XNext dir g        -> XNext dir (normalize g)
-  XBack dir g        -> XBack dir (normalize g)
-  HNext dir g        -> HNext dir (normalize g)
-  HBack dir g        -> HBack dir (normalize g)
-  Until dir g h      -> Until dir (normalize g) (normalize h)
-  Since dir g h      -> Since dir (normalize g) (normalize h)
-  HUntil dir g h     -> HUntil dir (normalize g) (normalize h)
-  HSince dir g h     -> HSince dir (normalize g) (normalize h)
-  WPNext dir g       -> WPNext dir (normalize g)
-  WXNext dir g       -> WXNext dir (normalize g)
-  Release dir g h    -> Release dir (normalize g) (normalize h)
-  Eventually g       -> Eventually (normalize g)
-  Always g           -> Not . Eventually . normalize . Not $ g
-  AuxBack dir g      -> AuxBack dir (normalize g)
+  T                    -> f
+  Atomic _             -> f
+  Not (Not g)          -> normalize g
+  Not (Always g)       -> Eventually . normalize . Not $ g
+  Not (Historically g) -> Once . normalize . Not $ g
+  Not g                -> Not (normalize g)
+  Or g h               -> Or  (normalize g) (normalize h)
+  And g h              -> And (normalize g) (normalize h)
+  Xor g h              -> Xor (normalize g) (normalize h)
+  Implies g h          -> Implies (normalize g) (normalize h)
+  Iff g h              -> Iff (normalize g) (normalize h)
+  PNext dir g          -> PNext dir (normalize g)
+  PBack dir g          -> PBack dir (normalize g)
+  XNext dir g          -> XNext dir (normalize g)
+  XBack dir g          -> XBack dir (normalize g)
+  HNext dir g          -> HNext dir (normalize g)
+  HBack dir g          -> HBack dir (normalize g)
+  Until dir g h        -> Until dir (normalize g) (normalize h)
+  Since dir g h        -> Since dir (normalize g) (normalize h)
+  HUntil dir g h       -> HUntil dir (normalize g) (normalize h)
+  HSince dir g h       -> HSince dir (normalize g) (normalize h)
+  WPNext dir g         -> WPNext dir (normalize g)
+  WXNext dir g         -> WXNext dir (normalize g)
+  Release dir g h      -> Release dir (normalize g) (normalize h)
+  Next g               -> Next (normalize g)
+  WNext g              -> WNext (normalize g)
+  Back g               -> Back (normalize g)
+  WBack g              -> WBack (normalize g)
+  Eventually g         -> Eventually (normalize g)
+  Always g             -> Not . Eventually . normalize . Not $ g
+  Once g               -> Once (normalize g)
+  Historically g       -> Not . Historically . normalize . Not $ g
+  AuxBack dir g        -> AuxBack dir (normalize g)
 
 -- to positive normal form
 pnf :: Formula a -> Formula a
@@ -334,31 +359,43 @@ pnf f = case f of
   WPNext dir g       -> WPNext dir (pnf g)
   WXNext dir g       -> WXNext dir (pnf g)
   Release dir g h    -> Release dir (pnf g) (pnf h)
+  Next g             -> Next (pnf g)
+  WNext g            -> WNext (pnf g)
+  Back g             -> Back (pnf g)
+  WBack g            -> WBack (pnf g)
   Eventually g       -> Eventually (pnf g)
   Always g           -> Always (pnf g)
+  Once g             -> Once (pnf g)
+  Historically g     -> Historically (pnf g)
   AuxBack dir g      -> AuxBack dir (pnf g)
   -- Negated operators
-  Not T                 -> f
-  Not (Atomic _)        -> f
-  Not (Not g)           -> pnf g
-  Not (Or g h)          -> And (pnf $ Not g) (pnf $ Not h)
-  Not (And g h)         -> Or (pnf $ Not g) (pnf $ Not h)
-  Not (Xor g h)         -> Iff (pnf g) (pnf h)
-  Not (Implies g h)     -> And (pnf g) (pnf $ Not h)
-  Not (Iff g h)         -> Xor (pnf g) (pnf h)
-  Not (PNext dir g)     -> WPNext dir (pnf $ Not g)
+  Not T                   -> f
+  Not (Atomic _)          -> f
+  Not (Not g)             -> pnf g
+  Not (Or g h)            -> And (pnf $ Not g) (pnf $ Not h)
+  Not (And g h)           -> Or (pnf $ Not g) (pnf $ Not h)
+  Not (Xor g h)           -> Iff (pnf g) (pnf h)
+  Not (Implies g h)       -> And (pnf g) (pnf $ Not h)
+  Not (Iff g h)           -> Xor (pnf g) (pnf h)
+  Not (PNext dir g)       -> WPNext dir (pnf $ Not g)
   Not (PBack _dir _g)     -> error "Past weak operators not supported yet." -- WPBack dir (pnf $ Not g)
-  Not (XNext dir g)     -> WXNext dir (pnf $ Not g)
+  Not (XNext dir g)       -> WXNext dir (pnf $ Not g)
   Not (XBack _dir _g)     -> error "Past weak operators not supported yet." -- WXBack dir (pnf $ Not g)
   Not (HNext _dir _g)     -> error "Hierarchical weak operators not supported yet." -- WHNext dir (pnf $ Not g)
   Not (HBack _dir _g)     -> error "Hierarchical weak operators not supported yet." -- HBack dir (pnf $ Not g)
-  Not (Until dir g h)   -> Release dir (pnf $ Not g) (pnf $ Not h)
-  Not (Since _dir _g _h)   -> error "Past weak operators not supported yet." -- PRelease dir (pnf $ Not g) (pnf $ Not h)
-  Not (HUntil _dir _g _h)  -> error "Hierarchical weak operators not supported yet." -- HRelease dir (pnf $ Not g) (pnf $ Not h)
-  Not (HSince _dir _g _h)  -> error "Hierarchical weak operators not supported yet." -- HPRelease dir (pnf $ Not g) (pnf $ Not h)
-  Not (WPNext dir g)    -> PNext dir (pnf $ Not g)
-  Not (WXNext dir g)    -> XNext dir (pnf $ Not g)
-  Not (Release dir g h) -> Release dir (pnf $ Not g) (pnf $ Not h)
-  Not (Eventually g)    -> Always (pnf $ Not g)
-  Not (Always g)        -> Eventually (pnf $ Not g)
+  Not (Until dir g h)     -> Release dir (pnf $ Not g) (pnf $ Not h)
+  Not (Since _dir _g _h)  -> error "Past weak operators not supported yet." -- PRelease dir (pnf $ Not g) (pnf $ Not h)
+  Not (HUntil _dir _g _h) -> error "Hierarchical weak operators not supported yet." -- HRelease dir (pnf $ Not g) (pnf $ Not h)
+  Not (HSince _dir _g _h) -> error "Hierarchical weak operators not supported yet." -- HPRelease dir (pnf $ Not g) (pnf $ Not h)
+  Not (WPNext dir g)      -> PNext dir (pnf $ Not g)
+  Not (WXNext dir g)      -> XNext dir (pnf $ Not g)
+  Not (Release dir g h)   -> Release dir (pnf $ Not g) (pnf $ Not h)
+  Not (Next g)            -> WNext (pnf $ Not g)
+  Not (WNext g)           -> Next (pnf $ Not g)
+  Not (Back g)            -> WBack (pnf $ Not g)
+  Not (WBack g)           -> Back (pnf $ Not g)
+  Not (Eventually g)      -> Always (pnf $ Not g)
+  Not (Always g)          -> Eventually (pnf $ Not g)
+  Not (Once g)            -> Historically (pnf $ Not g)
+  Not (Historically g)    -> Once (pnf $ Not g)
   Not (AuxBack _dir _g)   -> error "Negated auxiliary operators cannot be normalized."
