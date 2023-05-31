@@ -92,7 +92,7 @@ checkQuery :: Formula MP.ExprProp
            -> Query
            -> Word64
            -> IO SMTResult
-checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 minLength
+checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 0 minLength
   where
     pnfPhi = pnf $ translate phi
     minLength = case query of
