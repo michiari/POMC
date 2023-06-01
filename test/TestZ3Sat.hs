@@ -77,7 +77,21 @@ expectedRes =
   ]
 
 regressionTests :: TestTree
-regressionTests = testGroup "Regression Tests" [wpnextBug]
+regressionTests = testGroup "Other Tests" [wpnextBug, nestedXNext, andXNext]
 
 wpnextBug :: TestTree
-wpnextBug = makeTestCase (("WPNext bug", ap "call" `And` Not (PNext Down (ap "exc")) `And` PNext Up (Not (ap "ret") `And` PNext Up T)), Sat)
+wpnextBug = makeTestCase 10 (("WPNext bug", ap "call" `And` Not (PNext Down (ap "exc")) `And` PNext Up (Not (ap "ret") `And` PNext Up T)), Sat)
+
+nestedXNext :: TestTree
+nestedXNext = makeTestCase 40 (
+  ("Nested XNexts"
+  , XNext Down $ XNext Down $ XNext Down $ XNext Down $ ap "call")
+  , Sat
+  )
+
+andXNext :: TestTree
+andXNext = makeTestCase 10 (
+  ("Conjoined XNexts"
+  , XNext Down (ap "call") `And` XNext Up (ap "exc") `And` XNext Down (ap "p") `And` XNext Down (ap "q") `And` XNext Down (ap "w") `And` XNext Down (ap "r"))
+  , Sat
+  )

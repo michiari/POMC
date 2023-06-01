@@ -11,13 +11,15 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Pomc.Satisfiability (isSatisfiableGen)
 import OPMs (stlV2Alphabet)
-import EvalFormulas (TestCase, zipExpected, excludeIndices, formulas)
+import EvalFormulas (TestCase, zipExpected, excludeIndices, formulas, ap)
 import qualified Data.Set as S (toList)
+
+import Pomc.Potl (Formula(..), Dir(..))
 
 tests :: TestTree
 tests = testGroup "TestSat.hs Normal Tests"
   $ map makeTestCase
-  $ excludeIndices allTestCases [18, 41, 42]
+  $ (excludeIndices allTestCases [18, 41, 42] ++ [nestedXNext])
 
 slowTests :: TestTree
 slowTests = testGroup "TestSat.hs Slow Tests"
@@ -25,6 +27,7 @@ slowTests = testGroup "TestSat.hs Slow Tests"
   [ allTestCases !! 18
   , allTestCases !! 41
   , allTestCases !! 42
+  , andXNext
   ]
 
 makeTestCase :: (TestCase, Bool)
@@ -60,3 +63,15 @@ expectedRes =
   , True, True, True, True       -- until_exc
   , True, True, True             -- until_misc
   ]
+
+nestedXNext :: (TestCase, Bool)
+nestedXNext = (("Nested XNexts"
+               , XNext Down $ XNext Down $ XNext Down $ XNext Down $ ap "call")
+              , True
+              )
+
+andXNext :: (TestCase, Bool)
+andXNext = (("Conjoined XNexts"
+            , XNext Down (ap "call") `And` XNext Up (ap "exc") `And` XNext Down (ap "p") `And` XNext Down (ap "q") `And` XNext Down (ap "w") `And` XNext Down (ap "r"))
+           , False
+           )
