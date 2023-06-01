@@ -108,7 +108,7 @@ checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 0 minLength
           reset
           (tableauQuery, newAssertTime) <- timeAction $ assertEncoding pnfPhi query k
           ((res, maybeModel), newCheckTime) <- timeAction $ solverCheckAndGetModel
-          DBG.traceShowM newCheckTime
+          -- DBG.traceShowM newCheckTime
           if res == Z3.Sat
             then do
             (tableau, modelTime) <- timeAction $ tableauQuery Nothing $ fromJust maybeModel
@@ -161,6 +161,11 @@ assertEncoding phi query k = do
 
   -- ctx(1) = ⊥
   assert =<< mkEq nodeBot =<< mkApp1 ctx node1
+
+  -- Back is false and WBack is true in 1
+  let holdsIn1 g = mkApp gamma [fConstMap M.! g, node1]
+  assert =<< mkAndWith (mkNot <=< holdsIn1) [g | g@(Back _) <- clos]
+  assert =<< mkAndWith holdsIn1 [g | g@(WBack _) <- clos]
 
   -- start ∀x (...)
   -- x <= k
@@ -303,8 +308,14 @@ assertEncoding phi query k = do
       Since _ _ _      -> error "Past operators not supported yet."
       HUntil _ _ _     -> error "Hierarchical operators not supported yet."
       HSince _ _ _     -> error "Hierarchical operators not supported yet."
-      Eventually _     -> error "LTL operators not supported yet."
-      Always _         -> error "LTL operators not supported yet."
+      Next _           -> applyGamma f
+      WNext _          -> applyGamma f
+      Back _           -> applyGamma f
+      WBack _          -> applyGamma f
+      Eventually _     -> error "Supplied formula is not in Next Normal Form."
+      Always _         -> error "Supplied formula is not in Next Normal Form."
+      Once _           -> error "Supplied formula is not in Next Normal Form."
+      Historically _   -> error "Supplied formula is not in Next Normal Form."
       AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
       where boolPred op lhs rhs = do
               glhs <- groundxnf fConstMap gamma lhs x
@@ -321,11 +332,13 @@ assertEncoding phi query k = do
       gammaEndx <- mkApp gamma [fConstMap M.! Atomic End, x]
       -- ∧_(PNext t α ∈ Cl(φ)) ¬Γ((PNext t α)_G, x)
       noGammaPNext <- mkAndWith noGamma [g | g@(PNext _ _) <- clos]
+      -- ∧_(Next t α ∈ Cl(φ)) ¬Γ((Next t α)_G, x)
+      noGammaNext <- mkAndWith noGamma [g | g@(Next _) <- clos]
       -- ∧_(p ∈ AP) ¬Γ(p, x)
       noGammaAP <- mkAndWith noGamma [g | g@(Atomic (Prop _)) <- clos]
-      noGammaPNextAndnoGammaAP <- mkAnd [noGammaPNext, noGammaAP]
+      noGammaAll <- mkAnd [noGammaPNext, noGammaNext, noGammaAP]
       -- Final →
-      mkImplies gammaEndx noGammaPNextAndnoGammaAP
+      mkImplies gammaEndx noGammaAll
 
     -- CONFLICT(x)
     mkConflict :: Sort -> FuncDecl -> FuncDecl -> AST -> Z3 AST
@@ -430,19 +443,42 @@ assertEncoding phi query k = do
             mkImplies gammagctxxAndOrPrec xnfArgx
       mkAndWith wxnextSat [g | g@(WXNext _ _) <- clos]
 
+    mkNextBackRules :: Sort -> Map (Formula MP.ExprProp) AST
+                    -> FuncDecl -> Word64 -> Z3 AST
+    mkNextBackRules nodeSort fConstMap gamma x = do
+      xLit <- mkUnsignedInt64 x nodeSort
+      xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+      -- PNext, Next and WNext
+      let propagateNext (next, arg) = do
+            lhs <- mkApp gamma [fConstMap M.! next, xLit]
+            rhs <- groundxnf fConstMap gamma (xnf arg) xp1
+            mkImplies lhs rhs
+      -- big and
+      nextRule <- mkAndWith propagateNext
+        ([(g, alpha) | g@(PNext _ alpha) <- clos]
+         ++ [(g, alpha) | g@(Next alpha) <- clos]
+         ++ [(g, alpha) | g@(WNext alpha) <- clos])
+      -- Back and WBack
+      let propagateBack (back, arg) = do
+            lhs <- mkApp gamma [fConstMap M.! back, xp1]
+            rhs <- groundxnf fConstMap gamma (xnf arg) xLit
+            mkImplies lhs rhs
+      -- big and
+      backRule <- mkAndWith propagateBack
+        ([(g, alpha) | g@(Back alpha) <- clos]
+         ++ [(g, alpha) | g@(WBack alpha) <- clos])
+      mkAnd [nextRule, backRule]
+
     -- PUSH(x)
     mkPush :: Sort -> Map (Formula MP.ExprProp) AST
            -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
            -> FuncDecl -> FuncDecl -> FuncDecl -> Word64 -> Z3 AST
     mkPush nodeSort fConstMap gamma smb struct stack ctx yield equal take x = do
+      -- Propagate Next and Back operators
+      nextBackRules <- mkNextBackRules nodeSort fConstMap gamma x
+      -- Bookkeeping functions
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
-      let propagatePNext (next, arg) = do
-            lhs <- mkApp gamma [fConstMap M.! next, xLit]
-            rhs <- groundxnf fConstMap gamma (xnf arg) xp1
-            mkImplies lhs rhs
-      -- big and
-      pnextRule <- mkAndWith propagatePNext [(g, alpha) | g@(PNext _ alpha) <- clos]
       -- smb(x + 1) = struct(x)
       smbxp1 <- mkApp1 smb xp1
       structx <- mkApp1 struct xLit
@@ -473,7 +509,7 @@ assertEncoding phi query k = do
       ctxxp1Eqctxx <- mkEq ctxxp1 ctxxm1
       popCtxRule <- mkImplies stackxNeqBotAndPopxm1 ctxxp1Eqctxx
       -- Final and
-      mkAnd [ pnextRule
+      mkAnd [ nextBackRules
             , smbRule, stackRule
             , botCtxRule, pushShiftCtxRule, popCtxRule
             ]
@@ -483,14 +519,11 @@ assertEncoding phi query k = do
             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
             -> Word64 -> Z3 AST
     mkShift nodeSort fConstMap gamma smb struct stack ctx x = do
+      -- Propagate Next and Back operators
+      nextBackRules <- mkNextBackRules nodeSort fConstMap gamma x
+      -- Bookkeeping functions
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
-      let propagatePNext (next, arg) = do
-            lhs <- mkApp gamma [fConstMap M.! next, xLit]
-            rhs <- groundxnf fConstMap gamma (xnf arg) xp1
-            mkImplies lhs rhs
-      -- big ands
-      pnextRule <- mkAndWith propagatePNext [(g, alpha) | g@(PNext _ alpha) <- clos]
       -- smb(x + 1) = struct(x)
       smbxp1 <- mkApp1 smb xp1
       structx <- mkApp1 struct xLit
@@ -504,7 +537,7 @@ assertEncoding phi query k = do
       ctxx <- mkApp1 ctx xLit
       ctxRule <- mkEq ctxxp1 ctxx
       -- Final and
-      mkAnd [pnextRule, smbRule, stackRule, ctxRule]
+      mkAnd [nextBackRules, smbRule, stackRule, ctxRule]
 
     -- POP(xExpr)
     mkPop :: Sort -> Sort -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
@@ -947,8 +980,6 @@ translate phi = fst $ transformFold applyTransl 0 phi where
            `And` (Since Up (xOp dir qEta `Implies` g) (xOp dir qEta `And` h))
          , upId + 1
          )
-    Eventually g   -> (Until Up T . Until Down T $ g, upId)
-    Always g       -> (Not . Until Up T . Until Down T . Not $ g, upId)
     _              -> (f, upId)
 
   -- xOp is correct only because qEta holds in a single position, not in general.
