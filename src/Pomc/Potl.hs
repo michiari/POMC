@@ -61,7 +61,7 @@ data Formula a =
   -- | WPBack    Dir (Formula a)
   | WXNext Dir (Formula a)
   -- | WXBack    Dir (Formula a)
-  -- | WHNext    Dir (Formula a)
+  | WHNext Dir (Formula a)
   -- | WHBack    Dir (Formula a)
   | Release Dir (Formula a) (Formula a)
   -- | PRelease  Dir (Formula a) (Formula a)
@@ -114,6 +114,8 @@ instance (Show a) => Show (Formula a) where
     WPNext Down g    -> concat ["WPNd ", showp g]
     WXNext Up   g    -> concat ["WXNu ", showp g]
     WXNext Down g    -> concat ["WXNd ", showp g]
+    WHNext Up   g    -> concat ["WHNu ", showp g]
+    WHNext Down g    -> concat ["WHNd ", showp g]
     Release Down g h -> concat [showp g, " Rd ", showp h]
     Release Up   g h -> concat [showp g, " Ru ", showp h]
     Next g           -> concat ["N ", showp g]
@@ -159,6 +161,7 @@ instance Functor Formula where
     HSince dir g h  -> HSince dir (fmap func g) (fmap func h)
     WPNext dir g    -> WPNext dir (fmap func g)
     WXNext dir g    -> WXNext dir (fmap func g)
+    WHNext dir g    -> WHNext dir (fmap func g)
     Release dir g h -> Release dir (fmap func g) (fmap func h)
     Next g          -> Next (fmap func g)
     WNext g         -> WNext (fmap func g)
@@ -189,6 +192,7 @@ transformFold t e f = uncurry t $ case f of
   XBack dir g     -> goUnary (XBack dir) g
   WXNext dir g    -> goUnary (WXNext dir) g
   HNext dir g     -> goUnary (HNext dir) g
+  WHNext dir g    -> goUnary (WHNext dir) g
   HBack dir g     -> goUnary (HBack dir) g
   Until dir g h   -> goBinary (Until dir) g h
   Release dir g h -> goBinary (Release dir) g h
@@ -358,6 +362,7 @@ pnf f = case f of
   HSince dir g h     -> HSince dir (pnf g) (pnf h)
   WPNext dir g       -> WPNext dir (pnf g)
   WXNext dir g       -> WXNext dir (pnf g)
+  WHNext dir g       -> WHNext dir (pnf g)
   Release dir g h    -> Release dir (pnf g) (pnf h)
   Next g             -> Next (pnf g)
   WNext g            -> WNext (pnf g)
@@ -381,7 +386,7 @@ pnf f = case f of
   Not (PBack _dir _g)     -> error "Past weak operators not supported yet." -- WPBack dir (pnf $ Not g)
   Not (XNext dir g)       -> WXNext dir (pnf $ Not g)
   Not (XBack _dir _g)     -> error "Past weak operators not supported yet." -- WXBack dir (pnf $ Not g)
-  Not (HNext _dir _g)     -> error "Hierarchical weak operators not supported yet." -- WHNext dir (pnf $ Not g)
+  Not (HNext dir g)     -> WHNext dir (pnf $ Not g)
   Not (HBack _dir _g)     -> error "Hierarchical weak operators not supported yet." -- HBack dir (pnf $ Not g)
   Not (Until dir g h)     -> Release dir (pnf $ Not g) (pnf $ Not h)
   Not (Since _dir _g _h)  -> error "Past weak operators not supported yet." -- PRelease dir (pnf $ Not g) (pnf $ Not h)
@@ -389,6 +394,7 @@ pnf f = case f of
   Not (HSince _dir _g _h) -> error "Hierarchical weak operators not supported yet." -- HPRelease dir (pnf $ Not g) (pnf $ Not h)
   Not (WPNext dir g)      -> PNext dir (pnf $ Not g)
   Not (WXNext dir g)      -> XNext dir (pnf $ Not g)
+  Not (WHNext dir g)      -> HNext dir (pnf $ Not g)
   Not (Release dir g h)   -> Release dir (pnf $ Not g) (pnf $ Not h)
   Not (Next g)            -> WNext (pnf $ Not g)
   Not (WNext g)           -> Next (pnf $ Not g)

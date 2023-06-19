@@ -92,7 +92,7 @@ checkQuery :: Formula MP.ExprProp
            -> IO SMTResult
 checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 0 minLength
   where
-    pnfPhi = pnf $ translate phi
+    pnfPhi = translate $ pnf phi
     minLength = case query of
       SatQuery {} -> 1
       MiniProcQuery {} -> 2
@@ -957,17 +957,24 @@ xnf f = case f of
   AuxBack _ _     -> error "AuxBack not supported in SMT encoding."
 
 translate :: Formula MP.ExprProp -> Formula MP.ExprProp
-translate phi = fst $ transformFold applyTransl 0 phi where
+translate phi = pnf $ fst $ transformFold applyTransl 0 phi where
   applyTransl :: Formula MP.ExprProp -> Word64 -> (Formula MP.ExprProp, Word64)
   applyTransl f upId = case f of
     HNext dir g    -> let qEta = mkUniqueProp upId
       in ( gammaLR dir qEta
-           `And` Next (Until Up (Not $ xOp dir qEta) ((Not $ xOp dir qEta) `And` g))
+           `And` Next (Until Up (Not $ xOp dir qEta) (xOp dir qEta `And` g))
+         , upId + 1
+         )
+    WHNext dir g -> let qEta = mkUniqueProp upId
+      in ( Not (xOp dir T)
+           `Or` (gammaLR dir qEta
+                 `And` ((Not $ Next (Until Up (Not $ xOp dir qEta) (xOp dir qEta)))
+                        `Or` (Next (Until Up (Not $ xOp dir qEta) (xOp dir qEta `And` g)))))
          , upId + 1
          )
     HBack dir g    -> let qEta = mkUniqueProp upId
       in ( gammaLR dir qEta
-           `And` Back (Since Up (Not $ xOp dir qEta) ((Not $ xOp dir qEta) `And` g))
+           `And` Back (Since Up (Not $ xOp dir qEta) (xOp dir qEta `And` g))
          , upId + 1
          )
     HUntil dir g h -> let qEta = mkUniqueProp upId
