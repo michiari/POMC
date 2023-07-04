@@ -2,9 +2,9 @@
 import fileinput
 
 Buggy_formulas =  [   "F (ret And main)",        #01
-                "XNu (ret And main)",            #02  BQ.2 - False
+                "XNu (ret And main)",            #02  
                 "F ( G (sorted))",                 #03
-                "XNu (sorted)",                    #04
+                "XNu (sorted)",                    #04 BQ.2 - False
                 "F (ret And main And (sorted))",   #05
                 "XNu (ret And main And (sorted))"] #06
 
@@ -33,6 +33,9 @@ SemiSafe_formulas = [   "F (ret And main)",                                     
 
 Benchmark = [(Buggy_formulas,"Buggy") , (Correct_formulas,"Correct"), (SemiSafe_formulas,"SemiSafe")]
 
+# experiments of the benchmark (the formulae above against variants Buggy, Correct, and SemiSafe)
+# all the experiments are instantiated in folder "/benchmark".
+# program skeletons are contained in folders "/Buggy_Programs", "/Correct_Programs", "/SemiSafe_Programs".
 # we take programs and we instantiate them with different values of K (aka u_size)
 for u_size in range(1,5):
     for (exp,name) in Benchmark:
@@ -50,11 +53,11 @@ for u_size in range(1,5):
                     f.write('formulas = ' + form + ';\n')
                     f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
 
-# experiments for comparing POMC with VERA have been handwritten
+# experiments for comparing POMC with VERA have been handwritten (folder "/Vera_Comparison").
 # the VERA formula we verify is:
 #   1) F (ret And main)  ----- BQ.1 - False
 
-# experiments for comparing POMC with MOPED have been handwritten
+# experiments for comparing POMC with MOPED have been handwritten (folder"/Moped_Comparison").
 # the MOPED formulae we verify are 
 #   1) F (ret And main) for the buggy version, and   
 #   2) F (ok) for the correct version, which both verifies correctness and termination.
