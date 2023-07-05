@@ -16,7 +16,7 @@ module Pomc.Z3Encoding ( SMTStatus(..)
 import Prelude hiding (take)
 
 import Pomc.Prop (Prop(..))
-import Pomc.Potl (Dir(..), Formula(..), transformFold, pnf, atomic)
+import Pomc.Potl (Dir(..), Formula(..), pnf, atomic)
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
 import Pomc.Util (timeAction)
 import qualified Pomc.MiniProc as MP
@@ -92,7 +92,7 @@ checkQuery :: Formula MP.ExprProp
            -> IO SMTResult
 checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 0 minLength
   where
-    pnfPhi = translate $ pnf phi
+    pnfPhi = pnf phi
     minLength = case query of
       SatQuery {} -> 1
       MiniProcQuery {} -> 2
@@ -148,6 +148,11 @@ assertEncoding phi query k = do
   assert =<< mkPhiAxioms nodeSort fConstMap sigma struct smb gamma
   assert =<< mkPhiOPM fConstMap yield equal take
 
+  -- struct(⊥) = smb(⊥) = #
+  nodeBot <- mkUnsignedInt64 0 nodeSort -- Note: all quantifiers on nodes should exclude 0
+  assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 struct nodeBot
+  assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 smb nodeBot
+
   -- xnf(φ)(1)
   node1 <- mkUnsignedInt64 1 nodeSort
   assert =<< groundxnf fConstMap gamma (xnf phi) node1
@@ -156,7 +161,6 @@ assertEncoding phi query k = do
   assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 smb node1
 
   -- stack(1) = ⊥
-  nodeBot <- mkUnsignedInt64 0 nodeSort -- Note: all quantifiers on nodes should exclude 0
   assert =<< mkEq nodeBot =<< mkApp1 stack node1
 
   -- ctx(1) = ⊥
@@ -181,9 +185,11 @@ assertEncoding phi query k = do
         -- wxnextx
         wxnextx <- mkWxnext nodeSort fConstMap gamma struct ctx yield equal take x
         popxImpliesWxnextx <- mkImplies checkPopx wxnextx
+        -- hnextu
+        hnextux <- mkHnextu nodeSort fConstMap gamma smb struct stack ctx yield take x checkPushx checkPopx
         endx <- mkEndTerm fConstMap gamma xLit
         conflictx <- mkConflict sSort sigma gamma xLit
-        mkAnd [inputxImpliesXnextx, popxImpliesWxnextx, endx, conflictx]
+        mkAnd [inputxImpliesXnextx, popxImpliesWxnextx, hnextux, endx, conflictx]
   assert =<< mkForallNodes [1..k] mkTermRules
 
   -- x < k
@@ -199,7 +205,7 @@ assertEncoding phi query k = do
         shiftxImpliesShiftx <- mkImplies checkShiftx shiftx
         -- pop(x) → POP(x)
         checkPopx <- mkCheckPrec smb struct take xLit
-        popx <- mkPop sSort nodeSort gamma smb stack ctx x
+        popx <- mkPop nodeSort fConstMap gamma smb stack ctx x
         popxImpliesPopx <- mkImplies checkPopx popx
         -- pnextx
         pnextx <- mkPnext nodeSort fConstMap gamma struct yield take x
@@ -301,7 +307,7 @@ assertEncoding phi query k = do
       XNext _ _        -> applyGamma f
       XBack _ _        -> error "Past operators not supported yet."
       WXNext _ _       -> applyGamma f
-      HNext _ _        -> error "Hierarchical operators not supported yet."
+      HNext _ _        -> applyGamma f
       HBack _ _        -> error "Hierarchical operators not supported yet."
       Until _ _ _      -> error "Supplied formula is not in Next Normal Form."
       Release _ _ _    -> error "Supplied formula is not in Next Normal Form."
@@ -443,6 +449,31 @@ assertEncoding phi query k = do
             mkImplies gammagctxxAndOrPrec xnfArgx
       mkAndWith wxnextSat [g | g@(WXNext _ _) <- clos]
 
+    mkHnextu :: Sort -> Map (Formula MP.ExprProp) AST
+             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+             -> FuncDecl -> FuncDecl -> Word64 -> AST -> AST
+             -> Z3 AST
+    mkHnextu nodeSort fConstMap gamma smb struct stack ctx yield take x checkPushx checkPopx = do
+      let allHnu = [g | g@(HNext Up _) <- clos]
+      xLit <- mkUnsignedInt64 x nodeSort
+      structx <- mkApp1 struct xLit
+      stackx <- mkApp1 stack xLit
+      ctxx <- mkApp1 ctx xLit
+      structCtxx <- mkApp1 struct ctxx
+      let hnextuSat g@(HNext Up arg) = do
+            gammagstackx <- mkApp gamma [fConstMap M.! g, stackx]
+            precY <- mkApp yield [structCtxx, structx]
+            xnfArgx <- groundxnf fConstMap gamma (xnf arg) xLit
+            mkImplies gammagstackx =<< mkAnd [precY, xnfArgx]
+      allHnextuSat <- mkAndWith hnextuSat allHnu
+      popxImplies <- mkImplies checkPopx allHnextuSat
+      anyHnux <- mkOrWith (\g -> mkApp gamma [fConstMap M.! g, xLit]) allHnu
+      xm1 <- mkUnsignedInt64 (x - 1) nodeSort
+      checkPopxm1 <- mkCheckPrec smb struct take xm1
+      pushxAndPopxm1 <- mkAnd [checkPushx, checkPopxm1]
+      anyHnuxImplies <- mkImplies anyHnux =<< mkOr [checkPopx, pushxAndPopxm1]
+      mkAnd [popxImplies, anyHnuxImplies]
+
     mkNextBackRules :: Sort -> Map (Formula MP.ExprProp) AST
                     -> FuncDecl -> Word64 -> Z3 AST
     mkNextBackRules nodeSort fConstMap gamma x = do
@@ -540,21 +571,22 @@ assertEncoding phi query k = do
       mkAnd [nextBackRules, smbRule, stackRule, ctxRule]
 
     -- POP(xExpr)
-    mkPop :: Sort -> Sort -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
+    mkPop :: Sort -> Map (Formula MP.ExprProp) AST
+          -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> Word64
           -> Z3 AST
-    mkPop sSort nodeSort gamma smb stack ctx x = do
+    mkPop nodeSort fConstMap gamma smb stack ctx x = do
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
-      -- ∀p(Γ(p, x) ↔ Γ(p, x + 1))
-      pVar <- mkFreshConst "p" sSort
-      pApp <- toApp pVar
-      gammapx <- mkApp gamma [pVar, xLit]
-      gammapxp1 <- mkApp gamma [pVar, xp1]
-      gammaIff <- mkIff gammapx gammapxp1
-      gammaRule <- mkForallConst [] [pApp] gammaIff
+      stackx <- mkApp1 stack xLit
+      -- ∀p((Γ(p, x) ∨ Γ((HNext Up p)_G, stack(x))) ↔ Γ(p, x + 1))
+      let mkForallIff f = do
+            let p = fConstMap M.! f
+            gammapx <- mkApp gamma [p, xLit]
+            gammapxp1 <- mkApp gamma [p, xp1]
+            mkIff gammapx gammapxp1
+      gammaRule <- mkAndWith mkForallIff clos
       -- smb(x + 1) = smb(stack(x))
       smbxp1 <- mkApp1 smb xp1
-      stackx <- mkApp1 stack xLit
       smbstackx <- mkApp1 smb stackx
       smbRule <- mkEq smbxp1 smbstackx
       -- stack(x + 1) = stack(stack(x))
@@ -904,13 +936,14 @@ closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closLi
         XNext _ g        -> f : closList g
         XBack _ _        -> error "Past operators not supported yet."
         WXNext _ g       -> f : closList g
-        HNext _ _        -> error "Hierarchical operators not supported yet."
-        HBack _ _        -> error "Hierarchical operators not supported yet."
+        HNext Up g       -> f : closList g
+        HNext Down _     -> error "Hierarchical operators not supported yet."
+        HBack _ _        -> error "Past operators not supported yet."
         Until dir g h    -> [f, PNext dir f, XNext dir f] ++ closList g ++ closList h
         Release dir g h  -> [f, WPNext dir f, WXNext dir f] ++ closList g ++ closList h
         Since _ _ _      -> error "Past operators not supported yet."
         HUntil _ _ _     -> error "Hierarchical operators not supported yet."
-        HSince _ _ _     -> error "Hierarchical operators not supported yet."
+        HSince _ _ _     -> error "Past operators not supported yet."
         Next g           -> f : closList g
         WNext g          -> f : closList g
         Back g           -> f : closList g
@@ -939,13 +972,13 @@ xnf f = case f of
   XNext _ _       -> f
   XBack _ _       -> error "Past operators not supported yet."
   WXNext _ _      -> f
-  HNext _ _       -> error "Hierarchical operators not supported yet."
-  HBack _ _       -> error "Hierarchical operators not supported yet."
+  HNext _ _       -> f
+  HBack _ _       -> error "Past operators not supported yet."
   Until dir g h   -> xnf h `Or` (xnf g `And` (PNext dir f `Or` XNext dir f))
   Release dir g h -> xnf h `And` (xnf g `Or` (WPNext dir f `And` WXNext dir f))
   Since _ _ _     -> error "Past operators not supported yet."
   HUntil _ _ _    -> error "Hierarchical operators not supported yet."
-  HSince _ _ _    -> error "Hierarchical operators not supported yet."
+  HSince _ _ _    -> error "Past operators not supported yet."
   Next _          -> f
   WNext _         -> f
   Back _          -> f
@@ -955,47 +988,6 @@ xnf f = case f of
   Once g          -> xnf g `Or` Back f
   Historically g  -> xnf g `And` WBack f
   AuxBack _ _     -> error "AuxBack not supported in SMT encoding."
-
-translate :: Formula MP.ExprProp -> Formula MP.ExprProp
-translate phi = pnf $ fst $ transformFold applyTransl 0 phi where
-  applyTransl :: Formula MP.ExprProp -> Word64 -> (Formula MP.ExprProp, Word64)
-  applyTransl f upId = case f of
-    HNext dir g    -> let qEta = mkUniqueProp upId
-      in ( gammaLR dir qEta
-           `And` Next (Until Up (Not $ xOp dir qEta) (xOp dir qEta `And` g))
-         , upId + 1
-         )
-    WHNext dir g -> let qEta = mkUniqueProp upId
-      in ( Not (xOp dir T)
-           `Or` (gammaLR dir qEta
-                 `And` ((Not $ Next (Until Up (Not $ xOp dir qEta) (xOp dir qEta)))
-                        `Or` (Next (Until Up (Not $ xOp dir qEta) (xOp dir qEta `And` g)))))
-         , upId + 1
-         )
-    HBack dir g    -> let qEta = mkUniqueProp upId
-      in ( gammaLR dir qEta
-           `And` Back (Since Up (Not $ xOp dir qEta) (xOp dir qEta `And` g))
-         , upId + 1
-         )
-    HUntil dir g h -> let qEta = mkUniqueProp upId
-      in ( gammaLR dir qEta
-           `And` (Until Up (xOp dir qEta `Implies` g) (xOp dir qEta `And` h))
-         , upId + 1
-         )
-    HSince dir g h -> let qEta = mkUniqueProp upId
-      in ( gammaLR dir qEta
-           `And` (Since Up (xOp dir qEta `Implies` g) (xOp dir qEta `And` h))
-         , upId + 1
-         )
-    _              -> (f, upId)
-
-  -- xOp is correct only because qEta holds in a single position, not in general.
-  mkUniqueProp n = Atomic . Prop . MP.TextProp . T.pack $ '@' : show n
-  xOp Up psi = XBack Down psi `And` Not (XBack Up psi)
-  xOp Down psi = XNext Up psi `And` Not (XNext Down psi)
-  gammaLR dir qEta = xOp dir $ qEta
-    `And` (Next . Always . Not $ qEta)
-    `And` (Back . Historically . Not $ qEta)
 
 
 queryTableau :: Sort -> Map (Formula MP.ExprProp) AST

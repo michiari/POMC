@@ -23,7 +23,7 @@ makeTestCase k ((name, phi), expected) =
 
 efTests :: TestTree
 efTests = testGroup "EvalFormulas"
-  $ map (makeTestCase 10)
+  $ map (makeTestCase 11)
   $ zipExpected (filter (isSupported . snd) formulas) expectedRes
   -- $ zip (filter (isSupported . snd) formulas) $ repeat Sat
 
@@ -43,13 +43,13 @@ isSupported f = case f of
   XNext _ g       -> isSupported g
   XBack _ _       -> False
   WXNext _ g      -> isSupported g
-  HNext Down g    -> isSupported g
+  HNext Up g    -> isSupported g
   HNext _ _       -> False
   HBack _ _       -> False
   Until _ g h     -> isSupported g && isSupported h
   Release _ g h   -> isSupported g && isSupported h
   Since _ _ _     -> False
-  HUntil Down g h -> isSupported g && isSupported h
+  -- HUntil Down g h -> isSupported g && isSupported h
   HUntil _ _ _    -> False
   HSince _ _ _    -> False
   Next g          -> isSupported g

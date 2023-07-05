@@ -386,7 +386,7 @@ pnf f = case f of
   Not (PBack _dir _g)     -> error "Past weak operators not supported yet." -- WPBack dir (pnf $ Not g)
   Not (XNext dir g)       -> WXNext dir (pnf $ Not g)
   Not (XBack _dir _g)     -> error "Past weak operators not supported yet." -- WXBack dir (pnf $ Not g)
-  Not (HNext dir g)     -> WHNext dir (pnf $ Not g)
+  Not (HNext dir g)       -> WHNext dir (pnf $ Not g)
   Not (HBack _dir _g)     -> error "Hierarchical weak operators not supported yet." -- HBack dir (pnf $ Not g)
   Not (Until dir g h)     -> Release dir (pnf $ Not g) (pnf $ Not h)
   Not (Since _dir _g _h)  -> error "Past weak operators not supported yet." -- PRelease dir (pnf $ Not g) (pnf $ Not h)
