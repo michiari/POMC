@@ -136,7 +136,7 @@ assertEncoding phi query k = do
   (sSort, fConstMap) <- mkSSort
   -- Uninterpreted functions
   gamma  <- mkFreshFuncDecl "gamma" [sSort, nodeSort] boolSort
-  sigma  <- mkFreshFuncDecl "sigma" [sSort] boolSort
+  sigma  <- mkFreshFuncDecl "sigma" [sSort] boolSort -- TODO: try & remove sigma
   struct <- mkFreshFuncDecl "struct" [nodeSort] sSort
   smb    <- mkFreshFuncDecl "smb" [nodeSort] sSort
   yield  <- mkFreshFuncDecl "yield" [sSort, sSort] boolSort
@@ -347,20 +347,16 @@ assertEncoding phi query k = do
       mkImplies gammaEndx noGammaAll
 
     -- CONFLICT(x)
-    mkConflict :: Sort -> FuncDecl -> FuncDecl -> AST -> Z3 AST
-    mkConflict sSort sigma gamma x = do
-      pVar <- mkFreshConst "p" sSort
-      pApp <- toApp pVar
-      qVar <- mkFreshConst "q" sSort
-      qApp <- toApp qVar
-      sigmap <- mkApp1 sigma pVar
-      sigmaq <- mkApp1 sigma qVar
-      gammapx <- mkApp gamma [pVar, x]
-      gammaqx <- mkApp gamma [qVar, x]
-      andAll <- mkAnd [sigmap, sigmaq, gammapx, gammaqx]
-      pEqq <- mkEq pVar qVar
-      pqImpl <- mkImplies andAll pEqq
-      mkForallConst [] [pApp, qApp] pqImpl
+    mkConflict :: Map (Formula MP.ExprProp) AST -> FuncDecl -> FuncDecl -> AST -> Z3 AST
+    mkConflict fConstMap gamma struct x = do
+      structx <- mkApp1 struct x
+      let singleSl p = do
+            structxEqp <- mkEq structx (fConstMap M.! p)
+            noOtherSls <- mkAndWith (\q -> mkNot =<< mkApp gamma [fConstMap M.! q, x])
+                          $ filter (/= p) structClos
+            mkAnd [structxEqp, noOtherSls]
+      mkOrWith singleSl structClos
+
 
     -- PNEXT(x) ∧ WPNEXT(x)
     mkPnext :: Sort -> Map (Formula MP.ExprProp) AST
