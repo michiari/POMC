@@ -86,13 +86,16 @@ expectedSasEval =
   [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat -- 5
   , Unsat, Unsat, Unsat -- 8
   , Unknown, Unknown, Unsat, Unknown -- 13
-  , Unknown, Unsat -- 
-  , Unsat, Unsat   -- base_tests
+  , Unknown, Unsat -- 16
+  , Unsat -- 19
+  , Unsat -- 21
+  , Unknown -- base_tests
   , Unknown, Unknown               -- chain_next
   , Unknown, Unsat, Unsat, Unknown -- contains_exc
   , Unknown                        -- data_access
   , Unknown                        -- exception_safety
-  , Unsat, Unsat                   -- hier_down
+  --, Unsat, Unsat                   -- hier_down
+  , Unknown                        -- hier_up
   , Unsat, Unsat                   -- normal_ret
   , Unknown                        -- no_throw
   , Unsat                          -- uninstall_han
@@ -110,13 +113,16 @@ expectedNoHanEval =
   [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat -- 5
   , Unsat, Unknown, Unsat                        -- 8
   , Unsat, Unsat, Unsat, Unsat                   -- 13
-  , Unsat, Unsat                                 -- 
-  , Unknown, Unsat                               -- base_tests
+  , Unsat, Unsat                                 -- 16
+  , Unsat                                        -- 10
+  , Unsat -- 21
+  , Unsat                               -- base_tests
   , Unsat, Unsat                                 -- chain_next
   , Unsat, Unsat, Unknown, Unsat                 -- contains_exc
   , Unknown                                      -- data_access
   , Unsat                                        -- exception_safety
-  , Unknown, Unsat                               -- hier_down
+  --, Unknown, Unsat                               -- hier_down
+  , Unsat                                        -- hier_up
   , Unsat, Unsat                                 -- normal_ret
   , Unsat                                        -- no_throw
   , Unknown                                      -- uninstall_han
@@ -134,13 +140,16 @@ expectedSimpleThenEval =
   [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat -- 5
   , Unsat, Unsat, Unsat                          -- 8
   , Unknown, Unknown, Unsat, Unknown             -- 13
-  , Unknown, Unsat                               -- 
-  , Unknown, Unsat                               -- base_tests
+  , Unknown, Unsat                               -- 16
+  , Unsat -- 19
+  , Unsat -- 21
+  , Unsat                               -- base_tests
   , Unsat, Unsat                                 -- chain_next
   , Unknown, Unsat, Unsat, Unknown               -- contains_exc
   , Unknown                                      -- data_access
   , Unknown                                      -- exception_safety
-  , Unknown, Unsat                               -- hier_down
+  --, Unknown, Unsat                               -- hier_down
+  , Unsat                        -- hier_up
   , Unsat, Unsat                                 -- normal_ret
   , Unknown                                      -- no_throw
   , Unsat                                        -- uninstall_han
@@ -158,13 +167,16 @@ expectedSimpleElseEval =
   [ Unknown, Unsat, Unknown, Unsat, Unsat, Unsat -- 5
   , Unsat, Unsat, Unsat                          -- 8
   , Unknown, Unknown, Unsat, Unsat               -- 13
-  , Unknown, Unsat                               -- 
-  , Unsat, Unsat                                 -- base_tests
+  , Unknown, Unsat                               -- 16
+  , Unsat -- 19
+  , Unsat -- 21
+  , Unsat                                 -- base_tests
   , Unsat, Unsat                                 -- chain_next
   , Unknown, Unsat, Unsat, Unknown               -- contains_exc
   , Unknown                                      -- data_access
   , Unknown                                      -- exception_safety
-  , Unsat, Unsat                                 -- hier_down
+  --, Unsat, Unsat                                 -- hier_down
+  , Unsat                        -- hier_up
   , Unsat, Unknown                               -- normal_ret
   , Unknown                                      -- no_throw
   , Unsat                                        -- uninstall_han

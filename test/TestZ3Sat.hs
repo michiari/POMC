@@ -23,7 +23,7 @@ makeTestCase k ((name, phi), expected) =
 
 efTests :: TestTree
 efTests = testGroup "EvalFormulas"
-  $ map (makeTestCase 11)
+  $ map (makeTestCase 12) --11
   $ zipExpected (filter (isSupported . snd) formulas) expectedRes
   -- $ zip (filter (isSupported . snd) formulas) $ repeat Sat
 

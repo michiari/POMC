@@ -17,7 +17,8 @@ ap = Atomic . Prop
 zipExpected :: [TestCase] -> [a] -> [(TestCase, a)]
 zipExpected cases expected
   | length cases == length expected = zip cases expected
-  | otherwise = error "TestCases and Expected values of different lengths!"
+  | otherwise = error $ "TestCases and Expected values of different lengths ("
+                ++ show (length cases) ++ " and " ++ show (length expected) ++ ")!"
 
 excludeIndices :: Ord a => [a] -> [Int] -> [a]
 excludeIndices l is = fst $
