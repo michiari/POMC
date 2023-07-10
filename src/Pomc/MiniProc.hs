@@ -104,6 +104,7 @@ data LValue = LScalar Variable | LArray Variable Expr deriving (Eq, Ord, Show)
 data ActualParam = ActualVal Expr | ActualValRes Variable deriving (Eq, Ord, Show)
 data Statement = Assignment LValue Expr
                | Nondeterministic LValue
+               | Categorical LValue [Expr] [Double]
                | Call FunctionName [ActualParam]
                | TryCatch [Statement] [Statement]
                | IfThenElse (Maybe Expr) [Statement] [Statement]
@@ -408,6 +409,9 @@ lowerStatement sks ls0 thisFinfo linkPred0 (While guard body) =
 
 lowerStatement _ lowerState thisFinfo linkPred Throw =
   (linkPred lowerState [(NoGuard, fiThrow thisFinfo)], (\ls _ -> ls))
+
+lowerStatement _ _ _ _ (Categorical _ _ _) =
+  error "Categorical assignments not allowed in MiniProc."
 
 combGuards :: Expr -> Guard -> Guard
 combGuards bexp1 NoGuard = Guard bexp1

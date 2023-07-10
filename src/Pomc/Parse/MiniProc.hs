@@ -248,15 +248,22 @@ nondetP varmap = try $ do
   _ <- symbolP ";"
   return $ Nondeterministic lhs
 
-assP :: Map Text Variable -> Parser Statement
-assP varmap = try $ do
+assOrCatP :: Map Text Variable -> Parser Statement
+assOrCatP varmap = try $ do
   lhs <- lValueP varmap
   _ <- symbolP "="
-  rhs <- typedExprP $ Just varmap
+  firstExpr <- teP
+  maybeCat <- optional $ some ((,) <$> probP <*> teP)
   _ <- symbolP ";"
-  return $ Assignment lhs (untypeExprWithCast (lvalType lhs) rhs)
-    where lvalType (LScalar var) = varType var
-          lvalType (LArray var _) = scalarType . varType $ var
+  let lhsType = case lhs of
+        LScalar var -> varType var
+        LArray var _ -> scalarType . varType $ var
+  return $ case maybeCat of
+    Nothing -> Assignment lhs (untypeExprWithCast lhsType firstExpr)
+    Just l -> let (probs, exprs) = unzip l
+              in Categorical lhs (map (untypeExprWithCast lhsType) (firstExpr:exprs)) probs
+  where teP = typedExprP $ Just varmap
+        probP = between (symbolP "{") (symbolP "}") L.float
 
 callP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 callP varmap = try $ do
@@ -279,7 +286,7 @@ iteP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 iteP varmap = do
   _ <- symbolP "if"
   _ <- symbolP "("
-  guard <- ((Nothing <$ symbolP "*") <|> fmap Just (exprP varmap))
+  guard <- (Nothing <$ symbolP "*") <|> (fmap Just (exprP varmap))
   _ <- symbolP ")"
   (thenBlock, thenAparams) <- blockP varmap
   _ <- symbolP "else"
@@ -300,7 +307,7 @@ throwP = symbolP "throw" >> symbolP ";" >> return Throw
 
 stmtP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 stmtP varmap = choice [ noParams $ nondetP varmap
-                      , noParams $ assP varmap
+                      , noParams $ assOrCatP varmap
                       , callP varmap
                       , tryCatchP varmap
                       , iteP varmap
@@ -442,6 +449,7 @@ undeclaredFuns p = S.difference usedFuns declaredFuns
         gatherFuns :: Statement -> Set Text
         gatherFuns (Assignment _ _) = S.empty
         gatherFuns (Nondeterministic _) = S.empty
+        gatherFuns (Categorical {}) = S.empty
         gatherFuns (Call fname _) = S.singleton fname
         gatherFuns (TryCatch tryb catchb) = gatherBlockFuns tryb `S.union` gatherBlockFuns catchb
         gatherFuns (IfThenElse _ thenb elseb) = gatherBlockFuns thenb `S.union` gatherBlockFuns elseb
