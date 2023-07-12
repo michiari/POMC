@@ -16,7 +16,7 @@ module Pomc.Parse.Parser ( checkRequestP
 import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.Potl as P
-import Pomc.MiniProc (Program(..), ExprProp(..))
+import Pomc.MiniIR (Program(..), ExprProp(..))
 import Pomc.Parse.MiniProc
 import Pomc.ModelChecker (ExplicitOpa(..))
 

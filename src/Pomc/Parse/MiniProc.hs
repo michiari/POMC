@@ -15,7 +15,7 @@ module Pomc.Parse.MiniProc ( programP
                            , typedExprP
                            ) where
 
-import Pomc.MiniProc
+import Pomc.MiniIR
 import Pomc.Potl (Formula)
 
 import Data.Void (Void)

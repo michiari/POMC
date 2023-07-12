@@ -13,9 +13,9 @@ module Pomc.OpaGen ( printFunctions
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
 import Pomc.ModelChecker (ExplicitOpa(..))
-import Pomc.MiniProc ( FunctionSkeleton(..), Statement(..), FunctionName
-                     , DeltaTarget(..), LowerState(..), InputLabel(..), sksToExtendedOpa
-                     , ExprProp(..), miniProcAlphabet
+import Pomc.MiniIR (FunctionSkeleton(..), Statement(..), FunctionName, ExprProp(..))
+import Pomc.MiniProc ( DeltaTarget(..), LowerState(..), InputLabel(..)
+                     , sksToExtendedOpa, miniProcAlphabet
                      )
 
 import System.Random
