@@ -390,12 +390,18 @@ computeDsts bitenc pconv allProps gvii localsInfo vval act dt =
               map (\(newVval, prob) -> ((dst, newVval), prob)) newVvals
           | otherwise = []
         newVvals = case act of
-          CallOp {} -> [(vval, 1)]
-          Return -> [(vval, 1)]
           Assign (LScalar lhs) rhs -> [(scalarAssign gvii vval lhs $ evalExpr gvii vval rhs, 1)]
           Assign (LArray var idxExpr) rhs ->
             [(arrayAssign gvii vval var idxExpr $ evalExpr gvii vval rhs, 1)]
-          _ -> error "Unimplemented action" -- TODO implement all
+          Cat (LScalar lhs) rhs ->
+            map (\(expr, prob) ->
+                   (scalarAssign gvii vval lhs $ evalExpr gvii vval expr, prob))
+            rhs
+          Cat (LArray var idxExpr) rhs ->
+            map (\(expr, prob) ->
+                   (arrayAssign gvii vval var idxExpr $ evalExpr gvii vval expr, prob))
+            rhs
+          _ -> [(vval, 1)]
 
         prepareForCall :: Action -> FunctionName -> VarValuation -> VarValuation
         prepareForCall (CallOp _ fargs aargs) fname svval =
