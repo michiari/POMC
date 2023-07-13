@@ -43,8 +43,7 @@ isSupported f = case f of
   XNext _ g       -> isSupported g
   XBack _ _       -> False
   WXNext _ g      -> isSupported g
-  HNext Up g    -> isSupported g
-  HNext _ _       -> False
+  HNext _ g       -> isSupported g
   HBack _ _       -> False
   Until _ g h     -> isSupported g && isSupported h
   Release _ g h   -> isSupported g && isSupported h
@@ -64,14 +63,18 @@ isSupported f = case f of
 
 expectedRes :: [SMTStatus]
 expectedRes =
-  [ Sat, Sat, Sat, Unknown, Unknown, Sat
-  , Sat, Sat, Unknown, Sat, Sat
-  , Unknown, Sat, Sat, Unknown, Sat, Sat -- base_tests
+  [ Sat, Sat, Sat, Unknown, Unknown, Sat -- 5
+  , Sat, Sat, Unknown -- 8
+  , Sat, Sat, Unknown, Sat -- 13
+  , Sat, Unknown -- 16
+  , Sat, Sat, Sat -- 21
+  , Sat -- base_tests
   , Sat, Sat -- chain_next
   , Sat, Sat, Sat, Sat -- contains_exc
   , Sat -- data_access
   , Sat -- exception_safety
-  , Sat, Sat -- hier_down
+  , Sat -- hier_down
+  , Sat -- hier_up
   , Sat, Sat -- normal_ret
   , Sat -- no_throw
   , Sat -- uninstall_han

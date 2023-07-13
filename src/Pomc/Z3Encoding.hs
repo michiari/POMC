@@ -190,9 +190,16 @@ assertEncoding phi query k = do
         hnextux <- mkHnextu nodeSort fConstMap gamma smb struct stack ctx yield take x checkPushx checkPopx
         -- whnextu
         whnextu <- mkWhnextu nodeSort fConstMap gamma smb struct stack ctx yield take pred x checkPopx
+        -- hnextd
+        hnextd <- mkHnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx
+        -- whnextd
+        whnextd <- mkWhnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx
         endx <- mkEndTerm fConstMap gamma xLit
         conflictx <- mkConflict fConstMap gamma struct xLit
-        mkAnd [inputxImpliesXnextx, popxImpliesWxnextx, hnextux, whnextu, endx, conflictx]
+        mkAnd [ inputxImpliesXnextx, popxImpliesWxnextx
+              , hnextux, whnextu, hnextd, whnextd
+              , endx, conflictx
+              ]
   assert =<< mkForallNodes [1..k] mkTermRules
 
   -- x < k
@@ -505,6 +512,52 @@ assertEncoding phi query k = do
               mkImplies gammagStackx xnfArgx
         allWhnextuSat <- mkImplies implLhs =<< mkAndWith whnextuSat allWhnu
         mkAnd [predxEqxm1, allWhnextuSat]
+
+    mkHnextd :: Sort -> Map (Formula MP.ExprProp) AST
+             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+             -> FuncDecl -> Word64 -> AST
+             -> Z3 AST
+    mkHnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx =
+      let allHnd = [g | g@(HNext Down _) <- clos]
+      in enableIf (not $ null allHnd) $ do
+        xLit <- mkUnsignedInt64 x nodeSort
+        structx <- mkApp1 struct xLit
+        stackx <- mkApp1 stack xLit
+        ctxx <- mkApp1 ctx xLit
+        xm1 <- mkUnsignedInt64 (x - 1) nodeSort
+        checkPopxm1 <- mkCheckPrec smb struct take xm1
+        ctxxm1 <- mkApp1 ctx xm1
+        smbStackx <- mkApp1 smb stackx
+        checkPopxp1 <- mkApp take [smbStackx, structx]
+        let hnextdSat g@(HNext Down arg) = do
+              gammagCtxx <- mkApp gamma [fConstMap M.! g, ctxx]
+              xnfArgCtxxm1 <- groundxnf fConstMap gamma (xnf arg) ctxxm1
+              rhs <- mkAnd [checkPopxm1, checkPopxp1, xnfArgCtxxm1]
+              mkImplies gammagCtxx rhs
+        mkImplies checkPopx =<< mkAndWith hnextdSat allHnd
+
+    mkWhnextd :: Sort -> Map (Formula MP.ExprProp) AST
+              -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+              -> FuncDecl -> Word64 -> AST
+              -> Z3 AST
+    mkWhnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx =
+      let allWhnd = [g | g@(WHNext Down _) <- clos]
+      in enableIf (not $ null allWhnd) $ do
+        xLit <- mkUnsignedInt64 x nodeSort
+        structx <- mkApp1 struct xLit
+        stackx <- mkApp1 stack xLit
+        ctxx <- mkApp1 ctx xLit
+        xm1 <- mkUnsignedInt64 (x - 1) nodeSort
+        checkPopxm1 <- mkCheckPrec smb struct take xm1
+        ctxxm1 <- mkApp1 ctx xm1
+        smbStackx <- mkApp1 smb stackx
+        checkPopxp1 <- mkApp take [smbStackx, structx]
+        lhs <- mkAnd [checkPopx, checkPopxm1, checkPopxp1]
+        let whnextdSat g@(WHNext Down arg) = do
+              gammagCtxx <- mkApp gamma [fConstMap M.! g, ctxx]
+              xnfArgCtxxm1 <- groundxnf fConstMap gamma (xnf arg) ctxxm1
+              mkImplies gammagCtxx xnfArgCtxxm1
+        mkImplies lhs =<< mkAndWith whnextdSat allWhnd
 
     mkNextBackRules :: Sort -> Map (Formula MP.ExprProp) AST
                     -> FuncDecl -> Word64 -> Z3 AST
@@ -971,10 +1024,9 @@ closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closLi
         XNext _ g        -> f : closList g
         XBack _ _        -> error "Past operators not supported yet."
         WXNext _ g       -> f : closList g
-        HNext Up g       -> f : closList g
-        HNext Down _     -> error "Hierarchical operators not supported yet."
+        HNext _ g        -> f : closList g
         HBack _ _        -> error "Past operators not supported yet."
-        WHNext Up g      -> f : closList g
+        WHNext _ g       -> f : closList g
         Until dir g h    -> [f, PNext dir f, XNext dir f] ++ closList g ++ closList h
         Release dir g h  -> [f, WPNext dir f, WXNext dir f] ++ closList g ++ closList h
         Since _ _ _      -> error "Past operators not supported yet."

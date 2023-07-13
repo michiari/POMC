@@ -239,6 +239,7 @@ getProps formula = nub $ collectProps formula
           HSince _ g h       -> getProps g ++ getProps h
           WPNext _ g         -> getProps g
           WXNext _ g         -> getProps g
+          WHNext _ g         -> getProps g
           Release _ g h      -> getProps g ++ getProps h
           Next g             -> getProps g
           WNext g            -> getProps g
@@ -266,6 +267,7 @@ future (Until      {}) = True
 future (HUntil     {}) = True
 future (WPNext     {}) = True
 future (WXNext     {}) = True
+future (WHNext     {}) = True
 future (Release    {}) = True
 future (Next       {}) = True
 future (WNext      {}) = True
@@ -328,6 +330,7 @@ normalize f = case f of
   HSince dir g h       -> HSince dir (normalize g) (normalize h)
   WPNext dir g         -> WPNext dir (normalize g)
   WXNext dir g         -> WXNext dir (normalize g)
+  WHNext dir g         -> WHNext dir (normalize g)
   Release dir g h      -> Release dir (normalize g) (normalize h)
   Next g               -> Next (normalize g)
   WNext g              -> WNext (normalize g)
