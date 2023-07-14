@@ -190,14 +190,14 @@ assertEncoding phi query k = do
         hnextux <- mkHnextu nodeSort fConstMap gamma smb struct stack ctx yield take x checkPushx checkPopx
         -- whnextu
         whnextu <- mkWhnextu nodeSort fConstMap gamma smb struct stack ctx yield take pred x checkPopx
-        -- hnextd
-        hnextd <- mkHnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx
         -- whnextd
         whnextd <- mkWhnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx
+        -- huntilu
+        huntilu <- mkHuntilu nodeSort fConstMap gamma smb struct ctx yield take x checkPushx checkPopx
         endx <- mkEndTerm fConstMap gamma xLit
         conflictx <- mkConflict fConstMap gamma struct xLit
         mkAnd [ inputxImpliesXnextx, popxImpliesWxnextx
-              , hnextux, whnextu, hnextd, whnextd
+              , hnextux, whnextu, whnextd, huntilu
               , endx, conflictx
               ]
   assert =<< mkForallNodes [1..k] mkTermRules
@@ -221,8 +221,10 @@ assertEncoding phi query k = do
         pnextx <- mkPnext nodeSort fConstMap gamma struct yield take x
         inputx <- mkOr [checkPushx, checkShiftx]
         inputxImpliesPnextx <- mkImplies inputx pnextx
+        -- hnextd
+        hnextd <- mkHnextd nodeSort fConstMap gamma smb struct ctx yield take x inputx checkPopx
         mkAnd [ pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx
-              , inputxImpliesPnextx
+              , inputxImpliesPnextx, hnextd
               ]
   assert =<< mkForallNodes [1..(k - 1)] mkTransitions
   -- end ∀x (...)
@@ -323,8 +325,9 @@ assertEncoding phi query k = do
       Until _ _ _      -> error "Supplied formula is not in Next Normal Form."
       Release _ _ _    -> error "Supplied formula is not in Next Normal Form."
       Since _ _ _      -> error "Past operators not supported yet."
-      HUntil _ _ _     -> error "Hierarchical operators not supported yet."
-      HSince _ _ _     -> error "Hierarchical operators not supported yet."
+      HUntil Up _ _    -> applyGamma f
+      HUntil _ _ _     -> error "Supplied formula is not in Next Normal Form."
+      HSince _ _ _     -> error "Supplied formula is not in Next Normal Form."
       Next _           -> applyGamma f
       WNext _          -> applyGamma f
       Back _           -> applyGamma f
@@ -349,11 +352,13 @@ assertEncoding phi query k = do
       gammaEndx <- mkApp gamma [fConstMap M.! Atomic End, x]
       -- ∧_(PNext t α ∈ Cl(φ)) ¬Γ((PNext t α)_G, x)
       noGammaPNext <- mkAndWith noGamma [g | g@(PNext _ _) <- clos]
-      -- ∧_(Next t α ∈ Cl(φ)) ¬Γ((Next t α)_G, x)
+      -- ∧_(Next α ∈ Cl(φ)) ¬Γ((Next α)_G, x)
       noGammaNext <- mkAndWith noGamma [g | g@(Next _) <- clos]
+      -- ∧_(HNext t α ∈ Cl(φ)) ¬Γ((HNext t α)_G, x)
+      noGammaHNext <- mkAndWith noGamma [g | g@(HNext _ _) <- clos]
       -- ∧_(p ∈ AP) ¬Γ(p, x)
       noGammaAP <- mkAndWith noGamma [g | g@(Atomic (Prop _)) <- clos]
-      noGammaAll <- mkAnd [noGammaPNext, noGammaNext, noGammaAP]
+      noGammaAll <- mkAnd [noGammaPNext, noGammaNext, noGammaHNext, noGammaAP]
       -- Final →
       mkImplies gammaEndx noGammaAll
 
@@ -515,26 +520,30 @@ assertEncoding phi query k = do
 
     mkHnextd :: Sort -> Map (Formula MP.ExprProp) AST
              -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
-             -> FuncDecl -> Word64 -> AST
+             -> FuncDecl -> Word64 -> AST -> AST
              -> Z3 AST
-    mkHnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx =
+    mkHnextd nodeSort fConstMap gamma smb struct ctx yield take x inputx checkPopx =
       let allHnd = [g | g@(HNext Down _) <- clos]
       in enableIf (not $ null allHnd) $ do
         xLit <- mkUnsignedInt64 x nodeSort
-        structx <- mkApp1 struct xLit
-        stackx <- mkApp1 stack xLit
         ctxx <- mkApp1 ctx xLit
         xm1 <- mkUnsignedInt64 (x - 1) nodeSort
         checkPopxm1 <- mkCheckPrec smb struct take xm1
         ctxxm1 <- mkApp1 ctx xm1
-        smbStackx <- mkApp1 smb stackx
-        checkPopxp1 <- mkApp take [smbStackx, structx]
+        xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+        checkPopxp1 <- mkCheckPrec smb struct take xp1
         let hnextdSat g@(HNext Down arg) = do
               gammagCtxx <- mkApp gamma [fConstMap M.! g, ctxx]
               xnfArgCtxxm1 <- groundxnf fConstMap gamma (xnf arg) ctxxm1
               rhs <- mkAnd [checkPopxm1, checkPopxp1, xnfArgCtxxm1]
               mkImplies gammagCtxx rhs
-        mkImplies checkPopx =<< mkAndWith hnextdSat allHnd
+        popImpl <- mkImplies checkPopx =<< mkAndWith hnextdSat allHnd
+
+        anyHnd <- mkOrWith (\g -> mkApp gamma [fConstMap M.! g, xLit]) allHnd
+        inputAndAnyHnd <- mkAnd [inputx, anyHnd]
+        checkPushxp1 <- mkCheckPrec smb struct yield xp1
+        inputImpl <- mkImplies inputAndAnyHnd checkPushxp1
+        mkAnd [popImpl, inputImpl]
 
     mkWhnextd :: Sort -> Map (Formula MP.ExprProp) AST
               -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
@@ -558,6 +567,28 @@ assertEncoding phi query k = do
               xnfArgCtxxm1 <- groundxnf fConstMap gamma (xnf arg) ctxxm1
               mkImplies gammagCtxx xnfArgCtxxm1
         mkImplies lhs =<< mkAndWith whnextdSat allWhnd
+
+    mkHuntilu :: Sort -> Map (Formula MP.ExprProp) AST
+              -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+              -> FuncDecl -> Word64 -> AST -> AST
+              -> Z3 AST
+    mkHuntilu nodeSort fConstMap gamma smb struct ctx yield take x checkPushx checkPopx =
+      let allHuu = [g | g@(HUntil Up _ _) <- clos]
+      in enableIf (not $ null allHuu) $ do
+        xLit <- mkUnsignedInt64 x nodeSort
+        xm1 <- mkUnsignedInt64 (x - 1) nodeSort
+        checkPopxm1 <- mkCheckPrec smb struct take xm1
+        structxm1 <- mkApp1 struct xm1
+        structCtxxm1 <- mkApp1 struct =<< mkApp1 ctx xm1
+        precY <- mkApp yield [structCtxxm1, structxm1]
+
+        let huntilSatx g = do
+              gammagx <- mkApp gamma [fConstMap M.! g, xLit]
+              notGammaHnextgx <- mkNot =<< mkApp gamma [fConstMap M.! HNext Up g, xLit]
+              mkAnd [gammagx, notGammaHnextgx]
+        anyHuntilSatx <- mkOrWith huntilSatx allHuu
+        whenNotPop <- mkImplies anyHuntilSatx =<< mkAnd [checkPushx, checkPopxm1, precY]
+        mkOr [checkPopx, whenNotPop]
 
     mkNextBackRules :: Sort -> Map (Formula MP.ExprProp) AST
                     -> FuncDecl -> Word64 -> Z3 AST
@@ -1030,7 +1061,7 @@ closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closLi
         Until dir g h    -> [f, PNext dir f, XNext dir f] ++ closList g ++ closList h
         Release dir g h  -> [f, WPNext dir f, WXNext dir f] ++ closList g ++ closList h
         Since _ _ _      -> error "Past operators not supported yet."
-        HUntil _ _ _     -> error "Hierarchical operators not supported yet."
+        HUntil dir g h   -> [f, HNext dir f] ++ closList g ++ closList h
         HSince _ _ _     -> error "Past operators not supported yet."
         Next g           -> f : closList g
         WNext g          -> f : closList g
@@ -1066,6 +1097,7 @@ xnf f = case f of
   Until dir g h   -> xnf h `Or` (xnf g `And` (PNext dir f `Or` XNext dir f))
   Release dir g h -> xnf h `And` (xnf g `Or` (WPNext dir f `And` WXNext dir f))
   Since _ _ _     -> error "Past operators not supported yet."
+  HUntil Up g h   -> (f `And` xnf h) `Or` (xnf g `And` (HNext Up f))
   HUntil _ _ _    -> error "Hierarchical operators not supported yet."
   HSince _ _ _    -> error "Past operators not supported yet."
   Next _          -> f

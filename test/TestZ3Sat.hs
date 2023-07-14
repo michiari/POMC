@@ -48,7 +48,7 @@ isSupported f = case f of
   Until _ g h     -> isSupported g && isSupported h
   Release _ g h   -> isSupported g && isSupported h
   Since _ _ _     -> False
-  -- HUntil Down g h -> isSupported g && isSupported h
+  HUntil Up g h   -> isSupported g && isSupported h
   HUntil _ _ _    -> False
   HSince _ _ _    -> False
   Next g          -> isSupported g
@@ -67,14 +67,14 @@ expectedRes =
   , Sat, Sat, Unknown -- 8
   , Sat, Sat, Unknown, Sat -- 13
   , Sat, Unknown -- 16
-  , Sat, Sat, Sat -- 21
-  , Sat -- base_tests
+  , Sat, Sat, Sat, Sat, Sat -- base_tests
   , Sat, Sat -- chain_next
   , Sat, Sat, Sat, Sat -- contains_exc
   , Sat -- data_access
   , Sat -- exception_safety
   , Sat -- hier_down
-  , Sat -- hier_up
+  , Sat -- hier_insp
+  , Sat, Sat -- hier_up
   , Sat, Sat -- normal_ret
   , Sat -- no_throw
   , Sat -- uninstall_han

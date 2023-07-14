@@ -87,14 +87,14 @@ expectedSasEval =
   , Unsat, Unsat, Unsat -- 8
   , Unknown, Unknown, Unsat, Unknown -- 13
   , Unknown, Unsat -- 16
-  , Unsat, Unsat, Unsat -- 21
-  , Unknown -- base_tests
+  , Unsat, Unsat, Unsat, Unsat, Unknown -- base_tests
   , Unknown, Unknown               -- chain_next
   , Unknown, Unsat, Unsat, Unknown -- contains_exc
   , Unknown                        -- data_access
   , Unknown                        -- exception_safety
   , Unsat                          -- hier_down
-  , Unknown                        -- hier_up
+  , Unsat                          -- hier_insp
+  , Unknown, Unsat                 -- hier_up
   , Unsat, Unsat                   -- normal_ret
   , Unknown                        -- no_throw
   , Unsat                          -- uninstall_han
@@ -113,14 +113,14 @@ expectedNoHanEval =
   , Unsat, Unknown, Unsat                        -- 8
   , Unsat, Unsat, Unsat, Unsat                   -- 13
   , Unsat, Unsat                                 -- 16
-  , Unsat, Unsat, Unsat -- 21
-  , Unsat                                        -- base_tests
+  , Unsat, Unsat, Unsat, Unsat, Unsat            -- base_tests
   , Unsat, Unsat                                 -- chain_next
   , Unsat, Unsat, Unknown, Unsat                 -- contains_exc
   , Unknown                                      -- data_access
   , Unsat                                        -- exception_safety
   , Unknown                                      -- hier_down
-  , Unsat                                        -- hier_up
+  , Unsat                                        -- hier_insp
+  , Unsat, Unsat                                 -- hier_up
   , Unsat, Unsat                                 -- normal_ret
   , Unsat                                        -- no_throw
   , Unknown                                      -- uninstall_han
@@ -139,14 +139,14 @@ expectedSimpleThenEval =
   , Unsat, Unsat, Unsat                          -- 8
   , Unknown, Unknown, Unsat, Unknown             -- 13
   , Unknown, Unsat                               -- 16
-  , Unsat, Unsat, Unsat                          -- 21
-  , Unsat                                        -- base_tests
+  , Unsat, Unsat, Unsat, Unsat, Unsat            -- base_tests
   , Unsat, Unsat                                 -- chain_next
   , Unknown, Unsat, Unsat, Unknown               -- contains_exc
   , Unknown                                      -- data_access
   , Unknown                                      -- exception_safety
   , Unsat                                        -- hier_down
-  , Unsat                                        -- hier_up
+  , Unsat                                        -- hier_insp
+  , Unsat, Unsat                                 -- hier_up
   , Unsat, Unsat                                 -- normal_ret
   , Unknown                                      -- no_throw
   , Unsat                                        -- uninstall_han
@@ -165,14 +165,14 @@ expectedSimpleElseEval =
   , Unsat, Unsat, Unsat                          -- 8
   , Unknown, Unknown, Unsat, Unsat               -- 13
   , Unknown, Unsat                               -- 16
-  , Unsat, Unsat, Unsat -- 21
-  , Unsat                                 -- base_tests
+  , Unsat, Unsat, Unsat, Unsat, Unsat            -- base_tests
   , Unsat, Unsat                                 -- chain_next
   , Unknown, Unsat, Unsat, Unknown               -- contains_exc
   , Unknown                                      -- data_access
   , Unknown                                      -- exception_safety
   , Unsat                                        -- hier_down
-  , Unsat                        -- hier_up
+  , Unsat                                        -- hier_insp
+  , Unsat, Unsat                                 -- hier_up
   , Unsat, Unknown                               -- normal_ret
   , Unknown                                      -- no_throw
   , Unsat                                        -- uninstall_han
