@@ -186,18 +186,16 @@ assertEncoding phi query k = do
         -- wxnextx
         wxnextx <- mkWxnext nodeSort fConstMap gamma struct ctx yield equal take x
         popxImpliesWxnextx <- mkImplies checkPopx wxnextx
-        -- hnextu
-        hnextux <- mkHnextu nodeSort fConstMap gamma smb struct stack ctx yield take x checkPushx checkPopx
         -- whnextu
-        whnextu <- mkWhnextu nodeSort fConstMap gamma smb struct stack ctx yield take pred x checkPopx
+        whnextux <- mkWhnextu nodeSort fConstMap gamma smb struct stack ctx yield take pred x checkPopx
         -- whnextd
-        whnextd <- mkWhnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx
+        whnextdx <- mkWhnextd nodeSort fConstMap gamma smb struct stack ctx take x checkPopx
         -- huntilu
-        huntilu <- mkHuntilu nodeSort fConstMap gamma smb struct ctx yield take x checkPushx checkPopx
+        huntilux <- mkHuntilu nodeSort fConstMap gamma smb struct take x checkPushx checkPopx
         endx <- mkEndTerm fConstMap gamma xLit
         conflictx <- mkConflict fConstMap gamma struct xLit
         mkAnd [ inputxImpliesXnextx, popxImpliesWxnextx
-              , hnextux, whnextu, whnextd, huntilu
+              , whnextux, whnextdx, huntilux
               , endx, conflictx
               ]
   assert =<< mkForallNodes [1..k] mkTermRules
@@ -221,12 +219,14 @@ assertEncoding phi query k = do
         pnextx <- mkPnext nodeSort fConstMap gamma struct yield take x
         inputx <- mkOr [checkPushx, checkShiftx]
         inputxImpliesPnextx <- mkImplies inputx pnextx
+        -- hnextu
+        hnextux <- mkHnextu nodeSort fConstMap gamma smb struct stack yield take x checkPushx checkPopx
         -- hnextd
-        hnextd <- mkHnextd nodeSort fConstMap gamma smb struct ctx yield take x checkPopx
+        hnextdx <- mkHnextd nodeSort fConstMap gamma smb struct ctx yield take x checkPopx
         -- huntild
-        huntild <- mkHuntild nodeSort fConstMap gamma smb struct ctx yield take x checkPopx
+        huntildx <- mkHuntild nodeSort fConstMap gamma smb struct ctx yield take x checkPopx
         mkAnd [ pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx
-              , inputxImpliesPnextx, hnextd, huntild
+              , inputxImpliesPnextx, hnextux, hnextdx, huntildx
               ]
   assert =<< mkForallNodes [1..(k - 1)] mkTransitions
   -- end ∀x (...)
@@ -463,22 +463,24 @@ assertEncoding phi query k = do
       mkAndWith wxnextSat [g | g@(WXNext _ _) <- clos]
 
     mkHnextu :: Sort -> Map (Formula MP.ExprProp) AST
-             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
              -> FuncDecl -> FuncDecl -> Word64 -> AST -> AST
              -> Z3 AST
-    mkHnextu nodeSort fConstMap gamma smb struct stack ctx yield take x checkPushx checkPopx =
+    mkHnextu nodeSort fConstMap gamma smb struct stack yield take x checkPushx checkPopx =
       let allHnu = [g | g@(HNext Up _) <- clos]
       in enableIf (not $ null allHnu) $ do
         xLit <- mkUnsignedInt64 x nodeSort
         stackx <- mkApp1 stack xLit
+        xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+        checkPushxp1 <- mkCheckPrec smb struct yield xp1
         let hnextuSat g@(HNext Up arg) = do
               gammagstackx <- mkApp gamma [fConstMap M.! g, stackx]
               xnfArgx <- groundxnf fConstMap gamma (xnf arg) xLit
-              mkImplies gammagstackx xnfArgx
+              mkImplies gammagstackx =<< mkAnd [xnfArgx, checkPushxp1]
         allHnextuSat <- mkAndWith hnextuSat allHnu
         popxImplies <- mkImplies checkPopx allHnextuSat
 
-        hucond <- mkHUCond nodeSort fConstMap gamma smb struct ctx yield take x checkPushx checkPopx allHnu
+        hucond <- mkHUCond nodeSort fConstMap gamma smb struct take x checkPushx checkPopx allHnu
         mkAnd [popxImplies, hucond]
 
     mkWhnextu :: Sort -> Map (Formula MP.ExprProp) AST
@@ -556,13 +558,13 @@ assertEncoding phi query k = do
         mkImplies lhs =<< mkAndWith whnextdSat allWhnd
 
     mkHuntilu :: Sort -> Map (Formula MP.ExprProp) AST
-              -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+              -> FuncDecl -> FuncDecl -> FuncDecl
               -> FuncDecl -> Word64 -> AST -> AST
               -> Z3 AST
-    mkHuntilu nodeSort fConstMap gamma smb struct ctx yield take x checkPushx checkPopx =
+    mkHuntilu nodeSort fConstMap gamma smb struct take x checkPushx checkPopx =
       let allHuu = [g | g@(HUntil Up _ _) <- clos]
       in enableIf (not $ null allHuu)
-         $ mkHUCond nodeSort fConstMap gamma smb struct ctx yield take x checkPushx checkPopx allHuu
+         $ mkHUCond nodeSort fConstMap gamma smb struct take x checkPushx checkPopx allHuu
 
     mkHuntild :: Sort -> Map (Formula MP.ExprProp) AST
               -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
@@ -574,15 +576,12 @@ assertEncoding phi query k = do
          $ mkHDCond nodeSort fConstMap gamma smb struct ctx yield take x checkPopx allHud
 
     mkHUCond :: Sort -> Map (Formula MP.ExprProp) AST
-             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
+             -> FuncDecl -> FuncDecl -> FuncDecl
              -> FuncDecl -> Word64 -> AST -> AST -> [Formula MP.ExprProp] -> Z3 AST
-    mkHUCond nodeSort fConstMap gamma smb struct ctx yield take x checkPushx checkPopx allOps = do
+    mkHUCond nodeSort fConstMap gamma smb struct take x checkPushx checkPopx allOps = do
       xm1 <- mkUnsignedInt64 (x - 1) nodeSort
       checkPopxm1 <- mkCheckPrec smb struct take xm1
-      structxm1 <- mkApp1 struct xm1
-      structCtxxm1 <- mkApp1 struct =<< mkApp1 ctx xm1
-      precY <- mkApp yield [structCtxxm1, structxm1]
-      whenNotPop <- mkAnd [checkPushx, checkPopxm1, precY]
+      whenNotPop <- mkAnd [checkPushx, checkPopxm1]
       hucond <- mkOr [checkPopx, whenNotPop]
 
       xLit <- mkUnsignedInt64 x nodeSort
