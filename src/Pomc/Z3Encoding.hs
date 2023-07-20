@@ -186,7 +186,7 @@ assertEncoding phi query k = do
 
   -- xnf(φ)(1)
   node1 <- mkUnsignedInt64 1 nodeSort
-  assert =<< groundxnf encData (xnf phi) node1
+  assert =<< groundxnf encData phi node1
 
   -- smb(1) = #
   assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 smb node1
@@ -328,48 +328,49 @@ assertEncoding phi query k = do
             getNegPrec Equal = (yield, take)
             getNegPrec Take = (yield, equal)
 
-    -- xnf(f)_G(x)
+    -- xnf(theta)_G(x)
     groundxnf :: EncData -> Formula MP.ExprProp -> AST -> Z3 AST
-    groundxnf encData f x = case f of
-      T                -> mkTrue
-      Atomic _         -> applyGamma f
-      Not T            -> mkFalse
-      Not g@(Atomic _) -> mkNot =<< applyGamma g
-      Not _            -> error "Supplied formula is not in Positive Normal Form."
-      Or g h           -> boolPred (\a b -> mkOr [a, b]) g h
-      And g h          -> boolPred (\a b -> mkAnd [a, b]) g h
-      Xor g h          -> boolPred mkXor g h
-      Implies g h      -> boolPred mkImplies g h
-      Iff g h          -> boolPred mkEq g h
-      PNext _ _        -> applyGamma f
-      PBack _ _        -> error "Past operators not supported yet."
-      WPNext _ _       -> applyGamma f
-      XNext _ _        -> applyGamma f
-      XBack _ _        -> error "Past operators not supported yet."
-      WXNext _ _       -> applyGamma f
-      HNext _ _        -> applyGamma f
-      HBack _ _        -> error "Hierarchical operators not supported yet."
-      WHNext _ _       -> applyGamma f
-      Until _ _ _      -> error "Supplied formula is not in Next Normal Form."
-      Release _ _ _    -> error "Supplied formula is not in Next Normal Form."
-      Since _ _ _      -> error "Past operators not supported yet."
-      HUntil _ _ _     -> applyGamma f
-      HSince _ _ _     -> error "Supplied formula is not in Next Normal Form."
-      Next _           -> applyGamma f
-      WNext _          -> applyGamma f
-      Back _           -> applyGamma f
-      WBack _          -> applyGamma f
-      Eventually _     -> error "Supplied formula is not in Next Normal Form."
-      Always _         -> error "Supplied formula is not in Next Normal Form."
-      Once _           -> error "Supplied formula is not in Next Normal Form."
-      Historically _   -> error "Supplied formula is not in Next Normal Form."
-      AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
-      where boolPred op lhs rhs = do
-              glhs <- groundxnf encData lhs x
-              grhs <- groundxnf encData rhs x
-              op glhs grhs
+    groundxnf encData theta x = ground (xnf theta) where
+      ground f = case f of
+        T                -> mkTrue
+        Atomic _         -> applyGamma f
+        Not T            -> mkFalse
+        Not g@(Atomic _) -> mkNot =<< applyGamma g
+        Not _            -> error "Supplied formula is not in Positive Normal Form."
+        Or g h           -> boolPred (\a b -> mkOr [a, b]) g h
+        And g h          -> boolPred (\a b -> mkAnd [a, b]) g h
+        Xor g h          -> boolPred mkXor g h
+        Implies g h      -> boolPred mkImplies g h
+        Iff g h          -> boolPred mkEq g h
+        PNext _ _        -> applyGamma f
+        PBack _ _        -> error "Past operators not supported yet."
+        WPNext _ _       -> applyGamma f
+        XNext _ _        -> applyGamma f
+        XBack _ _        -> error "Past operators not supported yet."
+        WXNext _ _       -> applyGamma f
+        HNext _ _        -> applyGamma f
+        HBack _ _        -> error "Hierarchical operators not supported yet."
+        WHNext _ _       -> applyGamma f
+        Until _ _ _      -> error "Supplied formula is not in Next Normal Form."
+        Release _ _ _    -> error "Supplied formula is not in Next Normal Form."
+        Since _ _ _      -> error "Past operators not supported yet."
+        HUntil _ _ _     -> applyGamma f
+        HSince _ _ _     -> error "Supplied formula is not in Next Normal Form."
+        Next _           -> applyGamma f
+        WNext _          -> applyGamma f
+        Back _           -> applyGamma f
+        WBack _          -> applyGamma f
+        Eventually _     -> error "Supplied formula is not in Next Normal Form."
+        Always _         -> error "Supplied formula is not in Next Normal Form."
+        Once _           -> error "Supplied formula is not in Next Normal Form."
+        Historically _   -> error "Supplied formula is not in Next Normal Form."
+        AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
+        where boolPred op lhs rhs = do
+                glhs <- ground lhs
+                grhs <- ground rhs
+                op glhs grhs
 
-            applyGamma g = mkApp (zGamma encData) [zFConstMap encData M.! g, x]
+              applyGamma g = mkApp (zGamma encData) [zFConstMap encData M.! g, x]
 
     -- END(xExpr)
     mkEndTerm :: Map (Formula MP.ExprProp) AST -> FuncDecl -> AST -> Z3 AST
@@ -426,7 +427,7 @@ assertEncoding phi query k = do
             -- Γ(g, x)
             gammagx <- mkApp gamma [fConstMap M.! g, xLit]
             -- Γ(h, x + 1)
-            gammahxp1 <- groundxnf encData (xnf arg) xp1
+            gammahxp1 <- groundxnf encData arg xp1
             -- struct(x) prec struct(x + 1)
             structx <- mkApp1 struct xLit
             structxp1 <- mkApp1 struct xp1
@@ -453,7 +454,7 @@ assertEncoding phi query k = do
                   checkPopz <- mkCheckPrec encData (zTake encData) zLit
                   ctxz <- mkApp1 (zCtx encData) zLit
                   ctxzEqx <- mkEq ctxz xLit
-                  xnfArgz <- groundxnf encData (xnf arg) zLit
+                  xnfArgz <- groundxnf encData arg zLit
                   structz <- mkApp1 struct zLit
                   precYT <- case dir of
                     Down -> mkApp (zYield encData) [structx, structz]
@@ -482,7 +483,7 @@ assertEncoding phi query k = do
             precEq <- mkApp (zEqual encData) [structCtxx, structx]
             orPrec <- mkOr [precYT, precEq]
             gammagctxxAndOrPrec <- mkAnd [gammagctxx, orPrec]
-            xnfArgx <- groundxnf encData (xnf arg) xLit
+            xnfArgx <- groundxnf encData arg xLit
             mkImplies gammagctxxAndOrPrec xnfArgx
       mkAndWith wxnextSat [g | g@(WXNext _ _) <- clos]
 
@@ -497,7 +498,7 @@ assertEncoding phi query k = do
         checkPushxp1 <- mkCheckPrec encData (zYield encData) xp1
         let hnextuSat g@(HNext Up arg) = do
               gammagstackx <- mkApp (zGamma encData) [zFConstMap encData M.! g, stackx]
-              xnfArgx <- groundxnf encData (xnf arg) xLit
+              xnfArgx <- groundxnf encData arg xLit
               mkImplies gammagstackx =<< mkAnd [xnfArgx, checkPushxp1]
         allHnextuSat <- mkAndWith hnextuSat allHnu
         popxImplies <- mkImplies checkPopx allHnextuSat
@@ -532,7 +533,7 @@ assertEncoding phi query k = do
 
         let whnextuSat g@(WHNext Up arg) = do
               gammagStackx <- mkApp (zGamma encData) [zFConstMap encData M.! g, stackx]
-              xnfArgx <- groundxnf encData (xnf arg) xLit
+              xnfArgx <- groundxnf encData arg xLit
               mkImplies gammagStackx xnfArgx
         allWhnextuSat <- mkImplies implLhs =<< mkAndWith whnextuSat allWhnu
         mkAnd [predxEqxm1, allWhnextuSat]
@@ -550,7 +551,7 @@ assertEncoding phi query k = do
         checkPopxm1 <- mkCheckPrec encData (zTake encData) xm1
         let hnextdSat g@(HNext Down arg) = do
               gammagCtxx <- mkApp (zGamma encData) [zFConstMap encData M.! g, ctxx]
-              xnfArgCtxxm1 <- groundxnf encData (xnf arg) ctxxm1
+              xnfArgCtxxm1 <- groundxnf encData arg ctxxm1
               mkImplies gammagCtxx =<< mkAnd [xnfArgCtxxm1, checkPopxm1]
         popImpl <- mkImplies checkPopx =<< mkAndWith hnextdSat allHnd
         hdcond <- mkHDCond encData x checkPopx allHnd
@@ -575,7 +576,7 @@ assertEncoding phi query k = do
         lhs <- mkAnd [checkPopx, checkPopxm1, checkPopxp1]
         let whnextdSat g@(WHNext Down arg) = do
               gammagCtxx <- mkApp (zGamma encData) [zFConstMap encData M.! g, ctxx]
-              xnfArgCtxxm1 <- groundxnf encData (xnf arg) ctxxm1
+              xnfArgCtxxm1 <- groundxnf encData arg ctxxm1
               mkImplies gammagCtxx xnfArgCtxxm1
         mkImplies lhs =<< mkAndWith whnextdSat allWhnd
 
@@ -632,7 +633,7 @@ assertEncoding phi query k = do
       -- PNext, Next and WNext
       let propagateNext (next, arg) = do
             lhs <- mkApp gamma [fConstMap M.! next, xLit]
-            rhs <- groundxnf encData (xnf arg) xp1
+            rhs <- groundxnf encData arg xp1
             mkImplies lhs rhs
       -- big and
       nextRule <- mkAndWith propagateNext
@@ -642,7 +643,7 @@ assertEncoding phi query k = do
       -- Back and WBack
       let propagateBack (back, arg) = do
             lhs <- mkApp gamma [fConstMap M.! back, xp1]
-            rhs <- groundxnf encData (xnf arg) xLit
+            rhs <- groundxnf encData arg xLit
             mkImplies lhs rhs
       -- big and
       backRule <- mkAndWith propagateBack
