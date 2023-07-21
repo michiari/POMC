@@ -12,7 +12,6 @@ module Pomc.DoubleSet (DoubleSet
                    , markAll
                    , reset
                    , isMarked
-                   , isNotMarked
                    , allMarked
                    ) where
 
@@ -51,11 +50,6 @@ isMarked :: (Ord v) => DoubleSet s v -> v -> ST s Bool
 isMarked dsref v = do 
   (ds1, _) <- readSTRef dsref 
   return $ Set.member v ds1
-
-isNotMarked :: (Ord v) => DoubleSet s v -> v -> ST s Bool
-isNotMarked dsref v = do 
-  (ds1, _) <- readSTRef dsref 
-  return $ not $ Set.member v ds1
 
 allMarked :: (Ord v) => DoubleSet s v -> ST s (Set v)
 allMarked dsref = do 

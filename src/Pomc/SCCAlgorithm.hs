@@ -169,7 +169,7 @@ alreadyDiscovered :: (NFData state, SatState state, Eq state, Hashable state, Sh
 alreadyDiscovered graph key = do
   ident <- THT.lookupId (gnMap graph) $ decode key
   case ident of 
-    Just i -> DS.isNotMarked (initials graph) i
+    Just i -> DS.isMarked (initials graph) i >>= return . not
     Nothing -> do 
       newIdent <- freshPosId $ idSeq graph
       let sn = SingleNode{ gnId = newIdent,iValue = 0, node = key, edges = []}
