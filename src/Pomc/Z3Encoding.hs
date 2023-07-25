@@ -214,8 +214,6 @@ assertEncoding phi query k = do
         inputxImpliesXnextx <- mkImplies inputx =<< mkXnext encData x
         -- wxnextx
         popxImpliesWxnextx <- mkImplies checkPopx =<< mkWxnext encData x
-        -- whnextu
-        whnextux <- mkWhnextu encData x checkPopx
         -- whnextd
         whnextdx <- mkWhnextd encData x checkPopx
         -- huaux
@@ -223,7 +221,7 @@ assertEncoding phi query k = do
         endx <- mkEndTerm fConstMap gamma xLit
         conflictx <- mkConflict fConstMap gamma struct xLit
         mkAnd [ inputxImpliesXnextx, popxImpliesWxnextx
-              , whnextux, whnextdx, huauxx
+              , whnextdx, huauxx
               , endx, conflictx
               ]
   assert =<< mkForallNodes [1..k] mkTermRules
@@ -247,10 +245,12 @@ assertEncoding phi query k = do
         hnextux <- mkHnextu encData x checkPushx checkPopx
         -- hnextd
         hnextdx <- mkHnextd encData x checkPopx
+        -- whnextu
+        whnextux <- mkWhnextu encData x checkPopx
         -- hdaux
         hdauxx <- mkHdaux encData x checkPopx
         mkAnd [ pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx
-              , inputxImpliesPnextx, hnextux, hnextdx, hdauxx
+              , inputxImpliesPnextx, hnextux, hnextdx, whnextux, hdauxx
               ]
   assert =<< mkForallNodes [1..(k - 1)] mkTransitions
   -- end ∀x (...)
