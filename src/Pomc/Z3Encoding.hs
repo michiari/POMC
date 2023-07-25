@@ -218,12 +218,12 @@ assertEncoding phi query k = do
         whnextux <- mkWhnextu encData x checkPopx
         -- whnextd
         whnextdx <- mkWhnextd encData x checkPopx
-        -- huntilu
-        huntilux <- mkHuntilu encData x checkPushx checkPopx
+        -- huaux
+        huauxx <- mkHuaux encData x checkPushx checkPopx
         endx <- mkEndTerm fConstMap gamma xLit
         conflictx <- mkConflict fConstMap gamma struct xLit
         mkAnd [ inputxImpliesXnextx, popxImpliesWxnextx
-              , whnextux, whnextdx, huntilux
+              , whnextux, whnextdx, huauxx
               , endx, conflictx
               ]
   assert =<< mkForallNodes [1..k] mkTermRules
@@ -247,10 +247,10 @@ assertEncoding phi query k = do
         hnextux <- mkHnextu encData x checkPushx checkPopx
         -- hnextd
         hnextdx <- mkHnextd encData x checkPopx
-        -- huntild
-        huntildx <- mkHuntild encData x checkPopx
+        -- hdaux
+        hdauxx <- mkHdaux encData x checkPopx
         mkAnd [ pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx
-              , inputxImpliesPnextx, hnextux, hnextdx, huntildx
+              , inputxImpliesPnextx, hnextux, hnextdx, hdauxx
               ]
   assert =<< mkForallNodes [1..(k - 1)] mkTransitions
   -- end ∀x (...)
@@ -355,6 +355,7 @@ assertEncoding phi query k = do
         Release _ _ _    -> error "Supplied formula is not in Next Normal Form."
         Since _ _ _      -> error "Past operators not supported yet."
         HUntil _ _ _     -> applyGamma f
+        HRelease _ _ _   -> applyGamma f
         HSince _ _ _     -> error "Supplied formula is not in Next Normal Form."
         Next _           -> applyGamma f
         WNext _          -> applyGamma f
@@ -580,15 +581,33 @@ assertEncoding phi query k = do
               mkImplies gammagCtxx xnfArgCtxxm1
         mkImplies lhs =<< mkAndWith whnextdSat allWhnd
 
-    mkHuntilu :: EncData -> Word64 -> AST -> AST -> Z3 AST
-    mkHuntilu encData x checkPushx checkPopx =
-      let allHuu = [g | g@(HUntil Up _ _) <- clos]
-      in enableIf (not $ null allHuu) $ mkHUCond encData x checkPushx checkPopx allHuu
+    mkHuaux :: EncData -> Word64 -> AST -> AST -> Z3 AST
+    mkHuaux encData x checkPushx checkPopx = enableIf (HUntil Up T T `elem` clos) $ do
+      let nodeSort = zNodeSort encData
+      xm1 <- mkUnsignedInt64 (x - 1) nodeSort
+      checkPopxm1 <- mkCheckPrec encData (zTake encData) xm1
+      whenNotPop <- mkAnd [checkPushx, checkPopxm1]
+      hucond <- mkOr [checkPopx, whenNotPop]
 
-    mkHuntild :: EncData -> Word64 -> AST -> Z3 AST
-    mkHuntild encData x checkPopx =
-      let allHud = [g | g@(HUntil Down _ _) <- clos]
-      in enableIf (not $ null allHud) $ mkHDCond encData x checkPopx allHud
+      xLit <- mkUnsignedInt64 x nodeSort
+      huaux <- mkApp (zGamma encData) [zFConstMap encData M.! HUntil Up T T, xLit]
+      huauxImplies <- mkImplies huaux hucond
+
+      impliesHuaux <- mkImplies whenNotPop huaux
+      mkAnd [huauxImplies, impliesHuaux]
+
+    mkHdaux :: EncData -> Word64 -> AST -> Z3 AST
+    mkHdaux encData x checkPopx = enableIf (HUntil Down T T `elem` clos) $ do
+      let nodeSort = zNodeSort encData
+      xLit <- mkUnsignedInt64 x nodeSort
+      ctxx <- mkApp1 (zCtx encData) xLit
+      xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+      checkPopxp1 <- mkCheckPrec encData (zTake encData) xp1
+      popxAndPopxp1 <- mkAnd [checkPopx, checkPopxp1]
+      hdaux <- mkApp (zGamma encData) [zFConstMap encData M.! HUntil Down T T, ctxx]
+      impliesHdaux <- mkImplies popxAndPopxp1 hdaux
+      hdcond <- mkHDCond encData x checkPopx [HUntil Down T T]
+      mkAnd [impliesHdaux, hdcond]
 
     mkHUCond :: EncData -> Word64 -> AST -> AST -> [Formula MP.ExprProp] -> Z3 AST
     mkHUCond encData x checkPushx checkPopx allOps = do
@@ -1099,7 +1118,8 @@ closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closLi
         Until dir g h    -> [f, PNext dir f, XNext dir f] ++ closList g ++ closList h
         Release dir g h  -> [f, WPNext dir f, WXNext dir f] ++ closList g ++ closList h
         Since _ _ _      -> error "Past operators not supported yet."
-        HUntil dir g h   -> [f, HNext dir f] ++ closList g ++ closList h
+        HUntil dir g h   -> [f, HNext dir f, HUntil dir T T] ++ closList g ++ closList h
+        HRelease dir g h -> [f, WHNext dir f, HUntil dir T T] ++ closList g ++ closList h
         HSince _ _ _     -> error "Past operators not supported yet."
         Next g           -> f : closList g
         WNext g          -> f : closList g
@@ -1113,39 +1133,40 @@ closure alphabet phi = (structClos, S.toList . S.fromList $ structClos ++ closLi
 
 xnf :: Formula MP.ExprProp -> Formula MP.ExprProp
 xnf f = case f of
-  T               -> f
-  Atomic _        -> f
-  Not T           -> f
-  Not (Atomic _)  -> f
-  Not _           -> error "Supplied formula is not in Positive Normal Form."
-  Or g h          -> Or (xnf g) (xnf h)
-  And g h         -> And (xnf g) (xnf h)
-  Xor g h         -> Xor (xnf g) (xnf h)
-  Implies g h     -> Implies (xnf g) (xnf h)
-  Iff g h         -> Iff (xnf g) (xnf h)
-  PNext _ _       -> f
-  PBack _ _       -> error "Past operators not supported yet."
-  WPNext _ _      -> f
-  XNext _ _       -> f
-  XBack _ _       -> error "Past operators not supported yet."
-  WXNext _ _      -> f
-  HNext _ _       -> f
-  HBack _ _       -> error "Past operators not supported yet."
-  WHNext _ _      -> f
-  Until dir g h   -> xnf h `Or` (xnf g `And` (PNext dir f `Or` XNext dir f))
-  Release dir g h -> xnf h `And` (xnf g `Or` (WPNext dir f `And` WXNext dir f))
-  Since _ _ _     -> error "Past operators not supported yet."
-  HUntil dir g h  -> (f `And` xnf h) `Or` (xnf g `And` (HNext dir f))
-  HSince _ _ _    -> error "Past operators not supported yet."
-  Next _          -> f
-  WNext _         -> f
-  Back _          -> f
-  WBack _         -> f
-  Eventually g    -> xnf g `Or` Next f
-  Always g        -> xnf g `And` WNext f
-  Once g          -> xnf g `Or` Back f
-  Historically g  -> xnf g `And` WBack f
-  AuxBack _ _     -> error "AuxBack not supported in SMT encoding."
+  T                -> f
+  Atomic _         -> f
+  Not T            -> f
+  Not (Atomic _)   -> f
+  Not _            -> error "Supplied formula is not in Positive Normal Form."
+  Or g h           -> Or (xnf g) (xnf h)
+  And g h          -> And (xnf g) (xnf h)
+  Xor g h          -> Xor (xnf g) (xnf h)
+  Implies g h      -> Implies (xnf g) (xnf h)
+  Iff g h          -> Iff (xnf g) (xnf h)
+  PNext _ _        -> f
+  PBack _ _        -> error "Past operators not supported yet."
+  WPNext _ _       -> f
+  XNext _ _        -> f
+  XBack _ _        -> error "Past operators not supported yet."
+  WXNext _ _       -> f
+  HNext _ _        -> f
+  HBack _ _        -> error "Past operators not supported yet."
+  WHNext _ _       -> f
+  Until dir g h    -> xnf h `Or` (xnf g `And` (PNext dir f `Or` XNext dir f))
+  Release dir g h  -> xnf h `And` (xnf g `Or` (WPNext dir f `And` WXNext dir f))
+  Since _ _ _      -> error "Past operators not supported yet."
+  HUntil dir g h   -> (HUntil dir T T `And` xnf h) `Or` (xnf g `And` (HNext dir f))
+  HRelease dir g h -> (HUntil dir T T `Implies` xnf h) `And` (xnf g `Or` WHNext dir f)
+  HSince _ _ _     -> error "Past operators not supported yet."
+  Next _           -> f
+  WNext _          -> f
+  Back _           -> f
+  WBack _          -> f
+  Eventually g     -> xnf g `Or` Next f
+  Always g         -> xnf g `And` WNext f
+  Once g           -> xnf g `Or` Back f
+  Historically g   -> xnf g `And` WBack f
+  AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
 
 
 queryTableau :: Sort -> Map (Formula MP.ExprProp) AST

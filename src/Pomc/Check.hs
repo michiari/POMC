@@ -111,6 +111,7 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
         WPNext _ _      -> error "Weak operators not supported in explicit-state model checking."
         WXNext _ _      -> error "Weak operators not supported in explicit-state model checking."
         Release _ _ _   -> error "Weak operators not supported in explicit-state model checking."
+        HRelease _ _ _   -> error "Weak operators not supported in explicit-state model checking."
         Next _          -> error "LTL Next not supported in explicit-state model checking."
         WNext _         -> error "Weak operators not supported in explicit-state model checking."
         Back _          -> error "LTL Back not supported in explicit-state model checking."
