@@ -512,7 +512,6 @@ assertEncoding phi query k = do
       let allWhnu = [g | g@(WHNext Up _) <- clos]
       in enableIf (not $ null allWhnu) $ do
         let nodeSort = zNodeSort encData
-            struct = zStruct encData
             yield = zYield encData
             pred = zPred encData
         xLit <- mkUnsignedInt64 x nodeSort
@@ -525,12 +524,10 @@ assertEncoding phi query k = do
         stackxm1 <- mkApp1 pred stackx
         checkPopStackxm1 <- mkCheckPrec encData (zTake encData) stackxm1
 
-        structx <- mkApp1 struct xLit
-        ctxx <- mkApp1 (zCtx encData) xLit
-        structCtxx <- mkApp1 struct ctxx
-        precY <- mkApp yield [structCtxx, structx]
+        xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+        checkPushxp1 <- mkCheckPrec encData yield xp1
 
-        implLhs <- mkAnd [checkPopx, checkPushStackx, checkPopStackxm1, precY]
+        implLhs <- mkAnd [checkPopx, checkPushxp1, checkPopStackxm1, checkPushStackx]
 
         let whnextuSat g@(WHNext Up arg) = do
               gammagStackx <- mkApp (zGamma encData) [zFConstMap encData M.! g, stackx]
