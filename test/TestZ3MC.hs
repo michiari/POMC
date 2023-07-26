@@ -263,7 +263,7 @@ testHierD = testGroup "Tests for Hierarchical Down Operators"
 
 testHierU :: TestTree
 testHierU = testGroup "Tests for Hierarchical Up Operators"
-  $ map (makeTestCase testHierUSrc 20)
+  $ map (makeTestCase testHierUSrc 22)
   [ (("Equal, strong", HNext Up $ ap "call"), Unsat)
   , (("Equal, weak", WHNext Up $ ap "call"), Unknown)
   , (("Single next sat, strong", Next $ Next $ Next $ HNext Up $ ap "pc"), Unknown)
