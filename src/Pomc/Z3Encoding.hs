@@ -542,16 +542,20 @@ assertEncoding phi query k = do
       in enableIf (not $ null allHnd) $ do
         let nodeSort = zNodeSort encData
             ctx = zCtx encData
+            take = zTake encData
         xLit <- mkUnsignedInt64 x nodeSort
         ctxx <- mkApp1 ctx xLit
+        xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+        checkPopxp1 <- mkCheckPrec encData take xp1
+        lhs <- mkAnd [checkPopx, checkPopxp1]
         xm1 <- mkUnsignedInt64 (x - 1) nodeSort
         ctxxm1 <- mkApp1 ctx xm1
-        checkPopxm1 <- mkCheckPrec encData (zTake encData) xm1
+        checkPopxm1 <- mkCheckPrec encData take xm1
         let hnextdSat g@(HNext Down arg) = do
               gammagCtxx <- mkApp (zGamma encData) [zFConstMap encData M.! g, ctxx]
               xnfArgCtxxm1 <- groundxnf encData arg ctxxm1
               mkImplies gammagCtxx =<< mkAnd [xnfArgCtxxm1, checkPopxm1]
-        popImpl <- mkImplies checkPopx =<< mkAndWith hnextdSat allHnd
+        popImpl <- mkImplies lhs =<< mkAndWith hnextdSat allHnd
         hdcond <- mkHDCond encData x checkPopx allHnd
         mkAnd [popImpl, hdcond]
 
@@ -632,8 +636,8 @@ assertEncoding phi query k = do
       ctxx <- mkApp1 (zCtx encData) xLit
       anyOpsCtxx <- mkOrWith (\g -> mkApp gamma [fConstMap M.! g, ctxx]) allOps
       popxAndAnyOpsCtxx <- mkAnd [checkPopx, anyOpsCtxx]
-      checkPopxp1 <- mkCheckPrec encData (zTake encData) xp1
-      popImpl <- mkImplies popxAndAnyOpsCtxx checkPopxp1
+      notShiftxp1 <- mkNot =<< mkCheckPrec encData (zEqual encData) xp1
+      popImpl <- mkImplies popxAndAnyOpsCtxx notShiftxp1
 
       mkAnd [notPopImpl, popImpl]
 
