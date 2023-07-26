@@ -214,14 +214,12 @@ assertEncoding phi query k = do
         inputxImpliesXnextx <- mkImplies inputx =<< mkXnext encData x
         -- wxnextx
         popxImpliesWxnextx <- mkImplies checkPopx =<< mkWxnext encData x
-        -- whnextd
-        whnextdx <- mkWhnextd encData x checkPopx
         -- huaux
         huauxx <- mkHuaux encData x checkPushx checkPopx
         endx <- mkEndTerm fConstMap gamma xLit
         conflictx <- mkConflict fConstMap gamma struct xLit
         mkAnd [ inputxImpliesXnextx, popxImpliesWxnextx
-              , whnextdx, huauxx
+              , huauxx
               , endx, conflictx
               ]
   assert =<< mkForallNodes [1..k] mkTermRules
@@ -247,10 +245,12 @@ assertEncoding phi query k = do
         hnextdx <- mkHnextd encData x checkPopx
         -- whnextu
         whnextux <- mkWhnextu encData x checkPopx
+        -- whnextd
+        whnextdx <- mkWhnextd encData x checkPopx
         -- hdaux
         hdauxx <- mkHdaux encData x checkPopx
         mkAnd [ pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx
-              , inputxImpliesPnextx, hnextux, hnextdx, whnextux, hdauxx
+              , inputxImpliesPnextx, hnextux, hnextdx, whnextux, whnextdx, hdauxx
               ]
   assert =<< mkForallNodes [1..(k - 1)] mkTransitions
   -- end ∀x (...)
@@ -563,15 +563,13 @@ assertEncoding phi query k = do
             ctx = zCtx encData
             take = zTake encData
         xLit <- mkUnsignedInt64 x nodeSort
-        structx <- mkApp1 (zStruct encData) xLit
-        stackx <- mkApp1 (zStack encData) xLit
         ctxx <- mkApp1 ctx xLit
         xm1 <- mkUnsignedInt64 (x - 1) nodeSort
         checkPopxm1 <- mkCheckPrec encData take xm1
-        ctxxm1 <- mkApp1 ctx xm1
-        smbStackx <- mkApp1 (zSmb encData) stackx
-        checkPopxp1 <- mkApp take [smbStackx, structx]
+        xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+        checkPopxp1 <- mkCheckPrec encData take xp1
         lhs <- mkAnd [checkPopx, checkPopxm1, checkPopxp1]
+        ctxxm1 <- mkApp1 ctx xm1
         let whnextdSat g@(WHNext Down arg) = do
               gammagCtxx <- mkApp (zGamma encData) [zFConstMap encData M.! g, ctxx]
               xnfArgCtxxm1 <- groundxnf encData arg ctxxm1
