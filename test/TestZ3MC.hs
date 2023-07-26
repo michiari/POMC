@@ -30,7 +30,7 @@ import qualified Debug.Trace as DBG
 tests :: TestTree
 tests = testGroup "Z3Encoding Model Checking Tests"
   [ sasEvalTests, noHanEvalTests, simpleThenEvalTests, simpleElseEvalTests
-  , nondetTrue, nondetExprProp
+  , nondetTrue, nondetExprProp, testHierD, testHierU
   ]
 
 makeTestCase :: T.Text
@@ -226,4 +226,121 @@ main() {
     main();
   } else {}
 }
+|]
+
+
+testHierD :: TestTree
+testHierD = testGroup "Tests for Hierarchical Down Operators"
+  $ map (makeTestCase testHierDSrc 20)
+  [ (("Equal, strong", HNext Down $ ap "han"), Unsat)
+  , (("Equal, weak", WHNext Down $ ap "han"), Unknown)
+  , (("Single next sat, strong", Next $ Next $ HNext Down $ ap "pb"), Unknown)
+  , (("Single next sat, weak", Next $ Next $ WHNext Down $ ap "pb"), Unknown)
+  , (("Single next unsat, strong", Next $ Next $ HNext Down $ ap "pc"), Unsat)
+  , (("Single next unsat, weak", Next $ Next $ WHNext Down $ ap "pc"), Unsat)
+  , (("Two nexts sat, strong", Next $ Next $ HNext Down $ HNext Down $ ap "pc"), Unknown)
+  , (("Two nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ ap "pc"), Unknown)
+  , (("Two nexts sat, mixed", Next $ Next $ HNext Down $ WHNext Down $ ap "pc"), Unknown)
+  , (("Two nexts unsat, strong", Next $ Next $ HNext Down $ HNext Down $ ap "pb"), Unsat)
+  , (("Two nexts unsat, weak", Next $ Next $ WHNext Down $ WHNext Down $ ap "pb"), Unsat)
+  , (("Two nexts unsat, mixed", Next $ Next $ HNext Down $ WHNext Down $ ap "pb"), Unsat)
+  , (("Many nexts unsat, strong", Next $ Next $ HNext Down $ HNext Down $ HNext Down $ HNext Down $ ap "pd"), Unsat)
+  , (("Many nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ WHNext Down $ WHNext Down $ ap "pd"), Unknown)
+  , (("HUntil equal", HUntil Down T $ ap "call"), Unsat)
+  , (("HRelease equal", HRelease Down T $ ap "call"), Unknown)
+  , (("HUntil sat, trivial", Next $ Next $ HUntil Down T $ ap "pa"), Unknown)
+  , (("HRelease sat, trivial", Next $ Next $ HRelease Down T $ ap "pa"), Unknown)
+  , (("HUntil sat", Next $ Next $ HUntil Down T $ ap "pc"), Unknown)
+  , (("HRelease sat", Next $ Next $ HRelease Down (ap "pd") T), Unknown)
+  , (("HUntil unsat", Next $ Next $ HUntil Down (Not $ ap "pa") $ ap "pd"), Unsat)
+  , (("HRelease unsat", Next $ Next $ HRelease Down (Not $ ap "pa") $ ap "pd"), Unsat)
+  , (("HUntil HNext rhs sat", Next $ Next $ HUntil Down T $ HNext Down $ ap "pc"), Unknown)
+  , (("HRelease WHNext lhs sat", Next $ Next $ HRelease Down (WHNext Down $ ap "pd") T), Unknown)
+  , (("HUntil HNext lhs sat", Next $ Next $ HUntil Down (HNext Down $ Not $ ap "pa") $ ap "pc"), Unknown)
+  , (("Nested HUntil sat", Next $ Next $ HUntil Down T $ HUntil Down (Not $ ap "pa") $ ap "pc"), Unknown)
+  , (("Nested HRelease sat", Next $ Next $ HRelease Down (HRelease Down (ap "pd") (Not $ ap "pa")) T), Unknown)
+  ]
+
+testHierDSrc :: T.Text
+testHierDSrc = T.pack [r|
+main() {
+  try {
+    pa();
+  } catch { }
+}
+
+pa() {
+  pb();
+}
+
+pb() {
+  pnull();
+  pc();
+}
+
+pc() {
+  pd();
+}
+
+pd() {
+  if (*) {
+    pd();
+  } else {
+    throw;
+  }
+}
+
+pnull() { }
+|]
+
+testHierU :: TestTree
+testHierU = testGroup "Tests for Hierarchical Up Operators"
+  $ map (makeTestCase testHierUSrc 20)
+  [ (("Equal, strong", HNext Up $ ap "call"), Unsat)
+  , (("Equal, weak", WHNext Up $ ap "call"), Unknown)
+  , (("Single next sat, strong", Next $ Next $ Next $ HNext Up $ ap "pc"), Unknown)
+  , (("Single next sat, weak", Next $ Next $ Next $ WHNext Up $ ap "pc"), Unknown)
+  , (("Single next unsat, strong", Next $ Next $ Next $ HNext Up $ ap "pa"), Unsat)
+  , (("Single next unsat, weak", Next $ Next $ Next $ WHNext Up $ ap "pa"), Unsat)
+  , (("Two nexts sat, strong", Next $ Next $ Next $ HNext Up $ HNext Up $ ap "pd"), Unknown)
+  , (("Two nexts sat, weak", Next $ Next $ Next $ WHNext Up $ WHNext Up $ ap "pd"), Unknown)
+  , (("Two nexts sat, mixed", Next $ Next $ Next $ HNext Up $ WHNext Up $ ap "pd"), Unknown)
+  , (("Two nexts unsat, strong", Next $ Next $ Next $ HNext Up $ HNext Up $ ap "pa"), Unsat)
+  , (("Two nexts unsat, weak", Next $ Next $ Next $ WHNext Up $ WHNext Up $ ap "pa"), Unsat)
+  , (("Two nexts unsat, mixed", Next $ Next $ Next $ HNext Up $ WHNext Up $ ap "pa"), Unsat)
+  , (("Many nexts unsat, strong", Next $ Next $ Next $ HNext Up $ HNext Up $ HNext Up $ HNext Up $ ap "pe"), Unsat)
+  , (("Many nexts sat, weak", Next $ Next $ Next $ WHNext Up $ WHNext Up $ WHNext Up $ WHNext Up $ ap "pe"), Unknown)
+  , (("HUntil equal", HUntil Up T $ ap "call"), Unsat)
+  , (("HRelease equal", HRelease Up T $ ap "call"), Unknown)
+  , (("HUntil sat, trivial", Next $ Next $ Next $ HUntil Up T $ ap "pb"), Unknown)
+  , (("HRelease sat, trivial", Next $ Next $ Next $ HRelease Up T $ ap "pb"), Unknown)
+  , (("HUntil sat", Next $ Next $ Next $ HUntil Up T $ ap "pe"), Unknown)
+  , (("HRelease sat", Next $ Next $ Next $ HRelease Up (ap "pe") T), Unknown)
+  , (("HUntil unsat", Next $ Next $ Next $ HUntil Up (Not $ ap "pc") $ ap "pe"), Unsat)
+  , (("HRelease unsat", Next $ Next $ Next $ HRelease Up (Not $ ap "pc") $ ap "pe"), Unsat)
+  , (("HUntil HNext rhs sat", Next $ Next $ Next $ HUntil Up T $ HNext Up $ ap "pe"), Unknown)
+  , (("HRelease WHNext lhs sat", Next $ Next $ Next $ HRelease Up (WHNext Up $ ap "pe") T), Unknown)
+  , (("HUntil HNext lhs sat", Next $ Next $ Next $ HUntil Up (HNext Up $ Not $ ap "pb") $ ap "pe"), Unknown)
+  , (("Nested HUntil sat", Next $ Next $ Next $ HUntil Up T $ HUntil Up (Not $ ap "pc") $ ap "pe"), Unknown)
+  , (("Nested HRelease sat", Next $ Next $ Next $ HRelease Up (HRelease Up (ap "pe") (Not $ ap "pc")) T), Unknown)
+  ]
+
+testHierUSrc :: T.Text
+testHierUSrc = T.pack [r|
+main() {
+  pa();
+  pb();
+  pc();
+  pd();
+  pe();
+  while (*) {
+    pe();
+  }
+}
+
+pa() { }
+pb() { }
+pc() { }
+pd() { }
+pe() { }
 |]
