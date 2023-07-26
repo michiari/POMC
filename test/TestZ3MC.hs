@@ -261,38 +261,6 @@ testHierD = testGroup "Tests for Hierarchical Down Operators"
   , (("Nested HRelease sat", Next $ Next $ HRelease Down (HRelease Down (ap "pd") (Not $ ap "pa")) T), Unknown)
   ]
 
-testHierDSrc :: T.Text
-testHierDSrc = T.pack [r|
-main() {
-  try {
-    pa();
-  } catch { }
-}
-
-pa() {
-  pb();
-}
-
-pb() {
-  pnull();
-  pc();
-}
-
-pc() {
-  pd();
-}
-
-pd() {
-  if (*) {
-    pd();
-  } else {
-    throw;
-  }
-}
-
-pnull() { }
-|]
-
 testHierU :: TestTree
 testHierU = testGroup "Tests for Hierarchical Up Operators"
   $ map (makeTestCase testHierUSrc 20)
@@ -324,23 +292,3 @@ testHierU = testGroup "Tests for Hierarchical Up Operators"
   , (("Nested HUntil sat", Next $ Next $ Next $ HUntil Up T $ HUntil Up (Not $ ap "pc") $ ap "pe"), Unknown)
   , (("Nested HRelease sat", Next $ Next $ Next $ HRelease Up (HRelease Up (ap "pe") (Not $ ap "pc")) T), Unknown)
   ]
-
-testHierUSrc :: T.Text
-testHierUSrc = T.pack [r|
-main() {
-  pa();
-  pb();
-  pc();
-  pd();
-  pe();
-  while (*) {
-    pe();
-  }
-}
-
-pa() { }
-pb() { }
-pc() { }
-pd() { }
-pe() { }
-|]
