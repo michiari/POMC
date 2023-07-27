@@ -74,10 +74,12 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
     untilExpr dir g h = [PNext dir (Until dir g h), XNext dir (Until dir g h), Not $ PNext dir (Until dir g h), Not $ XNext dir (Until dir g h)]
     sinceDownExpr g h = [PBack Down (Since Down g h), XBack Down (Since Down g h), Not $ PBack Down (Since Down g h), Not $ XBack Down (Since Down g h)]
     sinceUpExpr g h = [PBack Up (Since Up g h), XBack Up (Since Up g h), Not $ PBack Up (Since Up g h), Not $ XBack Up (Since Up g h)] ++ xbuExpr (Since Up g h)
-    hudExpr g h = [XNext Up T, Not (XNext Up T), T, Not T, HNext Down (HUntil Down g h), Not $ HNext Down (HUntil Down g h)] ++ hndExpr (HUntil Down g h)
-    huuExpr g h = [XBack Down T, Not (XBack Down T), T, Not T, HNext Up (HUntil Up g h), Not $ HNext Up (HUntil Up g h)]
-    hsdExpr g h = [XNext Up T, Not (XNext Up T), T, Not T, HBack Down (HSince Down g h), Not $ HBack Down (HSince Down g h)] ++ hbdExpr (HSince Down g h)
-    hsuExpr g h = [XBack Down T, Not (XBack Down T), T, Not T, HBack Up (HSince Up g h), Not $ HBack Up (HSince Up g h)]
+    hudExpr f _ h = exprs ++ map Not exprs ++ hndExpr f
+      where exprs = [HNext Down f, AuxBack Down h, AuxBack Down f]
+    huuExpr g h = [HNext Up (HUntil Up g h), Not $ HNext Up (HUntil Up g h)]
+    hsdExpr f _ h = exprs ++ map Not exprs ++ hbdExpr f
+      where exprs = [HBack Down f, AuxBack Down h, AuxBack Down f]
+    hsuExpr g h = [HBack Up (HSince Up g h), Not $ HBack Up (HSince Up g h)]
 
     closList f = case f of
       T               -> [f, Not f]
@@ -100,9 +102,9 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
       Until dir g h   -> [f, Not f] ++ closList g ++ closList h ++ untilExpr dir g h
       Since Down g h  -> [f, Not f] ++ closList g ++ closList h ++ sinceDownExpr g h
       Since Up g h    -> [f, Not f] ++ closList g ++ closList h ++ sinceUpExpr g h
-      HUntil Down g h -> [f, Not f] ++ closList g ++ closList h ++ hudExpr g h
+      HUntil Down g h -> [f, Not f] ++ closList g ++ closList h ++ hudExpr f g h
       HUntil Up g h   -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
-      HSince Down g h -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
+      HSince Down g h -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr f g h
       HSince Up g h   -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
       Eventually g    -> [f, Not f] ++ closList g
       AuxBack _ g     -> [f, Not f] ++ closList g
@@ -289,19 +291,16 @@ sinceCons bitenc clos set = not (E.any bitenc consSet set)
 
 -- consistency check for (HUntil Down g h)
 hierUntilDownCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-hierUntilDownCons bitenc clos set = not (E.any bitenc consSet set)
-                                     &&
-                                     null [f | f@(HUntil Down g h) <- clos,
-                                            present f g h &&
-                                            not (E.member bitenc f set)]
-  where -- if (HUntil Down g h) holds, then or (...) (...) holds
-        present hud g h =
-          (E.member bitenc h set && E.member bitenc (XNext Up T) set)
-          ||
-          (E.member bitenc g set && E.member bitenc (HNext Down hud) set)
-        consSet f@(HUntil Down g h) = not $ present f g h
+hierUntilDownCons bitenc clos set =
+  -- if (HUntil Down g h) holds, then or (...) (...) holds
+  not (E.any bitenc consSet set)
+  -- if (g and HNext Down hud) holds, then (HUntil Down g h) holds
+  -- (the other case is checked by delta rules)
+  && null [f | f@(HUntil Down g _) <- clos,
+            not (E.member bitenc f set) && present f g]
+  where present hud g = E.member bitenc g set && E.member bitenc (HNext Down hud) set
+        consSet f@(HUntil Down g h) = not $ E.member bitenc h set || present f g
         consSet _ = False
-
 
 -- consistency check for (HUntil Up g h)
 hierUntilUpCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
@@ -310,24 +309,23 @@ hierUntilUpCons bitenc clos set =
   not (E.any bitenc consSet set)
   -- if (g and HNext Up huu) holds, then (HUntil Up g h) holds
   -- (the other case is checked by delta rules)
-  && null [f | f@(HUntil Up g h) <- clos,
-            not (E.member bitenc f set) && present f g h]
-  where present huu g _ = E.member bitenc g set && E.member bitenc (HNext Up huu) set
-        consSet f@(HUntil Up g h) = not $ E.member bitenc h set || present f g h
+  && null [f | f@(HUntil Up g _) <- clos,
+            not (E.member bitenc f set) && present f g]
+  where present huu g = E.member bitenc g set && E.member bitenc (HNext Up huu) set
+        consSet f@(HUntil Up g h) = not $ E.member bitenc h set || present f g
         consSet _ = False
 
 -- consistency check for (HSince Down g h)
 hierSinceDownCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-hierSinceDownCons bitenc clos set = not (E.any bitenc consSet set)
-                                    &&
-                                    null [f | f@(HSince Down g h) <- clos,
-                                           present f g h &&
-                                           not (E.member bitenc f set)]
-  where present hsd g h =
-          (E.member bitenc h set && E.member bitenc (XNext Up T) set)
-          ||
-          (E.member bitenc g set && E.member bitenc (HBack Down hsd) set)
-        consSet f@(HSince Down g h) = not $ present f g h
+hierSinceDownCons bitenc clos set =
+  -- if (HSince Down g h) holds, then or (...) (...) holds
+  not (E.any bitenc consSet set)
+  -- if (g and HBack Down hsd) holds, then (HSince Down g h) holds
+  -- (the other case is checked by delta rules)
+  && null [f | f@(HSince Down g _) <- clos,
+            not (E.member bitenc f set) && present f g]
+  where present hsd g = E.member bitenc g set && E.member bitenc (HBack Down hsd) set
+        consSet f@(HSince Down g h) = not $ E.member bitenc h set || present f g
         consSet _ = False
 
 
@@ -338,10 +336,10 @@ hierSinceUpCons bitenc clos set =
   not (E.any bitenc consSet set)
   -- if (g and HBack Up hsu) holds, then (HSince Up g h) holds
   -- (the other case is checked by delta rules)
-  && null [f | f@(HSince Up g h) <- clos,
-            not (E.member bitenc f set) && present f g h]
-  where present hsu g _ = E.member bitenc g set && E.member bitenc (HBack Up hsu) set
-        consSet f@(HSince Up g h) = not $ E.member bitenc h set || present f g h
+  && null [f | f@(HSince Up g _) <- clos,
+            not (E.member bitenc f set) && present f g ]
+  where present hsu g = E.member bitenc g set && E.member bitenc (HBack Up hsu) set
+        consSet f@(HSince Up g h) = not $ E.member bitenc h set || present f g
         consSet _ = False
 
 -- given the BitEncoding and the closure of phi,
@@ -431,6 +429,8 @@ deltaRules bitenc cl precFunc =
                                      , (pbCond,     pbShiftFr)
                                      , (huuCond,    huuShiftFr)
                                      , (hsuCond,    hsuShiftFr)
+                                     , (hudCond,    hudShiftFr)
+                                     , (hsdCond,    hsdShiftFr)
                                      ]
         , ruleGroupFsrs = resolve cl [(xnCond,   xnShiftFsr)]
         }
@@ -466,6 +466,8 @@ deltaRules bitenc cl precFunc =
                                      , (pbCond,     pbPushFr)
                                      , (huuCond,    huuPushFr)
                                      , (hsuCond,    hsuPushFr)
+                                     , (hudCond,    hudShiftFr)
+                                     , (hsdCond,    hsdPushFr)
                                      ]
         , ruleGroupFsrs = resolve cl [(xnCond, xnPushFsr)]
         }
@@ -494,6 +496,8 @@ deltaRules bitenc cl precFunc =
                                      , (hbdCond,    hbdPopFpr1)
                                      , (hbdCond,    hbdPopFpr2)
                                      , (hbdCond,    hbdPopFpr3)
+                                     , (hudCond,    hudPopFpr)
+                                     , (hsdCond,    hsdPopFpr)
                                      ]
         , ruleGroupFrs  = resolve cl [ (hbuCond, hbuPopFr)
                                      , (huuCond, huuPopFr)
@@ -1229,6 +1233,82 @@ deltaRules bitenc cl precFunc =
     hbdShiftPr :: PrInfo -> Bool
     hbdShiftPr = hbdPushPr
     --
+
+    --
+    -- HUD: HUntil Down
+    -- a mask with all HUntil Down formulas set to one
+    maskHud = E.suchThat bitenc checkHud
+    checkHud (HUntil Down _ _) = True
+    checkHud _ = False
+
+    hudCond :: [Formula APType] -> Bool
+    hudCond clos = not (null [f | f@(HUntil Down _ _) <- clos])
+
+    maskAbdHud = E.suchThat bitenc checkAbdHud
+    checkAbdHud (AuxBack Down (HUntil Down _ _)) = True
+    checkAbdHud _ = False
+
+    hudPushFr :: FrInfo -> Bool
+    hudPushFr info =
+      let fCurr = frFutureCurr info
+          (_, fXl, _, _) = frFuturePendComb info
+          fCurrHudfs = E.intersect fCurr maskHud
+      in fXl || E.null fCurrHudfs
+
+    hudShiftFr :: FrInfo -> Bool
+    hudShiftFr = hudPushFr
+
+    hudPopFpr :: FprInfo -> Bool
+    hudPopFpr info =
+      let (_, fXl, fXe, _) = fprFuturePendComb info
+          ppCurr = current $ fromJust (fprPopped info)
+
+          ppCurrAbdHudfs = E.intersect ppCurr maskAbdHud
+          abdh2abdHudh = makeOp2OpMap
+            (\(AuxBack Down (HUntil Down _ h)) -> AuxBack Down h) checkAbdHud
+          checkSet = makeOpCheckSet abdh2abdHudh ppCurr
+      in -- If some HUntil Down holds, the next move can't be a shift
+         (not fXe || E.null ppCurrAbdHudfs)
+         -- If the next move is a pop and h holds, then HUntil Down _ h has to hold
+         && (fXl || fXe || ppCurrAbdHudfs `E.intersect` checkSet == checkSet)
+
+    --
+    -- HSD: HSince Down
+    -- a mask with all HSince Down formulas set to one
+    maskHsd = E.suchThat bitenc checkHsd
+    checkHsd (HSince Down _ _) = True
+    checkHsd _ = False
+
+    hsdCond :: [Formula APType] -> Bool
+    hsdCond clos = not (null [f | f@(HSince Down _ _) <- clos])
+
+    maskAbdHsd = E.suchThat bitenc checkAbdHsd
+    checkAbdHsd (AuxBack Down (HSince Down _ _)) = True
+    checkAbdHsd _ = False
+
+    hsdPushFr :: FrInfo -> Bool
+    hsdPushFr info =
+      let fCurr = frFutureCurr info
+          (_, fXl, _, _) = frFuturePendComb info
+          fCurrHsdfs = E.intersect fCurr maskHsd
+      in fXl || E.null fCurrHsdfs
+
+    hsdShiftFr :: FrInfo -> Bool
+    hsdShiftFr = hsdPushFr
+
+    hsdPopFpr :: FprInfo -> Bool
+    hsdPopFpr info =
+      let (_, fXl, fXe, _) = fprFuturePendComb info
+          ppCurr = current $ fromJust (fprPopped info)
+
+          ppCurrAbdHsdfs = E.intersect ppCurr maskAbdHsd
+          abdh2abdHsdh = makeOp2OpMap
+            (\(AuxBack Down (HSince Down _ h)) -> AuxBack Down h) checkAbdHsd
+          checkSet = makeOpCheckSet abdh2abdHsdh ppCurr
+      in -- If some HSince Down holds, the next move can't be a shift
+         (not fXe || E.null ppCurrAbdHsdfs)
+         -- If the next move is a pop and h holds, then HSince Down _ h has to hold
+         && (fXl || fXe || ppCurrAbdHsdfs `E.intersect` checkSet == checkSet)
 
     -- Ev: Eventually g --
     maskEv = E.suchThat bitenc checkEv

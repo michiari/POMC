@@ -770,7 +770,7 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         )
       , ( "Rejecting Not HUntil Down"
         , False
-        , Not ( HUntil Down (Atomic . Prop $ "c") (Atomic . Prop $ "cend"))
+        , Not (HUntil Down (Atomic . Prop $ "c") (Atomic . Prop $ "cend"))
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["c", "c", "cend", "call", "thr"])
         )
