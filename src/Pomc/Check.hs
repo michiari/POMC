@@ -68,46 +68,45 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
                               phiClos  = closList phi
                          in S.toAscList . S.fromList $ propClos ++ phiClos
   where
-    xbuExpr g = [AuxBack Down g , Not $ AuxBack Down g]
-    hndExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HNext Down g) , Not $ AuxBack Down (HNext Down g)]
-    hbdExpr g = [AuxBack Down g , Not (AuxBack Down g) , AuxBack Down (HBack Down g) , Not $ AuxBack Down (HBack Down g)]
-    untilExpr dir g h     = [PNext dir (Until dir g h) , XNext dir (Until dir g h) , Not $ PNext dir (Until dir g h) , Not $ XNext dir (Until dir g h)]
-    sinceDownExpr g h = [PBack Down (Since Down g h) , XBack Down (Since Down g h) , Not $ PBack Down (Since Down g h) , Not $ XBack Down (Since Down g h)]
-    sinceUpExpr g h   = [PBack Up (Since Up g h) , XBack Up (Since Up g h) , Not $ PBack Up (Since Up g h) , Not $ XBack Up (Since Up g h)] ++ xbuExpr (Since Up g h)
-    hudExpr g h = [XNext Up T   , Not (XNext Up T)   , T , Not T , HNext Down (HUntil Down g h) , Not $ HNext Down (HUntil Down g h)] ++ hndExpr (HUntil Down g h)
-    huuExpr g h = [XBack Down T , Not (XBack Down T) , T , Not T , HNext Up (HUntil Up g h) , Not $ HNext Up (HUntil Up g h)]
-    hsdExpr g h = [XNext Up T   , Not (XNext Up T)   , T , Not T , HBack Down (HSince Down g h) , Not $ HBack Down (HSince Down g h)] ++ hbdExpr (HSince Down g h)
-    hsuExpr g h = [XBack Down T , Not (XBack Down T) , T , Not T , HBack Up (HSince Up g h) , Not $ HBack Up (HSince Up g h)]
+    xbuExpr g = [AuxBack Down g, Not $ AuxBack Down g]
+    hndExpr g = [AuxBack Down g, Not (AuxBack Down g), AuxBack Down (HNext Down g), Not $ AuxBack Down (HNext Down g)]
+    hbdExpr g = [AuxBack Down g, Not (AuxBack Down g), AuxBack Down (HBack Down g), Not $ AuxBack Down (HBack Down g)]
+    untilExpr dir g h = [PNext dir (Until dir g h), XNext dir (Until dir g h), Not $ PNext dir (Until dir g h), Not $ XNext dir (Until dir g h)]
+    sinceDownExpr g h = [PBack Down (Since Down g h), XBack Down (Since Down g h), Not $ PBack Down (Since Down g h), Not $ XBack Down (Since Down g h)]
+    sinceUpExpr g h = [PBack Up (Since Up g h), XBack Up (Since Up g h), Not $ PBack Up (Since Up g h), Not $ XBack Up (Since Up g h)] ++ xbuExpr (Since Up g h)
+    hudExpr g h = [XNext Up T, Not (XNext Up T), T, Not T, HNext Down (HUntil Down g h), Not $ HNext Down (HUntil Down g h)] ++ hndExpr (HUntil Down g h)
+    huuExpr g h = [XBack Down T, Not (XBack Down T), T, Not T, HNext Up (HUntil Up g h), Not $ HNext Up (HUntil Up g h)]
+    hsdExpr g h = [XNext Up T, Not (XNext Up T), T, Not T, HBack Down (HSince Down g h), Not $ HBack Down (HSince Down g h)] ++ hbdExpr (HSince Down g h)
+    hsuExpr g h = [XBack Down T, Not (XBack Down T), T, Not T, HBack Up (HSince Up g h), Not $ HBack Up (HSince Up g h)]
 
-    closList f =
-      case f of
-        T                  -> [f, Not f]
-        Atomic _           -> [f, Not f]
-        Not g              -> closList g
-        Or g h             -> [f, Not f] ++ closList g ++ closList h
-        And g h            -> [f, Not f] ++ closList g ++ closList h
-        Xor g h            -> [f, Not f] ++ closList g ++ closList h
-        Implies g h        -> [f, Not f] ++ closList g ++ closList h
-        Iff g h            -> [f, Not f] ++ closList g ++ closList h
-        PNext _ g          -> [f, Not f] ++ closList g
-        PBack _ g          -> [f, Not f] ++ closList g
-        XNext _ g          -> [f, Not f] ++ closList g
-        XBack Down g       -> [f, Not f] ++ closList g
-        XBack Up g         -> [f, Not f] ++ closList g ++ xbuExpr g
-        HNext Down g       -> [f, Not f] ++ closList g ++ hndExpr g
-        HNext Up g         -> [f, Not f] ++ closList g
-        HBack Down g       -> [f, Not f] ++ closList g ++ hbdExpr g
-        HBack Up g         -> [f, Not f] ++ closList g
-        Until dir g h      -> [f, Not f] ++ closList g ++ closList h ++ untilExpr dir g h
-        Since Down g h     -> [f, Not f] ++ closList g ++ closList h ++ sinceDownExpr g h
-        Since Up g h       -> [f, Not f] ++ closList g ++ closList h ++ sinceUpExpr g h
-        HUntil Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hudExpr g h
-        HUntil Up g h      -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
-        HSince Down g h    -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
-        HSince Up g h      -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
-        Eventually g       -> [f, Not f] ++ closList g
-        AuxBack _ g        -> [f, Not f] ++ closList g
-        Always _           -> error "Always formulas must be transformed to Eventually formulas."
+    closList f = case f of
+      T               -> [f, Not f]
+      Atomic _        -> [f, Not f]
+      Not g           -> closList g
+      Or g h          -> [f, Not f] ++ closList g ++ closList h
+      And g h         -> [f, Not f] ++ closList g ++ closList h
+      Xor g h         -> [f, Not f] ++ closList g ++ closList h
+      Implies g h     -> [f, Not f] ++ closList g ++ closList h
+      Iff g h         -> [f, Not f] ++ closList g ++ closList h
+      PNext _ g       -> [f, Not f] ++ closList g
+      PBack _ g       -> [f, Not f] ++ closList g
+      XNext _ g       -> [f, Not f] ++ closList g
+      XBack Down g    -> [f, Not f] ++ closList g
+      XBack Up g      -> [f, Not f] ++ closList g ++ xbuExpr g
+      HNext Down g    -> [f, Not f] ++ closList g ++ hndExpr g
+      HNext Up g      -> [f, Not f] ++ closList g
+      HBack Down g    -> [f, Not f] ++ closList g ++ hbdExpr g
+      HBack Up g      -> [f, Not f] ++ closList g
+      Until dir g h   -> [f, Not f] ++ closList g ++ closList h ++ untilExpr dir g h
+      Since Down g h  -> [f, Not f] ++ closList g ++ closList h ++ sinceDownExpr g h
+      Since Up g h    -> [f, Not f] ++ closList g ++ closList h ++ sinceUpExpr g h
+      HUntil Down g h -> [f, Not f] ++ closList g ++ closList h ++ hudExpr g h
+      HUntil Up g h   -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
+      HSince Down g h -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr g h
+      HSince Up g h   -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
+      Eventually g    -> [f, Not f] ++ closList g
+      AuxBack _ g     -> [f, Not f] ++ closList g
+      Always _        -> error "Always formulas must be transformed to Eventually formulas."
 
 
 -- given a formula closure, generate a bitEncoding
@@ -306,17 +305,15 @@ hierUntilDownCons bitenc clos set = not (E.any bitenc consSet set)
 
 -- consistency check for (HUntil Up g h)
 hierUntilUpCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-hierUntilUpCons bitenc clos set = not (E.any bitenc consSet set)
-                                     &&
-                                     null [f | f@(HUntil Up g h) <- clos,
-                                            present f g h &&
-                                            not (E.member bitenc f set)]
-  where -- if (HUntil Up g h) holds, then or (...) (...) holds
-        present huu g h =
-          (E.member bitenc h set && E.member bitenc (XBack Down T) set)
-          ||
-          (E.member bitenc g set && E.member bitenc (HNext Up huu) set)
-        consSet f@(HUntil Up g h) = not $ present f g h
+hierUntilUpCons bitenc clos set =
+  -- if (HUntil Up g h) holds, then or (...) (...) holds
+  not (E.any bitenc consSet set)
+  -- if (g and HNext Up huu) holds, then (HUntil Up g h) holds
+  -- (the other case is checked by delta rules)
+  && null [f | f@(HUntil Up g h) <- clos,
+            not (E.member bitenc f set) && present f g h]
+  where present huu g _ = E.member bitenc g set && E.member bitenc (HNext Up huu) set
+        consSet f@(HUntil Up g h) = not $ E.member bitenc h set || present f g h
         consSet _ = False
 
 -- consistency check for (HSince Down g h)
@@ -336,16 +333,15 @@ hierSinceDownCons bitenc clos set = not (E.any bitenc consSet set)
 
 -- consistency check for (HSince Up g h)
 hierSinceUpCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-hierSinceUpCons bitenc clos set = not (E.any bitenc consSet set)
-                                     &&
-                                     null [f | f@(HSince Up g h) <- clos,
-                                            present f g h &&
-                                            not (E.member bitenc f set)]
-  where present hsu g h =
-          (E.member bitenc h set && E.member bitenc (XBack Down T) set)
-          ||
-          (E.member bitenc g set && E.member bitenc (HBack Up hsu) set)
-        consSet f@(HSince Up g h) = not $ present f g h
+hierSinceUpCons bitenc clos set =
+  -- if (HSince Up g h) holds, then or (...) (...) holds
+  not (E.any bitenc consSet set)
+  -- if (g and HBack Up huu) holds, then (HSince Up g h) holds
+  -- (the other case is checked by delta rules)
+  && null [f | f@(HSince Up g h) <- clos,
+            not (E.member bitenc f set) && present f g h]
+  where present hsu g _ = E.member bitenc g set && E.member bitenc (HBack Up hsu) set
+        consSet f@(HSince Up g h) = not $ E.member bitenc h set || present f g h
         consSet _ = False
 
 -- given the BitEncoding and the closure of phi,
@@ -433,6 +429,8 @@ deltaRules bitenc cl precFunc =
         , ruleGroupFrs  = resolve cl [ (const True, xlXeShiftFr)
                                      , (pnCond,     pnShiftFr)
                                      , (pbCond,     pbShiftFr)
+                                     , (huuCond,    huuShiftFr)
+                                     , (hsuCond,    hsuShiftFr)
                                      ]
         , ruleGroupFsrs = resolve cl [(xnCond,   xnShiftFsr)]
         }
@@ -466,6 +464,8 @@ deltaRules bitenc cl precFunc =
         , ruleGroupFrs  = resolve cl [ (const True, xlXePushFr)
                                      , (pnCond,     pnPushFr)
                                      , (pbCond,     pbPushFr)
+                                     , (huuCond,    huuPushFr)
+                                     , (hsuCond,    hsuPushFr)
                                      ]
         , ruleGroupFsrs = resolve cl [(xnCond, xnPushFsr)]
         }
@@ -495,7 +495,10 @@ deltaRules bitenc cl precFunc =
                                      , (hbdCond,    hbdPopFpr2)
                                      , (hbdCond,    hbdPopFpr3)
                                      ]
-        , ruleGroupFrs  = resolve cl [(hbuCond, hbuPopFr)]
+        , ruleGroupFrs  = resolve cl [ (hbuCond, hbuPopFr)
+                                     , (huuCond, huuPopFr)
+                                     , (hsuCond, hsuPopFr)
+                                     ]
         , ruleGroupFsrs = resolve cl [(xnCond,  xnPopFsr)]
         }
   in (shiftGroup, pushGroup, popGroup)
@@ -963,7 +966,7 @@ deltaRules bitenc cl precFunc =
     hnuPopFpr info =
       let (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
           ppCurr = current $ fromJust (fprPopped info) -- formulas currently holding in state to pop
-          ppXr = afterPop $ fromJust (fprPopped info) -- did the state to pop came from a pop transition?
+          ppXr = afterPop $ fromJust (fprPopped info) -- did the state to pop come from a pop transition?
           fPendHnufs = E.intersect fPend maskHnu -- all future pending HNext Up formulas
           ppCurrHnufs = E.intersect ppCurr maskHnu -- HNext Up formulas holding in state to pop
       in if ppXr
@@ -1026,6 +1029,72 @@ deltaRules bitenc cl precFunc =
       let pCurr = current $ prState info --current holding states
           pCurrHbufs = E.intersect pCurr maskHbu -- currently holding HBack Up formulas
       in E.null  $ pCurrHbufs -- no holding HBack Up is allowed when shifting
+
+    --
+    -- HUU: HUntil Up
+    -- a mask with all HUntil Up formulas set to one
+    maskHuu = E.suchThat bitenc checkHuu
+    checkHuu (HUntil Up _ _) = True
+    checkHuu _ = False
+
+    huuCond :: [Formula APType] -> Bool
+    huuCond clos = not (null [f | f@(HUntil Up _ _) <- clos])
+
+    huuPushFr :: FrInfo -> Bool
+    huuPushFr info =
+      let fCurr = frFutureCurr info
+          (_, fXl, fXe, _) = frFuturePendComb info
+          fCurrHuufs = E.intersect fCurr maskHuu
+      in E.null fCurrHuufs || not (fXl || fXe)
+
+    huuShiftFr :: FrInfo -> Bool
+    huuShiftFr = huuPushFr
+
+    huuPopFr :: FrInfo -> Bool
+    huuPopFr info =
+      let fCurr = frFutureCurr info
+          (_, fXl, fXe, _) = frFuturePendComb info
+          fCurrHuufs = E.intersect fCurr maskHuu
+
+          h2huuh = makeOp2OpMap (\(HUntil Up _ h) -> h) checkHuu
+          checkSet = makeOpCheckSet h2huuh fCurr
+      in E.null fCurrHuufs
+         || (not fXe -- If some HUntil Up holds, the next move can't be a shift
+             -- If the next move is a push and h holds, then HUntil Up _ h has to hold
+             && (not fXl || (fCurrHuufs `E.intersect` checkSet == checkSet)))
+
+    --
+    -- HSU: HSince Up
+    -- a mask with all HSince Up formulas set to one
+    maskHsu = E.suchThat bitenc checkHsu
+    checkHsu (HSince Up _ _) = True
+    checkHsu _ = False
+
+    hsuCond :: [Formula APType] -> Bool
+    hsuCond clos = not (null [f | f@(HSince Up _ _) <- clos]) -- TODO: use any checkHsu
+
+    hsuPushFr :: FrInfo -> Bool
+    hsuPushFr info =
+      let fCurr = frFutureCurr info
+          (_, fXl, fXe, _) = frFuturePendComb info
+          fCurrHsufs = E.intersect fCurr maskHsu
+      in E.null fCurrHsufs || not (fXl || fXe)
+
+    hsuShiftFr :: FrInfo -> Bool
+    hsuShiftFr = hsuPushFr
+
+    hsuPopFr :: FrInfo -> Bool
+    hsuPopFr info =
+      let fCurr = frFutureCurr info
+          (_, fXl, fXe, _) = frFuturePendComb info
+          fCurrHsufs = E.intersect fCurr maskHsu
+
+          h2hsuh = makeOp2OpMap (\(HSince Up _ h) -> h) checkHsu
+          checkSet = makeOpCheckSet h2hsuh fCurr
+      in E.null fCurrHsufs
+         || (not fXe -- If some HSince Up holds, the next move can't be a shift
+             -- If the next move is a push and h holds, then HSince Up _ h has to hold
+             && (not fXl || (fCurrHsufs `E.intersect` checkSet == checkSet)))
 
     --
     -- HND: HNext Down
