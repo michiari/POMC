@@ -400,110 +400,110 @@ deltaRules bitenc cl precFunc =
       shiftGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True, xlShiftPr)
-                                     , (const True, xeShiftPr)
-                                     , (const True, propShiftPr)
-                                     , (xndCond,    xndShiftPr)
-                                     , (xnuCond,    xnuShiftPr)
-                                     , (xbdCond,    xbdShiftPr)
-                                     , (xbuCond,    xbuShiftPr)
-                                     , (abdCond,    abdShiftPr)
-                                     , (hnuCond,    hnuShiftPr)
-                                     , (hbuCond,    hbuShiftPr)
-                                     , (hbdCond,    hbdShiftPr)
+          ruleGroupPrs  = resolve cl [ (const True,   xlShiftPr)
+                                     , (const True,   xeShiftPr)
+                                     , (const True,   propShiftPr)
+                                     , (any checkXnd, xndShiftPr)
+                                     , (any checkXnu, xnuShiftPr)
+                                     , (any checkXbd, xbdShiftPr)
+                                     , (any checkXbu, xbuShiftPr)
+                                     , (any checkAbd, abdShiftPr)
+                                     , (any checkHnu, hnuShiftPr)
+                                     , (any checkHbu, hbuShiftPr)
+                                     , (any checkHbd, hbdShiftPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (evCond,   evShiftFcr)
+        , ruleGroupFcrs = resolve cl [ (any checkEv,  evShiftFcr)
                                      ]
-        , ruleGroupFprs = resolve cl [ (const True, xrShiftFpr)
-                                     , (xndCond,    xndShiftFpr)
-                                     , (xnuCond,    xnuShiftFpr)
-                                     , (xbdCond,    xbdShiftFpr)
-                                     , (xbuCond,    xbuShiftFpr)
-                                     , (abdCond,    abdShiftFpr)
-                                     , (hndCond,    hndShiftFpr1)
-                                     , (hndCond,    hndShiftFpr2)
-                                     , (hbdCond,    hbdShiftFpr)
+        , ruleGroupFprs = resolve cl [ (const True,   xrShiftFpr)
+                                     , (any checkXnd, xndShiftFpr)
+                                     , (any checkXnu, xnuShiftFpr)
+                                     , (any checkXbd, xbdShiftFpr)
+                                     , (any checkXbu, xbuShiftFpr)
+                                     , (any checkAbd, abdShiftFpr)
+                                     , (any checkHnd, hndShiftFpr1)
+                                     , (any checkHnd, hndShiftFpr2)
+                                     , (any checkHbd, hbdShiftFpr)
                                      ]
-        , ruleGroupFrs  = resolve cl [ (const True, xlXeShiftFr)
-                                     , (pnCond,     pnShiftFr)
-                                     , (pbCond,     pbShiftFr)
-                                     , (huuCond,    huuShiftFr)
-                                     , (hsuCond,    hsuShiftFr)
-                                     , (hudCond,    hudShiftFr)
-                                     , (hsdCond,    hsdShiftFr)
+        , ruleGroupFrs  = resolve cl [ (const True,   xlXeShiftFr)
+                                     , (any checkPn,  pnShiftFr)
+                                     , (any checkPb,  pbShiftFr)
+                                     , (any checkHuu, huuShiftFr)
+                                     , (any checkHsu, hsuShiftFr)
+                                     , (any checkHud, hudShiftFr)
+                                     , (any checkHsd, hsdShiftFr)
                                      ]
-        , ruleGroupFsrs = resolve cl [(xnCond,   xnShiftFsr)]
+        , ruleGroupFsrs = resolve cl [ (any checkXn,  xnShiftFsr) ]
         }
       -- PUSH RULES
       pushGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True, xlPushPr)
-                                     , (const True, xePushPr)
-                                     , (const True, propPushPr)
-                                     , (xbdCond,    xbdPushPr)
-                                     , (xbuCond,    xbuPushPr)
-                                     , (abdCond,    abdPushPr)
-                                     , (hnuCond,    hnuPushPr1)
-                                     , (hnuCond,    hnuPushPr2)
-                                     , (hbuCond,    hbuPushPr)
-                                     , (hbdCond,    hbdPushPr)
+          ruleGroupPrs  = resolve cl [ (const True,   xlPushPr)
+                                     , (const True,   xePushPr)
+                                     , (const True,   propPushPr)
+                                     , (any checkXbd, xbdPushPr)
+                                     , (any checkXbu, xbuPushPr)
+                                     , (any checkAbd, abdPushPr)
+                                     , (any checkHnu, hnuPushPr1)
+                                     , (any checkHnu, hnuPushPr2)
+                                     , (any checkHbu, hbuPushPr)
+                                     , (any checkHbd, hbdPushPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (evCond,   evPushFcr)
+        , ruleGroupFcrs = resolve cl [ (any checkEv,  evPushFcr)
                                      ]
-        , ruleGroupFprs = resolve cl [ (const True, xrPushFpr)
-                                     , (xndCond,    xndPushFpr)
-                                     , (xnuCond,    xnuPushFpr)
-                                     , (xbdCond,    xbdPushFpr)
-                                     , (xbuCond,    xbuPushFpr)
-                                     , (abdCond,    abdPushFpr)
-                                     , (hndCond,    hndPushFpr1)
-                                     , (hndCond,    hndPushFpr2)
-                                     , (hbdCond,    hbdPushFpr)
+        , ruleGroupFprs = resolve cl [ (const True,   xrPushFpr)
+                                     , (any checkXnd, xndPushFpr)
+                                     , (any checkXnu, xnuPushFpr)
+                                     , (any checkXbd, xbdPushFpr)
+                                     , (any checkXbu, xbuPushFpr)
+                                     , (any checkAbd, abdPushFpr)
+                                     , (any checkHnd, hndPushFpr1)
+                                     , (any checkHnd, hndPushFpr2)
+                                     , (any checkHbd, hbdPushFpr)
                                      ]
-        , ruleGroupFrs  = resolve cl [ (const True, xlXePushFr)
-                                     , (pnCond,     pnPushFr)
-                                     , (pbCond,     pbPushFr)
-                                     , (huuCond,    huuPushFr)
-                                     , (hsuCond,    hsuPushFr)
-                                     , (hudCond,    hudShiftFr)
-                                     , (hsdCond,    hsdPushFr)
+        , ruleGroupFrs  = resolve cl [ (const True,   xlXePushFr)
+                                     , (any checkPn,  pnPushFr)
+                                     , (any checkPb,  pbPushFr)
+                                     , (any checkHuu, huuPushFr)
+                                     , (any checkHsu, hsuPushFr)
+                                     , (any checkHud, hudShiftFr)
+                                     , (any checkHsd, hsdPushFr)
                                      ]
-        , ruleGroupFsrs = resolve cl [(xnCond, xnPushFsr)]
+        , ruleGroupFsrs = resolve cl [ (any checkXn,  xnPushFsr) ]
         }
       -- POP RULES
       popGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True, xlPopPr)
-                                     , (const True, xePopPr)
-                                     , (xndCond,    xndPopPr)
-                                     , (xnuCond,    xnuPopPr)
-                                     , (hnuCond,    hnuPopPr)
+          ruleGroupPrs  = resolve cl [ (const True,   xlPopPr)
+                                     , (const True,   xePopPr)
+                                     , (any checkXnd, xndPopPr)
+                                     , (any checkXnu, xnuPopPr)
+                                     , (any checkHnu, hnuPopPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (evCond,   evPopFcr)
+        , ruleGroupFcrs = resolve cl [ (any checkEv,  evPopFcr)
                                      ]
-        , ruleGroupFprs = resolve cl [ (const True, xrPopFpr)
-                                     , (xndCond,    xndPopFpr)
-                                     , (xnuCond,    xnuPopFpr)
-                                     , (xbdCond,    xbdPopFpr)
-                                     , (xbuCond,    xbuPopFpr)
-                                     , (abdCond,    abdPopFpr)
-                                     , (hnuCond,    hnuPopFpr)
-                                     , (hndCond,    hndPopFpr1)
-                                     , (hndCond,    hndPopFpr2)
-                                     , (hndCond,    hndPopFpr3)
-                                     , (hbdCond,    hbdPopFpr1)
-                                     , (hbdCond,    hbdPopFpr2)
-                                     , (hbdCond,    hbdPopFpr3)
-                                     , (hudCond,    hudPopFpr)
-                                     , (hsdCond,    hsdPopFpr)
+        , ruleGroupFprs = resolve cl [ (const True,   xrPopFpr)
+                                     , (any checkXnd, xndPopFpr)
+                                     , (any checkXnu, xnuPopFpr)
+                                     , (any checkXbd, xbdPopFpr)
+                                     , (any checkXbu, xbuPopFpr)
+                                     , (any checkAbd, abdPopFpr)
+                                     , (any checkHnu, hnuPopFpr)
+                                     , (any checkHnd, hndPopFpr1)
+                                     , (any checkHnd, hndPopFpr2)
+                                     , (any checkHnd, hndPopFpr3)
+                                     , (any checkHbd, hbdPopFpr1)
+                                     , (any checkHbd, hbdPopFpr2)
+                                     , (any checkHbd, hbdPopFpr3)
+                                     , (any checkHud, hudPopFpr)
+                                     , (any checkHsd, hsdPopFpr)
                                      ]
-        , ruleGroupFrs  = resolve cl [ (hbuCond, hbuPopFr)
-                                     , (huuCond, huuPopFr)
-                                     , (hsuCond, hsuPopFr)
+        , ruleGroupFrs  = resolve cl [ (any checkHbu, hbuPopFr)
+                                     , (any checkHuu, huuPopFr)
+                                     , (any checkHsu, hsuPopFr)
                                      ]
-        , ruleGroupFsrs = resolve cl [(xnCond,  xnPopFsr)]
+        , ruleGroupFsrs = resolve cl [ (any checkXn,  xnPopFsr) ]
         }
   in (shiftGroup, pushGroup, popGroup)
   where
@@ -575,8 +575,8 @@ deltaRules bitenc cl precFunc =
     propShiftPr = propPushPr
 
     -- PN rules --
-    pnCond :: [Formula APType] -> Bool
-    pnCond clos = not (null [f | f@(PNext _ _) <- clos])
+    checkPn (PNext _ _) = True
+    checkPn _ = False
 
     pnPushFr :: FrInfo -> Bool
     pnPushFr info =
@@ -586,8 +586,6 @@ deltaRules bitenc cl precFunc =
 
           -- BitVector where all ones correspond to PNext operators
           maskPn = E.suchThat bitenc checkPn
-          checkPn (PNext _ _) = True
-          checkPn _ = False
 
           -- a tuple made of all arguments of PNext formulas in the closure
           pndArgs = V.fromList $ foldl' (getPnDirArg Down) [] cl -- get all the arguments of PNext Down operators
@@ -620,8 +618,8 @@ deltaRules bitenc cl precFunc =
     --
 
     -- PB rules --
-    pbCond :: [Formula APType] -> Bool
-    pbCond clos = not (null [f | f@(PBack _ _) <- clos])
+    checkPb (PBack _ _) = True
+    checkPb _ = False
 
     pbPushFr :: FrInfo -> Bool
     pbPushFr info =
@@ -631,8 +629,6 @@ deltaRules bitenc cl precFunc =
 
           -- a BitVector where all ones correspond to PBack operators
           maskPb = E.suchThat bitenc checkPb
-          checkPb (PBack _ _) = True
-          checkPb _ = False
 
           -- a tuple made of all arguments of PBack formulas in the closure
           pbdArgs = V.fromList $ foldl' (getPbDirArg Down) [] cl -- get all the arguments of PBack Down operators
@@ -669,8 +665,6 @@ deltaRules bitenc cl precFunc =
     checkXn (XNext _ _) = True
     checkXn _ = False
 
-    xnCond clos = not (null [f | f@(XNext _ _) <- clos])
-
     -- rules only for the omega case
     -- stack sets can contain only XNext _ _ formulas,
     -- so there is no need to intersect pPend with maskxn
@@ -706,9 +700,6 @@ deltaRules bitenc cl precFunc =
     checkXnd _ = False
 
     -- check whether we have some XNext Down in the closure
-    xndCond :: [Formula APType] -> Bool
-    xndCond clos = not (null [f | f@(XNext Down _) <- clos])
-
     xndPushFpr :: FprInfo -> Bool
     xndPushFpr info =
       let pCurr = current $ fprState info -- current holding propositions
@@ -759,9 +750,6 @@ deltaRules bitenc cl precFunc =
     checkXnu _ = False
 
     -- check whether we have some XNext Up in the closure
-    xnuCond :: [Formula APType] -> Bool
-    xnuCond clos = not (null [f | f@(XNext Up _) <- clos])
-
     xnuPushFpr :: FprInfo -> Bool
     xnuPushFpr info =
       let pCurr = current $ fprState info -- current holding formulas
@@ -802,9 +790,6 @@ deltaRules bitenc cl precFunc =
     maskXbd = E.suchThat bitenc checkXbd
     checkXbd (XBack Down _) = True
     checkXbd _ = False
-
-    xbdCond :: [Formula APType] -> Bool
-    xbdCond clos = not (null [f | f@(XBack Down _) <- clos])
 
     xbdPushPr :: PrInfo -> Bool
     xbdPushPr info =
@@ -848,9 +833,6 @@ deltaRules bitenc cl precFunc =
     checkXbu _ = False
 
     -- checking whether there are XBack Up formulas in the closure
-    xbuCond :: [Formula APType] -> Bool
-    xbuCond clos = not (null [f | f@(XBack Up _) <- clos])
-
     xbuPushFpr :: FprInfo -> Bool
     xbuPushFpr info =
       let (fPend, _, _, _) = fprFuturePendComb info -- future pending obligations
@@ -895,9 +877,6 @@ deltaRules bitenc cl precFunc =
     checkAbd (AuxBack Down _) = True
     checkAbd _ = False
 
-    abdCond :: [Formula APType] -> Bool
-    abdCond clos = not (null [f | f@(AuxBack Down _) <- clos])
-
     abdPushPr :: PrInfo -> Bool
     abdPushPr info =
       let pCurr = current $ prState info -- current holding formulas
@@ -940,9 +919,6 @@ deltaRules bitenc cl precFunc =
     maskHnu = E.suchThat bitenc checkHnu
     checkHnu (HNext Up _) = True
     checkHnu _ = False
-
-    hnuCond :: [Formula APType] -> Bool
-    hnuCond clos = not (null [f | f@(HNext Up _) <- clos])
 
     hnuPushPr1 :: PrInfo -> Bool
     hnuPushPr1 info =
@@ -998,9 +974,6 @@ deltaRules bitenc cl precFunc =
     checkHbu (HBack Up _) = True
     checkHbu _ = False
 
-    hbuCond :: [Formula APType] -> Bool
-    hbuCond clos = not (null [f | f@(HBack Up _) <- clos])
-
     hbuPushPr :: PrInfo -> Bool
     hbuPushPr info =
       let pCurr = current $ prState info --current holding formulas
@@ -1041,9 +1014,6 @@ deltaRules bitenc cl precFunc =
     checkHuu (HUntil Up _ _) = True
     checkHuu _ = False
 
-    huuCond :: [Formula APType] -> Bool
-    huuCond clos = not (null [f | f@(HUntil Up _ _) <- clos])
-
     huuPushFr :: FrInfo -> Bool
     huuPushFr info =
       let fCurr = frFutureCurr info
@@ -1074,9 +1044,6 @@ deltaRules bitenc cl precFunc =
     checkHsu (HSince Up _ _) = True
     checkHsu _ = False
 
-    hsuCond :: [Formula APType] -> Bool
-    hsuCond clos = not (null [f | f@(HSince Up _ _) <- clos]) -- TODO: use any checkHsu
-
     hsuPushFr :: FrInfo -> Bool
     hsuPushFr info =
       let fCurr = frFutureCurr info
@@ -1106,9 +1073,6 @@ deltaRules bitenc cl precFunc =
     maskHnd = E.suchThat bitenc checkHnd
     checkHnd (HNext Down _) = True
     checkHnd _ = False
-
-    hndCond :: [Formula APType] -> Bool
-    hndCond clos = not (null [f | f@(HNext Down _) <- clos])
 
     hndPopFpr1 :: FprInfo -> Bool
     hndPopFpr1 info =
@@ -1174,9 +1138,6 @@ deltaRules bitenc cl precFunc =
     checkHbd (HBack Down _) = True
     checkHbd _ = False
 
-    hbdCond :: [Formula APType] -> Bool
-    hbdCond clos = not (null [f | f@(HBack Down _) <- clos])
-
     hbdPopFpr1 :: FprInfo -> Bool
     hbdPopFpr1 info =
       let pPend = pending (fprState info) -- current pending formulas
@@ -1241,9 +1202,6 @@ deltaRules bitenc cl precFunc =
     checkHud (HUntil Down _ _) = True
     checkHud _ = False
 
-    hudCond :: [Formula APType] -> Bool
-    hudCond clos = not (null [f | f@(HUntil Down _ _) <- clos])
-
     maskAbdHud = E.suchThat bitenc checkAbdHud
     checkAbdHud (AuxBack Down (HUntil Down _ _)) = True
     checkAbdHud _ = False
@@ -1279,9 +1237,6 @@ deltaRules bitenc cl precFunc =
     checkHsd (HSince Down _ _) = True
     checkHsd _ = False
 
-    hsdCond :: [Formula APType] -> Bool
-    hsdCond clos = not (null [f | f@(HSince Down _ _) <- clos])
-
     maskAbdHsd = E.suchThat bitenc checkAbdHsd
     checkAbdHsd (AuxBack Down (HSince Down _ _)) = True
     checkAbdHsd _ = False
@@ -1315,9 +1270,6 @@ deltaRules bitenc cl precFunc =
     checkEv (Eventually _) = True
     checkEv _ = False
 
-    evCond :: [Formula APType] -> Bool
-    evCond clos = not (null [f | f@(Eventually _) <- clos])
-
     evPushFcr :: FcrInfo -> Bool
     evPushFcr info =
       let pCurr = current $ fcrState info
@@ -1335,6 +1287,7 @@ deltaRules bitenc cl precFunc =
           pCurrEvfs = E.intersect pCurr maskEv
           fCheckSet = E.intersect fCurr maskEv
       in pCurrEvfs ==  fCheckSet
+
 ---------------------------------------------------------------------------------
 -- present
 data PrInfo = PrInfo
