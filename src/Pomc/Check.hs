@@ -546,8 +546,8 @@ deltaRules bitenc cl precFunc =
           -- since the symbol read by a push or a shift gets on top of the stack,
           -- the next move is determined by the precedence relation between it and the next input
       in case precFunc pCurr fCurr of
-        Just Yield -> fXl
-        Just Equal -> fXe
+        Just Yield -> fXl && not fXe
+        Just Equal -> fXe && not fXl
         Just Take -> not (fXe || fXl)
         Nothing -> False
 
