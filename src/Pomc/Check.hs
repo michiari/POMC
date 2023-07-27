@@ -336,7 +336,7 @@ hierSinceUpCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 hierSinceUpCons bitenc clos set =
   -- if (HSince Up g h) holds, then or (...) (...) holds
   not (E.any bitenc consSet set)
-  -- if (g and HBack Up huu) holds, then (HSince Up g h) holds
+  -- if (g and HBack Up hsu) holds, then (HSince Up g h) holds
   -- (the other case is checked by delta rules)
   && null [f | f@(HSince Up g h) <- clos,
             not (E.member bitenc f set) && present f g h]
@@ -1058,10 +1058,10 @@ deltaRules bitenc cl precFunc =
 
           h2huuh = makeOp2OpMap (\(HUntil Up _ h) -> h) checkHuu
           checkSet = makeOpCheckSet h2huuh fCurr
-      in E.null fCurrHuufs
-         || (not fXe -- If some HUntil Up holds, the next move can't be a shift
-             -- If the next move is a push and h holds, then HUntil Up _ h has to hold
-             && (not fXl || (fCurrHuufs `E.intersect` checkSet == checkSet)))
+      in -- If some HUntil Up holds, the next move can't be a shift
+         (E.null fCurrHuufs || not fXe)
+          -- If the next move is a push and h holds, then HUntil Up _ h has to hold
+          && (not fXl || (fCurrHuufs `E.intersect` checkSet == checkSet))
 
     --
     -- HSU: HSince Up
@@ -1091,10 +1091,10 @@ deltaRules bitenc cl precFunc =
 
           h2hsuh = makeOp2OpMap (\(HSince Up _ h) -> h) checkHsu
           checkSet = makeOpCheckSet h2hsuh fCurr
-      in E.null fCurrHsufs
-         || (not fXe -- If some HSince Up holds, the next move can't be a shift
-             -- If the next move is a push and h holds, then HSince Up _ h has to hold
-             && (not fXl || (fCurrHsufs `E.intersect` checkSet == checkSet)))
+      in -- If some HSince Up holds, the next move can't be a shift
+         (E.null fCurrHsufs || not fXe)
+          -- If the next move is a push and h holds, then HSince Up _ h has to hold
+          && (not fXl || (fCurrHsufs `E.intersect` checkSet == checkSet))
 
     --
     -- HND: HNext Down
