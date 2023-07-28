@@ -26,7 +26,7 @@ import Data.List (find)
 import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Control.Monad (foldM)
+import Control.Monad (foldM, when)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -119,6 +119,14 @@ composeMany f arg = go arg
 composeSome :: (a -> Parser a) -> a -> Parser a
 composeSome f arg = f arg >>= composeMany f
 
+varmapMergeDisjoint :: MonadFail m
+                    => Map Text Variable -> Map Text Variable -> m (Map Text Variable)
+varmapMergeDisjoint m1 m2 =
+  if null common
+  then return $ m1 `M.union` m2
+  else fail $ "Identifier(s) " ++ show common ++ " declared multiple times."
+  where common = M.keys $ m1 `M.intersection` m2
+
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
 
@@ -195,7 +203,7 @@ exprP :: Map Text Variable -> Parser Expr
 exprP varmap = untypeExpr <$> typedExprP (Just varmap)
 
 intTypeP :: Parser Type
-intTypeP = fmap UInt (char 'u' *> L.decimal) <|> fmap SInt (char 's' *> L.decimal)
+intTypeP = try $ fmap UInt (char 'u' *> L.decimal) <|> fmap SInt (char 's' *> L.decimal)
 
 arrayTypeP :: Parser Type
 arrayTypeP = try $ do
@@ -217,16 +225,19 @@ typeP = label "type" $ L.lexeme spaceP $
 
 declP :: (Map Text Variable, VarIdInfo)
       -> Parser (Map Text Variable, VarIdInfo)
-declP (varmap, vii) = try $ do
+declP (varmap, vii) = do
   ty <- typeP
   names <- sepBy1 identifierP (symbolP ",")
-  _ <- symbolP ";"
+  when (S.size (S.fromList names) /= length names)
+    $ fail "One or more identifiers declared multiple times."
   let (newVii, offsetList, idList) =
         addVariables (isScalar ty) (fromIntegral $ length names :: IdType) vii
       newVarMap = M.fromList
         $ map (\(name, offset, vid) -> (name, Variable vid name ty offset))
         $ zip3 names offsetList idList
-  return (varmap `M.union` newVarMap, newVii)
+  mergedVarMap <- varmapMergeDisjoint varmap newVarMap
+  _ <- symbolP ";"
+  return (mergedVarMap, newVii)
 
 declsP :: (Map Text Variable, VarIdInfo)
        -> Parser (Map Text Variable, VarIdInfo)
@@ -329,6 +340,8 @@ fargsP vii = do
       idfargs = reverse $ ridfargs
       varmap = M.fromList $ map (\(_, var) -> (varName var, var)) idfargs
       params = map (\(isvr, var) -> if isvr then ValueResult var else Value var) idfargs
+  when (M.size varmap /= length rawfargs)
+    $ fail "One or more identifiers declared multiple times."
   return (newVii, varmap, params)
   where assignId (accfargs, accvii) (isvr, var) =
           let (newVii, [offset], [vid]) = addVariables (isScalar $ varType var) 1 accvii
@@ -351,7 +364,8 @@ functionP gvarmap (vii, sksAparams) = do
   _ <- symbolP ")"
   _ <- symbolP "{"
   (dvarmap, locvii) <- declsP (M.empty, argvii)
-  let lvarmap = argvarmap `M.union` dvarmap
+  lvarmap <- varmapMergeDisjoint argvarmap dvarmap
+  -- M.union is left-biased, so local variables shadow global variables
   (stmts, aparams) <- stmtsP (lvarmap `M.union` gvarmap)
   _ <- symbolP "}"
   let (lScalars, lArrays) =
