@@ -117,6 +117,9 @@ composeMany f arg = go arg
             Just arg1 -> go arg1
             Nothing -> return arg0
 
+composeSome :: (a -> Parser a) -> a -> Parser a
+composeSome f arg = f arg >>= composeMany f
+
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
 
@@ -150,7 +153,7 @@ variableP (Just varmap) = identifierP >>= variableLookup
             Just var -> return var
             Nothing  -> fail $ "Undeclared identifier: " ++ show vname
 variableP Nothing = identifierP >>= -- Just return variable stub, to be replaced later
-  (\vname -> return Variable { varType = UInt 0, varName = vname, varId = 0 })
+  (\vname -> return Variable { varUnId = 0, varName = vname, varType = UInt 0, varId = 0 })
 
 arrayIndexP :: Maybe (Map Text Variable) -> Parser (Variable, TypedExpr)
 arrayIndexP varmap = try $ do
@@ -219,16 +222,12 @@ declP (varmap, vii) = try $ do
   ty <- typeP
   names <- sepBy1 identifierP (symbolP ",")
   _ <- symbolP ";"
-  let numIds = if isScalar ty then scalarIds vii else arrayIds vii
-      numVars = fromIntegral $ length names :: IdType
+  let (newVii, offsetList, idList) =
+        addVariables (isScalar ty) (fromIntegral $ length names :: IdType) vii
       newVarMap = M.fromList
-        $ map (\(name, vid) -> (name, Variable ty name vid))
-        $ zip names [numIds + i | i <- [0..(numVars - 1)]]
-  return ( varmap `M.union` newVarMap
-         , if isScalar ty
-           then vii { scalarIds = numIds + numVars }
-           else vii { arrayIds = numIds + numVars }
-         )
+        $ map (\(name, offset, vid) -> (name, Variable vid name ty offset))
+        $ zip3 names offsetList idList
+  return (varmap `M.union` newVarMap, newVii)
 
 declsP :: (Map Text Variable, VarIdInfo)
        -> Parser (Map Text Variable, VarIdInfo)
@@ -332,51 +331,51 @@ fargsP vii = do
       varmap = M.fromList $ map (\(_, var) -> (varName var, var)) idfargs
       params = map (\(isvr, var) -> if isvr then ValueResult var else Value var) idfargs
   return (newVii, varmap, params)
-  where assignId (accfargs, accvii) (isvr, var)
-          | isScalar . varType $ var = ((isvr, var { varId = scalarIds accvii }):accfargs,
-                                        accvii { scalarIds = scalarIds accvii + 1 })
-          | otherwise                = ((isvr, var { varId = arrayIds accvii }):accfargs,
-                                        accvii { arrayIds = arrayIds accvii + 1 })
+  where assignId (accfargs, accvii) (isvr, var) =
+          let (newVii, [offset], [vid]) = addVariables (isScalar $ varType var) 1 accvii
+          in ((isvr, var { varUnId = vid, varId = offset }):accfargs, newVii)
 
         fargP :: Parser (Bool, Variable)
         fargP = do
           ty <- typeP
           isvr <- optional $ symbolP "&"
           name <- identifierP
-          return (isJust isvr, Variable ty name 0)
+          return (isJust isvr, Variable 0 name ty 0)
 
 functionP :: Map Text Variable
-          -> VarIdInfo
-          -> Parser (FunctionSkeleton, [[TypedExpr]])
-functionP gvarmap vii = do
+          -> (VarIdInfo, [(FunctionSkeleton, [[TypedExpr]])])
+          -> Parser (VarIdInfo, [(FunctionSkeleton, [[TypedExpr]])])
+functionP gvarmap (vii, sksAparams) = do
   fname <- identifierP
   _ <- symbolP "("
   (argvii, argvarmap, params) <- fargsP vii
   _ <- symbolP ")"
   _ <- symbolP "{"
-  (dvarmap, _) <- declsP (M.empty, argvii)
+  (dvarmap, locvii) <- declsP (M.empty, argvii)
   let lvarmap = argvarmap `M.union` dvarmap
   (stmts, aparams) <- stmtsP (lvarmap `M.union` gvarmap)
   _ <- symbolP "}"
   let (lScalars, lArrays) =
         S.partition (isScalar . varType) $ S.fromList $ M.elems lvarmap
-  return ( FunctionSkeleton { skName = fname
-                            , skModules = (parseModules fname)
-                            , skParams = params
-                            , skScalars = lScalars
-                            , skArrays = lArrays
-                            , skStmts = stmts
-                            }
-         , aparams
+  return ( vii { allIds = allIds locvii }
+         , ( FunctionSkeleton { skName = fname
+                              , skModules = parseModules fname
+                              , skParams = params
+                              , skScalars = lScalars
+                              , skArrays = lArrays
+                              , skStmts = stmts
+                              }
+           , aparams
+           ) : sksAparams
          )
 
 programP :: Parser Program
 programP = do
   spaceP
-  (varmap, vii) <- declsP (M.empty, VarIdInfo 0 0)
-  sksAparams <- some $ functionP varmap vii
+  (varmap, vii) <- declsP (M.empty, VarIdInfo 0 0 0)
+  (_, sksAparams) <- composeSome (functionP varmap) (vii, [])
   eof
-  case matchParams sksAparams of
+  case matchParams (reverse sksAparams) of
     Right sks ->
       let (scalarGlobs, arrayGlobs) = S.partition (isScalar . varType) $ S.fromList $ M.elems varmap
           (scalarLocs, arrayLocs) = foldl

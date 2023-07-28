@@ -30,6 +30,7 @@ module Pomc.MiniProc ( Program(..)
                      , programToOpa
                      , IdType
                      , VarIdInfo(..)
+                     , addVariables
 
                      , DeltaTarget(..)
                      , InputLabel(..)
@@ -68,8 +69,9 @@ data Type = UInt Int
           | UIntArray Int Int -- width size
           | SIntArray Int Int -- width size
           deriving (Show, Eq, Ord, Generic)
-data Variable = Variable { varType :: Type
+data Variable = Variable { varUnId :: IdType
                          , varName :: Text
+                         , varType :: Type
                          , varId   :: IdType
                          } deriving (Show, Eq, Ord, Generic)
 type IntValue = BitVector
@@ -439,7 +441,18 @@ lowerBlock sks lowerState thisFinfo linkPred block =
 -- Data structures
 data VarIdInfo = VarIdInfo { scalarIds :: IdType
                            , arrayIds  :: IdType
+                           , allIds    :: IdType
                            } deriving Show
+
+addVariables :: Bool -> IdType -> VarIdInfo -> (VarIdInfo, [IdType], [IdType])
+addVariables scalar n vii =
+  let prevIds = if scalar then scalarIds vii else arrayIds vii
+  in ( if scalar
+       then vii { scalarIds = prevIds + n, allIds = allIds vii + n }
+       else vii { arrayIds = prevIds + n, allIds = allIds vii + n }
+     , [prevIds + i | i <- [0..(n - 1)]]
+     , [allIds vii + i | i <- [0..(n - 1)]]
+     )
 
 isGlobal :: VarIdInfo -> Bool -> IdType -> Bool
 isGlobal gvii scalar vid | scalar = vid < scalarIds gvii
@@ -497,9 +510,9 @@ programToOpa isOmega prog additionalProps =
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
-      gvii = VarIdInfo { scalarIds = S.size . pGlobalScalars $ prog
-                       , arrayIds = S.size . pGlobalArrays $ prog
-                       }
+      gvii = VarIdInfo { scalarIds = sids, arrayIds = aids, allIds = sids + aids }
+        where sids = S.size . pGlobalScalars $ prog
+              aids = S.size . pGlobalArrays $ prog
       localsInfo = M.insert T.empty (globExprMap, V.empty, V.empty)
         $ M.fromList
         $ map (\sk -> let (liScalars, liArrays) =
