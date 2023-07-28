@@ -357,7 +357,7 @@ functionP gvarmap (vii, sksAparams) = do
   _ <- symbolP "}"
   let (lScalars, lArrays) =
         S.partition (isScalar . varType) $ S.fromList $ M.elems lvarmap
-  return ( vii { allIds = allIds locvii }
+  return ( vii { varIds = varIds locvii }
          , ( FunctionSkeleton { skName = fname
                               , skModules = parseModules fname
                               , skParams = params

@@ -439,28 +439,28 @@ lowerBlock sks lowerState thisFinfo linkPred block =
 -- Conversion of the Extended OPA to a plain OPA
 
 -- Data structures
-data VarIdInfo = VarIdInfo { scalarIds :: IdType
-                           , arrayIds  :: IdType
-                           , allIds    :: IdType
+data VarIdInfo = VarIdInfo { scalarOffset :: IdType
+                           , arrayOffset  :: IdType
+                           , varIds       :: IdType
                            } deriving Show
 
 addVariables :: Bool -> IdType -> VarIdInfo -> (VarIdInfo, [IdType], [IdType])
 addVariables scalar n vii =
-  let prevIds = if scalar then scalarIds vii else arrayIds vii
+  let prevIds = if scalar then scalarOffset vii else arrayOffset vii
   in ( if scalar
-       then vii { scalarIds = prevIds + n, allIds = allIds vii + n }
-       else vii { arrayIds = prevIds + n, allIds = allIds vii + n }
+       then vii { scalarOffset = prevIds + n, varIds = varIds vii + n }
+       else vii { arrayOffset = prevIds + n, varIds = varIds vii + n }
      , [prevIds + i | i <- [0..(n - 1)]]
-     , [allIds vii + i | i <- [0..(n - 1)]]
+     , [varIds vii + i | i <- [0..(n - 1)]]
      )
 
 isGlobal :: VarIdInfo -> Bool -> IdType -> Bool
-isGlobal gvii scalar vid | scalar = vid < scalarIds gvii
-                         | otherwise = vid < arrayIds gvii
+isGlobal gvii scalar vid | scalar = vid < scalarOffset gvii
+                         | otherwise = vid < arrayOffset gvii
 
 getLocalIdx :: VarIdInfo -> Bool -> IdType -> Int
-getLocalIdx gvii scalar vid | scalar = vid - scalarIds gvii
-                            | otherwise = vid - arrayIds gvii
+getLocalIdx gvii scalar vid | scalar = vid - scalarOffset gvii
+                            | otherwise = vid - arrayOffset gvii
 
 data VarValuation = VarValuation { vGlobalScalars :: Vector IntValue
                                  , vGlobalArrays  :: Vector ArrayValue
@@ -510,7 +510,7 @@ programToOpa isOmega prog additionalProps =
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
-      gvii = VarIdInfo { scalarIds = sids, arrayIds = aids, allIds = sids + aids }
+      gvii = VarIdInfo { scalarOffset = sids, arrayOffset = aids, varIds = sids + aids }
         where sids = S.size . pGlobalScalars $ prog
               aids = S.size . pGlobalArrays $ prog
       localsInfo = M.insert T.empty (globExprMap, V.empty, V.empty)
