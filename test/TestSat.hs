@@ -19,7 +19,7 @@ import Pomc.Potl (Formula(..), Dir(..))
 tests :: TestTree
 tests = testGroup "TestSat.hs Normal Tests"
   $ map makeTestCase
-  $ (excludeIndices allTestCases [18, 41, 42] ++ [nestedXNext])
+  $ (excludeIndices allTestCases [18, 41, 42] ++ [nestedXNext, xNextNoEqual])
 
 slowTests :: TestTree
 slowTests = testGroup "TestSat.hs Slow Tests"
@@ -75,3 +75,12 @@ andXNext = (("Conjoined XNexts"
             , XNext Down (ap "call") `And` XNext Up (ap "exc") `And` XNext Down (ap "p") `And` XNext Down (ap "q") `And` XNext Down (ap "w") `And` XNext Down (ap "r"))
            , False
            )
+
+-- This formula being unsatisfiable proves that
+-- XBack Down T `And` Not (XBack Up T)
+-- is equivalent to XBack <. T on stlV2Alphabet.
+xNextNoEqual :: (TestCase, Bool)
+xNextNoEqual = (("Right context with yield and take"
+              , Eventually (XBack Down T `And` XBack Up T `And` Not ((ap "ret" `And` XBack Down (ap "call")) `Or` (ap "exc" `And` XBack Down (ap "han")))))
+             , False
+             )
