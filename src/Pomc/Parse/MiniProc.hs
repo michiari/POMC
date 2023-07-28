@@ -25,7 +25,6 @@ import Data.Maybe (isJust)
 import Data.List (find)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Set (Set)
 import qualified Data.Set as S
 import Control.Monad (foldM)
 import Text.Megaparsec
@@ -382,11 +381,7 @@ programP = do
             (\(sc, ar) sk -> (sc `S.union` skScalars sk, ar `S.union` skArrays sk))
             (S.empty, S.empty)
             sks
-          p = Program scalarGlobs arrayGlobs scalarLocs arrayLocs sks
-          undeclFuns = undeclaredFuns p
-      in if S.null undeclFuns
-      then return p
-      else fail $ "Undeclared identifier(s): " ++ show (S.toList undeclFuns)
+      in return $ Program scalarGlobs arrayGlobs scalarLocs arrayLocs sks
     Left ermsg -> fail ermsg
 
 matchParams :: [(FunctionSkeleton, [[TypedExpr]])] -> Either String [FunctionSkeleton]
@@ -400,26 +395,26 @@ matchParams sksAparams = mapM skMatchParams sksAparams
         stmtMatchParams (acc, aparams) stmt =
           (\(newStmt, newParams) -> (newStmt : acc, newParams)) <$> doMatchParam stmt aparams
 
-        doMatchParam (Call fname _) (aparam:aparams)
-          | length aparam == length calleeParams =
-            (\newParams -> (Call fname newParams, aparams)) <$>
-            mapM matchParam (zip aparam calleeParams)
-          | otherwise = Left ("Function " ++ show (skName calleeSk) ++ " requires "
-                              ++ show (length calleeParams) ++ " parameters, given: "
-                              ++ show (length aparam))
-          where calleeSk = skMap M.! fname
-                calleeParams = skParams calleeSk
-                matchParam (texpr, Value fvar)
-                  | isScalar . varType $ fvar =
-                    Right $ ActualVal $ untypeExprWithCast (varType fvar) texpr
-                  | otherwise =
-                      case texpr of
+        doMatchParam (Call fname _) (aparam:aparams) = case skMap M.!? fname of
+          Just calleeSk
+            | length aparam == length calleeParams ->
+                (\newParams -> (Call fname newParams, aparams)) <$>
+                mapM matchParam (zip aparam calleeParams)
+            | otherwise -> Left ("Function " ++ show (skName calleeSk) ++ " requires "
+                                  ++ show (length calleeParams) ++ " parameters, given: "
+                                  ++ show (length aparam))
+            where calleeParams = skParams calleeSk
+                  matchParam (texpr, Value fvar)
+                    | isScalar . varType $ fvar =
+                      Right $ ActualVal $ untypeExprWithCast (varType fvar) texpr
+                    | otherwise = case texpr of
                         TTerm avar | varType avar == varType fvar -> Right $ ActualVal (Term avar)
                         _ -> Left "Type mismatch on array parameter."
-                matchParam (TTerm avar, ValueResult fvar)
-                  | varType avar == varType fvar = Right $ ActualValRes avar
-                  | otherwise = Left "Type mismatch on array parameter."
-                matchParam _ = Left "Value-result actual parameter must be variable names."
+                  matchParam (TTerm avar, ValueResult fvar)
+                    | varType avar == varType fvar = Right $ ActualValRes avar
+                    | otherwise = Left "Type mismatch on array parameter."
+                  matchParam _ = Left "Value-result actual parameter must be variable names."
+          Nothing -> Left $ "Undeclared function identifier: " ++ T.unpack fname
         doMatchParam (TryCatch tryb catchb) aparams = do
           (tryStmts, tryParams) <- blockMatchParams tryb aparams
           (catchStmts, catchParams) <- blockMatchParams catchb tryParams
@@ -433,26 +428,6 @@ matchParams sksAparams = mapM skMatchParams sksAparams
           return (While g bodyStmts, bodyParams)
         doMatchParam stmt (_:aparams) = Right (stmt, aparams)
         doMatchParam _ _ = error "Statement list and params list are not isomorphic."
-
-undeclaredFuns :: Program -> Set Text
-undeclaredFuns p = S.difference usedFuns declaredFuns
-  where declaredFuns = S.fromList $ map skName (pSks p)
-
-        gatherFuns :: Statement -> Set Text
-        gatherFuns (Assignment _ _) = S.empty
-        gatherFuns (Nondeterministic _) = S.empty
-        gatherFuns (Call fname _) = S.singleton fname
-        gatherFuns (TryCatch tryb catchb) = gatherBlockFuns tryb `S.union` gatherBlockFuns catchb
-        gatherFuns (IfThenElse _ thenb elseb) = gatherBlockFuns thenb `S.union` gatherBlockFuns elseb
-        gatherFuns (While _ body) = gatherBlockFuns body
-        gatherFuns Throw = S.empty
-
-        gatherBlockFuns stmts =
-          foldl (\gathered stmt -> gathered `S.union` gatherFuns stmt) S.empty stmts
-
-        usedFuns =
-          foldl (\gathered sk ->
-                   gathered `S.union` (gatherBlockFuns . skStmts $ sk)) S.empty (pSks p)
 
 parseModules :: Text -> [Text]
 parseModules fname = joinModules (head splitModules) (tail splitModules) []
