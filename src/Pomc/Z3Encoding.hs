@@ -26,7 +26,7 @@ import qualified Z3.Monad as Z3
 
 import qualified Control.Exception as E
 import Control.Monad ((<=<), filterM)
-import Data.List ((\\), intercalate, find)
+import Data.List ((\\), intercalate)
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
@@ -847,20 +847,25 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                         ) []
                   $ M.toList fConstMap
     allScalars = S.toList (MP.pGlobalScalars prog) ++ S.toList (MP.pLocalScalars prog)
-    mkVarFunctions = -- TODO: fix ID clash in local variables
-      let mkSVarFun varList vid = do
-            let var = fromJust $ find (\v -> MP.varId v == vid) varList
-            varSym <- mkIntSymbol $ MP.varId var
-            varSort <- mkBvSort $ MP.varWidth var
+    allArrays = S.toList (MP.pGlobalArrays prog) ++ S.toList (MP.pLocalArrays prog)
+    mkVarFunctions =
+      let varMap = M.fromAscListWith (\v _ -> error $ "Repeated var ID " ++ show (MP.varUnId v))
+            $ map (\v -> (MP.varUnId v, v)) $ allScalars ++ allArrays
+          mkSVarFun vid = do
+            let var = varMap M.! vid
+            varSym <- mkIntSymbol vid
+            varSort <- if MP.isScalar $ MP.varType var
+                       then mkBvSort $ MP.varWidth var
+                       else error "Arrays not supported yet."
             varFunc <- mkFuncDecl varSym [nodeSort] varSort
             return (varFunc, varSort)
 
-      in V.generateM (length allScalars) (mkSVarFun allScalars)
+      in V.generateM (M.size varMap) mkSVarFun
 
     mkInit0 :: Vector (FuncDecl, Sort) -> [MP.Variable] -> AST -> Z3 AST
     mkInit0 sVarFunVec vars xLit =
       mkAndWith (\v -> do
-                    let (vFunc, s) = sVarFunVec V.! MP.varId v
+                    let (vFunc, s) = sVarFunVec V.! MP.varUnId v
                     val0 <- mkUnsignedInt 0 s
                     vx <- mkApp1 vFunc xLit
                     mkEq vx val0
@@ -946,7 +951,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
       let propvals :: [MP.Variable] -> Z3 AST
           propvals except =
-            let excSet = S.fromList $ map MP.varId except
+            let excSet = S.fromList $ map MP.varUnId except
             in mkAnd =<< V.ifoldM (\rest i (vf, _) -> if i `S.member` excSet
                                     then return rest
                                     else do
@@ -960,7 +965,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
         MP.Assign (MP.LScalar lhs) rhs -> do
           -- Do assignment
           evalRhs <- evalExpr sVarFunVec rhs xLit
-          lhsXp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId lhs) xp1
+          lhsXp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varUnId lhs) xp1
           lhsXp1EqRhs <- mkEq lhsXp1 evalRhs
           -- Propagate all remaining variables
           propagate <- propvals [lhs]
@@ -971,10 +976,10 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
         MP.CallOp fname fargs aargs -> do
           -- Assign parameters
           let assign (farg, aarg) = do
-                fxp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId (getFargVar farg)) xp1
+                fxp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varUnId (getFargVar farg)) xp1
                 evalAarg <- case aarg of
                   MP.ActualVal e      -> evalExpr sVarFunVec e xLit
-                  MP.ActualValRes var -> mkApp1 (fst $ sVarFunVec V.! MP.varId var) xLit
+                  MP.ActualValRes var -> mkApp1 (fst $ sVarFunVec V.! MP.varUnId var) xLit
                 mkEq fxp1 evalAarg
           params <- mkAndWith assign $ zip fargs aargs
           -- Initialize to 0 all remaining local variables
@@ -989,15 +994,15 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
           let resArgs = map (\(MP.ValueResult r, MP.ActualValRes t) -> (r, t))
                 $ filter (isValRes . fst) $ zip fargs aargs
               assign (r, t) = do
-                txp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId t) xp1
-                rx <- mkApp1 (fst $ sVarFunVec V.! MP.varId r) xLit
+                txp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varUnId t) xp1
+                rx <- mkApp1 (fst $ sVarFunVec V.! MP.varUnId r) xLit
                 mkEq txp1 rx
           params <- mkAndWith assign resArgs
           -- Restore remaining local variables (they may be overlapping if fname is recursive)
           let locals = S.toList $ MP.skScalars $ fnameSksMap M.! fname
               remLocals = locals \\ map snd resArgs
               restore s = do
-                let sFunc = fst $ sVarFunVec V.! MP.varId s
+                let sFunc = fst $ sVarFunVec V.! MP.varUnId s
                 sxp1 <- mkApp1 sFunc xp1
                 sPopped <- mkApp1 sFunc $ fromJust poppedNode
                 mkEq sxp1 sPopped
@@ -1022,7 +1027,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
     evalExpr sVarFunVec expr x = go expr where
       go e = case e of
         MP.Literal val     -> mkBitvector (BV.size val) (BV.nat val)
-        MP.Term var        -> mkApp1 (fst $ sVarFunVec V.! MP.varId var) x
+        MP.Term var        -> mkApp1 (fst $ sVarFunVec V.! MP.varUnId var) x
         MP.ArrayAccess _ _ -> error "Arrays not supported yet."
         MP.Not b           -> mkBvnot =<< mkBvredor =<< go b
         MP.And b1 b2       -> do
