@@ -160,7 +160,7 @@ variableP (Just varmap) = identifierP >>= variableLookup
             Just var -> return var
             Nothing  -> fail $ "Undeclared identifier: " ++ show vname
 variableP Nothing = identifierP >>= -- Just return variable stub, to be replaced later
-  (\vname -> return Variable { varUnId = 0, varName = vname, varType = UInt 0, varId = 0 })
+  (\vname -> return Variable { varId = 0, varName = vname, varType = UInt 0, varOffset = 0 })
 
 arrayIndexP :: Maybe (Map Text Variable) -> Parser (Variable, TypedExpr)
 arrayIndexP varmap = try $ do
@@ -233,7 +233,10 @@ declP (varmap, vii) = do
   let (newVii, offsetList, idList) =
         addVariables (isScalar ty) (fromIntegral $ length names :: IdType) vii
       newVarMap = M.fromList
-        $ map (\(name, offset, vid) -> (name, Variable vid name ty offset))
+        $ map (\(name, offset, vid) ->
+                 ( name
+                 , Variable { varId = vid, varName = name, varType = ty, varOffset = offset }
+                 ))
         $ zip3 names offsetList idList
   mergedVarMap <- varmapMergeDisjoint varmap newVarMap
   _ <- symbolP ";"
@@ -345,14 +348,16 @@ fargsP vii = do
   return (newVii, varmap, params)
   where assignId (accfargs, accvii) (isvr, var) =
           let (newVii, [offset], [vid]) = addVariables (isScalar $ varType var) 1 accvii
-          in ((isvr, var { varUnId = vid, varId = offset }):accfargs, newVii)
+          in ((isvr, var { varId = vid, varOffset = offset }):accfargs, newVii)
 
         fargP :: Parser (Bool, Variable)
         fargP = do
           ty <- typeP
           isvr <- optional $ symbolP "&"
           name <- identifierP
-          return (isJust isvr, Variable 0 name ty 0)
+          return ( isJust isvr
+                 , Variable { varId = 0, varName = name, varType = ty, varOffset = 0 }
+                 )
 
 functionP :: Map Text Variable
           -> (VarIdInfo, [(FunctionSkeleton, [[TypedExpr]])])
