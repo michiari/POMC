@@ -27,6 +27,7 @@ import qualified Z3.Monad as Z3
 import qualified Control.Exception as E
 import Control.Monad ((<=<), filterM)
 import Data.List ((\\), intercalate)
+import Data.Bits (finiteBitSize, countLeadingZeros)
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
@@ -90,7 +91,9 @@ checkQuery :: Formula MP.ExprProp
            -> Query
            -> Word64
            -> IO SMTResult
-checkQuery phi query maxDepth = evalZ3 $ incrementalCheck 0 0 0 minLength
+checkQuery phi query maxDepth = evalZ3
+  -- evalZ3With Nothing (stdOpts +? opt "model_validate" True)
+  $ incrementalCheck 0 0 0 minLength
   where
     pnfPhi = pnf phi
     minLength = case query of
@@ -805,8 +808,8 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                       ) ini
   -- Initialize variables
   nodeBot <- mkUnsignedInt64 0 nodeSort
-  assert =<< mkInit0 sVarFunVec allScalars nodeBot
-  assert =<< mkInit0 sVarFunVec allScalars node1
+  assert =<< mkInit0 sVarFunVec allVariables nodeBot
+  assert =<< mkInit0 sVarFunVec allVariables node1
   -- start ∀x (...)
   -- x < k
   let mkProgTransitions x = do
@@ -848,28 +851,40 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                   $ M.toList fConstMap
     allScalars = S.toList (MP.pGlobalScalars prog) ++ S.toList (MP.pLocalScalars prog)
     allArrays = S.toList (MP.pGlobalArrays prog) ++ S.toList (MP.pLocalArrays prog)
+    allVariables = allScalars ++ allArrays
     mkVarFunctions =
-      let varMap = M.fromAscListWith (\v _ -> error $ "Repeated var ID " ++ show (MP.varId v))
-            $ map (\v -> (MP.varId v, v)) $ allScalars ++ allArrays
+      let varMap = M.fromListWith (\v _ -> error $ "Repeated var ID " ++ show (MP.varId v))
+            $ map (\v -> (MP.varId v, v)) allVariables
+          logBase2Sup x = finiteBitSize x - countLeadingZeros x
           mkSVarFun vid = do
             let var = varMap M.! vid
-            varSym <- mkIntSymbol vid
-            varSort <- if MP.isScalar $ MP.varType var
-                       then mkBvSort $ MP.varWidth var
-                       else error "Arrays not supported yet."
-            varFunc <- mkFuncDecl varSym [nodeSort] varSort
+                ty = MP.varType var
+            scalarSort <- mkBvSort $ MP.typeWidth ty
+            varSort <- if MP.isScalar ty
+                       then return scalarSort
+                       else do
+              idxSort <- mkBvSort $ logBase2Sup (max 1 $ MP.arraySize ty - 1)
+              mkArraySort idxSort scalarSort
+            varFunc <- mkFreshFuncDecl (T.unpack $ MP.varName var) [nodeSort] varSort
             return (varFunc, varSort)
 
       in V.generateM (M.size varMap) mkSVarFun
 
     mkInit0 :: Vector (FuncDecl, Sort) -> [MP.Variable] -> AST -> Z3 AST
-    mkInit0 sVarFunVec vars xLit =
-      mkAndWith (\v -> do
-                    let (vFunc, s) = sVarFunVec V.! MP.varId v
-                    val0 <- mkUnsignedInt 0 s
-                    vx <- mkApp1 vFunc xLit
-                    mkEq vx val0
-                ) vars
+    mkInit0 sVarFunVec vars xLit = mkAndWith init0 vars
+      where init0 v | MP.isScalar $ MP.varType v = do
+                        let (vFunc, s) = sVarFunVec V.! MP.varId v
+                        val0 <- mkUnsignedInt 0 s
+                        vx <- mkApp1 vFunc xLit
+                        mkEq vx val0
+                    | otherwise = do
+                        let (vFunc, s) = sVarFunVec V.! MP.varId v
+                        idxSort <- getArraySortDomain s
+                        elemSort <- getArraySortRange s
+                        val0 <- mkUnsignedInt 0 elemSort
+                        arr0 <- mkConstArray idxSort val0
+                        vx <- mkApp1 vFunc xLit
+                        mkEq vx arr0
 
     mkInput :: Vector (FuncDecl, Sort) -> Sort -> FuncDecl
             -> Map Word (MP.InputLabel, MP.DeltaTarget) -> Word64 -> Z3 AST
@@ -970,9 +985,28 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
           -- Propagate all remaining variables
           propagate <- propvals [lhs]
           mkAnd [lhsXp1EqRhs, propagate]
-        MP.Assign (MP.LArray _var _idxExpr) _rhs -> error "Arrays not supported yet."
+        MP.Assign (MP.LArray var ie) rhs -> do
+          let (arrFun, arrSort) = sVarFunVec V.! MP.varId var
+          evalRhs <- evalExpr sVarFunVec rhs xLit
+          evalIdx <- evalExpr sVarFunVec ie xLit
+          castIdx <- castArrayIndex arrSort evalIdx
+          lhsx <- mkApp1 arrFun xLit
+          lhsXp1 <- mkApp1 arrFun xp1
+          lhsXp1EqRhs <- mkEq lhsXp1 =<< mkStore lhsx castIdx evalRhs
+          propagate <- propvals [var]
+          mkAnd [lhsXp1EqRhs, propagate]
         MP.Nondet (MP.LScalar var) -> propvals [var]
-        MP.Nondet (MP.LArray _var _idxExpr) -> error "Arrays not supported yet."
+        MP.Nondet (MP.LArray var ie) -> do
+          let (arrFun, arrSort) = sVarFunVec V.! MP.varId var
+          elemSort <- getArraySortRange arrSort
+          ndElem <- mkFreshConst (T.unpack $ MP.varName var) elemSort
+          evalIdx <- evalExpr sVarFunVec ie xLit
+          castIdx <- castArrayIndex arrSort evalIdx
+          lhsx <- mkApp1 arrFun xLit
+          lhsXp1 <- mkApp1 arrFun xp1
+          lhsXp1EqNd <- mkEq lhsXp1 =<< mkStore lhsx castIdx ndElem
+          propagate <- propvals [var]
+          mkAnd [lhsXp1EqNd, propagate]
         MP.CallOp fname fargs aargs -> do
           -- Assign parameters
           let assign (farg, aarg) = do
@@ -1026,33 +1060,37 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
     evalExpr :: Vector (FuncDecl, Sort) -> MP.Expr -> AST -> Z3 AST
     evalExpr sVarFunVec expr x = go expr where
       go e = case e of
-        MP.Literal val     -> mkBitvector (BV.size val) (BV.nat val)
-        MP.Term var        -> mkApp1 (fst $ sVarFunVec V.! MP.varId var) x
-        MP.ArrayAccess _ _ -> error "Arrays not supported yet."
-        MP.Not b           -> mkBvnot =<< mkBvredor =<< go b
-        MP.And b1 b2       -> do
+        MP.Literal val        -> mkBitvector (BV.size val) (BV.nat val)
+        MP.Term var           -> mkApp1 (fst $ sVarFunVec V.! MP.varId var) x
+        MP.ArrayAccess var ie -> do
+          let (arrFun, arrSort) = sVarFunVec V.! MP.varId var
+          arr <- mkApp1 arrFun x
+          evalIdx <- go ie
+          mkSelect arr =<< castArrayIndex arrSort evalIdx
+        MP.Not b              -> mkBvnot =<< mkBvredor =<< go b
+        MP.And b1 b2          -> do
           b1x <- mkBvredor =<< go b1
           b2x <- mkBvredor =<< go b2
           mkBvand b1x b2x
-        MP.Or b1 b2        -> do
+        MP.Or b1 b2           -> do
           b1x <- mkBvredor =<< go b1
           b2x <- mkBvredor =<< go b2
           mkBvor b1x b2x
-        MP.Add e1 e2       -> mkBinOp mkBvadd e1 e2
-        MP.Sub e1 e2       -> mkBinOp mkBvsub e1 e2
-        MP.Mul e1 e2       -> mkBinOp mkBvmul e1 e2
-        MP.UDiv e1 e2      -> mkBinOp mkBvudiv e1 e2
-        MP.SDiv e1 e2      -> mkBinOp mkBvsdiv e1 e2
-        MP.URem e1 e2      -> mkBinOp mkBvurem e1 e2
-        MP.SRem e1 e2      -> mkBinOp mkBvsrem e1 e2
-        MP.Eq e1 e2        -> mkBvFromBool =<< mkBinOp mkEq e1 e2
-        MP.ULt e1 e2       -> mkBvFromBool =<< mkBinOp mkBvult e1 e2
-        MP.ULeq e1 e2      -> mkBvFromBool =<< mkBinOp mkBvule e1 e2
-        MP.SLt e1 e2       -> mkBvFromBool =<< mkBinOp mkBvslt e1 e2
-        MP.SLeq e1 e2      -> mkBvFromBool =<< mkBinOp mkBvsle e1 e2
-        MP.UExt w e1       -> mkZeroExt w =<< go e1
-        MP.SExt w e1       -> mkSignExt w =<< go e1
-        MP.Trunc w e1      -> mkExtract (w - 1) 0 =<< go e1
+        MP.Add e1 e2          -> mkBinOp mkBvadd e1 e2
+        MP.Sub e1 e2          -> mkBinOp mkBvsub e1 e2
+        MP.Mul e1 e2          -> mkBinOp mkBvmul e1 e2
+        MP.UDiv e1 e2         -> mkBinOp mkBvudiv e1 e2
+        MP.SDiv e1 e2         -> mkBinOp mkBvsdiv e1 e2
+        MP.URem e1 e2         -> mkBinOp mkBvurem e1 e2
+        MP.SRem e1 e2         -> mkBinOp mkBvsrem e1 e2
+        MP.Eq e1 e2           -> mkBvFromBool =<< mkBinOp mkEq e1 e2
+        MP.ULt e1 e2          -> mkBvFromBool =<< mkBinOp mkBvult e1 e2
+        MP.ULeq e1 e2         -> mkBvFromBool =<< mkBinOp mkBvule e1 e2
+        MP.SLt e1 e2          -> mkBvFromBool =<< mkBinOp mkBvslt e1 e2
+        MP.SLeq e1 e2         -> mkBvFromBool =<< mkBinOp mkBvsle e1 e2
+        MP.UExt w e1          -> mkZeroExt w =<< go e1
+        MP.SExt w e1          -> mkSignExt w =<< go e1
+        MP.Trunc w e1         -> mkExtract (w - 1) 0 =<< go e1
 
       mkBinOp op e1 e2 = do
         e1x <- go e1
@@ -1064,6 +1102,17 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
         true <- mkUnsignedInt 1 bitSort
         false <- mkUnsignedInt 0 bitSort
         mkIte b true false
+
+    castArrayIndex :: Sort -> AST -> Z3 AST
+    castArrayIndex arrSort evalIdx = do
+      idxWidth <- getBvSortSize =<< getArraySortDomain arrSort
+      evalIdxWidth <- getBvSortSize =<< getSort evalIdx
+      let idxDiff = idxWidth - evalIdxWidth
+      if idxDiff < 0
+        then mkExtract (idxWidth - 1) 0 evalIdx
+        else if idxDiff > 0
+             then mkZeroExt idxDiff evalIdx
+             else return evalIdx
 
 
 -- push(x), shift(x), pop(x)

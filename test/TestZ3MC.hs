@@ -30,7 +30,8 @@ import qualified Debug.Trace as DBG
 tests :: TestTree
 tests = testGroup "Z3Encoding Model Checking Tests"
   [ sasEvalTests, noHanEvalTests, simpleThenEvalTests, simpleElseEvalTests
-  , nondetTrue, nondetExprProp, testHierD, testHierU
+  , singleWhile, exprsTests, intTests, exprPropTests
+  , testHierD, testHierU
   ]
 
 makeTestCase :: T.Text
@@ -180,12 +181,71 @@ expectedSimpleElseEval =
   , Unsat, Unsat                                 -- until_misc
   ]
 
+singleWhile :: TestTree
+singleWhile = makeTestCase simpleWhileSource 12
+  (("Single-Iteration While Loop"
+   , Not $ Until Down T (ap "call"
+                         `And` ap "pb"
+                         `And` (HNext Up $ HUntil Up T (ap "call" `And` ap "pb"))))
+  , Unknown)
+
+exprsTests :: TestTree
+exprsTests = testGroup "BoolExpr Tests"
+  [ makeTestCase exprsSource 20 (("Check Or BoolExpr", Until Down T (ap "call" `And` ap "pb")), Unknown)
+  , makeTestCase exprsSource 20 (("Check Or Not BoolExpr", Until Down T (ap "call" `And` ap "pc")), Unknown)
+  , makeTestCase exprsSource 20 (("Check And Not BoolExpr", Until Down T (ap "call" `And` ap "pd")), Unsat)
+  ]
+
+intTests :: TestTree
+intTests = testGroup "Int Variables Tests" [ u8Arith1Tests
+                                           , u8Arith2Tests
+                                           , arithCastsTests
+                                           , nondetTests
+                                           , nondetTrue
+                                           , nondetExprProp
+                                           , arrayTests
+                                           , arrayLoopTests
+                                           , localTests
+                                           , argTests
+                                           ]
+
+u8Arith1Tests :: TestTree
+u8Arith1Tests = testGroup "u8Arith1"
+  [ makeTestCase u8Arith1Src 12 (("Throws.", Until Up T (ap "exc")), Unknown)
+  , makeTestCase u8Arith1Src 12 (("Terminates normally.", Until Up T (ap "ret")), Unsat)
+  , makeParseTestCase u8Arith1Src 12 "Variable a is non-zero at the end." "XNu [|a]" Unknown
+  ]
+
+u8Arith2Tests :: TestTree
+u8Arith2Tests = testGroup "u8Arith2"
+  [ makeTestCase u8Arith2Src 18 (("Terminates normally.", Until Up T (ap "ret")), Unknown)
+  , makeParseTestCase u8Arith2Src 18 "Assert true." "T Uu (ret && [|assert])" Unknown
+  , makeParseTestCase u8Arith2Src 18 "Assert false." "T Uu (ret && ~[|assert])" Unsat
+  ]
+
+arithCastsTests :: TestTree
+arithCastsTests = testGroup "ArithCasts"
+  [ makeParseTestCase arithCastsSrc 24 "a + c > 1024u16" "T Ud (ret && [|assert1])" Unknown
+  , makeParseTestCase arithCastsSrc 24 "b + d < 0s8" "T Ud (ret && [|assert2])" Unknown
+  , makeParseTestCase arithCastsSrc 24 "f == 25u8" "T Ud (ret && [|assert3])" Unknown
+  , makeParseTestCase arithCastsSrc 24 "b * c == 10240s16" "T Ud (ret && [|assert4])" Unknown
+  , makeParseTestCase arithCastsSrc 24 "d / b == -1s8" "T Ud (ret && [|assert5])" Unknown
+  ]
+
+nondetTests :: TestTree
+nondetTests = testGroup "Nondeterministic Int"
+  [ makeParseTestCase nondetSrc 18 "Coverage 0" "XNd (ret && [|cover0])" Unsat
+  , makeParseTestCase nondetSrc 18 "Coverage 1" "XNd (ret && [|cover1])" Unsat
+  , makeParseTestCase nondetSrc 18 "Coverage 2" "XNd (ret && [|cover2])" Unsat
+  , makeParseTestCase nondetSrc 18 "Assert true." "T Uu (ret && [|assert])" Unknown
+  ]
+
 nondetTrue :: TestTree
 nondetTrue = testGroup "Nondeterministic Int Reachability"
   [ makeTestCase nondetSrc 20 (("True", Not T), Unsat)
   , makeTestCase nondetSrcLong 20 (("True", Not T), Unsat)
   , makeTestCase veryNondetSrc 20 (("Very Nondet", Not T), Unsat)
-  , makeTestCase nondetSrcLong 20 (("Sbobinz", Not (PNext Down $ ap "stm")), Unsat)
+  , makeTestCase nondetSrcLong 20 (("Not stm", Not (PNext Down $ ap "stm")), Unsat)
   ]
 
 nondetExprProp :: TestTree
@@ -228,6 +288,43 @@ main() {
 }
 |]
 
+arrayTests :: TestTree
+arrayTests = testGroup "Int Array Tests"
+  [ makeParseTestCase arraySrc 18 "Coverage 0" "XNd (ret && ~[|cover0])" Unsat
+  , makeParseTestCase arraySrc 18 "Coverage 1" "XNd (ret && ~[|cover1])" Unsat
+  , makeParseTestCase arraySrc 18 "Assert 0" "XNd (ret && [|assert0])" Unknown
+  ]
+
+arrayLoopTests :: TestTree
+arrayLoopTests = testGroup "Int Array Loop Tests"
+  [ makeParseTestCase arrayLoopSrc 200 "Assert 0" "XNd (ret && ~[|assert0])" Unknown ]
+
+localTests :: TestTree
+localTests = testGroup "Local Variables Tests"
+  [ makeParseTestCase localTestsSrc 50 "Assert A" "T Ud (ret && [pA|assertA])" Unknown
+  , makeParseTestCase localTestsSrc 50 "Assert B" "T Ud (ret && [pB|assertB])" Unknown
+  , makeParseTestCase localTestsSrc 50 "Assert C" "T Ud (ret && [pC|assertC])" Unsat
+  ]
+
+argTests :: TestTree
+argTests = testGroup "Function Arguments Tests"
+  [ makeParseTestCase argTestsSrc 60 "Assert Main 0" "T Ud (ret && [main|assertMain0])" Unknown
+  , makeParseTestCase argTestsSrc 60 "Assert Main 1" "T Ud (ret && [main|assertMain1])" Unknown
+  , makeParseTestCase argTestsSrc 60 "Assert A 0" "T Ud (ret && [pA|assertA0])" Unknown
+  , makeParseTestCase argTestsSrc 60 "Assert A 1" "T Ud (ret && [pA|assertA1])" Unknown
+  , makeParseTestCase argTestsSrc 60 "Assert B 0" "T Ud (ret && [pB|assertB0])" Unknown
+  , makeParseTestCase argTestsSrc 60 "Assert B 1" "T Ud (ret && [pB|assertB1])" Unknown
+  ]
+
+exprPropTests :: TestTree
+exprPropTests = testGroup "Expression Propositions Tests"
+  [ makeParseTestCase exprPropTestsSrc 50 "Assert Main 0" "T Ud (stm && [main| a + b + c[0u8] + c[1u8] == 28u8 ])" Unknown
+  , makeParseTestCase exprPropTestsSrc 50 "Assert Main 1" "T Ud (ret && [main|a + b + c[0u8] + c[1u8] + w == 84u8])" Unknown
+  , makeParseTestCase exprPropTestsSrc 50 "Assert A 0" "T Ud (stm && [pA| u == 70u8 ])" Unknown
+  , makeParseTestCase exprPropTestsSrc 50 "Assert A 1" "T Ud (ret && [pA| u == 13u8])" Unknown
+  , makeParseTestCase exprPropTestsSrc 50 "Assert B 0" "T Ud (stm && [pB| w + r + s + t[0u8] + t[1u8] + x == 29u8 ])" Unknown
+  , makeParseTestCase exprPropTestsSrc 50 "Assert B 1" "T Ud (ret && [pB| w + r + s + t[0u8] + t[1u8] + x == 90u8 ])" Unknown
+  ]
 
 testHierD :: TestTree
 testHierD = testGroup "Tests for Hierarchical Down Operators"

@@ -24,6 +24,7 @@ module Pomc.MiniProc ( Program(..)
                      , isScalar
                      , isArray
                      , typeWidth
+                     , arraySize
                      , scalarType
                      , commonType
                      , varWidth

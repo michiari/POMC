@@ -12,7 +12,17 @@ module TestMP ( tests
               , noHanSource
               , simpleThenSource
               , simpleElseSource
+              , simpleWhileSource
+              , exprsSource
+              , u8Arith1Src
+              , u8Arith2Src
+              , arithCastsSrc
               , nondetSrc
+              , arraySrc
+              , arrayLoopSrc
+              , localTestsSrc
+              , argTestsSrc
+              , exprPropTestsSrc
               , testHierDSrc
               , testHierUSrc
               ) where
