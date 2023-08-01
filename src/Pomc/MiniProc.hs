@@ -30,6 +30,7 @@ module Pomc.MiniProc ( Program(..)
                      , programToOpa
                      , IdType
                      , VarIdInfo(..)
+                     , addVariables
 
                      , DeltaTarget(..)
                      , InputLabel(..)
@@ -68,9 +69,10 @@ data Type = UInt Int
           | UIntArray Int Int -- width size
           | SIntArray Int Int -- width size
           deriving (Show, Eq, Ord, Generic)
-data Variable = Variable { varType :: Type
-                         , varName :: Text
-                         , varId   :: IdType
+data Variable = Variable { varId     :: IdType
+                         , varName   :: Text
+                         , varType   :: Type
+                         , varOffset :: IdType
                          } deriving (Show, Eq, Ord, Generic)
 type IntValue = BitVector
 type ArrayValue = Vector IntValue
@@ -437,17 +439,28 @@ lowerBlock sks lowerState thisFinfo linkPred block =
 -- Conversion of the Extended OPA to a plain OPA
 
 -- Data structures
-data VarIdInfo = VarIdInfo { scalarIds :: IdType
-                           , arrayIds  :: IdType
+data VarIdInfo = VarIdInfo { scalarOffset :: IdType
+                           , arrayOffset  :: IdType
+                           , varIds       :: IdType
                            } deriving Show
 
+addVariables :: Bool -> IdType -> VarIdInfo -> (VarIdInfo, [IdType], [IdType])
+addVariables scalar n vii =
+  let prevIds = if scalar then scalarOffset vii else arrayOffset vii
+  in ( if scalar
+       then vii { scalarOffset = prevIds + n, varIds = varIds vii + n }
+       else vii { arrayOffset = prevIds + n, varIds = varIds vii + n }
+     , [prevIds + i | i <- [0..(n - 1)]]
+     , [varIds vii + i | i <- [0..(n - 1)]]
+     )
+
 isGlobal :: VarIdInfo -> Bool -> IdType -> Bool
-isGlobal gvii scalar vid | scalar = vid < scalarIds gvii
-                         | otherwise = vid < arrayIds gvii
+isGlobal gvii scalar vid | scalar = vid < scalarOffset gvii
+                         | otherwise = vid < arrayOffset gvii
 
 getLocalIdx :: VarIdInfo -> Bool -> IdType -> Int
-getLocalIdx gvii scalar vid | scalar = vid - scalarIds gvii
-                            | otherwise = vid - arrayIds gvii
+getLocalIdx gvii scalar vid | scalar = vid - scalarOffset gvii
+                            | otherwise = vid - arrayOffset gvii
 
 data VarValuation = VarValuation { vGlobalScalars :: Vector IntValue
                                  , vGlobalArrays  :: Vector ArrayValue
@@ -464,9 +477,9 @@ initialValuation :: (Bool -> IdType -> IdType)
                  -> (Vector IntValue, Vector ArrayValue)
 initialValuation getIdx svars avars = (scalars, arrays)
   where scalars = V.replicate (S.size svars) B.nil  V.//
-          map (\var -> (getIdx True $ varId var, initialScalar var)) (S.toList svars)
+          map (\var -> (getIdx True $ varOffset var, initialScalar var)) (S.toList svars)
         arrays = V.replicate (S.size avars) V.empty V.//
-          map (\var -> (getIdx False $ varId var, initialArray var)) (S.toList avars)
+          map (\var -> (getIdx False $ varOffset var, initialArray var)) (S.toList avars)
 
         initialScalar = B.zeros . varWidth
         initialArray var = V.replicate (arraySize . varType $ var) (initialScalar var)
@@ -497,9 +510,9 @@ programToOpa isOmega prog additionalProps =
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
-      gvii = VarIdInfo { scalarIds = S.size . pGlobalScalars $ prog
-                       , arrayIds = S.size . pGlobalArrays $ prog
-                       }
+      gvii = VarIdInfo { scalarOffset = sids, arrayOffset = aids, varIds = sids + aids }
+        where sids = S.size . pGlobalScalars $ prog
+              aids = S.size . pGlobalArrays $ prog
       localsInfo = M.insert T.empty (globExprMap, V.empty, V.empty)
         $ M.fromList
         $ map (\sk -> let (liScalars, liArrays) =
@@ -635,7 +648,7 @@ scalarAssign gvii vval var val
       vGlobalScalars = vGlobalScalars vval V.// [(vid, val)] }
   | otherwise = vval {
       vLocalScalars = vLocalScalars vval V.// [(getLocalIdx gvii True vid, val)] }
-  where vid = varId var
+  where vid = varOffset var
 
 arrayAssign :: VarIdInfo
             -> VarValuation
@@ -648,7 +661,7 @@ arrayAssign gvii vval var idxExpr val
       vGlobalArrays = doAssign (vGlobalArrays vval) vid }
   | otherwise = vval {
       vLocalArrays = doAssign (vLocalArrays vval) $ getLocalIdx gvii False vid }
-  where vid = varId var
+  where vid = varOffset var
         idx = fromEnum . B.nat . evalExpr gvii vval $ idxExpr
         doAssign aval varIdx =
           aval V.// [(varIdx, (aval V.! varIdx) V.// [(idx, val)])]
@@ -664,8 +677,8 @@ wholeArrayAssign gvii dstVval dstVar srcVval srcVar
       vGlobalArrays = vGlobalArrays dstVval V.// [(dstVid, srcVal)] }
   | otherwise = dstVval {
       vLocalArrays = vLocalArrays dstVval V.// [(getLocalIdx gvii False dstVid, srcVal)] }
-  where dstVid = varId dstVar
-        srcVid = varId srcVar
+  where dstVid = varOffset dstVar
+        srcVid = varOffset srcVar
         srcVal | isGlobal gvii False srcVid = vGlobalArrays srcVval V.! srcVid
                | otherwise = vLocalArrays srcVval V.! getLocalIdx gvii False srcVid
 
@@ -674,10 +687,10 @@ evalExpr _ _ (Literal val) = val
 evalExpr gvii vval (Term var)
   | isGlobal gvii True vid = vGlobalScalars vval V.! vid
   | otherwise = vLocalScalars vval V.! getLocalIdx gvii True vid
-  where vid = varId var
+  where vid = varOffset var
 evalExpr gvii vval (ArrayAccess var idxExpr) =
   arr V.! (fromEnum . B.nat . evalExpr gvii vval $ idxExpr)
-  where vid = varId var
+  where vid = varOffset var
         arr | isGlobal gvii False vid = vGlobalArrays vval V.! vid
             | otherwise = vLocalArrays vval V.! getLocalIdx gvii False vid
 evalExpr gvii vval (Not bexpr) = B.fromBool . not . toBool $ evalExpr gvii vval bexpr
