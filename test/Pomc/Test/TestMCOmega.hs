@@ -1,50 +1,43 @@
 {- |
-   Module      : TestMC
+   Module      : Pomc.Test.TestMCOmega
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestMC (tests, slowTests) where
+module Pomc.Test.TestMCOmega (tests, slowTests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import OPMs (stlV2Alphabet, makeInputSet)
-import EvalFormulas (TestCase, ap, zipExpected, excludeIndices, formulas)
+import Pomc.Test.EvalFormulas (TestCase, ap, zipExpected, excludeIndices, formulas)
+import Pomc.Test.OPMs (stlV2Alphabet, makeInputSet)
 import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (ExplicitOpa(..), modelCheckExplicitGen)
-import qualified Data.Set as Set (toList)
 
 tests :: TestTree
-tests = testGroup "ModelChecking.hs Tests" [ sasEvalTests, synthEvalTests, lREvalTests
-                                           , inspectionTest, overflowTest
-                                           , jensenTests, jensenFullTests
-                                           , stackExcTests, stackExcSwapTests
-                                           ]
+tests = testGroup "ModelChecking.hs Omega Tests" [ sasEvalTests, lREvalTests
+                                                 , inspectionTest, overflowTest
+                                                 , jensenTests, jensenFullTests
+                                                 , stackExcTests, stackExcSwapTests
+                                                 , xnextdRegressionTests
+                                                 ]
 
 sasEvalTests :: TestTree
-sasEvalTests = testGroup "SAS OPA MC Eval Tests" $
-  map (makeTestCase simpleExc) $ zipExpected formulas expectedSasEval
-
-synthEvalTests :: TestTree
-synthEvalTests = testGroup "SYNTH OPA MC Eval Tests" $
-  map (makeTestCase synth) $ zipExpected formulas expectedSasEval
+sasEvalTests = testGroup "SAS OPA MC Omega Eval Tests" $
+  map (makeTestCase simpleExc) (zipExpected sasFormulas expectedSasEval)
+  where sasFormulas = excludeIndices formulas [44]
 
 lREvalTests :: TestTree
-lREvalTests = testGroup "LargerRec OPA MC Eval Tests" $
-  map (makeTestCase largerRec) $ zipExpected lRFormulas expectedLargerRecEval
-  where lRFormulas = excludeIndices formulas [18, 44]
+lREvalTests = testGroup "LargerRec OPA MC Omega Eval Tests" $
+  map (makeTestCase largerRec) (zipExpected lRFormulas expectedLargerRecEval)
+  where lRFormulas = excludeIndices formulas [18, 22, 33, 38, 44]
 
--- finite model checking case
 makeTestCase :: ExplicitOpa Word String
              -> (TestCase, Bool)
              -> TestTree
 makeTestCase opa ((name, phi), expected) =
-  let (sat, trace) = modelCheckExplicitGen False phi opa
-      debugMsg False tr = "Expected True, got False. Counterexample:\n"
-        ++ show (map (\(q, b) -> (q, Set.toList b)) tr)
-      debugMsg True _ = "Expected False, got True."
-  in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
+  testCase (name ++ " (" ++ show phi ++ ")")
+  $ fst (modelCheckExplicitGen True phi opa) @?= expected
 
 
 -- State encoding:
@@ -55,7 +48,7 @@ simpleExc :: ExplicitOpa Word String
 simpleExc = ExplicitOpa
             { eoAlphabet = stlV2Alphabet
             , eoInitials = [0]
-            , eoFinals = [10]
+            , eoFinals = [4,10]
             , eoDeltaPush =
                 [ (0, makeInputSet ["call", "pa"],   [1])
                 , (1, makeInputSet ["han"],          [2])
@@ -64,11 +57,13 @@ simpleExc = ExplicitOpa
                 , (4, makeInputSet ["call", "pc"],   [4])
                 , (6, makeInputSet ["call", "perr"], [7])
                 , (8, makeInputSet ["call", "perr"], [7])
+                , (10, makeInputSet ["call"], [10])
                 ]
             , eoDeltaShift =
                 [ (4, makeInputSet ["exc"],         [5])
                 , (7, makeInputSet ["ret", "perr"], [7])
                 , (9, makeInputSet ["ret", "pa"],   [11])
+                , (10, makeInputSet ["ret"], [10])
                 ]
             , eoDeltaPop =
                 [ (4, 2, [4])
@@ -78,87 +73,37 @@ simpleExc = ExplicitOpa
                 , (7, 6, [8])
                 , (7, 8, [9])
                 , (11, 0, [10])
+                , (10, 10, [10])
                 ]
             }
 
 expectedSasEval :: [Bool]
 expectedSasEval =
-  [ True, False, True, False, False, False
-  , False, False, False, False, True, True
-  , False, True, False, True, False, False
-  , False, False, False, False, False, True -- base_tests
-  , True, True, True, False, True    -- chain_next
-  , True, False, False, True         -- contains_exc
+  [ True,  False,  True, False, False, False
+  , False, False, False, False, False, False
+  , False, False, False, False, False, False
+  , False, False, False, False, False, False -- base_tests
+  , False, False, False, False, True -- chain_next
+  , False, False, False, True        -- contains_exc
   , True                             -- data_access
-  , False, False, True, False        -- empty_frame
+  , False, False, False, False       -- empty_frame
   , True                             -- exception_safety
   , False, False, False, False       -- hier_down
   , False                            -- hier_insp
-  , True                             -- hier_insp_exc
-  , True, True, False, False         -- hier_up
+  , False, False, False, False       -- hier_up
   , False, False                     -- normal_ret
   , True, True                       -- no_throw
-  , True, True                       -- stack_inspection
+  , False, False                     -- stack_inspection
   , False                            -- uninstall_han
-  , False, True, True, True          -- until_exc
-  , True, True, True                 -- until_misc
+  , False, False, True, False        -- until_exc
+  , False, False, False              -- until_misc
   ]
-
-
-synth :: ExplicitOpa Word String
-synth = ExplicitOpa
-  { eoAlphabet = stlV2Alphabet
-  , eoInitials = [0]
-  , eoFinals = [1]
-  , eoDeltaPush =
-      [ (0, makeInputSet ["call", "pa"],[6])
-      , (4, makeInputSet ["exc"],[1])
-      , (6, makeInputSet ["han"],[7])
-      , (7, makeInputSet ["call", "pb"],[12])
-      , (10, makeInputSet ["exc"],[1])
-      , (12, makeInputSet ["call", "pc"],[15,17])
-      , (15, makeInputSet ["exc"],[1])
-      , (17, makeInputSet ["call", "pc"],[15,17])
-      , (21, makeInputSet ["call", "perr"],[22])
-      , (24, makeInputSet ["exc"],[1])
-      , (27, makeInputSet ["call", "perr"],[22])
-      ]
-  , eoDeltaShift =
-      [ (2, makeInputSet ["pa", "ret"],[3])
-      , (4, makeInputSet ["exc"],[5])
-      , (8, makeInputSet ["pb", "ret"],[9])
-      , (10, makeInputSet ["exc"],[11])
-      , (13, makeInputSet ["pc", "ret"],[14])
-      , (15, makeInputSet ["exc"],[16])
-      , (22, makeInputSet ["perr", "ret"],[23])
-      , (24, makeInputSet ["exc"],[25])
-      ]
-  , eoDeltaPop =
-    [ (1,4,[1])
-    , (1,10,[1])
-    , (1,15,[1])
-    , (1,24,[1])
-    , (3,0,[1])
-    , (5,6,[21])
-    , (9,7,[2])
-    , (10,7,[4])
-    , (14,12,[8])
-    , (14,17,[13])
-    , (15,12,[10])
-    , (15,17,[15])
-    , (23,21,[27])
-    , (23,27,[2])
-    , (24,21,[4])
-    , (24,27,[4])
-    ]
-  }
-
 
 largerRec :: ExplicitOpa Word String
 largerRec = ExplicitOpa
             { eoAlphabet = stlV2Alphabet
             , eoInitials = [0]
-            , eoFinals = [8]
+            , eoFinals = [2, 8, 10]
             , eoDeltaPush =
                 [ (0,  makeInputSet ["call", "pa"],    [1])
                 , (1,  makeInputSet ["call", "pb"],    [2])
@@ -172,6 +117,7 @@ largerRec = ExplicitOpa
                 , (15, makeInputSet ["han"],          [19])
                 , (19, makeInputSet ["call", "pc"],    [3])
                 , (23, makeInputSet ["call", "perr"], [10])
+                , (8,  makeInputSet ["call"],          [8])
                 ]
             , eoDeltaShift =
                 [ (9,  makeInputSet ["exc"],          [9])
@@ -181,6 +127,7 @@ largerRec = ExplicitOpa
                 , (16, makeInputSet ["ret", "pc"],   [17])
                 , (20, makeInputSet ["exc"],         [23])
                 , (21, makeInputSet ["ret", "pa"],   [22])
+                , (8,  makeInputSet ["ret"],          [8])
                 ]
             , eoDeltaPop =
                 [ (3,   2,  [5])
@@ -204,28 +151,27 @@ largerRec = ExplicitOpa
                 , (18, 19, [20])
                 , (22,  0,  [8])
                 , (23, 15, [23])
+                , (8,   8,  [8])
                 ]
             }
 
 expectedLargerRecEval :: [Bool]
 expectedLargerRecEval =
-  [ True, False, True, False, False, False
-  , False, True, False, False, False, False
+  [ True,  False, False, False, False, False
+  , False, True,  False, False, False, False
   , False, False, False, False, False, False
-  , False, False, False, False, False -- base_tests
+  , False, False, False, False -- base_tests
   , False, False, False, False, False -- chain_next
   , False, False, False, False        -- contains_exc
-  , True                              -- data_access
   , False, False, False, False        -- empty_frame
-  , True                              -- exception_safety
   , False, False, False, False        -- hier_down
   , False                             -- hier_insp
   , False, False, False, False        -- hier_up
   , False, False                      -- normal_ret
   , False, False                      -- no_throw
-  , False, True                       -- stack_inspection
+  , False, False                      -- stack_inspection
   , False                             -- uninstall_han
-  , False, True, True, False          -- until_exc
+  , False, False, False, False        -- until_exc
   , False, False, False               -- until_misc
   ]
 
@@ -252,7 +198,7 @@ inspection :: ExplicitOpa Word String
 inspection = ExplicitOpa
   { eoAlphabet = stlV2Alphabet
   , eoInitials = [0]
-  , eoFinals = [5]
+  , eoFinals = [5, 6]
   , eoDeltaPush =
       [ (0, makeInputSet ["call", "pa"],    [6])
       , (1, makeInputSet ["han"], [2])
@@ -270,6 +216,7 @@ inspection = ExplicitOpa
       , (20, makeInputSet ["call", "pc"], [16, 17])
       , (21, makeInputSet ["call", "pa"], [6])
       , (24, makeInputSet ["exc"], [5])
+      , (5, makeInputSet ["call"], [5])
       ]
   , eoDeltaShift =
       [ (9, makeInputSet ["ret", "pa"], [10])
@@ -279,6 +226,7 @@ inspection = ExplicitOpa
       , (24, makeInputSet ["exc"], [25])
       , (26, makeInputSet ["ret", "pe"], [27])
       , (28, makeInputSet ["ret", "perr"], [29])
+      , (5, makeInputSet ["ret"], [5])
       ]
   , eoDeltaPop =
       [ (5, 24, [5])
@@ -303,6 +251,7 @@ inspection = ExplicitOpa
       , (27, 12, [14])
       , (29, 4, [5])
       , (29, 13, [14])
+      , (5, 5, [5])
       ]
   }
 
@@ -334,7 +283,7 @@ jensen :: ExplicitOpa Word String
 jensen = ExplicitOpa
   { eoAlphabet = stlV2Alphabet
   , eoInitials = [0]
-  , eoFinals = [2]
+  , eoFinals = [2, 3, 8]
   , eoDeltaPush =
       [ (0, makeInputSet ["call", "sp", "P_all"], [3])
       , (1, makeInputSet ["call", "cl"], [8])
@@ -354,6 +303,7 @@ jensen = ExplicitOpa
       , (30, makeInputSet ["exc"], [2])
       , (32, makeInputSet ["call", "raw_wr"], [39])
       , (35, makeInputSet ["exc"], [2])
+      , (2, makeInputSet ["call"], [2])
       ]
   , eoDeltaShift =
       [ (6, makeInputSet ["ret", "sp", "P_all"], [7])
@@ -370,6 +320,7 @@ jensen = ExplicitOpa
       , (35, makeInputSet ["exc"], [36])
       , (37, makeInputSet ["ret", "raw_rd"], [38])
       , (39, makeInputSet ["ret", "raw_wr"], [40])
+      , (2, makeInputSet ["ret"], [2])
       ]
   , eoDeltaPop =
       [ (2, 16, [2])
@@ -401,14 +352,14 @@ jensen = ExplicitOpa
       , (40, 32, [33])
       , (41, 3, [5, 6])
       , (41, 18, [21])
+      , (2, 2, [2])
       ]
   }
 
 
 jensenFullTests :: TestTree
 jensenFullTests = testGroup "Jensen Full Privileges Tests" [ jensenFullRd, jensenFullWr
-                                                           , jensenFullRdCp, jensenFullWrDb
-                                                           ]
+                                                           , jensenFullRdCp, jensenFullWrDb]
 
 jensenFullRd :: TestTree
 jensenFullRd = makeTestCase jensenFull
@@ -458,7 +409,7 @@ jensenFull :: ExplicitOpa Word String
 jensenFull = ExplicitOpa
   { eoAlphabet = stlV2Alphabet
   , eoInitials = [0]
-  , eoFinals = [2]
+  , eoFinals = [2, 3, 8]
   , eoDeltaPush =
       [ (0, makeInputSet ["call", "sp", "P_cp", "P_db", "P_rd", "P_wr"], [3])
       , (1, makeInputSet ["call", "cl"], [8])
@@ -478,6 +429,7 @@ jensenFull = ExplicitOpa
       , (30, makeInputSet ["exc"], [2])
       , (32, makeInputSet ["call", "raw_wr"], [39])
       , (35, makeInputSet ["exc"], [2])
+      , (2, makeInputSet ["call"], [2])
       ]
   , eoDeltaShift =
       [ (6, makeInputSet ["ret", "sp", "P_cp", "P_db", "P_rd", "P_wr"], [7])
@@ -494,6 +446,7 @@ jensenFull = ExplicitOpa
       , (35, makeInputSet ["exc"], [36])
       , (37, makeInputSet ["ret", "raw_rd"], [38])
       , (39, makeInputSet ["ret", "raw_wr"], [40])
+      , (2, makeInputSet ["ret"], [2])
       ]
   , eoDeltaPop =
       [ (2, 16, [2])
@@ -525,6 +478,7 @@ jensenFull = ExplicitOpa
       , (40, 32, [33])
       , (41, 3, [5, 6])
       , (41, 18, [21])
+      , (2, 2, [2])
       ]
   }
 
@@ -600,6 +554,7 @@ stackExc = ExplicitOpa
       , (52, makeInputSet ["exc"], [6])
       , (56, makeInputSet ["exc"], [6])
       , (60, makeInputSet ["exc"], [6])
+      , (6, makeInputSet ["call"], [6])
       ]
   , eoDeltaShift =
       [ (8, makeInputSet ["ret", "Stack", "Stack::Stack()"], [9])
@@ -622,6 +577,7 @@ stackExc = ExplicitOpa
       , (56, makeInputSet ["exc"], [57])
       , (58, makeInputSet ["ret", "T", "T::T()"], [59])
       , (60, makeInputSet ["exc"], [61])
+      , (6, makeInputSet ["ret"], [6])
       ]
   , eoDeltaPop =
       [ (6, 22, [6])
@@ -687,6 +643,7 @@ stackExc = ExplicitOpa
       , (60, 26, [60])
       , (60, 36, [60])
       , (60, 62, [60])
+      , (6, 6, [6])
       ]
   }
 
@@ -768,6 +725,7 @@ stackExcSwap = ExplicitOpa
       , (61, makeInputSet ["call", "T", "T::~T()"], [74])
       , (65, makeInputSet ["exc"], [6])
       , (68, makeInputSet ["exc"], [6])
+      , (6, makeInputSet ["call"], [6])
       ]
   , eoDeltaShift =
       [ (8, makeInputSet ["ret", "Stack", "StackImpl::StackImpl(size_t)"], [9])
@@ -794,6 +752,7 @@ stackExcSwap = ExplicitOpa
       , (70, makeInputSet ["ret", "T", "T::T(const T&)"], [71])
       , (72, makeInputSet ["ret", "std::swap()", "tainted"], [73])
       , (74, makeInputSet ["ret", "T", "T::~T()"], [75])
+      , (6, makeInputSet ["ret"], [6])
       ]
   , eoDeltaPop =
       [ (6, 12, [6])
@@ -844,13 +803,63 @@ stackExcSwap = ExplicitOpa
       , (73, 25, [26])
       , (75, 61, [62])
       , (75, 58, [59])
+      , (6, 6, [6])
+      ]
+  }
+
+
+xnextdRegressionTests :: TestTree
+xnextdRegressionTests = testGroup "XNext Down Regression Tests" [ xnextdRegressionTestYield
+                                                                , xnextdRegressionTestEqual
+                                                                , xnextdRegressionTestUntil
+                                                                ]
+
+xnextdRegressionTestYield :: TestTree
+xnextdRegressionTestYield = makeTestCase xnextdRegressionOpa
+  (("XNext Down Regression Test Omega Yield", XNext Down $ ap "call"), False)
+
+xnextdRegressionTestEqual :: TestTree
+xnextdRegressionTestEqual = makeTestCase xnextdRegressionOpa
+  (("XNext Down Regression Test Omega Equal", Not $ XNext Down $ ap "ret"), False)
+
+xnextdRegressionTestUntil :: TestTree
+xnextdRegressionTestUntil = makeTestCase xnextdRegressionOpa
+  (("XNext Down Regression Test Omega Until", Not $ Until Down T $ ap "call"), False)
+
+xnextdRegressionOpa :: ExplicitOpa Word String
+xnextdRegressionOpa = ExplicitOpa
+  { eoAlphabet = stlV2Alphabet
+  , eoInitials = [0]
+  , eoFinals = [0, 1, 2, 3, 4]
+  , eoDeltaPush =
+      [ (0, makeInputSet ["call"], [1])
+      , (1, makeInputSet ["han"],  [2])
+      ]
+  , eoDeltaShift =
+      [ (2, makeInputSet ["exc"], [3])
+      , (3, makeInputSet ["ret"], [4])
+      ]
+  , eoDeltaPop =
+      [ (3, 1, [3])
+      , (4, 0, [0])
       ]
   }
 
 
 slowTests :: TestTree
-slowTests = testGroup "ModelChecking.hs Slow Tests" [lRSlowTests]
+slowTests = testGroup "ModelChecking.hs Omega Slow Tests" [ sasSlowTests
+                                                          , lRSlowTests
+                                                          ]
+
+sasSlowTests :: TestTree
+sasSlowTests = testGroup "SAS OPA MC Omega Slow Tests" $
+  map (makeTestCase simpleExc) [ (formulas !! 44, True) ]
 
 lRSlowTests :: TestTree
-lRSlowTests = testGroup "LargerRec OPA MC Slow Tests" $
-  map (makeTestCase largerRec) [(formulas !! 18, False), (formulas !! 44, False)]
+lRSlowTests = testGroup "LargerRec OPA MC Omega Slow Tests" $
+  map (makeTestCase largerRec) [ (formulas !! 18, False)
+                               , (formulas !! 22, False)
+                               , (formulas !! 33, True)
+                               , (formulas !! 38, True)
+                               , (formulas !! 44, False)
+                               ]

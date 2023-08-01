@@ -1,38 +1,36 @@
 {- |
-   Module      : TestSat
+   Module      : Pomc.Test.TestSatOmega
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestSat (tests, slowTests) where
+module Pomc.Test.TestSatOmega (tests, slowTests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
 import Pomc.Satisfiability (isSatisfiableGen)
-import OPMs (stlV2Alphabet)
-import EvalFormulas (TestCase, zipExpected, excludeIndices, formulas, ap)
-import qualified Data.Set as S (toList)
-
-import Pomc.Potl (Formula(..), Dir(..))
+import Pomc.Test.OPMs (stlV2Alphabet)
+import Pomc.Test.EvalFormulas (TestCase, zipExpected, excludeIndices, formulas)
+import qualified Data.Set as S
 
 tests :: TestTree
-tests = testGroup "TestSat.hs Normal Tests"
+tests = testGroup "OmegaSat Normal Tests"
   $ map makeTestCase
-  $ (excludeIndices allTestCases [18, 41, 42] ++ [xNextNoEqual])
+  $ excludeIndices allTestCases slowIndices
 
 slowTests :: TestTree
-slowTests = testGroup "TestSat.hs Slow Tests"
+slowTests = testGroup "OmegaSat Slow Tests"
   $ map makeTestCase
-  [ allTestCases !! 18
-  , allTestCases !! 41
-  , allTestCases !! 42
-  ]
+  $ map (allTestCases !!) slowIndices
+
+slowIndices :: [Int]
+slowIndices = [17, 18, 19, 20, 21, 22, 23, 38, 41, 42, 43, 44, 48, 53, 58, 60, 61, 62]
 
 makeTestCase :: (TestCase, Bool)
              -> TestTree
 makeTestCase ((name, phi), expected) =
-  let (sat, trace) = isSatisfiableGen False phi stlV2Alphabet
+  let (sat, trace) = isSatisfiableGen True phi stlV2Alphabet
       debugMsg False _ = "Expected SAT, got UNSAT."
       debugMsg True tr = "Expected UNSAT, got SAT. Trace:\n" ++ show (map S.toList tr)
   in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
@@ -62,12 +60,3 @@ expectedRes =
   , True, True, True, True       -- until_exc
   , True, True, True             -- until_misc
   ]
-
--- This formula being unsatisfiable proves that
--- XBack Down T `And` Not (XBack Up T)
--- is equivalent to XBack <. T on stlV2Alphabet.
-xNextNoEqual :: (TestCase, Bool)
-xNextNoEqual = (("Right context with yield and take"
-              , Eventually (XBack Down T `And` XBack Up T `And` Not ((ap "ret" `And` XBack Down (ap "call")) `Or` (ap "exc" `And` XBack Down (ap "han")))))
-             , False
-             )

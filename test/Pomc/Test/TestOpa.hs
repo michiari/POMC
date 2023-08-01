@@ -1,11 +1,11 @@
 {- |
-   Module      : TestOpa
+   Module      : Pomc.Test.TestOpa
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestOpa (tests) where
+module Pomc.Test.TestOpa (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit

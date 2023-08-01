@@ -1,18 +1,18 @@
 {-# LANGUAGE QuasiQuotes #-}
 {- |
-   Module      : TestMP
+   Module      : Pomc.Test.TestMP
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestMP (tests) where
+module Pomc.Test.TestMP (tests) where
 
 import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
 import Pomc.Parse.MiniProc (programP, TypedProp(..), untypeExprFormula)
 import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (modelCheckProgram)
-import EvalFormulas (TestCase, ap, zipExpected, formulas)
+import Pomc.Test.EvalFormulas as EvalFormulas (TestCase, ap, zipExpected, formulas)
 import qualified Data.Set as S (toList)
 
 import Test.Tasty

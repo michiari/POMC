@@ -69,16 +69,12 @@ executables:
     - containers
     - cmdargs
 
-tests:
-  test-pomc:
-    main:           Test.hs
+internal-libraries:
+  pomc-tests:
     source-dirs:    test
     ghc-options:
-    - -rtsopts
-    - -with-rtsopts=-H
     - -Wall
     - -O2
-    - -threaded
     dependencies:
     - pomc
     - containers
@@ -86,8 +82,36 @@ tests:
     - tasty
     - tasty-hunit
     - tasty-quickcheck
+    - tasty-bench
     - hashable
     - unordered-containers
     - raw-strings-qq
     - megaparsec
     - text
+
+tests:
+  test-pomc:
+    main:           Test.hs
+    source-dirs:    test/test
+    ghc-options:
+    - -rtsopts
+    - -with-rtsopts=-H
+    - -Wall
+    - -O2
+    - -threaded
+    dependencies:
+    - pomc-tests
+    - tasty
+
+benchmarks:
+  bench-pomc:
+    main:           Bench.hs
+    source-dirs:    test/bench
+    ghc-options:
+    - -rtsopts
+    - -with-rtsopts=-H
+    - -Wall
+    - -O2
+    dependencies:
+    - pomc-tests
+    - tasty-bench
