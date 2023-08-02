@@ -25,8 +25,7 @@ slowTests :: TestTree
 slowTests = testGroup "TestSat.hs Slow Tests"
   $ map makeTestCase slowTestCases
 
-makeTestCase :: (TestCase, Bool)
-             -> TestTree
+makeTestCase :: (TestCase, Bool) -> TestTree
 makeTestCase tce@((_, phi), _) = testCase tname $ tthunk phi
   where (tname, tthunk) = makeTest tce
 
