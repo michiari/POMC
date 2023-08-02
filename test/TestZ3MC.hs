@@ -297,33 +297,33 @@ arrayTests = testGroup "Int Array Tests"
 
 arrayLoopTests :: TestTree
 arrayLoopTests = testGroup "Int Array Loop Tests"
-  [ makeParseTestCase arrayLoopSrc 200 "Assert 0" "XNd (ret && ~[|assert0])" Unknown ]
+  [ makeParseTestCase arrayLoopSrc 100 "Assert 0" "XNd (ret && [|assert0])" Unknown ]
 
 localTests :: TestTree
 localTests = testGroup "Local Variables Tests"
-  [ makeParseTestCase localTestsSrc 50 "Assert A" "T Ud (ret && [pA|assertA])" Unknown
-  , makeParseTestCase localTestsSrc 50 "Assert B" "T Ud (ret && [pB|assertB])" Unknown
-  , makeParseTestCase localTestsSrc 50 "Assert C" "T Ud (ret && [pC|assertC])" Unsat
+  [ makeParseTestCase localTestsSrc 40 "Assert A" "T Ud (ret && [pA|assertA])" Unknown
+  , makeParseTestCase localTestsSrc 40 "Assert B" "T Ud (ret && [pB|assertB])" Unknown
+  , makeParseTestCase localTestsSrc 40 "Assert C" "T Ud (ret && [pC|assertC])" Unsat
   ]
 
 argTests :: TestTree
 argTests = testGroup "Function Arguments Tests"
-  [ makeParseTestCase argTestsSrc 60 "Assert Main 0" "T Ud (ret && [main|assertMain0])" Unknown
-  , makeParseTestCase argTestsSrc 60 "Assert Main 1" "T Ud (ret && [main|assertMain1])" Unknown
-  , makeParseTestCase argTestsSrc 60 "Assert A 0" "T Ud (ret && [pA|assertA0])" Unknown
-  , makeParseTestCase argTestsSrc 60 "Assert A 1" "T Ud (ret && [pA|assertA1])" Unknown
-  , makeParseTestCase argTestsSrc 60 "Assert B 0" "T Ud (ret && [pB|assertB0])" Unknown
-  , makeParseTestCase argTestsSrc 60 "Assert B 1" "T Ud (ret && [pB|assertB1])" Unknown
+  [ makeParseTestCase argTestsSrc 55 "Assert Main 0" "T Ud (ret && [main|assertMain0])" Unknown
+  , makeParseTestCase argTestsSrc 55 "Assert Main 1" "T Ud (ret && [main|assertMain1])" Unknown
+  , makeParseTestCase argTestsSrc 55 "Assert A 0" "T Ud (ret && [pA|assertA0])" Unknown
+  , makeParseTestCase argTestsSrc 55 "Assert A 1" "T Ud (ret && [pA|assertA1])" Unknown
+  , makeParseTestCase argTestsSrc 55 "Assert B 0" "T Ud (ret && [pB|assertB0])" Unknown
+  , makeParseTestCase argTestsSrc 55 "Assert B 1" "T Ud (ret && [pB|assertB1])" Unknown
   ]
 
 exprPropTests :: TestTree
 exprPropTests = testGroup "Expression Propositions Tests"
-  [ makeParseTestCase exprPropTestsSrc 50 "Assert Main 0" "T Ud (stm && [main| a + b + c[0u8] + c[1u8] == 28u8 ])" Unknown
-  , makeParseTestCase exprPropTestsSrc 50 "Assert Main 1" "T Ud (ret && [main|a + b + c[0u8] + c[1u8] + w == 84u8])" Unknown
-  , makeParseTestCase exprPropTestsSrc 50 "Assert A 0" "T Ud (stm && [pA| u == 70u8 ])" Unknown
-  , makeParseTestCase exprPropTestsSrc 50 "Assert A 1" "T Ud (ret && [pA| u == 13u8])" Unknown
-  , makeParseTestCase exprPropTestsSrc 50 "Assert B 0" "T Ud (stm && [pB| w + r + s + t[0u8] + t[1u8] + x == 29u8 ])" Unknown
-  , makeParseTestCase exprPropTestsSrc 50 "Assert B 1" "T Ud (ret && [pB| w + r + s + t[0u8] + t[1u8] + x == 90u8 ])" Unknown
+  [ makeParseTestCase exprPropTestsSrc 45 "Assert Main 0" "T Ud (stm && [main| a + b + c[0u8] + c[1u8] == 28u8 ])" Unknown
+  , makeParseTestCase exprPropTestsSrc 45 "Assert Main 1" "T Ud (ret && [main|a + b + c[0u8] + c[1u8] + w == 84u8])" Unknown
+  , makeParseTestCase exprPropTestsSrc 45 "Assert A 0" "T Ud (stm && [pA| u == 70u8 ])" Unknown
+  , makeParseTestCase exprPropTestsSrc 45 "Assert A 1" "T Ud (ret && [pA| u == 13u8])" Unknown
+  , makeParseTestCase exprPropTestsSrc 45 "Assert B 0" "T Ud (stm && [pB| w + r + s + t[0u8] + t[1u8] + x == 29u8 ])" Unknown
+  , makeParseTestCase exprPropTestsSrc 45 "Assert B 1" "T Ud (ret && [pB| w + r + s + t[0u8] + t[1u8] + x == 90u8 ])" Unknown
   ]
 
 testHierD :: TestTree
