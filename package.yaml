@@ -31,7 +31,7 @@ library:
   - Pomc.Parse.MiniProc
   - Pomc.OpaGen
   - Pomc.MiniProc
-  - Pomc.Util
+  - Pomc.TimeUtils
   ghc-options:
   - -Wall
   - -O2
@@ -40,11 +40,9 @@ library:
   - containers
   - deepseq
   - megaparsec
-  - parallel
   - parser-combinators
   - text
   - vector
-  - mtl
   - hashable
   - hashtables
   - unordered-containers
@@ -77,13 +75,10 @@ internal-libraries:
     dependencies:
     - pomc
     - containers
-    - deepseq
     - tasty
     - tasty-hunit
     - tasty-quickcheck
     - tasty-bench
-    - hashable
-    - unordered-containers
     - raw-strings-qq
     - megaparsec
     - text

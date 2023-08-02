@@ -13,15 +13,14 @@ module Pomc.Check ( fastcheck
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
-import Pomc.Opa (parAugRun)
+import Pomc.Opa (augRun)
 import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, future, getProps)
-import Pomc.Util (safeHead, xor, implies, iff)
 import Pomc.Encoding (EncodedSet, PropSet, BitEncoding(..))
 import qualified Pomc.Encoding as E
 import Pomc.PropConv (APType, convPropTokens)
 import Pomc.State (State(..), Input, Atom)
 
-import Data.Maybe (fromJust, fromMaybe, isNothing)
+import Data.Maybe (fromJust, fromMaybe, isNothing, listToMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Vector as V
@@ -190,13 +189,14 @@ trueCons bitenc set = not $ E.member bitenc (Not T) set
 
 -- consistency check for (And g h)
 andCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-andCons bitenc clos set = not (E.any bitenc consSet set)
-                          &&
-                          -- if both g and h hold in current atom, then (And g h) must hold as well
-                          null [f | f@(And g h) <- clos,
-                                 (E.member bitenc g set) &&
-                                 (E.member bitenc h set) &&
-                                 not (E.member bitenc f set)]
+andCons bitenc clos set =
+  not (E.any bitenc consSet set)
+  &&
+  -- if both g and h hold in current atom, then (And g h) must hold as well
+  null [f | f@(And g h) <- clos,
+         E.member bitenc g set &&
+         E.member bitenc h set &&
+         not (E.member bitenc f set)]
 
   where -- if (And g h) holds in current atom, then g and h must both hold as well
         consSet (And g h) = not $ E.member bitenc g set && E.member bitenc h set
@@ -204,13 +204,13 @@ andCons bitenc clos set = not (E.any bitenc consSet set)
 
 -- consistency check for (Or g h)
 orCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-orCons bitenc clos set = not (E.any bitenc consSet set)
-                         &&
-                         -- if g or h holds in current atom, then (Or g h) must hold as well
-                         null [f | f@(Or g h) <- clos,
-                                ((E.member bitenc g set) ||
-                                 (E.member bitenc h set)
-                                ) && not (E.member bitenc f set)]
+orCons bitenc clos set =
+  not (E.any bitenc consSet set)
+  &&
+  -- if g or h holds in current atom, then (Or g h) must hold as well
+  null [f | f@(Or g h) <- clos,
+         (E.member bitenc g set || E.member bitenc h set)
+         && not (E.member bitenc f set)]
 
   where -- if (Or g h) holds in current atom, then g or h must hold as well
         consSet (Or g h) = not $ E.member bitenc g set || E.member bitenc h set
@@ -218,41 +218,43 @@ orCons bitenc clos set = not (E.any bitenc consSet set)
 
 -- consistency check for (Xor g h)
 xorCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-xorCons bitenc clos set = not (E.any bitenc consSet set)
-                         &&
-                         -- if g xor h holds in current atom, then (Xor g h) must hold as well
-                         null [f | f@(Xor g h) <- clos,
-                                (xor (E.member bitenc g set)
-                                 (E.member bitenc h set))
-                                && not (E.member bitenc f set)]
+xorCons bitenc clos set =
+  not (E.any bitenc consSet set)
+  &&
+  -- if g xor h holds in current atom, then (Xor g h) must hold as well
+  null [f | f@(Xor g h) <- clos,
+         (E.member bitenc g set /= E.member bitenc h set)
+         && not (E.member bitenc f set)]
   where -- if (Xor g h) holds in current atom, then g xor h must hold as well
-        consSet (Xor g h) = not $ xor (E.member bitenc g set)  (E.member bitenc h set)
+        consSet (Xor g h) = not $ E.member bitenc g set /= E.member bitenc h set
         consSet _ = False
 
 -- consistency check for (Implies g h)
 impliesCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-impliesCons bitenc clos set = not (E.any bitenc consSet set)
-                         &&
-                         -- if g implies h holds in current atom, then (Implies g h) must hold as well
-                         null [f | f@(Implies g h) <- clos,
-                                (implies (E.member bitenc g set)
-                                 (E.member bitenc h set))
-                                && not (E.member bitenc f set)]
+impliesCons bitenc clos set =
+  not (E.any bitenc consSet set)
+  &&
+  -- if g implies h holds in current atom, then (Implies g h) must hold as well
+  null [f | f@(Implies g h) <- clos,
+         (E.member bitenc g set `implies` E.member bitenc h set)
+         && not (E.member bitenc f set)]
   where -- if (Implies g h) holds in current atom, then g implies h must hold as well
-        consSet (Implies g h) = not $ implies (E.member bitenc g set)  (E.member bitenc h set)
+        consSet (Implies g h) = not $ E.member bitenc g set `implies` E.member bitenc h set
         consSet _ = False
+
+        implies a b = not a || b
 
 -- consistency check for (Iff g h)
 iffCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-iffCons bitenc clos set = not (E.any bitenc consSet set)
-                         &&
-                         -- if g iff h holds in current atom, then (Iff g h) must hold as well
-                         null [f | f@(Iff g h) <- clos,
-                                (iff (E.member bitenc g set)
-                                 (E.member bitenc h set))
-                                && not (E.member bitenc f set)]
+iffCons bitenc clos set =
+  not (E.any bitenc consSet set)
+  &&
+  -- if g iff h holds in current atom, then (Iff g h) must hold as well
+  null [f | f@(Iff g h) <- clos,
+         (E.member bitenc g set == E.member bitenc h set)
+         && not (E.member bitenc f set)]
   where -- if (Iff g h) holds in current atom, then g iff h must hold as well
-        consSet (Iff g h) = not $ iff (E.member bitenc g set) ( E.member bitenc h set)
+        consSet (Iff g h) = not $ E.member bitenc g set == E.member bitenc h set
         consSet _ = False
 
 -- consistency check for (Until dir g h)
@@ -1483,7 +1485,7 @@ fastcheck :: Formula APType -- the input formula phi
           -> [PropSet] -- input tokens
           -> Bool
 fastcheck phi sprs ts =
-  parAugRun
+  augRun
     prec
     is
     (isFinalF bitenc)
@@ -1512,8 +1514,8 @@ fastcheck phi sprs ts =
         is = filter compInitial (initials False bitenc nphi cl as)
         (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl prec
 
-        compInitial s = fromMaybe True $
-                          (compProps bitenc) <$> (Just . current) s <*> safeHead encTs
+        compInitial s = fromMaybe True
+          $ (compProps bitenc) <$> (Just . current) s <*> listToMaybe encTs
 
         laProps lookahead = case lookahead of
                               Just npset -> npset

@@ -14,7 +14,7 @@ import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.Util (timeFunApp, timeToString)
+import Pomc.TimeUtils (timeFunApp, timeToString)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
