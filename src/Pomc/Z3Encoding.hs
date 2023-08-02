@@ -1017,7 +1017,8 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                 mkEq fxp1 evalAarg
           params <- mkAndWith assign $ zip fargs aargs
           -- Initialize to 0 all remaining local variables
-          let locals = S.toList $ MP.skScalars $ fnameSksMap M.! fname
+          let sk = fnameSksMap M.! fname
+              locals = S.toList (MP.skScalars sk) ++ S.toList (MP.skArrays sk)
               remLocals = locals \\ map getFargVar fargs
           initLocals <- mkInit0 sVarFunVec remLocals xp1
           -- Propagate all remaining variables
@@ -1033,7 +1034,8 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                 mkEq txp1 rx
           params <- mkAndWith assign resArgs
           -- Restore remaining local variables (they may be overlapping if fname is recursive)
-          let locals = S.toList $ MP.skScalars $ fnameSksMap M.! fname
+          let sk = fnameSksMap M.! fname
+              locals = S.toList (MP.skScalars sk) ++ S.toList (MP.skArrays sk)
               remLocals = locals \\ map snd resArgs
               restore s = do
                 let sFunc = fst $ sVarFunVec V.! MP.varId s
