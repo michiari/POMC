@@ -1,17 +1,17 @@
 {- |
-   Module      : TestCheck
+   Module      : Pomc.Test.TestCheck
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestCheck (tests) where
+module Pomc.Test.TestCheck (tests) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Dir(..), Formula(..), formulaAt, formulaAfter)
-import OPMs (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
-import EvalFormulas (ap)
+import Pomc.Test.OPMs (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
+import Pomc.Test.EvalFormulas (ap)
 
 import Test.Tasty
 import Test.Tasty.HUnit
