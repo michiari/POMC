@@ -1,41 +1,42 @@
 {-# LANGUAGE QuasiQuotes #-}
 {- |
-   Module      : TestMP
+   Module      : Pomc.Test.TestMP
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestMP ( tests
+module Pomc.Test.TestMP ( tests, benchs
 
-              , sasMPSource
-              , noHanSource
-              , simpleThenSource
-              , simpleElseSource
-              , simpleWhileSource
-              , exprsSource
-              , u8Arith1Src
-              , u8Arith2Src
-              , arithCastsSrc
-              , nondetSrc
-              , arraySrc
-              , arrayLoopSrc
-              , localTestsSrc
-              , argTestsSrc
-              , exprPropTestsSrc
-              , testHierDSrc
-              , testHierUSrc
-              ) where
+                        , sasMPSource
+                        , noHanSource
+                        , simpleThenSource
+                        , simpleElseSource
+                        , simpleWhileSource
+                        , exprsSource
+                        , u8Arith1Src
+                        , u8Arith2Src
+                        , arithCastsSrc
+                        , nondetSrc
+                        , arraySrc
+                        , arrayLoopSrc
+                        , localTestsSrc
+                        , argTestsSrc
+                        , exprPropTestsSrc
+                        , testHierDSrc
+                        , testHierUSrc
+                        ) where
 
 import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
 import Pomc.Parse.MiniProc (programP, TypedProp(..), untypeExprFormula)
 import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.ModelChecker (modelCheckProgram)
-import EvalFormulas (TestCase, ap, zipExpected, formulas)
+import Pomc.Test.EvalFormulas as EvalFormulas (TestCase, ap, zipExpected, formulas)
 import qualified Data.Set as S (toList)
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Bench
 import Text.Megaparsec
 import Text.RawString.QQ
 import qualified Data.Text as T
@@ -47,9 +48,9 @@ tests = testGroup "MiniProc Tests" [ sasEvalTests
                                    , noHanEvalTests
                                    , simpleThenEvalTests
                                    , simpleElseEvalTests
-                                   , singleWhile
+                                   , singleWhileTest
                                    , exprsTests
-                                   , generic
+                                   , genericTests
                                    , jensenTests
                                    , stackTests
                                    , intTests
@@ -73,36 +74,80 @@ simpleElseEvalTests :: TestTree
 simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
   map (makeTestCase simpleElseSource) (zipExpected EvalFormulas.formulas expectedSimpleElseEval)
 
+makeTestCase :: T.Text -> (TestCase, Bool) -> TestTree
+makeTestCase filecont tce@((_, phi), _) = testCase tname $ tthunk phi
+  where (tname, tthunk) = makeTest filecont tce
+
+benchs :: TestTree
+benchs = testGroup "MiniProc Tests" [ sasEvalBenchs
+                                    , noHanEvalBenchs
+                                    , simpleThenEvalBenchs
+                                    , simpleElseEvalBenchs
+                                    , singleWhileBench
+                                    , exprsBenchs
+                                    , genericBenchs
+                                    , jensenBenchs
+                                    , stackBenchs
+                                    , intBenchs
+                                    , exprPropBenchs
+                                    ]
+
+sasEvalBenchs :: TestTree
+sasEvalBenchs = testGroup "SAS MiniProc MC Eval Tests" $
+  map (makeBench sasMPSource) (zipExpected EvalFormulas.formulas expectedSasEval)
+
+noHanEvalBenchs :: TestTree
+noHanEvalBenchs = testGroup "NoHan MiniProc MC Eval Tests" $
+  map (makeBench noHanSource) (zipExpected EvalFormulas.formulas expectedNoHanEval)
+
+simpleThenEvalBenchs :: TestTree
+simpleThenEvalBenchs = testGroup "SimpleThen MiniProc MC Eval Tests" $
+  map (makeBench simpleThenSource) (zipExpected EvalFormulas.formulas expectedSimpleThenEval)
+
+simpleElseEvalBenchs :: TestTree
+simpleElseEvalBenchs = testGroup "SimpleElse MiniProc MC Eval Tests" $
+  map (makeBench simpleElseSource) (zipExpected EvalFormulas.formulas expectedSimpleElseEval)
+
+makeBench :: T.Text -> (TestCase, Bool) -> TestTree
+makeBench filecont tce@((_, phi), _) = bench bname $ nfAppIO bthunk phi
+  where (bname, bthunk) = makeTest filecont tce
 
 -- only for the finite case
-makeTestCase :: T.Text -> (TestCase, Bool) -> TestTree
-makeTestCase filecont ((name, phi), expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") assertion
-  where assertion = do
+makeTest :: T.Text -> (TestCase, Bool) -> (String, Formula String -> Assertion)
+makeTest filecont ((name, phi), expected) =
+  (name ++ " (" ++ show phi ++ ")", assertion)
+  where assertion f = do
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          let scopedPhi = untypeExprFormula prog $ fmap (TextTProp . T.pack) phi
+          let scopedPhi = untypeExprFormula prog $ fmap (TextTProp . T.pack) f
               (sat, trace) = modelCheckProgram False scopedPhi prog
               debugMsg False tr = "Expected True, got False. Trace:\n"
                                   ++ show (map (\(q, b) -> (q, S.toList b)) tr)
               debugMsg True _ = "Expected False, got True."
           assertBool (debugMsg sat trace) (sat == expected)
 
+makeParseTestCase :: T.Text -> (String, String, Bool) -> TestTree
+makeParseTestCase progSource npe@(_, phi, _) = testCase tname $ tthunk phi
+  where (tname, tthunk) = makeParseTest progSource npe
 
-makeParseTestCase :: T.Text -> String -> String -> Bool -> TestTree
-makeParseTestCase progSource name phi expected =
-  testCase (name ++ " (" ++ show phi ++ ")") assertion
+makeParseBench :: T.Text -> (String, String, Bool) -> TestTree
+makeParseBench progSource npe@(_, phi, _) = bench bname $ nfAppIO bthunk phi
+  where (bname, bthunk) = makeParseTest progSource npe
+
+makeParseTest :: T.Text -> (String, String, Bool) -> (String, String -> Assertion)
+makeParseTest progSource (name, phi, expected) =
+  (name ++ " (" ++ phi ++ ")", assertion)
   where
-    filecont = T.concat [ T.pack "formulas = "
-                        , T.pack phi
-                        , T.pack ";\nprogram:\n"
-                        , progSource
-                        ]
-    assertion = do
-      pcreq <- case parse (checkRequestP <* eof) name filecont of
+    filecont f = T.concat [ T.pack "formulas = "
+                          , T.pack f
+                          , T.pack ";\nprogram:\n"
+                          , progSource
+                          ]
+    assertion f = do
+      pcreq <- case parse (checkRequestP <* eof) name $ filecont f of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
-                 Right pcreq      -> return pcreq
+                 Right pcreq     -> return pcreq
       let (sat, trace) = modelCheckProgram False (head . pcreqFormulas $ pcreq) (pcreqMiniProc pcreq)
           debugMsg False tr = "Expected True, got False. Trace:\n"
                               ++ show (map (\(q, b) -> (q, S.toList b)) tr)
@@ -298,13 +343,18 @@ pc() { }
 |]
 
 
-singleWhile :: TestTree
-singleWhile = makeTestCase simpleWhileSource
-  (("Single-Iteration While Loop"
-   , Not $ Until Down T (ap "call"
-                         `And` ap "pb"
-                         `And` (HNext Up $ HUntil Up T (ap "call" `And` ap "pb"))))
-  , True)
+singleWhileTest :: TestTree
+singleWhileTest = makeTestCase simpleWhileSource singleWhile
+
+singleWhileBench :: TestTree
+singleWhileBench = makeBench simpleWhileSource singleWhile
+
+singleWhile :: (TestCase, Bool)
+singleWhile = (("Single-Iteration While Loop"
+               , Not $ Until Down T (ap "call"
+                                     `And` ap "pb"
+                                     `And` (HNext Up $ HUntil Up T (ap "call" `And` ap "pb"))))
+              , True)
 
 simpleWhileSource :: T.Text
 simpleWhileSource = T.pack [r|
@@ -323,25 +373,27 @@ pb() {}
 
 
 exprsTests :: TestTree
-exprsTests = testGroup "BoolExpr Tests" [exprsPb, exprsPc, exprsPd]
+exprsTests = testGroup "BoolExpr Tests"
+  $ map (makeTestCase exprsSource) [exprsPb, exprsPc, exprsPd]
 
-exprsPb :: TestTree
-exprsPb = makeTestCase exprsSource
-  (("Check Or BoolExpr"
-   , Until Down T (ap "call" `And` ap "pb"))
-  , True)
+exprsBenchs :: TestTree
+exprsBenchs = testGroup "BoolExpr Tests"
+  $ map (makeBench exprsSource) [exprsPb, exprsPc, exprsPd]
 
-exprsPc :: TestTree
-exprsPc = makeTestCase exprsSource
-  (("Check Or Not BoolExpr"
-   , Until Down T (ap "call" `And` ap "pc"))
-  , True)
+exprsPb :: (TestCase, Bool)
+exprsPb = (("Check Or BoolExpr"
+           , Until Down T (ap "call" `And` ap "pb"))
+          , True)
 
-exprsPd :: TestTree
-exprsPd = makeTestCase exprsSource
-  (("Check And Not BoolExpr"
-   , Until Down T (ap "call" `And` ap "pd"))
-  , False)
+exprsPc :: (TestCase, Bool)
+exprsPc = (("Check Or Not BoolExpr"
+           , Until Down T (ap "call" `And` ap "pc"))
+          , True)
+
+exprsPd :: (TestCase, Bool)
+exprsPd = (("Check And Not BoolExpr"
+           , Until Down T (ap "call" `And` ap "pd"))
+          , False)
 
 exprsSource :: T.Text
 exprsSource = T.pack [r|
@@ -371,22 +423,31 @@ pd() {}
 
 -- Tests from POTL paper
 
-generic :: TestTree
-generic = testGroup "MiniProc Generic Tests" [genSmall, genMed, genLarge]
+genericTests :: TestTree
+genericTests = testGroup "MiniProc Generic Tests"
+  [ makeTestCase sasMPSource genSmall
+  , makeTestCase genMedSource genMed
+  , makeTestCase genLargeSource genLarge
+  ]
 
-genSmall :: TestTree
-genSmall = makeTestCase sasMPSource
-  (("MiniProc Generic Small"
-   , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
-     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
-  , True)
+genericBenchs :: TestTree
+genericBenchs = testGroup "MiniProc Generic Tests"
+  [ makeBench sasMPSource genSmall
+  , makeBench genMedSource genMed
+  , makeBench genLargeSource genLarge
+  ]
 
-genMed :: TestTree
-genMed = makeTestCase genMedSource
-  (("MiniProc Generic Medium"
-   , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
-     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
-  , False)
+genSmall :: (TestCase, Bool)
+genSmall = (("MiniProc Generic Small"
+            , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
+              `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
+           , True)
+
+genMed :: (TestCase, Bool)
+genMed = (("MiniProc Generic Medium"
+          , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
+            `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
+         , False)
 
 genMedSource :: T.Text
 genMedSource = T.pack [r|
@@ -426,12 +487,11 @@ perr() {
 }
 |]
 
-genLarge :: TestTree
-genLarge = makeTestCase genLargeSource
-  (("MiniProc Generic Large"
-   , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
-     `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
-  , True)
+genLarge :: (TestCase, Bool)
+genLarge = (("MiniProc Generic Large"
+            , Always $ (ap "call" `And` ap "pb" `And` (Since Down T (ap "call" `And` ap "pa")))
+              `Implies` (PNext Up (ap "exc") `Or` XNext Up (ap "exc")))
+           , True)
 
 genLargeSource :: T.Text
 genLargeSource = T.pack [r|
@@ -485,57 +545,56 @@ perr() {}
 
 
 jensenTests :: TestTree
-jensenTests = testGroup "Jensen Privileges Tests" [ jensenRd, jensenWr
-                                                  , jensenRdCp, jensenWrDb
-                                                  ]
+jensenTests = testGroup "Jensen Privileges Tests"
+  $ map (makeTestCase jensen) [jensenRd, jensenWr, jensenRdCp, jensenWrDb]
 
-jensenRd :: TestTree
-jensenRd = makeTestCase jensen
-  (("Only privileged reads."
-   , Always $ ((ap "call" `And` ap "raw_read")
-                `Implies`
-                (Not $ Since Down T
-                  (ap "call"
-                   `And` (Not $ ap "P_rd")
-                   `And` (Not $ ap "raw_read")
-                   `And` (Not $ ap "main")))))
-  , True)
+jensenBenchs :: TestTree
+jensenBenchs = testGroup "Jensen Privileges Tests"
+  $ map (makeBench jensen) [jensenRd, jensenWr, jensenRdCp, jensenWrDb]
 
-jensenWr :: TestTree
-jensenWr = makeTestCase jensen
-  (("Only privileged writes."
-   , Always $ ((ap "call" `And` ap "raw_write")
-                `Implies`
-                (Not $ Since Down T
-                  (ap "call"
-                   `And` (Not $ ap "P_wr")
-                   `And` (Not $ ap "raw_write")
-                   `And` (Not $ ap "main")))))
-  , True)
+jensenRd :: (TestCase, Bool)
+jensenRd = (("Only privileged reads."
+            , Always $ ((ap "call" `And` ap "raw_read")
+                        `Implies`
+                        (Not $ Since Down T
+                         (ap "call"
+                          `And` (Not $ ap "P_rd")
+                          `And` (Not $ ap "raw_read")
+                          `And` (Not $ ap "main")))))
+           , True)
 
-jensenRdCp :: TestTree
-jensenRdCp = makeTestCase jensen
-  (("Only reads with canpay privilege."
-   , Always $ ((ap "call" `And` ap "raw_read")
-                `Implies`
-                (Not $ Since Down T
-                  (ap "call"
-                   `And` (Not $ ap "P_cp")
-                   `And` (Not $ ap "raw_read")
-                   `And` (Not $ ap "main")))))
-  , True)
+jensenWr :: (TestCase, Bool)
+jensenWr = (("Only privileged writes."
+            , Always $ ((ap "call" `And` ap "raw_write")
+                        `Implies`
+                        (Not $ Since Down T
+                         (ap "call"
+                          `And` (Not $ ap "P_wr")
+                          `And` (Not $ ap "raw_write")
+                          `And` (Not $ ap "main")))))
+           , True)
 
-jensenWrDb :: TestTree
-jensenWrDb = makeTestCase jensen
-  (("Only writes with debit privilege."
-   , Always $ ((ap "call" `And` ap "raw_write")
-                `Implies`
-                (Not $ Since Down T
-                  (ap "call"
-                   `And` (Not $ ap "P_db")
-                   `And` (Not $ ap "raw_write")
-                   `And` (Not $ ap "main")))))
-  , True)
+jensenRdCp :: (TestCase, Bool)
+jensenRdCp = (("Only reads with canpay privilege."
+              , Always $ ((ap "call" `And` ap "raw_read")
+                          `Implies`
+                          (Not $ Since Down T
+                           (ap "call"
+                            `And` (Not $ ap "P_cp")
+                            `And` (Not $ ap "raw_read")
+                            `And` (Not $ ap "main")))))
+             , True)
+
+jensenWrDb :: (TestCase, Bool)
+jensenWrDb = (("Only writes with debit privilege."
+              , Always $ ((ap "call" `And` ap "raw_write")
+                          `Implies`
+                          (Not $ Since Down T
+                           (ap "call"
+                            `And` (Not $ ap "P_db")
+                            `And` (Not $ ap "raw_write")
+                            `And` (Not $ ap "main")))))
+             , True)
 
 jensen :: T.Text
 jensen = T.pack [r|
@@ -619,25 +678,37 @@ raw_write() {}
 
 
 stackTests :: TestTree
-stackTests = testGroup "MiniProc Stack Tests" [ stackUnsafe, stackUnsafeNeutrality
-                                              , stackSafe, stackSafeNeutrality]
+stackTests = testGroup "MiniProc Stack Tests"
+  [ makeTestCase stackUnsafeSource stackUnsafe
+  , makeTestCase stackUnsafeSource stackUnsafeNeutrality
+  , makeTestCase stackSafeSource stackSafe
+  , makeTestCase stackSafeSource stackSafeNeutrality
+  ]
 
-stackUnsafe :: TestTree
-stackUnsafe = makeTestCase stackUnsafeSource
+stackBenchs :: TestTree
+stackBenchs = testGroup "MiniProc Stack Tests"
+  [ makeBench stackUnsafeSource stackUnsafe
+  , makeBench stackUnsafeSource stackUnsafeNeutrality
+  , makeBench stackSafeSource stackSafe
+  , makeBench stackSafeSource stackSafeNeutrality
+  ]
+
+stackUnsafe :: (TestCase, Bool)
+stackUnsafe =
   (("MiniProc Unsafe Stack"
    , Always $ (ap "exc"
-               `Implies`
-               (Not $ (PBack Up (ap "tainted")
-                       `Or` XBack Up (ap "tainted" `And` Not (ap "main")))
-                `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop"))))
+                `Implies`
+                (Not $ (PBack Up (ap "tainted")
+                         `Or` XBack Up (ap "tainted" `And` Not (ap "main")))
+                  `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop"))))
   , False)
 
-stackUnsafeNeutrality :: TestTree
-stackUnsafeNeutrality = makeTestCase stackUnsafeSource
+stackUnsafeNeutrality :: (TestCase, Bool)
+stackUnsafeNeutrality =
   (("MiniProc Unsafe Stack Neutrality"
    , Always ((ap "exc"
-              `And` PBack Up (ap "T")
-              `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
+               `And` PBack Up (ap "T")
+               `And` XBack Down (ap "han" `And` XBack Down (ap "Stack")))
               `Implies`
               (XBack Down $ XBack Down $ XNext Up $ ap "exc")))
   , True)
@@ -755,8 +826,8 @@ std::copy() {
 |]
 
 
-stackSafe :: TestTree
-stackSafe = makeTestCase stackSafeSource
+stackSafe :: (TestCase, Bool)
+stackSafe =
   (("MiniProc Safe Stack"
    , Always $ (ap "exc"
                `Implies`
@@ -765,8 +836,8 @@ stackSafe = makeTestCase stackSafeSource
                 `And` XBack Up (ap "Stack::push" `Or` ap "Stack::pop"))))
   , True)
 
-stackSafeNeutrality :: TestTree
-stackSafeNeutrality = makeTestCase stackSafeSource
+stackSafeNeutrality :: (TestCase, Bool)
+stackSafeNeutrality =
   (("MiniProc Safe Stack Neutrality"
    , Always ((ap "exc"
               `And` PBack Up (ap "T")
@@ -937,26 +1008,39 @@ intTests = testGroup "Int Variables Tests" [ u8Arith1Tests
                                            , argTests
                                            ]
 
+intBenchs :: TestTree
+intBenchs = testGroup "Int Variables Tests" [ u8Arith1Benchs
+                                            , u8Arith2Benchs
+                                            , arithCastsBenchs
+                                            , nondetBenchs
+                                            , arrayBenchs
+                                            , arrayLoopBenchs
+                                            , localBenchs
+                                            , argBenchs
+                                            ]
+
 u8Arith1Tests :: TestTree
-u8Arith1Tests = testGroup "u8Arith1" [ u8Arith1Exc, u8Arith1Ret, u8Arith1aHolds ]
+u8Arith1Tests = testGroup "u8Arith1"
+  $ map (makeTestCase u8Arith1Src) [u8Arith1Exc, u8Arith1Ret, u8Arith1aHolds]
 
-u8Arith1Exc :: TestTree
-u8Arith1Exc = makeTestCase u8Arith1Src
-  (("Throws."
-   , Until Up T (ap "exc"))
-  , True)
+u8Arith1Benchs :: TestTree
+u8Arith1Benchs = testGroup "u8Arith1"
+  $ map (makeBench u8Arith1Src) [u8Arith1Exc, u8Arith1Ret, u8Arith1aHolds]
 
-u8Arith1Ret :: TestTree
-u8Arith1Ret = makeTestCase u8Arith1Src
-  (("Terminates normally."
-   , Until Up T (ap "ret"))
-  , False)
+u8Arith1Exc :: (TestCase, Bool)
+u8Arith1Exc = (("Throws."
+               , Until Up T (ap "exc"))
+              , True)
 
-u8Arith1aHolds :: TestTree
-u8Arith1aHolds = makeTestCase u8Arith1Src
-  (("Variable a is non-zero at the end."
-   , XNext Up (ap "a"))
-  , True)
+u8Arith1Ret :: (TestCase, Bool)
+u8Arith1Ret = (("Terminates normally."
+               , Until Up T (ap "ret"))
+              , False)
+
+u8Arith1aHolds :: (TestCase, Bool)
+u8Arith1aHolds = (("Variable a is non-zero at the end."
+                  , XNext Up (ap "a"))
+                 , True)
 
 u8Arith1Src :: T.Text
 u8Arith1Src = T.pack [r|
@@ -973,25 +1057,27 @@ main() {
 |]
 
 u8Arith2Tests :: TestTree
-u8Arith2Tests = testGroup "u8Arith2" [ u8Arith2Ret, u8Arith2Assert, u8Arith2AssertFalse ]
+u8Arith2Tests = testGroup "u8Arith2"
+  $ map (makeTestCase u8Arith2Src) [u8Arith2Ret, u8Arith2Assert, u8Arith2AssertFalse]
 
-u8Arith2Ret :: TestTree
-u8Arith2Ret = makeTestCase u8Arith2Src
-  (("Terminates normally."
-   , Until Up T (ap "ret"))
-  , True)
+u8Arith2Benchs :: TestTree
+u8Arith2Benchs = testGroup "u8Arith2"
+  $ map (makeBench u8Arith2Src) [u8Arith2Ret, u8Arith2Assert, u8Arith2AssertFalse]
 
-u8Arith2Assert :: TestTree
-u8Arith2Assert = makeTestCase u8Arith2Src
-  (("Assert true."
-   , Until Up T (ap "ret" `And` ap "assert"))
-  , True)
+u8Arith2Ret :: (TestCase, Bool)
+u8Arith2Ret = (("Terminates normally."
+               , Until Up T (ap "ret"))
+              , True)
 
-u8Arith2AssertFalse :: TestTree
-u8Arith2AssertFalse = makeTestCase u8Arith2Src
-  (("Assert false."
-   , Until Up T (ap "ret" `And` (Not $ ap "assert")))
-  , False)
+u8Arith2Assert :: (TestCase, Bool)
+u8Arith2Assert = (("Assert true."
+                  , Until Up T (ap "ret" `And` ap "assert"))
+                 , True)
+
+u8Arith2AssertFalse :: (TestCase, Bool)
+u8Arith2AssertFalse = (("Assert false."
+                       , Until Up T (ap "ret" `And` (Not $ ap "assert")))
+                      , False)
 
 u8Arith2Src :: T.Text
 u8Arith2Src = T.pack [r|
@@ -1014,39 +1100,49 @@ main() {
 
 
 arithCastsTests :: TestTree
-arithCastsTests = testGroup "ArithCasts" [ arithCastsAssert1
-                                         , arithCastsAssert2
-                                         , arithCastsAssert3
-                                         , arithCastsAssert4
-                                         , arithCastsAssert5
-                                         ]
+arithCastsTests = testGroup "ArithCasts"
+  $ map (makeTestCase arithCastsSrc) [ arithCastsAssert1
+                                     , arithCastsAssert2
+                                     , arithCastsAssert3
+                                     , arithCastsAssert4
+                                     , arithCastsAssert5
+                                     ]
 
-arithCastsAssert1 :: TestTree
-arithCastsAssert1 = makeTestCase arithCastsSrc
+arithCastsBenchs :: TestTree
+arithCastsBenchs = testGroup "ArithCasts"
+  $ map (makeBench arithCastsSrc) [ arithCastsAssert1
+                                  , arithCastsAssert2
+                                  , arithCastsAssert3
+                                  , arithCastsAssert4
+                                  , arithCastsAssert5
+                                  ]
+
+arithCastsAssert1 :: (TestCase, Bool)
+arithCastsAssert1 =
   (("a + c > 1024u16"
    , Until Down T (ap "ret" `And` ap "assert1"))
   , True)
 
-arithCastsAssert2 :: TestTree
-arithCastsAssert2 = makeTestCase arithCastsSrc
+arithCastsAssert2 :: (TestCase, Bool)
+arithCastsAssert2 =
   (("b + d < 0s8"
    , Until Down T (ap "ret" `And` ap "assert2"))
   , True)
 
-arithCastsAssert3 :: TestTree
-arithCastsAssert3 = makeTestCase arithCastsSrc
+arithCastsAssert3 :: (TestCase, Bool)
+arithCastsAssert3 =
   (("f == 25u8"
    , Until Down T (ap "ret" `And` ap "assert3"))
   , True)
 
-arithCastsAssert4 :: TestTree
-arithCastsAssert4 = makeTestCase arithCastsSrc
+arithCastsAssert4 :: (TestCase, Bool)
+arithCastsAssert4 =
   (("b * c == 10240s16"
    , Until Down T (ap "ret" `And` ap "assert4"))
   , True)
 
-arithCastsAssert5 :: TestTree
-arithCastsAssert5 = makeTestCase arithCastsSrc
+arithCastsAssert5 :: (TestCase, Bool)
+arithCastsAssert5 =
   (("d / b == -1s8"
    , Until Down T (ap "ret" `And` ap "assert5"))
   , True)
@@ -1076,32 +1172,33 @@ main() {
 |]
 
 nondetTests :: TestTree
-nondetTests = testGroup "Nondeterministic Int" [ nondetCover0
-                                               , nondetCover1
-                                               , nondetCover2
-                                               , nondetAssert
-                                               ]
+nondetTests = testGroup "Nondeterministic Int"
+  $ map (makeTestCase nondetSrc) [nondetCover0, nondetCover1, nondetCover2, nondetAssert]
 
-nondetCover0 :: TestTree
-nondetCover0 = makeTestCase nondetSrc
+nondetBenchs :: TestTree
+nondetBenchs = testGroup "Nondeterministic Int"
+  $ map (makeBench nondetSrc) [nondetCover0, nondetCover1, nondetCover2, nondetAssert]
+
+nondetCover0 :: (TestCase, Bool)
+nondetCover0 =
   (("Coverage 0"
    , XNext Down (ap "ret" `And` (Not $ ap "cover0")))
   , False)
 
-nondetCover1 :: TestTree
-nondetCover1 = makeTestCase nondetSrc
+nondetCover1 :: (TestCase, Bool)
+nondetCover1 =
   (("Coverage 1"
    , XNext Down (ap "ret" `And` (Not $ ap "cover1")))
   , False)
 
-nondetCover2 :: TestTree
-nondetCover2 = makeTestCase nondetSrc
+nondetCover2 :: (TestCase, Bool)
+nondetCover2 =
   (("Coverage 2"
    , XNext Down (ap "ret" `And` (Not $ ap "cover2")))
   , False)
 
-nondetAssert :: TestTree
-nondetAssert = makeTestCase nondetSrc
+nondetAssert :: (TestCase, Bool)
+nondetAssert =
   (("Assert true."
    , Until Up T (ap "ret" `And` ap "assert"))
   , True)
@@ -1133,25 +1230,27 @@ main() {
 
 
 arrayTests :: TestTree
-arrayTests = testGroup "Int Array Tests" [ arrayCover0
-                                         , arrayCover1
-                                         , arrayAssert0
-                                         ]
+arrayTests = testGroup "Int Array Tests"
+  $ map (makeTestCase arraySrc) [arrayCover0, arrayCover1, arrayAssert0]
 
-arrayCover0 :: TestTree
-arrayCover0 = makeTestCase arraySrc
+arrayBenchs :: TestTree
+arrayBenchs = testGroup "Int Array Tests"
+  $ map (makeBench arraySrc) [arrayCover0, arrayCover1, arrayAssert0]
+
+arrayCover0 :: (TestCase, Bool)
+arrayCover0 =
   (("Coverage 0"
    , XNext Down (ap "ret" `And` (Not $ ap "cover0")))
   , False)
 
-arrayCover1 :: TestTree
-arrayCover1 = makeTestCase arraySrc
+arrayCover1 :: (TestCase, Bool)
+arrayCover1 =
   (("Coverage 1"
    , XNext Down (ap "ret" `And` (Not $ ap "cover1")))
   , False)
 
-arrayAssert0 :: TestTree
-arrayAssert0 = makeTestCase arraySrc
+arrayAssert0 :: (TestCase, Bool)
+arrayAssert0 =
   (("Assert 0"
    , XNext Down (ap "ret" `And` ap "assert0"))
   , True)
@@ -1181,10 +1280,15 @@ main() {
 
 
 arrayLoopTests :: TestTree
-arrayLoopTests = testGroup "Int Array Loop Tests" [ arrayLoopAssert0 ]
+arrayLoopTests = testGroup "Int Array Loop Tests"
+  [makeTestCase arrayLoopSrc arrayLoopAssert0]
 
-arrayLoopAssert0 :: TestTree
-arrayLoopAssert0 = makeTestCase arrayLoopSrc
+arrayLoopBenchs :: TestTree
+arrayLoopBenchs = testGroup "Int Array Loop Tests"
+  [makeBench arrayLoopSrc arrayLoopAssert0]
+
+arrayLoopAssert0 :: (TestCase, Bool)
+arrayLoopAssert0 =
   (("Assert 0"
    , XNext Down (ap "ret" `And` ap "assert0"))
   , True)
@@ -1216,25 +1320,27 @@ main() {
 
 
 localTests :: TestTree
-localTests = testGroup "Local Variables Tests" [ localAssertA
-                                               , localAssertB
-                                               , localAssertC
-                                               ]
+localTests = testGroup "Local Variables Tests"
+  $ map (makeTestCase localTestsSrc) [localAssertA, localAssertB, localAssertC]
 
-localAssertA :: TestTree
-localAssertA = makeTestCase localTestsSrc
+localBenchs :: TestTree
+localBenchs = testGroup "Local Variables Tests"
+  $ map (makeBench localTestsSrc) [localAssertA, localAssertB, localAssertC]
+
+localAssertA :: (TestCase, Bool)
+localAssertA =
   (("Assert A"
    , Until Down T (ap "ret" `And` ap "assertA"))
   , True)
 
-localAssertB :: TestTree
-localAssertB = makeTestCase localTestsSrc
+localAssertB :: (TestCase, Bool)
+localAssertB =
   (("Assert B"
    , Until Down T (ap "ret" `And` ap "assertB"))
   , True)
 
-localAssertC :: TestTree
-localAssertC = makeTestCase localTestsSrc
+localAssertC :: (TestCase, Bool)
+localAssertC =
   (("Assert C"
    , Until Down T (ap "ret" `And` ap "assertC"))
   , False)
@@ -1283,46 +1389,51 @@ pC() {
 
 
 argTests :: TestTree
-argTests = testGroup "Function Arguments Tests" [ argAssertMain0
-                                                , argAssertMain1
-                                                , argAssertA0
-                                                , argAssertA1
-                                                , argAssertB0
-                                                , argAssertB1
-                                                ]
+argTests = testGroup "Function Arguments Tests"
+  $ map (makeTestCase argTestsSrc) [ argAssertMain0, argAssertMain1
+                                   , argAssertA0, argAssertA1
+                                   , argAssertB0, argAssertB1
+                                   ]
 
-argAssertMain0 :: TestTree
-argAssertMain0 = makeTestCase argTestsSrc
+argBenchs :: TestTree
+argBenchs = testGroup "Function Arguments Tests"
+  $ map (makeBench argTestsSrc) [ argAssertMain0, argAssertMain1
+                                , argAssertA0, argAssertA1
+                                , argAssertB0, argAssertB1
+                                ]
+
+argAssertMain0 :: (TestCase, Bool)
+argAssertMain0 =
   (("Assert Main 0"
    , Until Down T (ap "ret" `And` ap "assertMain0"))
   , True)
 
-argAssertMain1 :: TestTree
-argAssertMain1 = makeTestCase argTestsSrc
+argAssertMain1 :: (TestCase, Bool)
+argAssertMain1 =
   (("Assert Main 1"
    , Until Down T (ap "ret" `And` ap "assertMain1"))
   , True)
 
-argAssertA0 :: TestTree
-argAssertA0 = makeTestCase argTestsSrc
+argAssertA0 :: (TestCase, Bool)
+argAssertA0 =
   (("Assert A 0"
    , Until Down T (ap "ret" `And` ap "assertA0"))
   , True)
 
-argAssertA1 :: TestTree
-argAssertA1 = makeTestCase argTestsSrc
+argAssertA1 :: (TestCase, Bool)
+argAssertA1 =
   (("Assert A 1"
    , Until Down T (ap "ret" `And` ap "assertA1"))
   , True)
 
-argAssertB0 :: TestTree
-argAssertB0 = makeTestCase argTestsSrc
+argAssertB0 :: (TestCase, Bool)
+argAssertB0 =
   (("Assert B 0"
    , Until Down T (ap "ret" `And` ap "assertB0"))
   , True)
 
-argAssertB1 :: TestTree
-argAssertB1 = makeTestCase argTestsSrc
+argAssertB1 :: (TestCase, Bool)
+argAssertB1 =
   (("Assert B 1"
    , Until Down T (ap "ret" `And` ap "assertB1"))
   , True)
@@ -1382,49 +1493,60 @@ pB(u8 &r, u8 s, u8[2] &t, u8 &x) {
 
 
 exprPropTests :: TestTree
-exprPropTests = testGroup "Expression Propositions Tests" [ exprPropMain0
-                                                          , exprPropMain1
-                                                          , exprPropA0
-                                                          , exprPropA1
-                                                          , exprPropB0
-                                                          , exprPropB1
-                                                          ]
+exprPropTests = testGroup "Expression Propositions Tests"
+  $ map (makeParseTestCase exprPropTestsSrc) [ exprPropMain0, exprPropMain1
+                                             , exprPropA0, exprPropA1
+                                             , exprPropB0, exprPropB1
+                                             ]
 
-exprPropMain0 :: TestTree
-exprPropMain0 = makeParseTestCase exprPropTestsSrc
-  "Assert Main 0"
-  "T Ud (stm && [main| a + b + c[0u8] + c[1u8] == 28u8 ])"
-  True
+exprPropBenchs :: TestTree
+exprPropBenchs = testGroup "Expression Propositions Tests"
+  $ map (makeParseBench exprPropTestsSrc) [ exprPropMain0, exprPropMain1
+                                          , exprPropA0, exprPropA1
+                                          , exprPropB0, exprPropB1
+                                          ]
 
-exprPropMain1 :: TestTree
-exprPropMain1 = makeParseTestCase exprPropTestsSrc
-  "Assert Main 1"
-  "T Ud (ret && [main|a + b + c[0u8] + c[1u8] + w == 84u8])"
-  True
+exprPropMain0 :: (String, String, Bool)
+exprPropMain0 =
+  ( "Assert Main 0"
+  , "T Ud (stm && [main| a + b + c[0u8] + c[1u8] == 28u8 ])"
+  , True
+  )
 
-exprPropA0 :: TestTree
-exprPropA0 = makeParseTestCase exprPropTestsSrc
-  "Assert A 0"
-  "T Ud (stm && [pA| u == 70u8 ])"
-  True
+exprPropMain1 :: (String, String, Bool)
+exprPropMain1 =
+  ( "Assert Main 1"
+  , "T Ud (ret && [main|a + b + c[0u8] + c[1u8] + w == 84u8])"
+  , True
+  )
 
-exprPropA1 :: TestTree
-exprPropA1 = makeParseTestCase exprPropTestsSrc
-  "Assert A 1"
-  "T Ud (ret && [pA| u == 13u8])"
-  True
+exprPropA0 :: (String, String, Bool)
+exprPropA0 =
+  ( "Assert A 0"
+  , "T Ud (stm && [pA| u == 70u8 ])"
+  , True
+  )
 
-exprPropB0 :: TestTree
-exprPropB0 = makeParseTestCase exprPropTestsSrc
-  "Assert B 0"
-  "T Ud (stm && [pB| w + r + s + t[0u8] + t[1u8] + x == 29u8 ])"
-  True
+exprPropA1 :: (String, String, Bool)
+exprPropA1 =
+  ( "Assert A 1"
+  , "T Ud (ret && [pA| u == 13u8])"
+  , True
+  )
 
-exprPropB1 :: TestTree
-exprPropB1 = makeParseTestCase exprPropTestsSrc
-  "Assert B 1"
-  "T Ud (ret && [pB| w + r + s + t[0u8] + t[1u8] + x == 90u8 ])"
-  True
+exprPropB0 :: (String, String, Bool)
+exprPropB0 =
+  ( "Assert B 0"
+  , "T Ud (stm && [pB| w + r + s + t[0u8] + t[1u8] + x == 29u8 ])"
+  , True
+  )
+
+exprPropB1 :: (String, String, Bool)
+exprPropB1 =
+  ( "Assert B 1"
+  , "T Ud (ret && [pB| w + r + s + t[0u8] + t[1u8] + x == 90u8 ])"
+  , True
+  )
 
 exprPropTestsSrc :: T.Text
 exprPropTestsSrc = T.pack [r|

@@ -15,7 +15,7 @@ extra-source-files:
 - README.md
 
 dependencies:
-- base >= 4.7 && < 5
+- base >= 4.11 && < 5
 
 library:
   source-dirs:      src
@@ -31,7 +31,7 @@ library:
   - Pomc.Parse.MiniProc
   - Pomc.OpaGen
   - Pomc.MiniProc
-  - Pomc.Util
+  - Pomc.TimeUtils
   - Pomc.Z3Encoding
   ghc-options:
   - -Wall
@@ -42,14 +42,11 @@ library:
   dependencies:
   - bv
   - containers
-  - criterion-measurement
   - deepseq
   - megaparsec
-  - parallel
   - parser-combinators
   - text
   - vector
-  - mtl
   - hashable
   - hashtables
   - unordered-containers
@@ -74,10 +71,27 @@ executables:
     - containers
     - cmdargs
 
+internal-libraries:
+  pomc-tests:
+    source-dirs:    test
+    ghc-options:
+    - -Wall
+    - -O2
+    dependencies:
+    - pomc
+    - containers
+    - tasty
+    - tasty-hunit
+    - tasty-quickcheck
+    - tasty-bench
+    - raw-strings-qq
+    - megaparsec
+    - text
+
 tests:
   test-pomc:
     main:           Test.hs
-    source-dirs:    test
+    source-dirs:    test/test
     ghc-options:
     - -rtsopts
     - -with-rtsopts=-H
@@ -85,14 +99,18 @@ tests:
     - -O2
     - -threaded
     dependencies:
-    - pomc
-    - containers
-    - deepseq
+    - pomc-tests
     - tasty
-    - tasty-hunit
-    - tasty-quickcheck
-    - hashable
-    - unordered-containers
-    - raw-strings-qq
-    - megaparsec
-    - text
+
+benchmarks:
+  bench-pomc:
+    main:           Bench.hs
+    source-dirs:    test/bench
+    ghc-options:
+    - -rtsopts
+    - -with-rtsopts=-H
+    - -Wall
+    - -O2
+    dependencies:
+    - pomc-tests
+    - tasty-bench

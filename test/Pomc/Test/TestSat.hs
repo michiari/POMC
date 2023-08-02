@@ -1,42 +1,60 @@
 {- |
-   Module      : TestSat
+   Module      : Pomc.Test.TestSat
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestSat (tests, slowTests) where
+module Pomc.Test.TestSat (tests, slowTests, benchs) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Bench
 import Pomc.Satisfiability (isSatisfiableGen)
-import OPMs (stlV2Alphabet)
-import EvalFormulas (TestCase, zipExpected, excludeIndices, formulas, ap)
+import Pomc.Test.OPMs (stlV2Alphabet)
+import Pomc.Test.EvalFormulas (TestCase, zipExpected, excludeIndices, formulas, ap)
 import qualified Data.Set as S (toList)
 
 import Pomc.Potl (Formula(..), Dir(..))
 
 tests :: TestTree
 tests = testGroup "TestSat.hs Normal Tests"
-  $ map makeTestCase
-  $ (excludeIndices allTestCases [18, 41, 42] ++ [nestedXNext, xNextNoEqual])
+  $ map makeTestCase normalTestCases
 
 slowTests :: TestTree
 slowTests = testGroup "TestSat.hs Slow Tests"
-  $ map makeTestCase
-  [ allTestCases !! 18
-  , allTestCases !! 41
-  , allTestCases !! 42
-  , andXNext
-  ]
+  $ map makeTestCase slowTestCases
 
-makeTestCase :: (TestCase, Bool)
-             -> TestTree
-makeTestCase ((name, phi), expected) =
-  let (sat, trace) = isSatisfiableGen False phi stlV2Alphabet
-      debugMsg False _ = "Expected SAT, got UNSAT."
-      debugMsg True tr = "Expected UNSAT, got SAT. Trace:\n" ++ show (map S.toList tr)
-  in testCase (name ++ " (" ++ show phi ++ ")") $ assertBool (debugMsg sat trace) (sat == expected)
+makeTestCase :: (TestCase, Bool) -> TestTree
+makeTestCase tce@((_, phi), _) = testCase tname $ tthunk phi
+  where (tname, tthunk) = makeTest tce
+
+benchs :: TestTree
+benchs = testGroup "TestSat.hs Normal Tests"
+  $ map makeBench normalTestCases
+
+makeBench :: (TestCase, Bool) -> Benchmark
+makeBench tce@((_, phi), _) = bench bname $ nfAppIO bthunk phi
+  where (bname, bthunk) = makeTest tce
+
+makeTest :: (TestCase, Bool) -> (String, Formula String -> Assertion)
+makeTest ((name, phi), expected) =
+  ( name ++ " (" ++ show phi ++ ")"
+  , (\f -> let (sat, trace) = isSatisfiableGen False f stlV2Alphabet
+               debugMsg False _ = "Expected SAT, got UNSAT."
+               debugMsg True tr = "Expected UNSAT, got SAT. Trace:\n" ++ show (map S.toList tr)
+           in assertBool (debugMsg sat trace) (sat == expected))
+  )
+
+normalTestCases :: [(TestCase, Bool)]
+normalTestCases = excludeIndices allTestCases [18, 41, 42] ++ [nestedXNext, xNextNoEqual]
+
+slowTestCases :: [(TestCase, Bool)]
+slowTestCases = [ allTestCases !! 18
+                , allTestCases !! 41
+                , allTestCases !! 42
+                , andXNext
+                ]
 
 allTestCases :: [(TestCase, Bool)]
 allTestCases = zipExpected formulas expectedRes

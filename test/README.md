@@ -49,3 +49,14 @@ ghci> setEnv "TASTY_PATTERN" "PATTERN"
 ghci> :trace defaultMain TestMC.tests
 ...
 ```
+
+# Benchmarks
+
+Some tests have also been packaged as benchmarks with the [Tasty.Bench](https://hackage.haskell.org/package/tasty-bench) framework,
+with the main purpose of measuring performance optimizations.
+
+You may run them with
+```sh
+stack bench --ba '-p "PATTERN"'
+```
+where `PATTERN` is any Tasty pattern, and all arguments supported by `test` can also be used.

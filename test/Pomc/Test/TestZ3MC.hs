@@ -1,16 +1,16 @@
 {-# LANGUAGE QuasiQuotes #-}
 {- |
-   Module      : TestZ3MC
+   Module      : Pomc.Test.TestZ3MC
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestZ3MC ( tests ) where
+module Pomc.Test.TestZ3MC ( tests ) where
 
-import TestZ3Sat (isSupported)
-import TestMP hiding (tests)
-import EvalFormulas (TestCase, zipExpected, formulas, ap)
+import Pomc.Test.TestZ3Sat (isSupported)
+import Pomc.Test.TestMP hiding (tests)
+import Pomc.Test.EvalFormulas as EvalFormulas (TestCase, zipExpected, formulas, ap)
 import Pomc.Potl
 import Pomc.Z3Encoding (modelCheckProgram, SMTResult(..), SMTStatus(..))
 import Pomc.MiniProc (ExprProp(..))

@@ -1,7 +1,14 @@
-module TestZ3Sat ( tests, isSupported ) where
+{- |
+   Module      : Pomc.Test.TestZ3Sat
+   Copyright   : 2021-23 Michele Chiari
+   License     : MIT
+   Maintainer  : Michele Chiari
+-}
 
-import EvalFormulas (TestCase, zipExpected, formulas, ap)
-import OPMs (stlV2Alphabet)
+module Pomc.Test.TestZ3Sat ( tests, isSupported ) where
+
+import Pomc.Test.EvalFormulas (TestCase, zipExpected, formulas, ap)
+import Pomc.Test.OPMs (stlV2Alphabet)
 import Pomc.Z3Encoding (isSatisfiable, SMTResult(..), SMTStatus(..))
 import Pomc.Potl (Formula(..), Dir(..))
 

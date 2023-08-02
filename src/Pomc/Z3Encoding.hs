@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, DeriveGeneric, DeriveAnyClass #-}
 {- |
    Module      : Pomc.Z3Encoding
    Copyright   : 2020-2023 Michele Chiari
@@ -18,7 +18,7 @@ import Prelude hiding (take, pred)
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Dir(..), Formula(..), pnf, atomic)
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
-import Pomc.Util (timeAction)
+import Pomc.TimeUtils (timeAction)
 import qualified Pomc.MiniProc as MP
 
 import Z3.Monad hiding (Result(..))
@@ -109,12 +109,13 @@ checkQuery phi query maxDepth = evalZ3
                                         }
       | otherwise = do
           reset
-          (tableauQuery, newAssertTime) <- timeAction $ assertEncoding pnfPhi query k
-          ((res, maybeModel), newCheckTime) <- timeAction $ solverCheckAndGetModel
+          (tableauQuery, newAssertTime) <- timeAction (const ()) $ assertEncoding pnfPhi query k
+          ((res, maybeModel), newCheckTime) <- timeAction ((== Z3.Sat) . fst) $ solverCheckAndGetModel
           -- (res, newCheckTime) <- timeAction $ solverCheck
           if res == Z3.Sat
             then do
-            (tableau, modelTime) <- timeAction $ tableauQuery Nothing $ fromJust maybeModel
+            (tableau, modelTime) <- timeAction (const ())
+              $ tableauQuery Nothing $ fromJust maybeModel
             -- DBG.traceM =<< showModel (fromJust maybeModel)
             return SMTResult { smtStatus = Sat
                              , smtTableau = Just tableau

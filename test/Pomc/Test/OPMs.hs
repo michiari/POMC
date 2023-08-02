@@ -1,19 +1,19 @@
 {- |
-   Module      : OPMs
+   Module      : Pomc.Test.OPMs
    Copyright   : 2020-23 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module OPMs ( -- * Stack Trace Language V1 precedence function
-              stlAnnotateV1
-            , stlPrecRelV1
-              -- * Stack Trace Language V2 precedence function
-            , stlPrecRelV2
-            , stlPrecV2sls
-            , stlV2Alphabet
-            , makeInputSet
-            ) where
+module Pomc.Test.OPMs ( -- * Stack Trace Language V1 precedence function
+                        stlAnnotateV1
+                      , stlPrecRelV1
+                      -- * Stack Trace Language V2 precedence function
+                      , stlPrecRelV2
+                      , stlPrecV2sls
+                      , stlV2Alphabet
+                      , makeInputSet
+                      ) where
 
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import Pomc.Prop (Prop(..))
