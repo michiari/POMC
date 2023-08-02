@@ -14,7 +14,7 @@ import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.Util (timeAction, timeToString)
+import Pomc.Util (timeFunApp, timeToString)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
@@ -89,7 +89,8 @@ main = do
                      , "\nString:  ", showstring s
                      , "\nResult:  "
                      ])
-      (_, time) <- timeAction . putStr . show $ fastcheckGen phi precRels s
+      (sat, time) <- timeFunApp id (fastcheckGen phi precRels) s
+      putStr $ show sat
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
@@ -98,10 +99,8 @@ main = do
                      , "\nInput OPA state count: ", show $ countStates opa
                      , "\nResult:  "
                      ])
-      ((sat, trace), time) <- timeAction $ do
-        let (s, t) = modelCheckExplicitGen isOmega phi opa
-        putStr $ show s
-        return (s, t)
+      ((sat, trace), time) <- timeFunApp fst (modelCheckExplicitGen isOmega phi) opa
+      putStr $ show sat
       unless sat $ putStr $ "\nCounterexample: " ++ showPrettyTrace "..." T.unpack trace
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
@@ -110,10 +109,8 @@ main = do
       putStr (concat [ "\nModel Checking\nFormula: ", show phi
                      , "\nResult:  "
                      ])
-      ((sat, trace), time) <- timeAction $ do
-        let (s, t) = modelCheckProgram isOmega phi prog
-        putStr $ show s
-        return (s, t)
+      ((sat, trace), time) <- timeFunApp fst (modelCheckProgram isOmega phi) prog
+      putStr $ show sat
       unless sat $ putStr $ "\nCounterexample: " ++ showPrettyTrace "..." show trace
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time

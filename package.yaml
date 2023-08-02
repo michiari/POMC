@@ -15,7 +15,7 @@ extra-source-files:
 - README.md
 
 dependencies:
-- base >= 4.7 && < 5
+- base >= 4.11 && < 5
 
 library:
   source-dirs:      src
@@ -38,7 +38,6 @@ library:
   dependencies:
   - bv
   - containers
-  - criterion-measurement
   - deepseq
   - megaparsec
   - parallel
