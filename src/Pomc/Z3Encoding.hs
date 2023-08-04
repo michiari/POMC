@@ -924,7 +924,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                                 case g of
                                   MP.NoGuard -> return nextPc
                                   MP.Guard e -> do
-                                    guard <- evalBoolExpr sVarFunVec e xLit
+                                    guard <- evalBoolExpr sVarFunVec e xp1
                                     mkAnd [guard, nextPc]
                             ) dt
         mkAnd [pcXEqL1, structXEqil, inputProps, action, exprProps, targets]
@@ -956,7 +956,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                                 case g of
                                   MP.NoGuard -> return nextPc
                                   MP.Guard e -> do
-                                    guard <- evalBoolExpr sVarFunVec e xLit
+                                    guard <- evalBoolExpr sVarFunVec e xp1
                                     mkAnd [guard, nextPc]
                             ) dt
         mkAnd [pcXEqL1, pcStackXEqLs, action, targets]
