@@ -34,6 +34,7 @@ module Pomc.MiniProc ( DeltaTarget(..)
                      , varWidth
                      , IdType
                      , VarIdInfo(..)
+                     , addVariables
                      ) where
 
 import Pomc.MiniIR
@@ -339,9 +340,9 @@ programToOpa isOmega prog additionalProps =
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
-      gvii = VarIdInfo { scalarIds = S.size . pGlobalScalars $ prog
-                       , arrayIds = S.size . pGlobalArrays $ prog
-                       }
+      gvii = VarIdInfo { scalarOffset = sids, arrayOffset = aids, varIds = sids + aids }
+        where sids = S.size . pGlobalScalars $ prog
+              aids = S.size . pGlobalArrays $ prog
       localsInfo = M.insert T.empty (globExprMap, V.empty, V.empty)
         $ M.fromList
         $ map (\sk -> let (liScalars, liArrays) =

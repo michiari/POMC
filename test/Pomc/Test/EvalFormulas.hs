@@ -1,11 +1,11 @@
 {- |
-   Module      : EvalFormulas
+   Module      : Pomc.Test.EvalFormulas
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module EvalFormulas (TestCase, ap, zipExpected, excludeIndices, formulas) where
+module Pomc.Test.EvalFormulas (TestCase, ap, zipExpected, excludeIndices, formulas) where
 
 import Pomc.Potl (Formula(..), Dir(..), Prop(..))
 

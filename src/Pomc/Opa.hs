@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
-
 {- |
    Module      : Pomc.Opa
    Copyright   : 2020-2023 Davide Bergamaschi and Michele Chiari
@@ -10,17 +8,15 @@
 module Pomc.Opa ( -- * Run functions
                   run
                 , augRun
-                , parAugRun
                   -- * OPA type and relative utilities
                 , Opa(..)
                 , runOpa
                 ) where
 
 import Pomc.Prec (Prec(..))
-import Pomc.Util (any', safeHead, safeTail, parMap)
 
-import Control.Parallel.Strategies(NFData)
-import GHC.Generics (Generic)
+import Data.Foldable (foldl')
+import Data.Maybe (listToMaybe)
 
 data Opa s t = Opa
     { alphabet   :: [t]
@@ -38,7 +34,7 @@ data Config s t = Config
     { confState :: s
     , confStack :: [(t, s)]
     , confInput :: [t]
-    } deriving (Show, Generic, NFData)
+    } deriving Show
 
 runOpa :: (Eq s) => Opa s t -> [t] -> Bool
 runOpa (Opa _ precf _ ini fin dshift dpush dpop) tokens =
@@ -115,57 +111,13 @@ augRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
                       Just Equal -> recurse (shift dshift conf)
                       -- Stack top takes precedence on next token: pop
                       Just Take  -> recurse (pop dpop conf)
-      where lookahead = safeTail tokens' >>= safeHead
+      where lookahead = safeTail tokens' >>= listToMaybe
             dshift = adshift lookahead
             dpush  = adpush  lookahead
             dpop   = adpop   lookahead
             top = head stack  --
             t   = head tokens' -- safe due to laziness
             recurse = any' (run' precf' adshift adpush adpop isFinal')
-
-
--- same as AugRun, but with some parallelim
-parAugRun :: (NFData s, NFData t)
-          => (t -> t -> Maybe Prec)
-          -> [s]
-          -> (s -> Bool)
-          -> (Maybe t -> s -> t -> [s])
-          -> (Maybe t -> s -> t -> [s])
-          -> (Maybe t -> s -> s -> [s])
-          -> [t]
-          -> Bool
-parAugRun precf ini isFinal augDeltaShift augDeltaPush augDeltaPop tokens =
-  let ics = (map (\i -> Config i [] tokens) ini)
-      results = parMap (run' precf augDeltaShift augDeltaPush augDeltaPop isFinal) ics
-  in any id results
-  where
-    run' precf' adshift adpush adpop isFinal' conf@(Config s stack tokens')
-      -- No more input and empty stack: accept / reject
-      | null tokens' && null stack = isFinal' s
-
-      -- No more input but stack non-empty: pop
-      | null tokens' = recurse (pop dpop conf)
-
-      -- Stack empty: push
-      | null stack = recurse (push dpush conf)
-
-      -- Evaluate stack top precedence w.r.t. next token
-      | otherwise = case precf' (fst top) t of
-                      -- Undefined precedence relation: reject
-                      Nothing    -> False
-                      -- Stack top yields to next token: push
-                      Just Yield -> recurse (push dpush conf)
-                      -- Stack top has same precedence as next token: shift
-                      Just Equal -> recurse (shift dshift conf)
-                      -- Stack top takes precedence on next token: pop
-                      Just Take  -> recurse (pop dpop conf)
-      where lookahead = safeTail tokens' >>= safeHead
-            dshift = adshift lookahead
-            dpush  = adpush  lookahead
-            dpop   = adpop   lookahead
-            top = head stack  --
-            t   = head tokens' -- safe due to laziness
-            recurse = any id . parMap (run' precf' adshift adpush adpop isFinal')
 
 -- Partial: assumes token list not empty
 push :: (s -> t -> [s]) -> Config s t -> [Config s t]
@@ -186,3 +138,10 @@ pop :: (s -> s -> [s]) -> Config s t -> [Config s t]
 pop dpop (Config s stack tokens) =
   map (\s' -> (Config s' (tail stack) tokens))
       (dpop s (snd (head stack)))
+
+any' :: Foldable t => (a -> Bool) -> t a -> Bool
+any' p = foldl' (\z x -> z || p x) False
+
+safeTail :: [a] -> Maybe [a]
+safeTail [] = Nothing
+safeTail (_:xs) = Just xs

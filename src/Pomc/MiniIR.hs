@@ -32,6 +32,7 @@ module Pomc.MiniIR ( Program(..)
                    , varWidth
                    , enumerateIntType
                    , VarIdInfo(..)
+                   , addVariables
                    , isGlobal
                    , getLocalIdx
                    ) where
@@ -55,9 +56,10 @@ data Type = UInt Int
           | UIntArray Int Int -- width size
           | SIntArray Int Int -- width size
           deriving (Show, Eq, Ord, Generic)
-data Variable = Variable { varType :: Type
-                         , varName :: Text
-                         , varId   :: IdType
+data Variable = Variable { varId     :: IdType
+                         , varName   :: Text
+                         , varType   :: Type
+                         , varOffset :: IdType
                          } deriving (Show, Eq, Ord, Generic)
 type IntValue = BitVector
 type ArrayValue = Vector IntValue
@@ -199,14 +201,25 @@ instance Show Expr where
     where showBin op e1 e2 = "(" ++ show e1 ++ " " ++ op ++ " " ++ show e2 ++ ")"
 
 
-data VarIdInfo = VarIdInfo { scalarIds :: IdType
-                           , arrayIds  :: IdType
+data VarIdInfo = VarIdInfo { scalarOffset :: IdType
+                           , arrayOffset  :: IdType
+                           , varIds       :: IdType
                            } deriving Show
 
+addVariables :: Bool -> IdType -> VarIdInfo -> (VarIdInfo, [IdType], [IdType])
+addVariables scalar n vii =
+  let prevIds = if scalar then scalarOffset vii else arrayOffset vii
+  in ( if scalar
+       then vii { scalarOffset = prevIds + n, varIds = varIds vii + n }
+       else vii { arrayOffset = prevIds + n, varIds = varIds vii + n }
+     , [prevIds + i | i <- [0..(n - 1)]]
+     , [varIds vii + i | i <- [0..(n - 1)]]
+     )
+
 isGlobal :: VarIdInfo -> Bool -> IdType -> Bool
-isGlobal gvii scalar vid | scalar = vid < scalarIds gvii
-                         | otherwise = vid < arrayIds gvii
+isGlobal gvii scalar vid | scalar = vid < scalarOffset gvii
+                         | otherwise = vid < arrayOffset gvii
 
 getLocalIdx :: VarIdInfo -> Bool -> IdType -> Int
-getLocalIdx gvii scalar vid | scalar = vid - scalarIds gvii
-                            | otherwise = vid - arrayIds gvii
+getLocalIdx gvii scalar vid | scalar = vid - scalarOffset gvii
+                            | otherwise = vid - arrayOffset gvii

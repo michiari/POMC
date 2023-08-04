@@ -1,17 +1,17 @@
 {- |
-   Module      : TestSatOmega
+   Module      : Pomc.Test.TestSatOmega
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestSatOmega (tests, slowTests) where
+module Pomc.Test.TestSatOmega (tests, slowTests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
 import Pomc.Satisfiability (isSatisfiableGen)
-import OPMs (stlV2Alphabet)
-import EvalFormulas (TestCase, zipExpected, excludeIndices, formulas)
+import Pomc.Test.OPMs (stlV2Alphabet)
+import Pomc.Test.EvalFormulas (TestCase, zipExpected, excludeIndices, formulas)
 import qualified Data.Set as S
 
 tests :: TestTree

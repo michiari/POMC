@@ -1,24 +1,24 @@
 {- |
-   Module      : TestCheck
+   Module      : Pomc.Test.TestCheck
    Copyright   : 2021-23 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
 
-module TestCheck (tests) where
+module Pomc.Test.TestCheck (tests) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Dir(..), Formula(..), formulaAt, formulaAfter)
-import OPMs (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
+import Pomc.Test.OPMs (stlPrecRelV1, stlAnnotateV1, stlPrecRelV2)
+import Pomc.Test.EvalFormulas (ap)
 
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import qualified Data.Set as S
-
-import Control.Monad
+import Control.Monad (liftM2)
 
 tests :: TestTree
 tests = testGroup "Check.hs tests" [unitTests, propTests]
@@ -770,7 +770,7 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         )
       , ( "Rejecting Not HUntil Down"
         , False
-        , Not ( HUntil Down (Atomic . Prop $ "c") (Atomic . Prop $ "cend"))
+        , Not (HUntil Down (Atomic . Prop $ "c") (Atomic . Prop $ "cend"))
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["c", "c", "cend", "call", "thr"])
         )
@@ -854,7 +854,7 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         )
       ]
 
-    potlTests2 = testGroup "PotlV2, Stack Trace Lang V2, second test group" $ map makeTestCase
+    potlTests2 = testGroup "PotlV2 Stack Trace Lang V2 second test group" $ map makeTestCase
       [ ( "Accepting Xor"
         , True
         , (Atomic . Prop $ "call") `Xor` (PNext Down . Atomic . Prop $ "exc")
@@ -971,21 +971,69 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         )
       , ( "Rejecting Not Always"
         , False
-        ,  Not . Always .  Atomic . Prop $ "call"
+        , Not . Always . Atomic . Prop $ "call"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "call", "call"]
         )
-      ,( "Rejecting Not Always"
+      , ( "Rejecting Not Always"
         , False
-        ,  Not . Always .  Atomic . Prop $ "call"
+        , Not . Always . Atomic . Prop $ "call"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "call", "call"]
         )
-      ,  ( "Accepting Not Always"
+      , ( "Accepting Not Always"
         , True
         , Not . Always . Atomic . Prop $ "call"
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "ret"]
+        )
+      , ( "HUntil Up Trivially False"
+        , False
+        , PNext Down . PNext Down . PNext Up $ HUntil Up (Not T) (ap "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "ret"]
+        )
+      , ( "HSince Up Trivially False"
+        , False
+        , PNext Down . PNext Down . PNext Up $ HSince Up (Not T) (ap "ret")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "ret"]
+        )
+      , ( "HUntil Up Trivially True"
+        , True
+        , PNext Down . PNext Up $ HUntil Up (Not T) (ap "exc")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "exc"]
+        )
+      , ( "HSince Up Trivially True"
+        , True
+        , PNext Down . PNext Up $ HSince Up (Not T) (ap "exc")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "exc"]
+        )
+      , ( "HUntil Down Trivially False"
+        , False
+        , HUntil Down (Not T) (ap "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "ret"]
+        )
+      , ( "HSince Down Trivially False"
+        , False
+        , HSince Down (Not T) (ap "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "ret"]
+        )
+      , ( "HUntil Down Trivially True"
+        , True
+        , HUntil Down (Not T) (ap "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "call", "exc"]
+        )
+      , ( "HSince Down Trivially True"
+        , True
+        , HSince Down (Not T) (ap "call")
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "call", "exc"]
         )
       ]
 

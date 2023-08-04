@@ -23,7 +23,7 @@ You may as well execute tests with 8 threads:
 stack test --ta '-p "Normal Tests" +RTS -N8 -RTS'
 ```
 
-# Slow tests
+## Slow tests
 
 To execute slow tests with the Haskell Stack, type:
 ```sh
@@ -40,3 +40,14 @@ stack test --ta '-p "Slow Tests" --timeout=2h'
 - To display proper stack traces when exceptions are thrown, run tests with `--profile`.
 
 - To run tests in `ghci` for debugging, you may run `stack ghci pomc:test-pomc`
+
+# Benchmarks
+
+Some tests have also been packaged as benchmarks with the [Tasty.Bench](https://hackage.haskell.org/package/tasty-bench) framework,
+with the main purpose of measuring performance optimizations.
+
+You may run them with
+```sh
+stack bench --ba '-p "PATTERN"'
+```
+where `PATTERN` is any Tasty pattern, and all arguments supported by `test` can also be used.
