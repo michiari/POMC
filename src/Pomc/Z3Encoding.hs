@@ -127,30 +127,29 @@ checkQuery phi query maxDepth = evalZ3
             else incrementalCheck (assertTime + newAssertTime)
                  (checkTime + newCheckTime) newCheckTime (k + 1)
 
-data EncData = EncData { zNodeSort  :: Sort
-                       , zSSort     :: Sort
-                       , zFConstMap :: Map (Formula MP.ExprProp) AST
-                       , zGamma     :: FuncDecl
-                       , zSigma     :: FuncDecl
-                       , zStruct    :: FuncDecl
-                       , zSmb       :: FuncDecl
-                       , zYield     :: FuncDecl
-                       , zEqual     :: FuncDecl
-                       , zTake      :: FuncDecl
-                       , zStack     :: FuncDecl
-                       , zCtx       :: FuncDecl
-                       , zPred      :: FuncDecl
+data EncData = EncData { zClos       :: [Formula MP.ExprProp]
+                       , zStructClos :: [Formula MP.ExprProp]
+                       , zNodeSort   :: Sort
+                       , zSSort      :: Sort
+                       , zFConstMap  :: Map (Formula MP.ExprProp) AST
+                       , zGamma      :: FuncDecl
+                       , zSigma      :: FuncDecl
+                       , zStruct     :: FuncDecl
+                       , zSmb        :: FuncDecl
+                       , zYield      :: FuncDecl
+                       , zEqual      :: FuncDecl
+                       , zTake       :: FuncDecl
+                       , zStack      :: FuncDecl
+                       , zCtx        :: FuncDecl
+                       , zPred       :: FuncDecl
                        }
 
-assertEncoding :: Formula MP.ExprProp
-               -> Query
-               -> Word64
-               -> Z3 (Maybe Word64 -> Model -> Z3 [TableauNode])
-assertEncoding phi query k = do
+initPhiEncoding :: Formula MP.ExprProp -> Alphabet MP.ExprProp -> Word64 -> Z3 EncData
+initPhiEncoding phi alphabet k = do
   -- Sorts
   boolSort <- mkBoolSort
   nodeSortSymbol <- mkStringSymbol "NodeSort"
-  nodeSort <- mkFiniteDomainSort nodeSortSymbol nodeSortSize
+  nodeSort <- mkFiniteDomainSort nodeSortSymbol $ k + 1
   (sSort, fConstMap) <- mkSSort
   -- Uninterpreted functions
   gamma  <- mkFreshFuncDecl "gamma" [sSort, nodeSort] boolSort
@@ -165,19 +164,21 @@ assertEncoding phi query k = do
   pred   <- mkFreshFuncDecl "pred" [nodeSort] nodeSort
   -- Auxiliary encoding struct
   let encData = EncData
-        { zNodeSort  = nodeSort
-        , zSSort     = sSort
-        , zFConstMap = fConstMap
-        , zGamma     = gamma
-        , zSigma     = sigma
-        , zStruct    = struct
-        , zSmb       = smb
-        , zYield     = yield
-        , zEqual     = equal
-        , zTake      = take
-        , zStack     = stack
-        , zCtx       = ctx
-        , zPred      = pred
+        { zClos       = clos
+        , zStructClos = structClos
+        , zNodeSort   = nodeSort
+        , zSSort      = sSort
+        , zFConstMap  = fConstMap
+        , zGamma      = gamma
+        , zSigma      = sigma
+        , zStruct     = struct
+        , zSmb        = smb
+        , zYield      = yield
+        , zEqual      = equal
+        , zTake       = take
+        , zStack      = stack
+        , zCtx        = ctx
+        , zPred       = pred
         }
   -- Encoding
   assert =<< mkPhiAxioms encData
@@ -206,6 +207,69 @@ assertEncoding phi query k = do
   assert =<< mkAndWith (mkNot <=< holdsIn1) [g | g@(Back _) <- clos]
   assert =<< mkAndWith holdsIn1 [g | g@(WBack _) <- clos]
 
+  return encData
+  where
+    (structClos, clos) = closure alphabet phi
+
+    mkSSort :: Z3 (Sort, Map (Formula MP.ExprProp) AST)
+    mkSSort = do
+      constructors <- mapM (\f -> do
+                               let fstring = show f
+                               constrName <- mkStringSymbol fstring
+                               recFnName <- mkStringSymbol $ "is_" ++ fstring
+                               mkConstructor constrName recFnName [])
+                      clos
+      sSymbol <- mkStringSymbol "S"
+      sSort <- mkDatatype sSymbol constructors
+      constrFns <- getDatatypeSortConstructors sSort
+      consts <- mapM (flip mkApp []) constrFns
+      return (sSort, M.fromList $ zip clos consts)
+
+    mkPhiAxioms :: EncData -> Z3 AST
+    mkPhiAxioms encData = do
+      let fConstMap = zFConstMap encData
+          sigma = zSigma encData
+      -- ∧_(p∈Σ) Σ(p)
+      allStructInSigma <- mkAndWith (mkApp1 sigma . (fConstMap M.!)) structClos
+      -- ∧_(p∈S \ Σ) ¬Σ(p)
+      allOtherNotInSigma <- mkAndWith (mkNot <=< mkApp1 sigma . (fConstMap M.!))
+                            (clos \\ structClos)
+      mkAnd [allStructInSigma, allOtherNotInSigma]
+
+    mkPhiOPM :: EncData -> Z3 AST
+    mkPhiOPM encData = E.assert (isComplete alphabet)
+      $ mkAndWith assertPrecPair
+      $ snd alphabet ++ (End, End, Equal):[(End, p, Yield) | p <- fst alphabet]
+      where assertPrecPair (p, q, prec) = do
+              let fConstMap = zFConstMap encData
+                  pqArg = [fConstMap M.! Atomic p, fConstMap M.! Atomic q]
+                  (nPrec1, nPrec2) = getNegPrec prec
+              posPrec  <- mkApp (getPosPrec prec) pqArg
+              negPrec1 <- mkNot =<< mkApp nPrec1 pqArg
+              negPrec2 <- mkNot =<< mkApp nPrec2 pqArg
+              mkAnd [posPrec, negPrec1, negPrec2]
+
+            (yield, equal, take) = (zYield encData, zEqual encData, zTake encData)
+
+            getPosPrec Yield = yield
+            getPosPrec Equal = equal
+            getPosPrec Take = take
+
+            getNegPrec Yield = (equal, take)
+            getNegPrec Equal = (yield, take)
+            getNegPrec Take = (yield, equal)
+
+
+assertEncoding :: Formula MP.ExprProp
+               -> Query
+               -> Word64
+               -> Z3 (Maybe Word64 -> Model -> Z3 [TableauNode])
+assertEncoding phi query k = do
+  encData <- initPhiEncoding phi alphabet k
+  let yield = zYield encData
+      equal = zEqual encData
+      take = zTake encData
+      nodeSort = zNodeSort encData
   -- start ∀x (...)
   -- x <= k
   let mkTermRules x = do
@@ -222,8 +286,8 @@ assertEncoding phi query k = do
         popxImpliesWxnextx <- mkImplies checkPopx =<< mkWxnext encData x
         -- huaux
         huauxx <- mkHuaux encData x checkPushx checkPopx
-        endx <- mkEndTerm fConstMap gamma xLit
-        conflictx <- mkConflict fConstMap gamma struct xLit
+        endx <- mkEndTerm encData xLit
+        conflictx <- mkConflict encData xLit
         mkAnd [ phiAxiom
               , inputxImpliesXnextx, popxImpliesWxnextx
               , huauxx
@@ -263,45 +327,18 @@ assertEncoding phi query k = do
   -- end ∀x (...)
 
   -- EMPTY(k)
-  assert =<< mkEmpty nodeSort fConstMap gamma stack k
+  assert =<< mkEmpty encData k
 
   case query of
     SatQuery _ -> return ()
     MiniProcQuery prog ->
-      encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
+      encodeProg encData prog k
 
-  return $ queryTableau nodeSort fConstMap gamma smb stack ctx k
+  return $ queryTableau encData k
   where
-    nodeSortSize = k + 1
     alphabet = case query of
       SatQuery a -> a
       MiniProcQuery _ -> MP.miniProcAlphabet
-    (structClos, clos) = closure alphabet phi
-
-    mkSSort :: Z3 (Sort, Map (Formula MP.ExprProp) AST)
-    mkSSort = do
-      constructors <- mapM (\f -> do
-                               let fstring = show f
-                               constrName <- mkStringSymbol fstring
-                               recFnName <- mkStringSymbol $ "is_" ++ fstring
-                               mkConstructor constrName recFnName [])
-                      clos
-      sSymbol <- mkStringSymbol "S"
-      sSort <- mkDatatype sSymbol constructors
-      constrFns <- getDatatypeSortConstructors sSort
-      consts <- mapM (flip mkApp []) constrFns
-      return (sSort, M.fromList $ zip clos consts)
-
-    mkPhiAxioms :: EncData -> Z3 AST
-    mkPhiAxioms encData = do
-      let fConstMap = zFConstMap encData
-          sigma = zSigma encData
-      -- ∧_(p∈Σ) Σ(p)
-      allStructInSigma <- mkAndWith (mkApp1 sigma . (fConstMap M.!)) structClos
-      -- ∧_(p∈S \ Σ) ¬Σ(p)
-      allOtherNotInSigma <- mkAndWith (mkNot <=< mkApp1 sigma . (fConstMap M.!))
-                            (clos \\ structClos)
-      mkAnd [allStructInSigma, allOtherNotInSigma]
 
     mkPhiAxiomsForall :: EncData -> AST -> Z3 AST
     mkPhiAxiomsForall encData xLit = do
@@ -313,78 +350,13 @@ assertEncoding phi query k = do
       gammaStructXX <- mkApp (zGamma encData) [structX, xLit]
       mkAnd [sigmaStructX, sigmaSmbX, gammaStructXX]
 
-    mkPhiOPM :: EncData -> Z3 AST
-    mkPhiOPM encData = E.assert (isComplete alphabet)
-      $ mkAndWith assertPrecPair
-      $ snd alphabet ++ (End, End, Equal):[(End, p, Yield) | p <- fst alphabet]
-      where assertPrecPair (p, q, prec) = do
-              let fConstMap = zFConstMap encData
-                  pqArg = [fConstMap M.! Atomic p, fConstMap M.! Atomic q]
-                  (nPrec1, nPrec2) = getNegPrec prec
-              posPrec  <- mkApp (getPosPrec prec) pqArg
-              negPrec1 <- mkNot =<< mkApp nPrec1 pqArg
-              negPrec2 <- mkNot =<< mkApp nPrec2 pqArg
-              mkAnd [posPrec, negPrec1, negPrec2]
-
-            (yield, equal, take) = (zYield encData, zEqual encData, zTake encData)
-
-            getPosPrec Yield = yield
-            getPosPrec Equal = equal
-            getPosPrec Take = take
-
-            getNegPrec Yield = (equal, take)
-            getNegPrec Equal = (yield, take)
-            getNegPrec Take = (yield, equal)
-
-    -- xnf(theta)_G(x)
-    groundxnf :: EncData -> Formula MP.ExprProp -> AST -> Z3 AST
-    groundxnf encData theta x = ground (xnf theta) where
-      ground f = case f of
-        T                -> mkTrue
-        Atomic _         -> applyGamma f
-        Not T            -> mkFalse
-        Not g@(Atomic _) -> mkNot =<< applyGamma g
-        Not _            -> error "Supplied formula is not in Positive Normal Form."
-        Or g h           -> boolPred (\a b -> mkOr [a, b]) g h
-        And g h          -> boolPred (\a b -> mkAnd [a, b]) g h
-        Xor g h          -> boolPred mkXor g h
-        Implies g h      -> boolPred mkImplies g h
-        Iff g h          -> boolPred mkEq g h
-        PNext _ _        -> applyGamma f
-        PBack _ _        -> error "Past operators not supported yet."
-        WPNext _ _       -> applyGamma f
-        XNext _ _        -> applyGamma f
-        XBack _ _        -> error "Past operators not supported yet."
-        WXNext _ _       -> applyGamma f
-        HNext _ _        -> applyGamma f
-        HBack _ _        -> error "Hierarchical operators not supported yet."
-        WHNext _ _       -> applyGamma f
-        Until _ _ _      -> error "Supplied formula is not in Next Normal Form."
-        Release _ _ _    -> error "Supplied formula is not in Next Normal Form."
-        Since _ _ _      -> error "Past operators not supported yet."
-        HUntil _ _ _     -> applyGamma f
-        HRelease _ _ _   -> applyGamma f
-        HSince _ _ _     -> error "Supplied formula is not in Next Normal Form."
-        Next _           -> applyGamma f
-        WNext _          -> applyGamma f
-        Back _           -> applyGamma f
-        WBack _          -> applyGamma f
-        Eventually _     -> error "Supplied formula is not in Next Normal Form."
-        Always _         -> error "Supplied formula is not in Next Normal Form."
-        Once _           -> error "Supplied formula is not in Next Normal Form."
-        Historically _   -> error "Supplied formula is not in Next Normal Form."
-        AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
-        where boolPred op lhs rhs = do
-                glhs <- ground lhs
-                grhs <- ground rhs
-                op glhs grhs
-
-              applyGamma g = mkApp (zGamma encData) [zFConstMap encData M.! g, x]
-
     -- END(xExpr)
-    mkEndTerm :: Map (Formula MP.ExprProp) AST -> FuncDecl -> AST -> Z3 AST
-    mkEndTerm fConstMap gamma x = do
-      let noGamma g = mkNot =<< mkApp gamma [fConstMap M.! g, x]
+    mkEndTerm :: EncData -> AST -> Z3 AST
+    mkEndTerm encData x = do
+      let fConstMap = zFConstMap encData
+          gamma = zGamma encData
+          clos = zClos encData
+          noGamma g = mkNot =<< mkApp gamma [fConstMap M.! g, x]
       -- Γ(#, x)
       gammaEndx <- mkApp gamma [fConstMap M.! Atomic End, x]
       -- ∧_(PNext t α ∈ Cl(φ)) ¬Γ((PNext t α)_G, x)
@@ -400,10 +372,13 @@ assertEncoding phi query k = do
       mkImplies gammaEndx noGammaAll
 
     -- CONFLICT(x)
-    mkConflict :: Map (Formula MP.ExprProp) AST -> FuncDecl -> FuncDecl -> AST -> Z3 AST
-    mkConflict fConstMap gamma struct x = do
-      structx <- mkApp1 struct x
-      let singleSl p = do
+    mkConflict :: EncData -> AST -> Z3 AST
+    mkConflict encData x = do
+      structx <- mkApp1 (zStruct encData) x
+      let structClos = zStructClos encData
+          fConstMap = zFConstMap encData
+          gamma = zGamma encData
+          singleSl p = do
             structxEqp <- mkEq structx (fConstMap M.! p)
             noOtherSls <- mkAndWith (\q -> mkNot =<< mkApp gamma [fConstMap M.! q, x])
                           $ filter (/= p) structClos
@@ -414,7 +389,8 @@ assertEncoding phi query k = do
     -- PNEXT(x) ∧ WPNEXT(x)
     mkPnext :: EncData -> Word64 -> Z3 AST
     mkPnext encData x = do
-      let fConstMap = zFConstMap encData
+      let clos = zClos encData
+          fConstMap = zFConstMap encData
           gamma = zGamma encData
           struct = zStruct encData
       xLit <- mkUnsignedInt64 x $ zNodeSort encData
@@ -475,7 +451,7 @@ assertEncoding phi query k = do
             -- Implies
             mkImplies gammagx exists
           xnextSat _ = error "XNext formula expected."
-      mkAndWith xnextSat [g | g@(XNext _ _) <- clos]
+      mkAndWith xnextSat [g | g@(XNext _ _) <- zClos encData]
 
     mkWxnext :: EncData -> Word64 -> Z3 AST
     mkWxnext encData x = do
@@ -494,11 +470,11 @@ assertEncoding phi query k = do
             gammagctxxAndOrPrec <- mkAnd [gammagctxx, orPrec]
             xnfArgx <- groundxnf encData arg xLit
             mkImplies gammagctxxAndOrPrec xnfArgx
-      mkAndWith wxnextSat [g | g@(WXNext _ _) <- clos]
+      mkAndWith wxnextSat [g | g@(WXNext _ _) <- zClos encData]
 
     mkHnextu :: EncData -> Word64 -> AST -> AST -> Z3 AST
     mkHnextu encData x checkPushx checkPopx =
-      let allHnu = [g | g@(HNext Up _) <- clos]
+      let allHnu = [g | g@(HNext Up _) <- zClos encData]
       in enableIf (not $ null allHnu) $ do
         let nodeSort = zNodeSort encData
         xLit <- mkUnsignedInt64 x nodeSort
@@ -517,7 +493,7 @@ assertEncoding phi query k = do
 
     mkWhnextu :: EncData -> Word64 -> AST -> Z3 AST
     mkWhnextu encData x checkPopx =
-      let allWhnu = [g | g@(WHNext Up _) <- clos]
+      let allWhnu = [g | g@(WHNext Up _) <- zClos encData]
       in enableIf (not $ null allWhnu) $ do
         let nodeSort = zNodeSort encData
             yield = zYield encData
@@ -546,7 +522,7 @@ assertEncoding phi query k = do
 
     mkHnextd :: EncData -> Word64 -> AST -> Z3 AST
     mkHnextd encData x checkPopx =
-      let allHnd = [g | g@(HNext Down _) <- clos]
+      let allHnd = [g | g@(HNext Down _) <- zClos encData]
       in enableIf (not $ null allHnd) $ do
         let nodeSort = zNodeSort encData
             ctx = zCtx encData
@@ -569,7 +545,7 @@ assertEncoding phi query k = do
 
     mkWhnextd :: EncData -> Word64 -> AST -> Z3 AST
     mkWhnextd encData x checkPopx =
-      let allWhnd = [g | g@(WHNext Down _) <- clos]
+      let allWhnd = [g | g@(WHNext Down _) <- zClos encData]
       in enableIf (not $ null allWhnd) $ do
         let nodeSort = zNodeSort encData
             ctx = zCtx encData
@@ -589,7 +565,7 @@ assertEncoding phi query k = do
         mkImplies lhs =<< mkAndWith whnextdSat allWhnd
 
     mkHuaux :: EncData -> Word64 -> AST -> AST -> Z3 AST
-    mkHuaux encData x checkPushx checkPopx = enableIf (HUntil Up T T `elem` clos) $ do
+    mkHuaux encData x checkPushx checkPopx = enableIf (HUntil Up T T `elem` zClos encData) $ do
       let nodeSort = zNodeSort encData
       xm1 <- mkUnsignedInt64 (x - 1) nodeSort
       checkPopxm1 <- mkCheckPrec encData (zTake encData) xm1
@@ -604,7 +580,7 @@ assertEncoding phi query k = do
       mkAnd [huauxImplies, impliesHuaux]
 
     mkHdaux :: EncData -> Word64 -> AST -> Z3 AST
-    mkHdaux encData x checkPopx = enableIf (HUntil Down T T `elem` clos) $ do
+    mkHdaux encData x checkPopx = enableIf (HUntil Down T T `elem` zClos encData) $ do
       let nodeSort = zNodeSort encData
       xLit <- mkUnsignedInt64 x nodeSort
       ctxx <- mkApp1 (zCtx encData) xLit
@@ -651,7 +627,8 @@ assertEncoding phi query k = do
 
     mkNextBackRules :: EncData -> Word64 -> Z3 AST
     mkNextBackRules encData x = do
-      let nodeSort = zNodeSort encData
+      let clos = zClos encData
+          nodeSort = zNodeSort encData
           fConstMap = zFConstMap encData
           gamma = zGamma encData
       xLit <- mkUnsignedInt64 x nodeSort
@@ -764,7 +741,7 @@ assertEncoding phi query k = do
             gammapx <- mkApp gamma [p, xLit]
             gammapxp1 <- mkApp gamma [p, xp1]
             mkIff gammapx gammapxp1
-      gammaRule <- mkAndWith mkForallIff clos
+      gammaRule <- mkAndWith mkForallIff $ zClos encData
       -- smb(x + 1) = smb(stack(x))
       smbxp1 <- mkApp1 smb xp1
       smbstackx <- mkApp1 smb stackx
@@ -781,24 +758,67 @@ assertEncoding phi query k = do
       mkAnd [gammaRule, smbRule, stackRule, ctxRule]
 
     -- EMPTY(x)
-    mkEmpty :: Sort -> Map (Formula MP.ExprProp) AST -> FuncDecl -> FuncDecl
-            -> Word64 -> Z3 AST
-    mkEmpty nodeSort fConstMap gamma stack x = do
+    mkEmpty :: EncData -> Word64 -> Z3 AST
+    mkEmpty encData x = do
+      let nodeSort = zNodeSort encData
       xLit <- mkUnsignedInt64 x nodeSort
       -- Γ(#, x)
-      gammaEndx <- mkApp gamma [fConstMap M.! Atomic End, xLit]
+      gammaEndx <- mkApp (zGamma encData) [zFConstMap encData M.! Atomic End, xLit]
       -- stack(x) = ⊥
-      stackx <- mkApp1 stack xLit
+      stackx <- mkApp1 (zStack encData) xLit
       stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
       mkAnd [gammaEndx, stackxEqBot]
 
+-- xnf(theta)_G(x)
+groundxnf :: EncData -> Formula MP.ExprProp -> AST -> Z3 AST
+groundxnf encData theta x = ground (xnf theta) where
+  ground f = case f of
+    T                -> mkTrue
+    Atomic _         -> applyGamma f
+    Not T            -> mkFalse
+    Not g@(Atomic _) -> mkNot =<< applyGamma g
+    Not _            -> error "Supplied formula is not in Positive Normal Form."
+    Or g h           -> boolPred (\a b -> mkOr [a, b]) g h
+    And g h          -> boolPred (\a b -> mkAnd [a, b]) g h
+    Xor g h          -> boolPred mkXor g h
+    Implies g h      -> boolPred mkImplies g h
+    Iff g h          -> boolPred mkEq g h
+    PNext _ _        -> applyGamma f
+    PBack _ _        -> error "Past operators not supported yet."
+    WPNext _ _       -> applyGamma f
+    XNext _ _        -> applyGamma f
+    XBack _ _        -> error "Past operators not supported yet."
+    WXNext _ _       -> applyGamma f
+    HNext _ _        -> applyGamma f
+    HBack _ _        -> error "Hierarchical operators not supported yet."
+    WHNext _ _       -> applyGamma f
+    Until _ _ _      -> error "Supplied formula is not in Next Normal Form."
+    Release _ _ _    -> error "Supplied formula is not in Next Normal Form."
+    Since _ _ _      -> error "Past operators not supported yet."
+    HUntil _ _ _     -> applyGamma f
+    HRelease _ _ _   -> applyGamma f
+    HSince _ _ _     -> error "Supplied formula is not in Next Normal Form."
+    Next _           -> applyGamma f
+    WNext _          -> applyGamma f
+    Back _           -> applyGamma f
+    WBack _          -> applyGamma f
+    Eventually _     -> error "Supplied formula is not in Next Normal Form."
+    Always _         -> error "Supplied formula is not in Next Normal Form."
+    Once _           -> error "Supplied formula is not in Next Normal Form."
+    Historically _   -> error "Supplied formula is not in Next Normal Form."
+    AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
+    where boolPred op lhs rhs = do
+            glhs <- ground lhs
+            grhs <- ground rhs
+            op glhs grhs
 
-encodeProg :: EncData -> Sort -> Map (Formula MP.ExprProp) AST
-           -> FuncDecl -> FuncDecl -> FuncDecl
-           -> FuncDecl -> FuncDecl -> FuncDecl
-           -> MP.Program -> Word64 -> Z3 ()
-encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k = do
+          applyGamma g = mkApp (zGamma encData) [zFConstMap encData M.! g, x]
+
+
+encodeProg :: EncData -> MP.Program -> Word64 -> Z3 ()
+encodeProg encData prog k = do
   let (lowerState, ini, fin) = MP.sksToExtendedOpa False (MP.pSks prog)
+      nodeSort = zNodeSort encData
   locSortSymbol <- mkStringSymbol "LocSort"
   locSort <- mkFiniteDomainSort locSortSymbol $ fromIntegral $ MP.lsSid lowerState
   -- Uninterpreted functions
@@ -820,15 +840,15 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
   let mkProgTransitions x = do
         xLit <- mkUnsignedInt64 x nodeSort
         -- push(x) → PUSH(x)
-        checkPushx <- mkCheckPrec encData yield xLit
+        checkPushx <- mkCheckPrec encData (zYield encData) xLit
         pushProgx <- mkInput sVarFunVec locSort pc (MP.lsDPush lowerState) x
         pushxImpliesPushProgx <- mkImplies checkPushx pushProgx
         -- shift(x) → SHIFT(x)
-        checkShiftx <- mkCheckPrec encData equal xLit
+        checkShiftx <- mkCheckPrec encData (zEqual encData) xLit
         shiftProgx <- mkInput sVarFunVec locSort pc (MP.lsDShift lowerState) x
         shiftxImpliesShiftProgx <- mkImplies checkShiftx shiftProgx
         -- pop(x) → POP(x)
-        checkPopx <- mkCheckPrec encData take xLit
+        checkPopx <- mkCheckPrec encData (zTake encData) xLit
         popProgx <- mkPop sVarFunVec locSort pc (MP.lsDPop lowerState) x
         popxImpliesPopProgx <- mkImplies checkPopx popProgx
         mkAnd [pushxImpliesPushProgx, shiftxImpliesShiftProgx, popxImpliesPopProgx]
@@ -848,12 +868,12 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                     | tp `notElem` (fst MP.miniProcAlphabet) -> (t, c):rest
                   _ -> rest
               ) []
-      $ M.toList fConstMap
+      $ M.toList $ zFConstMap encData
     exprPropMap = foldr (\(exprF, exprS) rest -> case exprF of
                             Atomic (Prop (MP.ExprProp s e)) -> (s, e, exprS):rest
                             _ -> rest
                         ) []
-                  $ M.toList fConstMap
+                  $ M.toList $ zFConstMap encData
     allScalars = S.toList (MP.pGlobalScalars prog) ++ S.toList (MP.pLocalScalars prog)
     allArrays = S.toList (MP.pGlobalArrays prog) ++ S.toList (MP.pLocalArrays prog)
     allVariables = allScalars ++ allArrays
@@ -870,7 +890,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
                        else do
               idxSort <- mkBvSort $ logBase2Sup (max 1 $ MP.arraySize ty - 1)
               mkArraySort idxSort scalarSort
-            varFunc <- mkFreshFuncDecl (T.unpack $ MP.varName var) [nodeSort] varSort
+            varFunc <- mkFreshFuncDecl (T.unpack $ MP.varName var) [zNodeSort encData] varSort
             return (varFunc, varSort)
 
       in V.generateM (M.size varMap) mkSVarFun
@@ -896,6 +916,8 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
     mkInput sVarFunVec locSort pc lsDelta x =
       mkOrWith mkTransition $ M.toList lsDelta where
       mkTransition (l1, (il, MP.States dt)) = do
+        let nodeSort = zNodeSort encData
+            gamma = zGamma encData
         xLit <- mkUnsignedInt64 x nodeSort
         xp1 <- mkUnsignedInt64 (x + 1) nodeSort
         -- pc(x) = l1
@@ -903,8 +925,9 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
         pcX <- mkApp1 pc xLit
         pcXEqL1 <- mkEq l1Lit pcX
         -- ∧_(p∈b) Γ(p, x)
-        structX <- mkApp1 struct xLit
-        structXEqil <- mkEq (fConstMap M.! (Atomic . Prop . MP.TextProp . MP.ilStruct $ il)) structX
+        structX <- mkApp1 (zStruct encData) xLit
+        structXEqil <- mkEq (zFConstMap encData M.! (Atomic . Prop . MP.TextProp . MP.ilStruct $ il))
+                       structX
         let inputNames = (MP.ilFunction il) : (MP.ilModules il)
         inputProps <- mkAndWith (\(l, c) -> let pn | l `elem` inputNames = return
                                                    | otherwise = mkNot
@@ -938,6 +961,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
     mkPop sVarFunVec locSort pc lsDelta x =
       mkOrWith mkTransition $ M.toList lsDelta where
       mkTransition ((l1, ls), (act, MP.States dt)) = do
+        let nodeSort = zNodeSort encData
         xLit <- mkUnsignedInt64 x nodeSort
         xp1 <- mkUnsignedInt64 (x + 1) nodeSort
         -- pc(x) = l1
@@ -945,7 +969,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
         pcX <- mkApp1 pc xLit
         pcXEqL1 <- mkEq pcX l1Lit
         -- pc(stack(x)) = ls
-        stackX <- mkApp1 stack xLit
+        stackX <- mkApp1 (zStack encData) xLit
         lsLit <- mkUnsignedInt ls locSort
         pcStackX <- mkApp1 pc stackX
         pcStackXEqLs <- mkEq pcStackX lsLit
@@ -967,6 +991,7 @@ encodeProg encData nodeSort fConstMap gamma struct yield equal take stack prog k
 
     mkAction :: Vector (FuncDecl, Sort) -> Word64 -> Maybe AST -> MP.Action -> Z3 AST
     mkAction sVarFunVec x poppedNode action = do
+      let nodeSort = zNodeSort encData
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
       let propvals :: [MP.Variable] -> Z3 AST
@@ -1229,25 +1254,23 @@ xnf f = case f of
   AuxBack _ _      -> error "AuxBack not supported in SMT encoding."
 
 
-queryTableau :: Sort -> Map (Formula MP.ExprProp) AST
-             -> FuncDecl -> FuncDecl -> FuncDecl -> FuncDecl
-             -> Word64 -> Maybe Word64 -> Model -> Z3 [TableauNode]
-queryTableau nodeSort fConstMap gamma smb stack ctx k maxLen model = do
+queryTableau :: EncData -> Word64 -> Maybe Word64 -> Model -> Z3 [TableauNode]
+queryTableau encData k maxLen model = do
   let unrollLength = case maxLen of
         Just ml -> min k ml
         Nothing -> k
   mapM queryTableauNode [1..unrollLength]
   where
-    fConstList = M.toList fConstMap
+    fConstList = M.toList $ zFConstMap encData
     constPropMap = M.fromList $ map (\(Atomic p, fConst) -> (fConst, p))
                    $ filter (atomic . fst) fConstList
     queryTableauNode idx = do
-      idxNode <- mkUnsignedInt64 idx nodeSort
+      idxNode <- mkUnsignedInt64 idx $ zNodeSort encData
       gammaVals <- filterM (\(_, fConst) -> fromJust <$>
-                             (evalBool model =<< mkApp gamma [fConst, idxNode])) fConstList
-      Just smbVal <- eval model =<< mkApp1 smb idxNode
-      Just stackVal <- evalInt model =<< mkApp1 stack idxNode
-      Just ctxVal <- evalInt model =<< mkApp1 ctx idxNode
+                             (evalBool model =<< mkApp (zGamma encData) [fConst, idxNode])) fConstList
+      Just smbVal <- eval model =<< mkApp1 (zSmb encData) idxNode
+      Just stackVal <- evalInt model =<< mkApp1 (zStack encData) idxNode
+      Just ctxVal <- evalInt model =<< mkApp1 (zCtx encData) idxNode
       return TableauNode { nodeGammaC = map fst gammaVals
                          , nodeSmb = constPropMap M.! smbVal
                          , nodeStack = stackVal
