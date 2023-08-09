@@ -214,6 +214,8 @@ assertEncoding phi query k = do
         checkShiftx <- mkCheckPrec encData equal xLit
         checkPopx <- mkCheckPrec encData take xLit
         inputx <- mkOr [checkPushx, checkShiftx]
+        -- PhiAxiom
+        phiAxiom <- mkPhiAxiomsForall encData xLit
         -- xnextx
         inputxImpliesXnextx <- mkImplies inputx =<< mkXnext encData x
         -- wxnextx
@@ -222,7 +224,8 @@ assertEncoding phi query k = do
         huauxx <- mkHuaux encData x checkPushx checkPopx
         endx <- mkEndTerm fConstMap gamma xLit
         conflictx <- mkConflict fConstMap gamma struct xLit
-        mkAnd [ inputxImpliesXnextx, popxImpliesWxnextx
+        mkAnd [ phiAxiom
+              , inputxImpliesXnextx, popxImpliesWxnextx
               , huauxx
               , endx, conflictx
               ]
@@ -298,16 +301,17 @@ assertEncoding phi query k = do
       -- ∧_(p∈S \ Σ) ¬Σ(p)
       allOtherNotInSigma <- mkAndWith (mkNot <=< mkApp1 sigma . (fConstMap M.!))
                             (clos \\ structClos)
-      -- ∀x(Σ(struct(x)) ∧ Σ(smb(x)) ∧ Γ(struct(x), x))
-      forall <- mkAndWith (\x -> do
-                              xLit <- mkUnsignedInt64 x $ zNodeSort encData
-                              structX <- mkApp1 (zStruct encData) xLit
-                              sigmaStructX <- mkApp1 sigma structX
-                              sigmaSmbX    <- mkApp1 sigma =<< mkApp1 (zSmb encData) xLit
-                              gammaStructXX <- mkApp (zGamma encData) [structX, xLit]
-                              mkAnd [sigmaStructX, sigmaSmbX, gammaStructXX]
-                          ) [1..k]
-      mkAnd [allStructInSigma, allOtherNotInSigma, forall]
+      mkAnd [allStructInSigma, allOtherNotInSigma]
+
+    mkPhiAxiomsForall :: EncData -> AST -> Z3 AST
+    mkPhiAxiomsForall encData xLit = do
+      let sigma = zSigma encData
+      -- Σ(struct(x)) ∧ Σ(smb(x)) ∧ Γ(struct(x), x)
+      structX <- mkApp1 (zStruct encData) xLit
+      sigmaStructX <- mkApp1 sigma structX
+      sigmaSmbX <- mkApp1 sigma =<< mkApp1 (zSmb encData) xLit
+      gammaStructXX <- mkApp (zGamma encData) [structX, xLit]
+      mkAnd [sigmaStructX, sigmaSmbX, gammaStructXX]
 
     mkPhiOPM :: EncData -> Z3 AST
     mkPhiOPM encData = E.assert (isComplete alphabet)
