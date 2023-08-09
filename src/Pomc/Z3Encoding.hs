@@ -385,7 +385,6 @@ assertEncoding phi query k = do
             mkAnd [structxEqp, noOtherSls]
       mkOrWith singleSl structClos
 
-
     -- PNEXT(x) ∧ WPNEXT(x)
     mkPnext :: EncData -> Word64 -> Z3 AST
     mkPnext encData x = do
@@ -815,8 +814,15 @@ groundxnf encData theta x = ground (xnf theta) where
           applyGamma g = mkApp (zGamma encData) [zFConstMap encData M.! g, x]
 
 
-encodeProg :: EncData -> MP.Program -> Word64 -> Z3 ()
-encodeProg encData prog k = do
+data ProgData = ProgData { zLocSort    :: Sort
+                         , zPc         :: FuncDecl
+                         , zSVarFunVec :: Vector (FuncDecl, Sort)
+                         , zLowerState :: MP.LowerState
+                         , zFin        :: [Word]
+                         }
+
+initProgEncoding :: EncData -> MP.Program -> Word64 -> Z3 (ProgData)
+initProgEncoding encData prog k = do
   let (lowerState, ini, fin) = MP.sksToExtendedOpa False (MP.pSks prog)
       nodeSort = zNodeSort encData
   locSortSymbol <- mkStringSymbol "LocSort"
@@ -824,6 +830,12 @@ encodeProg encData prog k = do
   -- Uninterpreted functions
   pc <- mkFreshFuncDecl "pc" [nodeSort] locSort
   sVarFunVec <- mkVarFunctions
+  let progData = ProgData { zLocSort = locSort
+                          , zPc = pc
+                          , zSVarFunVec = sVarFunVec
+                          , zLowerState = lowerState
+                          , zFin = fin
+                          }
   -- Initial locations
   node1 <- mkUnsignedInt64 1 nodeSort
   assert =<< mkOrWith (\l -> do
@@ -835,45 +847,8 @@ encodeProg encData prog k = do
   nodeBot <- mkUnsignedInt64 0 nodeSort
   assert =<< mkInit0 sVarFunVec allVariables nodeBot
   assert =<< mkInit0 sVarFunVec allVariables node1
-  -- start ∀x (...)
-  -- x < k
-  let mkProgTransitions x = do
-        xLit <- mkUnsignedInt64 x nodeSort
-        -- push(x) → PUSH(x)
-        checkPushx <- mkCheckPrec encData (zYield encData) xLit
-        pushProgx <- mkInput sVarFunVec locSort pc (MP.lsDPush lowerState) x
-        pushxImpliesPushProgx <- mkImplies checkPushx pushProgx
-        -- shift(x) → SHIFT(x)
-        checkShiftx <- mkCheckPrec encData (zEqual encData) xLit
-        shiftProgx <- mkInput sVarFunVec locSort pc (MP.lsDShift lowerState) x
-        shiftxImpliesShiftProgx <- mkImplies checkShiftx shiftProgx
-        -- pop(x) → POP(x)
-        checkPopx <- mkCheckPrec encData (zTake encData) xLit
-        popProgx <- mkPop sVarFunVec locSort pc (MP.lsDPop lowerState) x
-        popxImpliesPopProgx <- mkImplies checkPopx popProgx
-        mkAnd [pushxImpliesPushProgx, shiftxImpliesShiftProgx, popxImpliesPopProgx]
-  assert =<< mkAndWith mkProgTransitions [1..(k - 1)]
-  -- end ∀x (...)
-  -- Final states
-  nodek <- mkUnsignedInt64 k nodeSort
-  assert =<< mkOrWith (\l -> do
-                          lLit <- mkUnsignedInt l locSort
-                          pck <- mkApp1 pc nodek
-                          mkEq pck lLit
-                      ) fin
+  return progData
   where
-    apConstMap = M.fromList
-      $ foldr (\(p, c) rest -> case p of
-                  Atomic tp@(Prop (MP.TextProp t))
-                    | tp `notElem` (fst MP.miniProcAlphabet) -> (t, c):rest
-                  _ -> rest
-              ) []
-      $ M.toList $ zFConstMap encData
-    exprPropMap = foldr (\(exprF, exprS) rest -> case exprF of
-                            Atomic (Prop (MP.ExprProp s e)) -> (s, e, exprS):rest
-                            _ -> rest
-                        ) []
-                  $ M.toList $ zFConstMap encData
     allScalars = S.toList (MP.pGlobalScalars prog) ++ S.toList (MP.pLocalScalars prog)
     allArrays = S.toList (MP.pGlobalArrays prog) ++ S.toList (MP.pLocalArrays prog)
     allVariables = allScalars ++ allArrays
@@ -895,29 +870,75 @@ encodeProg encData prog k = do
 
       in V.generateM (M.size varMap) mkSVarFun
 
-    mkInit0 :: Vector (FuncDecl, Sort) -> [MP.Variable] -> AST -> Z3 AST
-    mkInit0 sVarFunVec vars xLit = mkAndWith init0 vars
-      where init0 v | MP.isScalar $ MP.varType v = do
-                        let (vFunc, s) = sVarFunVec V.! MP.varId v
-                        val0 <- mkUnsignedInt 0 s
-                        vx <- mkApp1 vFunc xLit
-                        mkEq vx val0
-                    | otherwise = do
-                        let (vFunc, s) = sVarFunVec V.! MP.varId v
-                        idxSort <- getArraySortDomain s
-                        elemSort <- getArraySortRange s
-                        val0 <- mkUnsignedInt 0 elemSort
-                        arr0 <- mkConstArray idxSort val0
-                        vx <- mkApp1 vFunc xLit
-                        mkEq vx arr0
+mkInit0 :: Vector (FuncDecl, Sort) -> [MP.Variable] -> AST -> Z3 AST
+mkInit0 sVarFunVec vars xLit = mkAndWith init0 vars
+  where init0 v | MP.isScalar $ MP.varType v = do
+                    let (vFunc, s) = sVarFunVec V.! MP.varId v
+                    val0 <- mkUnsignedInt 0 s
+                    vx <- mkApp1 vFunc xLit
+                    mkEq vx val0
+                | otherwise = do
+                    let (vFunc, s) = sVarFunVec V.! MP.varId v
+                    idxSort <- getArraySortDomain s
+                    elemSort <- getArraySortRange s
+                    val0 <- mkUnsignedInt 0 elemSort
+                    arr0 <- mkConstArray idxSort val0
+                    vx <- mkApp1 vFunc xLit
+                    mkEq vx arr0
 
-    mkInput :: Vector (FuncDecl, Sort) -> Sort -> FuncDecl
-            -> Map Word (MP.InputLabel, MP.DeltaTarget) -> Word64 -> Z3 AST
-    mkInput sVarFunVec locSort pc lsDelta x =
+encodeProg :: EncData -> MP.Program -> Word64 -> Z3 ()
+encodeProg encData prog k = do
+  progData <- initProgEncoding encData prog k
+  -- start ∀x (...)
+  -- x < k
+  let lowerState = zLowerState progData
+      mkProgTransitions x = do
+        xLit <- mkUnsignedInt64 x $ zNodeSort encData
+        -- push(x) → PUSH(x)
+        checkPushx <- mkCheckPrec encData (zYield encData) xLit
+        pushProgx <- mkInput progData (MP.lsDPush lowerState) x
+        pushxImpliesPushProgx <- mkImplies checkPushx pushProgx
+        -- shift(x) → SHIFT(x)
+        checkShiftx <- mkCheckPrec encData (zEqual encData) xLit
+        shiftProgx <- mkInput progData (MP.lsDShift lowerState) x
+        shiftxImpliesShiftProgx <- mkImplies checkShiftx shiftProgx
+        -- pop(x) → POP(x)
+        checkPopx <- mkCheckPrec encData (zTake encData) xLit
+        popProgx <- mkPop progData (MP.lsDPop lowerState) x
+        popxImpliesPopProgx <- mkImplies checkPopx popProgx
+        mkAnd [pushxImpliesPushProgx, shiftxImpliesShiftProgx, popxImpliesPopProgx]
+  assert =<< mkAndWith mkProgTransitions [1..(k - 1)]
+  -- end ∀x (...)
+  -- Final states
+  nodek <- mkUnsignedInt64 k $ zNodeSort encData
+  assert =<< mkOrWith (\l -> do
+                          lLit <- mkUnsignedInt l $ zLocSort progData
+                          pck <- mkApp1 (zPc progData) nodek
+                          mkEq pck lLit
+                      ) (zFin progData)
+  where
+    apConstMap = M.fromList
+      $ foldr (\(p, c) rest -> case p of
+                  Atomic tp@(Prop (MP.TextProp t))
+                    | tp `notElem` (fst MP.miniProcAlphabet) -> (t, c):rest
+                  _ -> rest
+              ) []
+      $ M.toList $ zFConstMap encData
+    exprPropMap = foldr (\(exprF, exprS) rest -> case exprF of
+                            Atomic (Prop (MP.ExprProp s e)) -> (s, e, exprS):rest
+                            _ -> rest
+                        ) []
+                  $ M.toList $ zFConstMap encData
+
+    mkInput :: ProgData -> Map Word (MP.InputLabel, MP.DeltaTarget) -> Word64 -> Z3 AST
+    mkInput progData lsDelta x =
       mkOrWith mkTransition $ M.toList lsDelta where
       mkTransition (l1, (il, MP.States dt)) = do
         let nodeSort = zNodeSort encData
             gamma = zGamma encData
+            sVarFunVec = zSVarFunVec progData
+            locSort = zLocSort progData
+            pc = zPc progData
         xLit <- mkUnsignedInt64 x nodeSort
         xp1 <- mkUnsignedInt64 (x + 1) nodeSort
         -- pc(x) = l1
@@ -956,12 +977,14 @@ encodeProg encData prog k = do
                             ) dt
         mkAnd [pcXEqL1, structXEqil, inputProps, action, exprProps, targets]
 
-    mkPop :: Vector (FuncDecl, Sort) -> Sort -> FuncDecl
-          -> Map (Word, Word) (MP.Action, MP.DeltaTarget) -> Word64 -> Z3 AST
-    mkPop sVarFunVec locSort pc lsDelta x =
+    mkPop :: ProgData -> Map (Word, Word) (MP.Action, MP.DeltaTarget) -> Word64 -> Z3 AST
+    mkPop progData lsDelta x =
       mkOrWith mkTransition $ M.toList lsDelta where
       mkTransition ((l1, ls), (act, MP.States dt)) = do
         let nodeSort = zNodeSort encData
+            sVarFunVec = zSVarFunVec progData
+            locSort = zLocSort progData
+            pc = zPc progData
         xLit <- mkUnsignedInt64 x nodeSort
         xp1 <- mkUnsignedInt64 (x + 1) nodeSort
         -- pc(x) = l1
