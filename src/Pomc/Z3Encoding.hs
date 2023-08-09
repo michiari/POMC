@@ -25,13 +25,13 @@ import Z3.Monad hiding (Result(..))
 import qualified Z3.Monad as Z3
 
 import qualified Control.Exception as E
-import Control.Monad ((<=<), filterM)
+import Control.Monad ((<=<), filterM, when)
 import Data.List ((\\), intercalate)
 import Data.Bits (finiteBitSize, countLeadingZeros)
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as M
 import qualified Data.Set as S
-import Data.Maybe (isNothing, fromJust)
+import Data.Maybe (isJust, isNothing, fromJust)
 import Data.Word (Word64)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -99,6 +99,10 @@ checkQuery phi query maxDepth = evalZ3
     minLength = case query of
       SatQuery {} -> 1
       MiniProcQuery {} -> 2
+    alphabet = case query of
+      SatQuery a -> a
+      MiniProcQuery _ -> MP.miniProcAlphabet
+
     incrementalCheck assertTime checkTime lastCheckTime k
       | k > maxDepth = return SMTResult { smtStatus = Unknown
                                         , smtTableau = Nothing
@@ -109,14 +113,20 @@ checkQuery phi query maxDepth = evalZ3
                                         }
       | otherwise = do
           reset
-          (tableauQuery, newAssertTime) <- timeAction (const ()) $ assertEncoding pnfPhi query k
-          ((res, maybeModel), newCheckTime) <- timeAction ((== Z3.Sat) . fst) $ solverCheckAndGetModel
-          -- (res, newCheckTime) <- timeAction $ solverCheck
+          encData <- initPhiEncoding pnfPhi alphabet k
+          maybeProgData <- case query of
+            SatQuery {} -> return Nothing
+            MiniProcQuery prog -> Just <$> initProgEncoding encData prog
+          (_, newAssertTime) <- timeAction (const ()) $ assertEncoding encData k
+          when (isJust maybeProgData) $ encodeProg encData (fromJust maybeProgData) k
+          assumptions <- mkPhiAssumptions encData k
+          (res, newCheckTime) <- timeAction (== Z3.Sat) $ solverCheckAssumptions assumptions
           if res == Z3.Sat
             then do
+            model <- solverGetModel
             (tableau, modelTime) <- timeAction (const ())
-              $ tableauQuery Nothing $ fromJust maybeModel
-            -- DBG.traceM =<< showModel (fromJust maybeModel)
+              $ queryTableau encData k Nothing model
+            -- DBG.traceM =<< showModel model
             return SMTResult { smtStatus = Sat
                              , smtTableau = Just tableau
                              , smtTimeAssert = assertTime + newAssertTime
@@ -260,12 +270,8 @@ initPhiEncoding phi alphabet k = do
             getNegPrec Take = (yield, equal)
 
 
-assertEncoding :: Formula MP.ExprProp
-               -> Query
-               -> Word64
-               -> Z3 (Maybe Word64 -> Model -> Z3 [TableauNode])
-assertEncoding phi query k = do
-  encData <- initPhiEncoding phi alphabet k
+assertEncoding :: EncData -> Word64 -> Z3 ()
+assertEncoding encData k = do
   let yield = zYield encData
       equal = zEqual encData
       take = zTake encData
@@ -279,15 +285,15 @@ assertEncoding phi query k = do
         checkPopx <- mkCheckPrec encData take xLit
         inputx <- mkOr [checkPushx, checkShiftx]
         -- PhiAxiom
-        phiAxiom <- mkPhiAxiomsForall encData xLit
+        phiAxiom <- mkPhiAxiomsForall xLit
         -- xnextx
-        inputxImpliesXnextx <- mkImplies inputx =<< mkXnext encData x
+        inputxImpliesXnextx <- mkImplies inputx =<< mkXnext x
         -- wxnextx
-        popxImpliesWxnextx <- mkImplies checkPopx =<< mkWxnext encData x
+        popxImpliesWxnextx <- mkImplies checkPopx =<< mkWxnext x
         -- huaux
-        huauxx <- mkHuaux encData x checkPushx checkPopx
-        endx <- mkEndTerm encData xLit
-        conflictx <- mkConflict encData xLit
+        huauxx <- mkHuaux x checkPushx checkPopx
+        endx <- mkEndTerm xLit
+        conflictx <- mkConflict xLit
         mkAnd [ phiAxiom
               , inputxImpliesXnextx, popxImpliesWxnextx
               , huauxx
@@ -303,45 +309,31 @@ assertEncoding phi query k = do
         checkPopx <- mkCheckPrec encData take xLit
         inputx <- mkOr [checkPushx, checkShiftx]
         -- push(x) → PUSH(x)
-        pushxImpliesPushx <- mkImplies checkPushx =<< mkPush encData x
+        pushxImpliesPushx <- mkImplies checkPushx =<< mkPush x
         -- shift(x) → SHIFT(x)
-        shiftxImpliesShiftx <- mkImplies checkShiftx =<< mkShift encData x
+        shiftxImpliesShiftx <- mkImplies checkShiftx =<< mkShift x
         -- pop(x) → POP(x)
-        popxImpliesPopx <- mkImplies checkPopx =<< mkPop encData x
+        popxImpliesPopx <- mkImplies checkPopx =<< mkPop x
         -- pnextx
-        inputxImpliesPnextx <- mkImplies inputx =<< mkPnext encData x
+        inputxImpliesPnextx <- mkImplies inputx =<< mkPnext x
         -- hnextu
-        hnextux <- mkHnextu encData x checkPushx checkPopx
+        hnextux <- mkHnextu x checkPushx checkPopx
         -- hnextd
-        hnextdx <- mkHnextd encData x checkPopx
+        hnextdx <- mkHnextd x checkPopx
         -- whnextu
-        whnextux <- mkWhnextu encData x checkPopx
+        whnextux <- mkWhnextu x checkPopx
         -- whnextd
-        whnextdx <- mkWhnextd encData x checkPopx
+        whnextdx <- mkWhnextd x checkPopx
         -- hdaux
-        hdauxx <- mkHdaux encData x checkPopx
+        hdauxx <- mkHdaux x checkPopx
         mkAnd [ pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx
               , inputxImpliesPnextx, hnextux, hnextdx, whnextux, whnextdx, hdauxx
               ]
   assert =<< mkForallNodes [1..(k - 1)] mkTransitions
   -- end ∀x (...)
-
-  -- EMPTY(k)
-  assert =<< mkEmpty encData k
-
-  case query of
-    SatQuery _ -> return ()
-    MiniProcQuery prog ->
-      encodeProg encData prog k
-
-  return $ queryTableau encData k
   where
-    alphabet = case query of
-      SatQuery a -> a
-      MiniProcQuery _ -> MP.miniProcAlphabet
-
-    mkPhiAxiomsForall :: EncData -> AST -> Z3 AST
-    mkPhiAxiomsForall encData xLit = do
+    mkPhiAxiomsForall :: AST -> Z3 AST
+    mkPhiAxiomsForall xLit = do
       let sigma = zSigma encData
       -- Σ(struct(x)) ∧ Σ(smb(x)) ∧ Γ(struct(x), x)
       structX <- mkApp1 (zStruct encData) xLit
@@ -351,8 +343,8 @@ assertEncoding phi query k = do
       mkAnd [sigmaStructX, sigmaSmbX, gammaStructXX]
 
     -- END(xExpr)
-    mkEndTerm :: EncData -> AST -> Z3 AST
-    mkEndTerm encData x = do
+    mkEndTerm :: AST -> Z3 AST
+    mkEndTerm x = do
       let fConstMap = zFConstMap encData
           gamma = zGamma encData
           clos = zClos encData
@@ -372,8 +364,8 @@ assertEncoding phi query k = do
       mkImplies gammaEndx noGammaAll
 
     -- CONFLICT(x)
-    mkConflict :: EncData -> AST -> Z3 AST
-    mkConflict encData x = do
+    mkConflict :: AST -> Z3 AST
+    mkConflict x = do
       structx <- mkApp1 (zStruct encData) x
       let structClos = zStructClos encData
           fConstMap = zFConstMap encData
@@ -386,8 +378,8 @@ assertEncoding phi query k = do
       mkOrWith singleSl structClos
 
     -- PNEXT(x) ∧ WPNEXT(x)
-    mkPnext :: EncData -> Word64 -> Z3 AST
-    mkPnext encData x = do
+    mkPnext :: Word64 -> Z3 AST
+    mkPnext x = do
       let clos = zClos encData
           fConstMap = zFConstMap encData
           gamma = zGamma encData
@@ -425,8 +417,8 @@ assertEncoding phi query k = do
       mkAnd [pnextDown, pnextUp, wpnextDown, wpnextUp]
 
     -- XNEXT(x)
-    mkXnext :: EncData -> Word64 -> Z3 AST
-    mkXnext encData x = do
+    mkXnext :: Word64 -> Z3 AST
+    mkXnext x = do
       let nodeSort = zNodeSort encData
           struct = zStruct encData
       xLit <- mkUnsignedInt64 x nodeSort
@@ -452,8 +444,8 @@ assertEncoding phi query k = do
           xnextSat _ = error "XNext formula expected."
       mkAndWith xnextSat [g | g@(XNext _ _) <- zClos encData]
 
-    mkWxnext :: EncData -> Word64 -> Z3 AST
-    mkWxnext encData x = do
+    mkWxnext :: Word64 -> Z3 AST
+    mkWxnext x = do
       let struct = zStruct encData
       xLit <- mkUnsignedInt64 x $ zNodeSort encData
       structx <- mkApp1 struct xLit
@@ -471,8 +463,8 @@ assertEncoding phi query k = do
             mkImplies gammagctxxAndOrPrec xnfArgx
       mkAndWith wxnextSat [g | g@(WXNext _ _) <- zClos encData]
 
-    mkHnextu :: EncData -> Word64 -> AST -> AST -> Z3 AST
-    mkHnextu encData x checkPushx checkPopx =
+    mkHnextu :: Word64 -> AST -> AST -> Z3 AST
+    mkHnextu x checkPushx checkPopx =
       let allHnu = [g | g@(HNext Up _) <- zClos encData]
       in enableIf (not $ null allHnu) $ do
         let nodeSort = zNodeSort encData
@@ -487,11 +479,11 @@ assertEncoding phi query k = do
         allHnextuSat <- mkAndWith hnextuSat allHnu
         popxImplies <- mkImplies checkPopx allHnextuSat
 
-        hucond <- mkHUCond encData x checkPushx checkPopx allHnu
+        hucond <- mkHUCond x checkPushx checkPopx allHnu
         mkAnd [popxImplies, hucond]
 
-    mkWhnextu :: EncData -> Word64 -> AST -> Z3 AST
-    mkWhnextu encData x checkPopx =
+    mkWhnextu :: Word64 -> AST -> Z3 AST
+    mkWhnextu x checkPopx =
       let allWhnu = [g | g@(WHNext Up _) <- zClos encData]
       in enableIf (not $ null allWhnu) $ do
         let nodeSort = zNodeSort encData
@@ -519,8 +511,8 @@ assertEncoding phi query k = do
         allWhnextuSat <- mkImplies implLhs =<< mkAndWith whnextuSat allWhnu
         mkAnd [predxEqxm1, allWhnextuSat]
 
-    mkHnextd :: EncData -> Word64 -> AST -> Z3 AST
-    mkHnextd encData x checkPopx =
+    mkHnextd :: Word64 -> AST -> Z3 AST
+    mkHnextd x checkPopx =
       let allHnd = [g | g@(HNext Down _) <- zClos encData]
       in enableIf (not $ null allHnd) $ do
         let nodeSort = zNodeSort encData
@@ -539,11 +531,11 @@ assertEncoding phi query k = do
               xnfArgCtxxm1 <- groundxnf encData arg ctxxm1
               mkImplies gammagCtxx =<< mkAnd [xnfArgCtxxm1, checkPopxm1]
         popImpl <- mkImplies lhs =<< mkAndWith hnextdSat allHnd
-        hdcond <- mkHDCond encData x checkPopx allHnd
+        hdcond <- mkHDCond x checkPopx allHnd
         mkAnd [popImpl, hdcond]
 
-    mkWhnextd :: EncData -> Word64 -> AST -> Z3 AST
-    mkWhnextd encData x checkPopx =
+    mkWhnextd :: Word64 -> AST -> Z3 AST
+    mkWhnextd x checkPopx =
       let allWhnd = [g | g@(WHNext Down _) <- zClos encData]
       in enableIf (not $ null allWhnd) $ do
         let nodeSort = zNodeSort encData
@@ -563,8 +555,8 @@ assertEncoding phi query k = do
               mkImplies gammagCtxx xnfArgCtxxm1
         mkImplies lhs =<< mkAndWith whnextdSat allWhnd
 
-    mkHuaux :: EncData -> Word64 -> AST -> AST -> Z3 AST
-    mkHuaux encData x checkPushx checkPopx = enableIf (HUntil Up T T `elem` zClos encData) $ do
+    mkHuaux :: Word64 -> AST -> AST -> Z3 AST
+    mkHuaux x checkPushx checkPopx = enableIf (HUntil Up T T `elem` zClos encData) $ do
       let nodeSort = zNodeSort encData
       xm1 <- mkUnsignedInt64 (x - 1) nodeSort
       checkPopxm1 <- mkCheckPrec encData (zTake encData) xm1
@@ -578,8 +570,8 @@ assertEncoding phi query k = do
       impliesHuaux <- mkImplies whenNotPop huaux
       mkAnd [huauxImplies, impliesHuaux]
 
-    mkHdaux :: EncData -> Word64 -> AST -> Z3 AST
-    mkHdaux encData x checkPopx = enableIf (HUntil Down T T `elem` zClos encData) $ do
+    mkHdaux :: Word64 -> AST -> Z3 AST
+    mkHdaux x checkPopx = enableIf (HUntil Down T T `elem` zClos encData) $ do
       let nodeSort = zNodeSort encData
       xLit <- mkUnsignedInt64 x nodeSort
       ctxx <- mkApp1 (zCtx encData) xLit
@@ -588,11 +580,11 @@ assertEncoding phi query k = do
       popxAndPopxp1 <- mkAnd [checkPopx, checkPopxp1]
       hdaux <- mkApp (zGamma encData) [zFConstMap encData M.! HUntil Down T T, ctxx]
       impliesHdaux <- mkImplies popxAndPopxp1 hdaux
-      hdcond <- mkHDCond encData x checkPopx [HUntil Down T T]
+      hdcond <- mkHDCond x checkPopx [HUntil Down T T]
       mkAnd [impliesHdaux, hdcond]
 
-    mkHUCond :: EncData -> Word64 -> AST -> AST -> [Formula MP.ExprProp] -> Z3 AST
-    mkHUCond encData x checkPushx checkPopx allOps = do
+    mkHUCond :: Word64 -> AST -> AST -> [Formula MP.ExprProp] -> Z3 AST
+    mkHUCond x checkPushx checkPopx allOps = do
       let nodeSort = zNodeSort encData
       xm1 <- mkUnsignedInt64 (x - 1) nodeSort
       checkPopxm1 <- mkCheckPrec encData (zTake encData) xm1
@@ -603,8 +595,8 @@ assertEncoding phi query k = do
       anyOpsx <- mkOrWith (\g -> mkApp (zGamma encData) [zFConstMap encData M.! g, xLit]) allOps
       mkImplies anyOpsx hucond
 
-    mkHDCond :: EncData -> Word64 -> AST -> [Formula MP.ExprProp] -> Z3 AST
-    mkHDCond encData x checkPopx allOps = do
+    mkHDCond :: Word64 -> AST -> [Formula MP.ExprProp] -> Z3 AST
+    mkHDCond x checkPopx allOps = do
       let nodeSort = zNodeSort encData
           fConstMap = zFConstMap encData
           gamma = zGamma encData
@@ -624,8 +616,8 @@ assertEncoding phi query k = do
 
       mkAnd [notPopImpl, popImpl]
 
-    mkNextBackRules :: EncData -> Word64 -> Z3 AST
-    mkNextBackRules encData x = do
+    mkNextBackRules :: Word64 -> Z3 AST
+    mkNextBackRules x = do
       let clos = zClos encData
           nodeSort = zNodeSort encData
           fConstMap = zFConstMap encData
@@ -654,11 +646,11 @@ assertEncoding phi query k = do
       mkAnd [nextRule, backRule]
 
     -- PUSH(x)
-    mkPush :: EncData -> Word64 -> Z3 AST
-    mkPush encData x = do
+    mkPush :: Word64 -> Z3 AST
+    mkPush x = do
       let nodeSort = zNodeSort encData
       -- Propagate Next and Back operators
-      nextBackRules <- mkNextBackRules encData x
+      nextBackRules <- mkNextBackRules x
       -- Bookkeeping functions
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
@@ -698,13 +690,13 @@ assertEncoding phi query k = do
             ]
 
     -- SHIFT(x)
-    mkShift :: EncData -> Word64 -> Z3 AST
-    mkShift encData x = do
+    mkShift :: Word64 -> Z3 AST
+    mkShift x = do
       let nodeSort = zNodeSort encData
           stack = zStack encData
           ctx = zCtx encData
       -- Propagate Next and Back operators
-      nextBackRules <- mkNextBackRules encData x
+      nextBackRules <- mkNextBackRules x
       -- Bookkeeping functions
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
@@ -724,8 +716,8 @@ assertEncoding phi query k = do
       mkAnd [nextBackRules, smbRule, stackRule, ctxRule]
 
     -- POP(xExpr)
-    mkPop :: EncData -> Word64 -> Z3 AST
-    mkPop encData x = do
+    mkPop :: Word64 -> Z3 AST
+    mkPop x = do
       let nodeSort = zNodeSort encData
           gamma = zGamma encData
           smb = zSmb encData
@@ -755,18 +747,6 @@ assertEncoding phi query k = do
       ctxRule <- mkEq ctxxp1 ctxstackx
       -- Final and
       mkAnd [gammaRule, smbRule, stackRule, ctxRule]
-
-    -- EMPTY(x)
-    mkEmpty :: EncData -> Word64 -> Z3 AST
-    mkEmpty encData x = do
-      let nodeSort = zNodeSort encData
-      xLit <- mkUnsignedInt64 x nodeSort
-      -- Γ(#, x)
-      gammaEndx <- mkApp (zGamma encData) [zFConstMap encData M.! Atomic End, xLit]
-      -- stack(x) = ⊥
-      stackx <- mkApp1 (zStack encData) xLit
-      stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
-      mkAnd [gammaEndx, stackxEqBot]
 
 -- xnf(theta)_G(x)
 groundxnf :: EncData -> Formula MP.ExprProp -> AST -> Z3 AST
@@ -813,16 +793,31 @@ groundxnf encData theta x = ground (xnf theta) where
 
           applyGamma g = mkApp (zGamma encData) [zFConstMap encData M.! g, x]
 
+mkPhiAssumptions :: EncData -> Word64 -> Z3 [AST]
+mkPhiAssumptions encData k = mkEmpty k
+  where -- EMPTY(x)
+    mkEmpty :: Word64 -> Z3 [AST]
+    mkEmpty x = do
+      let nodeSort = zNodeSort encData
+      xLit <- mkUnsignedInt64 x nodeSort
+      -- Γ(#, x)
+      gammaEndx <- mkApp (zGamma encData) [zFConstMap encData M.! Atomic End, xLit]
+      -- stack(x) = ⊥
+      stackx <- mkApp1 (zStack encData) xLit
+      stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
+      return [gammaEndx, stackxEqBot]
 
-data ProgData = ProgData { zLocSort    :: Sort
+
+data ProgData = ProgData { zProg       :: MP.Program
+                         , zLocSort    :: Sort
                          , zPc         :: FuncDecl
                          , zSVarFunVec :: Vector (FuncDecl, Sort)
                          , zLowerState :: MP.LowerState
                          , zFin        :: [Word]
                          }
 
-initProgEncoding :: EncData -> MP.Program -> Word64 -> Z3 (ProgData)
-initProgEncoding encData prog k = do
+initProgEncoding :: EncData -> MP.Program -> Z3 (ProgData)
+initProgEncoding encData prog = do
   let (lowerState, ini, fin) = MP.sksToExtendedOpa False (MP.pSks prog)
       nodeSort = zNodeSort encData
   locSortSymbol <- mkStringSymbol "LocSort"
@@ -830,7 +825,8 @@ initProgEncoding encData prog k = do
   -- Uninterpreted functions
   pc <- mkFreshFuncDecl "pc" [nodeSort] locSort
   sVarFunVec <- mkVarFunctions
-  let progData = ProgData { zLocSort = locSort
+  let progData = ProgData { zProg = prog
+                          , zLocSort = locSort
                           , zPc = pc
                           , zSVarFunVec = sVarFunVec
                           , zLowerState = lowerState
@@ -886,9 +882,8 @@ mkInit0 sVarFunVec vars xLit = mkAndWith init0 vars
                     vx <- mkApp1 vFunc xLit
                     mkEq vx arr0
 
-encodeProg :: EncData -> MP.Program -> Word64 -> Z3 ()
-encodeProg encData prog k = do
-  progData <- initProgEncoding encData prog k
+encodeProg :: EncData -> ProgData -> Word64 -> Z3 ()
+encodeProg encData progData k = do
   -- start ∀x (...)
   -- x < k
   let lowerState = zLowerState progData
@@ -896,26 +891,26 @@ encodeProg encData prog k = do
         xLit <- mkUnsignedInt64 x $ zNodeSort encData
         -- push(x) → PUSH(x)
         checkPushx <- mkCheckPrec encData (zYield encData) xLit
-        pushProgx <- mkInput progData (MP.lsDPush lowerState) x
+        pushProgx <- mkInput (MP.lsDPush lowerState) x
         pushxImpliesPushProgx <- mkImplies checkPushx pushProgx
         -- shift(x) → SHIFT(x)
         checkShiftx <- mkCheckPrec encData (zEqual encData) xLit
-        shiftProgx <- mkInput progData (MP.lsDShift lowerState) x
+        shiftProgx <- mkInput (MP.lsDShift lowerState) x
         shiftxImpliesShiftProgx <- mkImplies checkShiftx shiftProgx
         -- pop(x) → POP(x)
         checkPopx <- mkCheckPrec encData (zTake encData) xLit
-        popProgx <- mkPop progData (MP.lsDPop lowerState) x
+        popProgx <- mkPop (MP.lsDPop lowerState) x
         popxImpliesPopProgx <- mkImplies checkPopx popProgx
         mkAnd [pushxImpliesPushProgx, shiftxImpliesShiftProgx, popxImpliesPopProgx]
   assert =<< mkAndWith mkProgTransitions [1..(k - 1)]
   -- end ∀x (...)
-  -- Final states
-  nodek <- mkUnsignedInt64 k $ zNodeSort encData
-  assert =<< mkOrWith (\l -> do
-                          lLit <- mkUnsignedInt l $ zLocSort progData
-                          pck <- mkApp1 (zPc progData) nodek
-                          mkEq pck lLit
-                      ) (zFin progData)
+  -- Final states (should be useless, TODO: remove zFin)
+  -- nodek <- mkUnsignedInt64 k $ zNodeSort encData
+  -- assert =<< mkOrWith (\l -> do
+  --                         lLit <- mkUnsignedInt l $ zLocSort progData
+  --                         pck <- mkApp1 (zPc progData) nodek
+  --                         mkEq pck lLit
+  --                     ) (zFin progData)
   where
     apConstMap = M.fromList
       $ foldr (\(p, c) rest -> case p of
@@ -930,8 +925,8 @@ encodeProg encData prog k = do
                         ) []
                   $ M.toList $ zFConstMap encData
 
-    mkInput :: ProgData -> Map Word (MP.InputLabel, MP.DeltaTarget) -> Word64 -> Z3 AST
-    mkInput progData lsDelta x =
+    mkInput :: Map Word (MP.InputLabel, MP.DeltaTarget) -> Word64 -> Z3 AST
+    mkInput lsDelta x =
       mkOrWith mkTransition $ M.toList lsDelta where
       mkTransition (l1, (il, MP.States dt)) = do
         let nodeSort = zNodeSort encData
@@ -977,8 +972,8 @@ encodeProg encData prog k = do
                             ) dt
         mkAnd [pcXEqL1, structXEqil, inputProps, action, exprProps, targets]
 
-    mkPop :: ProgData -> Map (Word, Word) (MP.Action, MP.DeltaTarget) -> Word64 -> Z3 AST
-    mkPop progData lsDelta x =
+    mkPop :: Map (Word, Word) (MP.Action, MP.DeltaTarget) -> Word64 -> Z3 AST
+    mkPop lsDelta x =
       mkOrWith mkTransition $ M.toList lsDelta where
       mkTransition ((l1, ls), (act, MP.States dt)) = do
         let nodeSort = zNodeSort encData
@@ -1103,7 +1098,7 @@ encodeProg encData prog k = do
             getFargVar (MP.ValueResult var) = var
             isValRes (MP.ValueResult _) = True
             isValRes _ = False
-            fnameSksMap = M.fromList $ map (\sk -> (MP.skName sk, sk)) $ MP.pSks prog
+            fnameSksMap = M.fromList . map (\sk -> (MP.skName sk, sk)) . MP.pSks $ zProg progData
 
     evalBoolExpr :: Vector (FuncDecl, Sort) -> MP.Expr -> AST -> Z3 AST
     evalBoolExpr sVarFunVec g xLit = do
