@@ -14,7 +14,7 @@ import qualified Pomc.Test.TestMC       (tests, slowTests)
 import qualified Pomc.Test.TestMP       (tests)
 import qualified Pomc.Test.TestSatOmega (tests, slowTests)
 import qualified Pomc.Test.TestMCOmega  (tests, slowTests)
-import qualified Pomc.Test.TestZ3Sat    (tests)
+import qualified Pomc.Test.TestZ3Sat    (tests, slowTests)
 import qualified Pomc.Test.TestZ3MC     (tests)
 
 main :: IO ()
@@ -42,4 +42,5 @@ slowTests = testGroup "Slow Tests"
   , Pomc.Test.TestMC.slowTests
   , Pomc.Test.TestSatOmega.slowTests
   , Pomc.Test.TestMCOmega.slowTests
+  , Pomc.Test.TestZ3Sat.slowTests
   ]

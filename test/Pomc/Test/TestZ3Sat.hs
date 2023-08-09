@@ -5,34 +5,51 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Test.TestZ3Sat ( tests, isSupported ) where
+module Pomc.Test.TestZ3Sat ( tests, slowTests, benchs, isSupported ) where
 
-import Pomc.Test.EvalFormulas (TestCase, zipExpected, formulas, ap)
+import Pomc.Test.EvalFormulas (TestCase, zip3Expected, formulas, ap)
 import Pomc.Test.OPMs (stlV2Alphabet)
 import Pomc.Z3Encoding (isSatisfiable, SMTResult(..), SMTStatus(..))
 import Pomc.Potl (Formula(..), Dir(..))
 
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Bench
 import Data.Word (Word64)
 
 import qualified Debug.Trace as DBG
 
 tests :: TestTree
-tests = testGroup "Z3Encoding Satisfiability Tests" [efTests, regressionTests]
+tests = testGroup "Z3Encoding Satisfiability Tests"
+  $ concatMap (map makeTestCase) [efTests, regressionTests]
 
-makeTestCase :: Word64
-             -> (TestCase, SMTStatus)
-             -> TestTree
-makeTestCase k ((name, phi), expected) =
-  let sat = DBG.traceShowId <$> isSatisfiable stlV2Alphabet phi k
-  in testCase (name ++ " (" ++ show phi ++ ")") $ fmap smtStatus sat >>= (expected @=?)
+slowTests :: TestTree
+slowTests = testGroup "Z3Encoding Satisfiability Tests" [makeTestCase nestedXNext]
 
-efTests :: TestTree
-efTests = testGroup "EvalFormulas"
-  $ map (makeTestCase 12) --11
-  $ zipExpected (filter (isSupported . snd) formulas) expectedRes
-  -- $ zip (filter (isSupported . snd) formulas) $ repeat Sat
+makeTestCase :: (TestCase, Word64, SMTStatus) -> TestTree
+makeTestCase tce@((_, phi), _, _) = testCase tname $ tthunk phi
+  where (tname, tthunk) = makeTest tce
+
+benchs :: TestTree
+benchs = testGroup "Z3Encoding Satisfiability Tests"
+  $ concatMap (map makeBench) [efTests, regressionTests]
+
+makeBench :: (TestCase, Word64, SMTStatus) -> Benchmark
+makeBench tce@((_, phi), _, _) = bench bname $ nfAppIO bthunk phi
+  where (bname, bthunk) = makeTest tce
+
+makeTest :: (TestCase, Word64, SMTStatus)
+         -> (String, Formula String -> Assertion)
+makeTest ((name, phi), k, expected) =
+  ( name ++ " (" ++ show phi ++ ")"
+  , (\f -> do
+        sat <- (smtStatus . DBG.traceShowId) <$> isSatisfiable stlV2Alphabet f k
+        expected @=? sat)
+  )
+
+efTests :: [(TestCase, Word64, SMTStatus)]
+efTests = zip3Expected (filter (isSupported . snd) formulas) (repeat 12) expectedRes
+          -- $ zip3 (filter (isSupported . snd) formulas) (repeat 12) $ repeat Sat
 
 isSupported :: Formula a -> Bool
 isSupported f = case f of
@@ -88,22 +105,26 @@ expectedRes =
   , Sat, Sat -- until_misc
   ]
 
-regressionTests :: TestTree
-regressionTests = testGroup "Other Tests" [wpnextBug, nestedXNext, andXNext]
+regressionTests :: [(TestCase, Word64, SMTStatus)]
+regressionTests = [wpnextBug, andXNext]
 
-wpnextBug :: TestTree
-wpnextBug = makeTestCase 10 (("WPNext bug", ap "call" `And` Not (PNext Down (ap "exc")) `And` PNext Up (Not (ap "ret") `And` PNext Up T)), Sat)
-
-nestedXNext :: TestTree
-nestedXNext = makeTestCase 40 (
-  ("Nested XNexts"
-  , XNext Down $ XNext Down $ XNext Down $ XNext Down $ ap "call")
-  , Sat
+wpnextBug :: (TestCase, Word64, SMTStatus)
+wpnextBug =
+  ( ( "WPNext bug"
+    , ap "call" `And` Not (PNext Down (ap "exc")) `And` PNext Up (Not (ap "ret") `And` PNext Up T))
+  , 10, Sat
   )
 
-andXNext :: TestTree
-andXNext = makeTestCase 10 (
-  ("Conjoined XNexts"
-  , XNext Down (ap "call") `And` XNext Up (ap "exc") `And` XNext Down (ap "p") `And` XNext Down (ap "q") `And` XNext Down (ap "w") `And` XNext Down (ap "r"))
-  , Sat
+andXNext :: (TestCase, Word64, SMTStatus)
+andXNext =
+  ( ("Conjoined XNexts"
+    , XNext Down (ap "call") `And` XNext Up (ap "exc") `And` XNext Down (ap "p") `And` XNext Down (ap "q") `And` XNext Down (ap "w") `And` XNext Down (ap "r"))
+  , 10, Sat
+  )
+
+nestedXNext :: (TestCase, Word64, SMTStatus)
+nestedXNext =
+  ( ("Nested XNexts"
+    , XNext Down $ XNext Down $ XNext Down $ XNext Down $ ap "call")
+  , 40, Sat
   )

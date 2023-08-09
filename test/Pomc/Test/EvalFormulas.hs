@@ -5,7 +5,13 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Test.EvalFormulas (TestCase, ap, zipExpected, excludeIndices, formulas) where
+module Pomc.Test.EvalFormulas ( TestCase
+                              , ap
+                              , zipExpected
+                              , zip3Expected
+                              , excludeIndices
+                              , formulas
+                              ) where
 
 import Pomc.Potl (Formula(..), Dir(..), Prop(..))
 
@@ -19,6 +25,13 @@ zipExpected cases expected
   | length cases == length expected = zip cases expected
   | otherwise = error $ "TestCases and Expected values of different lengths ("
                 ++ show (length cases) ++ " and " ++ show (length expected) ++ ")!"
+
+zip3Expected :: [TestCase] -> [a] -> [b] -> [(TestCase, a, b)]
+zip3Expected cases k expected
+  | length cases == length expected = zip3 cases k expected
+  | otherwise = error $ "TestCases and Expected values of different lengths ("
+                ++ show (length cases) ++ " and " ++ show (length expected) ++ ")!"
+
 
 excludeIndices :: Ord a => [a] -> [Int] -> [a]
 excludeIndices l is = fst $
