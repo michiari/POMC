@@ -54,7 +54,6 @@ data SMTResult = SMTResult { smtStatus        :: SMTStatus
                            , smtTimeAssert    :: Double
                            , smtTimeCheck     :: Double
                            , smtTimeModel     :: Double
-                           , smtTimeLastCheck :: Double
                            } deriving (Eq, Show)
 
 instance Show TableauNode where
@@ -99,20 +98,19 @@ checkQuery phi query maxDepth = evalZ3 $ do
     SatQuery {} -> return Nothing
     MiniProcQuery prog -> Just <$> initProgEncoding encData prog
   initTime <- stopTimer t0 $ isJust maybeProgData
-  incrementalCheck encData maybeProgData initTime 0 0 1 minLength
+  incrementalCheck encData maybeProgData initTime 0 1 minLength
   where
     pnfPhi = pnf phi
     (minLength, alphabet) = case query of
       SatQuery a -> (1, a)
       MiniProcQuery _ -> (2, MP.miniProcAlphabet)
 
-    incrementalCheck encData maybeProgData assertTime checkTime lastCheckTime from to
+    incrementalCheck encData maybeProgData assertTime checkTime from to
       | to > maxDepth = return SMTResult { smtStatus = Unknown
                                          , smtTableau = Nothing
                                          , smtTimeAssert = assertTime
                                          , smtTimeCheck = checkTime
                                          , smtTimeModel = 0
-                                         , smtTimeLastCheck = lastCheckTime
                                          }
       | otherwise = do
           t0 <- startTimer
@@ -138,10 +136,9 @@ checkQuery phi query maxDepth = evalZ3 $ do
                              , smtTimeAssert = assertTime + newAssertTime
                              , smtTimeCheck = checkTime + newCheckTime
                              , smtTimeModel = modelTime
-                             , smtTimeLastCheck = newCheckTime
                              }
             else incrementalCheck encData maybeProgData (assertTime + newAssertTime)
-                 (checkTime + newCheckTime) newCheckTime (to + 1) (to + 1)
+                 (checkTime + newCheckTime) (to + 1) (to + 1)
 
 data EncData = EncData { zClos       :: [Formula MP.ExprProp]
                        , zStructClos :: [Formula MP.ExprProp]
