@@ -151,7 +151,7 @@ initialNodes :: (NFData state, SatState state, Eq state, Hashable state, Show st
              -> ST.ST s [(Key state)]
 initialNodes graph = do
   inIdents <- DS.allMarked (initials graph)
-  gnNodes <- THT.lookupMap (gnMap graph) (Set.toList inIdents) components
+  gnNodes <- THT.map (gnMap graph) (Set.toList inIdents) components
   return $ concat gnNodes
 
 alreadyVisited :: (NFData state, SatState state, Eq state, Hashable state, Show state)
@@ -223,7 +223,7 @@ discoverSummaryBody graph fr  = do
       containsSId SingleNode{node = n} = fst n == fr 
       containsSId SCComponent{nodes=ns} = elem fr . map fst $ ns
       cond Nothing = return False 
-      cond (Just e) = THT.lookupApply (gnMap graph) (to e) $ not . containsSId 
+      cond (Just e) = THT.apply (gnMap graph) (to e) $ not . containsSId 
   b <- GS.peekWhileM (sStack graph) cond
   return $ Set.unions . map (visitedIdents . fromJust) $ b
 
@@ -290,9 +290,9 @@ uniMerge :: (NFData state, SatState state, Ord state, Hashable state, Show state
       -> ST.ST s Bool
 uniMerge graph ident areFinal = do
     THT.unsafeModify (gnMap graph) ident $ setgnIValue (-1)
-    gn <- THT.unsafeLookupApply (gnMap graph) ident id 
+    gn <- THT.unsafeApply (gnMap graph) ident id 
     let cases SCComponent{seIdents = se} = do 
-              summgnNodes <- THT.lookupMap (gnMap graph) (Set.toList se) components
+              summgnNodes <- THT.map (gnMap graph) (Set.toList se) components
               let summStates = map (getState . fst) . concat $ summgnNodes
                   gnStates   = map (getState . fst) . nodes  $ gn
               return $ areFinal (summStates ++ gnStates)
@@ -305,7 +305,7 @@ merge :: (NFData state, SatState state, Ord state, Hashable state, Show state)
       -> ([state] -> Bool)
       -> ST.ST s Bool
 merge graph idents areFinal = do
-  gns <- THT.lookupMap(gnMap graph) idents id 
+  gns <- THT.map(gnMap graph) idents id 
   let newId = head idents
       identsSet = Set.fromList idents
       gnNodes = concat . map components $ gns
@@ -318,7 +318,7 @@ merge graph idents areFinal = do
       allEdges = concat gnEdges
       newgn = SCComponent{nodes = gnNodes,  gnId = newId, iValue = (-1), edges = allEdges, seIdents = allSummIdents}
   THT.merge (gnMap graph) (map decode gnNodes) newId newgn
-  summgnNodes <- THT.lookupMap (gnMap graph) (Set.toList allSummIdents) components
+  summgnNodes <- THT.map (gnMap graph) (Set.toList allSummIdents) components
   let summStates = map (getState . fst) . concat $ summgnNodes
       gnStates = map (getState . fst) gnNodes
   return $ areFinal $ gnStates ++ summStates
@@ -377,7 +377,7 @@ visitGraphFrom graph areFinal e gn = do
   success <-  foldM (\acc ne -> if acc
                                   then return True
                                   else do
-                                    nextGn <- THT.lookupApply (gnMap graph) (to ne) id
+                                    nextGn <- THT.apply (gnMap graph) (to ne) id
                                     if (iValue nextGn) == 0
                                       then visitGraphFrom graph areFinal (Just ne) nextGn
                                       else  do

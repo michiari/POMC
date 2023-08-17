@@ -11,15 +11,17 @@ module Pomc.TripleHashTable( TripleHashTable
                            , insert
                            , merge
                            , lookup
-                           , lookupApply
-                           , unsafeLookupApply
-                           , lookupMap
+                           , unsafeLookup
+                           , apply
+                           , unsafeApply
+                           , map
+                           , unsafeMap
                            , modify
                            , unsafeModify
                            , modifyAll
                            ) where
 
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, map)
 import Control.Monad (forM_, forM, foldM)
 import Control.Monad.ST (ST)
 import Data.Maybe
@@ -38,8 +40,9 @@ type HashTable s k v = BH.HashTable s k v
 -- needed in the SCC algorithm.
 type TripleHashTable s v = (HashTable s (Int,Int,Int) Int, HashTable s Int Int, STRef s (MM.MaybeMap s v))
 
-multcheckMerge :: HashTable s Int Int -> [Int] -> ST s (Set Int)
-multcheckMerge ht is = 
+-- internal functions
+multCheckMerge :: HashTable s Int Int -> [Int] -> ST s (Set Int)
+multCheckMerge ht is = 
   let maybeVal Nothing old  = old
       maybeVal (Just new) _ = new
   in foldM (\s ix -> do 
@@ -55,6 +58,7 @@ checkMerge ht i =
   in do
     mi <- BH.lookup ht i
     return $ maybeVal mi
+-- end internal functions
 
 empty  :: ST s (TripleHashTable s v)
 empty = do
@@ -64,14 +68,14 @@ empty = do
   return (ht1, ht2, mm)
 
 lookupId :: TripleHashTable s v -> (Int,Int,Int) -> ST s (Maybe Int)
-lookupId (ht1,_, _) key = BH.lookup ht1 key
+lookupId (ht1,_, _) = BH.lookup ht1
 
 insert :: TripleHashTable s v -> (Int,Int,Int) -> Int -> v -> ST s ()
 insert (ht1, _, mm) key ident value = do
   BH.insert ht1 key ident
   MM.insert mm ident value
 
-merge :: (TripleHashTable s v) -> [(Int,Int,Int)] -> Int -> v -> ST s ()
+merge :: TripleHashTable s v -> [(Int,Int,Int)] -> Int -> v -> ST s ()
 merge (ht1, ht2, mm) keys ident value = do
   forM_ keys ( \key -> do
                         oldIdent <- BH.lookup ht1 key
@@ -80,38 +84,50 @@ merge (ht1, ht2, mm) keys ident value = do
               )
   MM.insert mm ident value
 
-lookup :: (TripleHashTable s v) -> (Int,Int,Int) -> ST s v
+lookup :: TripleHashTable s v -> (Int,Int,Int) -> ST s v
 lookup (ht1, ht2, mm) key = do
   ident <- BH.lookup ht1 key
   mergeIdent <- checkMerge ht2 (fromJust ident)
   value <- MM.lookup mm mergeIdent
   return $ fromJust value
 
-lookupApply :: (TripleHashTable s v) -> Int -> (v -> w) -> ST s w
-lookupApply (_, ht2, mm) ident f = do
+unsafeLookup :: TripleHashTable s v -> (Int,Int,Int) -> ST s v
+unsafeLookup (ht1, _, mm) key = do
+  ident <- BH.lookup ht1 key
+  value <- MM.lookup mm (fromJust ident)
+  return $ fromJust value
+
+apply :: TripleHashTable s v -> Int -> (v -> w) -> ST s w
+apply (_, ht2, mm) ident f = do
   mergeIdent <- checkMerge ht2 ident
   value <- MM.lookup mm mergeIdent
   return $ f . fromJust $ value
 
-unsafeLookupApply :: (TripleHashTable s v) -> Int -> (v -> w) -> ST s w
-unsafeLookupApply (_, _, mm) ident f = do
+unsafeApply :: TripleHashTable s v -> Int -> (v -> w) -> ST s w
+unsafeApply (_, _, mm) ident f = do
   value <- MM.lookup mm ident
   return $ f . fromJust $ value
 
-lookupMap :: (TripleHashTable s  v) -> [Int] -> (v -> w) -> ST s [w]
-lookupMap (_,ht2, mm) idents f =  do 
-    mergeIdents <- multcheckMerge ht2 idents
+map :: TripleHashTable s  v -> [Int] -> (v -> w) -> ST s [w]
+map (_,ht2, mm) idents f =  do 
+    mergeIdents <- multCheckMerge ht2 idents
     forM (Set.toList mergeIdents) $ \ident -> do
       value <- MM.lookup mm ident
       return $ f . fromJust $ value
 
-modify :: (TripleHashTable s v) -> Int -> (v -> v) -> ST s ()
+unsafeMap :: TripleHashTable s  v -> [Int] -> (v -> w) -> ST s [w]
+unsafeMap (_, _, mm) idents f =  do 
+    forM idents $ \ident -> do
+      value <- MM.lookup mm ident
+      return $ f . fromJust $ value
+
+modify :: TripleHashTable s v -> Int -> (v -> v) -> ST s ()
 modify (_, ht2, mm) ident f = do 
   mergeIdent <- checkMerge ht2 ident
   MM.modify mm mergeIdent f
 
-unsafeModify :: (TripleHashTable s v) -> Int -> (v -> v) -> ST s ()
+unsafeModify :: TripleHashTable s v -> Int -> (v -> v) -> ST s ()
 unsafeModify (_, _, mm) = MM.modify mm
 
-modifyAll :: (TripleHashTable s  v) -> (v -> v) -> ST s ()
+modifyAll :: TripleHashTable s v -> (v -> v) -> ST s ()
 modifyAll (_, _,  mm) = MM.modifyAll mm
