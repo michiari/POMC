@@ -70,13 +70,13 @@ data GraphNode state = SCComponent
   , edges  :: [Edge]
   }
 
-instance (Show state) => Show (GraphNode  state) where
+instance Show (GraphNode state) where
   show gn =  show $  gnId gn
 
 instance Eq (GraphNode state) where
   p == q =  gnId p ==  gnId q
 
-instance  Ord (GraphNode state) where
+instance Ord (GraphNode state) where
   compare p q = compare ( gnId p) ( gnId q)
 
 instance Hashable (GraphNode state) where
