@@ -20,7 +20,6 @@ module Pomc.SatUtil( SatState(..)
 import Pomc.State(Input, State(..))
 import Pomc.Encoding (BitEncoding, extractInput, nat)
 
-import Data.Maybe
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 
@@ -85,15 +84,13 @@ wrapState :: (Eq state, Hashable state)
           -> ST.ST s (StateId state)
 wrapState sig q = do
   qwrapped <- H.lookup (stateToId sig) q
-  if isJust qwrapped
-    then return $ fromJust qwrapped
-    else do
+  maybe (do
     let idSeq = idSequence sig
     newId <- readSTRef idSeq
     modifySTRef' idSeq (+1)
     let newQwrapped = StateId newId q
     H.insert (stateToId sig) q newQwrapped
-    return newQwrapped
+    return newQwrapped) return qwrapped
 
 -- wrap a list of states into the ST monad, giving to each of them a unique ID
 wrapStates :: (Eq state, Hashable state)
@@ -101,16 +98,14 @@ wrapStates :: (Eq state, Hashable state)
            -> [state]
            -> ST.ST s (Vector (StateId state))
 wrapStates sig states = do
-  wrappedList <- V.mapM (wrapState sig) (V.fromList states)
-  return wrappedList
-
+  V.mapM (wrapState sig) (V.fromList states)
 
 -- Stack symbol: (input token, state) || Bottom if empty stack
 type Stack state = Maybe (Input, StateId state)
 
 -- get atomic propositions holding in a state
 getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
-getSidProps bitencoding s = (getStateProps bitencoding) . getState $ s
+getSidProps bitencoding = getStateProps bitencoding . getState
 
 debug :: String -> a -> a
 debug _ x = x
@@ -120,7 +115,7 @@ freshPosId :: STRef s Int -> ST.ST s Int
 freshPosId idSeq = do
   curr <- readSTRef idSeq
   modifySTRef' idSeq (+1);
-  return $ curr
+  return curr
 
 decode :: (StateId state, Stack state) -> (Int,Int,Int)
 decode (s1, Nothing) = (getId s1, 0, 0)
