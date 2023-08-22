@@ -322,21 +322,20 @@ reachOmega :: (NFData state, SatState state, Ord state, Hashable state, Show sta
                -> (StateId state, Stack state)
                -> ST.ST s Bool
 reachOmega areFinal globals delta me (q,g) = do
-  let be = bitenc delta
-      qProps = getSidProps be q -- atomic propositions holding in the state (the input)
-      qState = getState q
+  visitNode (graph globals) me (q,g)
+  let qState = getState q
+      precRel = (prec delta) (fst . fromJust $ g) (current . getSatState $ qState)
       cases 
-        | (isNothing g) || ((prec delta) (fst . fromJust $ g) qProps == Just Yield) =
-          reachOmegaPush areFinal globals delta (q,g) qState qProps
+        | (isNothing g) || precRel == Just Yield =
+          reachOmegaPush areFinal globals delta (q,g) qState
 
-        | ((prec delta) (fst . fromJust $ g) qProps == Just Equal) =
-          reachOmegaShift areFinal globals delta (q,g) qState qProps
+        | precRel == Just Equal =
+          reachOmegaShift areFinal globals delta (q,g) qState
 
-        | ((prec delta) (fst . fromJust $ g) qProps == Just Take) =
+        | precRel == Just Take =
           reachOmegaPop globals delta (q,g) qState
 
         | otherwise = return False
-  visitNode (graph globals) me (q,g)
   success <- cases
   if success
     then return True
@@ -349,13 +348,13 @@ reachOmegaPush :: (NFData state, SatState state, Ord state, Hashable state, Show
           -> Delta state
           -> (StateId state, Stack state)
           -> state
-          -> Input
           -> ST s Bool
-reachOmegaPush areFinal globals delta (q,g) qState qProps =
-  let doPush True _ = return True
+reachOmegaPush areFinal globals delta (q,g) qState =
+  let qProps = getStateProps (bitenc delta) qState
+      doPush True _ = return True
       doPush False p = do
         SM.insert (suppStarts globals) (getId q) g
-        reachTransition Nothing areFinal globals delta (q,g) (p,Just (getSidProps (bitenc delta) q, q))
+        reachTransition Nothing areFinal globals delta (q,g) (p,Just (qProps, q))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
     pushReached <- V.foldM' doPush False newStates
@@ -376,10 +375,10 @@ reachOmegaShift :: (NFData state, SatState state, Ord state, Hashable state, Sho
            -> Delta state
            -> (StateId state, Stack state)
            -> state
-           -> Input
            -> ST s Bool
-reachOmegaShift areFinal globals delta (q,g) qState qProps =
-  let doShift True _ = return True
+reachOmegaShift areFinal globals delta (q,g) qState =
+  let qProps = getStateProps (bitenc delta) qState
+      doShift True _ = return True
       doShift False p =
         reachTransition Nothing areFinal globals delta (q,g) (p, Just (qProps, (snd . fromJust $ g)))
   in do
