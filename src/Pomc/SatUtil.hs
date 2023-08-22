@@ -11,7 +11,6 @@ module Pomc.SatUtil( SatState(..)
                    , SIdGen
                    , initSIdGen
                    , wrapStates
-                   , getSidProps
                    , debug
                    , freshPosId
                    , decode
@@ -102,10 +101,6 @@ wrapStates sig states = do
 
 -- Stack symbol: (input token, state) || Bottom if empty stack
 type Stack state = Maybe (Input, StateId state)
-
--- get atomic propositions holding in a state
-getSidProps :: (SatState state) => BitEncoding -> StateId state -> Input
-getSidProps bitencoding = getStateProps bitencoding . getState
 
 debug :: String -> a -> a
 debug _ x = x
