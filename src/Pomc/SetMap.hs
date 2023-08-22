@@ -9,7 +9,6 @@ module Pomc.SetMap ( SetMap
                    , insert
                    , lookup
                    , member
-                   , modifyAll
                    , empty
                    ) where
 
@@ -53,11 +52,6 @@ member :: (Ord v) => STRef s (SetMap s v) -> Int -> v -> ST.ST s Bool
 member smref idx val = do
   vset <- lookup smref idx
   return $ val `Set.member` vset
-
-modifyAll :: (Ord v) => STRef s (SetMap s v) -> (v -> v) -> ST.ST s ()
-modifyAll smref f = do
-  sm <- readSTRef smref
-  mapM_ (MV.unsafeModify sm $ Set.map f) [0..((MV.length sm) -1)]
 
 -- an empty Set Map, an array of sets
 empty :: ST.ST s (STRef s (SetMap s v))
