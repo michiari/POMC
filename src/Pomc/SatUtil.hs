@@ -72,7 +72,7 @@ data SIdGen s state = SIdGen
 
 initSIdGen :: ST.ST s (SIdGen s state)
 initSIdGen = do
-  newIdSequence <- newSTRef (1 :: Int) -- build a integer new STRef in the current state thread
+  newIdSequence <- newSTRef (0 :: Int) -- build a integer new STRef in the current state thread
   newStateToId <- H.new -- new empty HashTable
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }

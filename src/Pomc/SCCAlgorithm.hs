@@ -98,7 +98,7 @@ newGraph :: (NFData state, SatState state, Eq state, Hashable state, Show state)
          => Vector (Key state)
          -> ST.ST s (Graph s state)
 newGraph iniNodes = do
-  newIdSequence <- newSTRef (1 :: Int)
+  newIdSequence <- newSTRef (0 :: Int)
   tht           <- THT.empty
   newBS         <- GS.new
   newSS         <- GS.new
