@@ -18,23 +18,22 @@ import Pomc.Prec (Alphabet)
 import qualified Pomc.Encoding as E
 import Data.Set (Set)
 
-type Prob = Double
-newtype Distr a = Distr [(a, Prob)] deriving Show
+import Pomc.Prob.Termination(terminationProbs)
+import Pomc.Prob.ProbUtils(Prob, RichDistr, Label)
 
 data Popa s a = Popa
   { alphabet       :: Alphabet a -- OP alphabet
-  , initial        :: s -- initial state of the POPA
-  , popaDeltaPush  :: E.BitEncoding -> s -> Distr s -- push transition prob. distribution
-  , popaDeltaShift :: E.BitEncoding -> s -> Distr s -- shift transition prob. distribution
-  , popaDeltaPop   :: s -> s -> Distr s -- pop transition prob. distribution
+  , initial        :: (s, Label) -- initial state of the POPA
+  , popaDeltaPush  :: E.BitEncoding -> s -> RichDistr s Label -- push transition prob. distribution
+  , popaDeltaShift :: E.BitEncoding -> s -> RichDistr s Label -- shift transition prob. distribution
+  , popaDeltaPop   :: s -> s -> RichDistr s Label -- pop transition prob. distribution
   , labelling      :: s -> Set (Prop a) -- labelling function
   }
 
 data ExplicitPopa s a = ExplicitPopa
   { epAlphabet       :: Alphabet a -- OP alphabet
-  , epInitial        :: s -- initial state of the POPA
-  , epopaDeltaPush   :: [(s, Distr s)] -- push transition prob. distribution
-  , epopaDeltaShift  :: [(s, Distr s)]-- shift transition prob. distribution
-  , epopaDeltaPop    :: [(s, s, Distr s)]-- pop transition prob. distribution
-  , elabelling       :: [(s, Set (Prop a))] -- labelling function
+  , epInitial        :: (s, Label) -- initial state of the POPA
+  , epopaDeltaPush   :: [(s, RichDistr s Label)] -- push transition prob. distribution
+  , epopaDeltaShift  :: [(s, RichDistr s Label)] -- shift transition prob. distribution
+  , epopaDeltaPop    :: [(s, RichDistr s Label)] -- pop transition prob. distribution
   } deriving (Show)
