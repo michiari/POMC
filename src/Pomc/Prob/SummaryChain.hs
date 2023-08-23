@@ -6,7 +6,7 @@
 -}
 
 module Pomc.Prob.SummaryChain ( ProbDelta(..)
-                              , Chain
+                              , SummaryChain
                               , decomposeGraph
                               , GraphNode(..)
                               , Edge(..)
@@ -74,18 +74,16 @@ type Chain s state = MM.MaybeMap s (GraphNode state)
 
 -- the global variables in the algorithm
 data Globals s state = Globals
-  { sIdGen        :: SIdGen s state
-  , idSeq         :: STRef s Int
-  , chainMap      :: HashTable s (Int,Int,Int) Int
-  , summaryChain  :: SummaryChain s state
+  { sIdGen     :: SIdGen s state
+  , idSeq      :: STRef s Int
+  , chainMap   :: HashTable s (Int,Int,Int) Int
+  , suppStarts :: STRef s (SetMap s (Stack state))
+  , suppEnds   :: STRef s (SetMap s (StateId state))
+  , chain      :: STRef s (Chain s state)
   }
 
--- a separate data type for the output of the decomposition algorithm
-data SummaryChain s state = SummaryChain
-  { suppStarts :: STRef s (SetMap s (Stack state))
-  , suppEnds :: STRef s (SetMap s (StateId state))
-  , chain         :: STRef s (Chain s state)
-  }
+-- a type for the output of the decomposition algorithm
+type SummaryChain s state = (SetMap s (Stack state), SetMap s (StateId state), Chain s state)
 
 -- a type for the probabilistic delta relation, parametric with respect to the type of the state
 data ProbDelta state = Delta
@@ -100,7 +98,7 @@ decomposeGraph  :: (Eq state, Hashable state, Show state)
         => ProbDelta state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
         -> Label -- label of the initial state
-        -> ST s (SetMap s (Stack state), SetMap s (StateId state), Chain s state) -- returning a chain
+        -> ST s (SummaryChain s state) -- returning a chain
 decomposeGraph probdelta i iLabel = do
   -- initialize the global variables
   newSig <- initSIdGen
@@ -114,20 +112,18 @@ decomposeGraph probdelta i iLabel = do
   initialId <- freshPosId newIdSequence
   BH.insert emptyChainMap (decode initialNode) initialId
   MM.insert emptyChain initialId $ GraphNode {gnId=initialId, node=initialNode, edges= []}
-  let sc = SummaryChain { suppStarts = emptySuppStarts
-                        , suppEnds = emptySuppEnds
-                        , chain = emptyChain
-                        }
   let globals = Globals { sIdGen = newSig
                         , idSeq = newIdSequence
                         , chainMap = emptyChainMap
-                        , summaryChain = sc
+                        , suppStarts = emptySuppStarts
+                        , suppEnds = emptySuppEnds
+                        , chain = emptyChain
                         }
   -- compute the summary chain of the input popa
   decompose globals probdelta initialNode
-  ss <- readSTRef . suppStarts . summaryChain $ globals
-  se <- readSTRef . suppEnds . summaryChain $ globals
-  c <- readSTRef . chain . summaryChain $ globals
+  ss <- readSTRef . suppStarts $ globals
+  se <- readSTRef . suppEnds $ globals
+  c <- readSTRef . chain $ globals
   return (ss, se, c)
 
 decompose :: (Eq state, Hashable state, Show state)
@@ -163,12 +159,12 @@ decomposePush :: (Eq state, Hashable state, Show state)
 decomposePush globals probdelta q g qState qLabel =
   let doPush (p, pLabel, prob) = do
         newState <- wrapState (sIdGen globals) p pLabel
-        SM.insert (suppStarts $ summaryChain globals) (getId q) g
+        SM.insert (suppStarts globals) (getId q) g
         exploreTransition globals probdelta (q,g)
           prob (newState, Just (qLabel, q))  False
   in do
     mapM_ doPush $ (deltaPush probdelta) qState
-    currentSuppEnds <- SM.lookup (suppEnds $ summaryChain globals) (getId q)
+    currentSuppEnds <- SM.lookup (suppEnds globals) (getId q)
     mapM_ (\s -> do
                 exploreTransition globals probdelta (q,g) 0 (s,g) True
           )
@@ -203,8 +199,8 @@ decomposePop globals probdelta q g qState =
               exploreTransition globals probdelta (q,g) prob_ (pwrapped ,g') False
         in do
           newState <- wrapState (sIdGen globals) p pLabel
-          SM.insert (suppEnds $ summaryChain globals) (getId r) newState
-          currentSuppStarts <- SM.lookup (suppStarts $ summaryChain globals) (getId r)
+          SM.insert (suppEnds globals) (getId r) newState
+          currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
           mapM_ (closeSupports newState) currentSuppStarts
   in mapM_ doPop $ (deltaPop probdelta) qState (getState . snd . fromJust $ g)
 
@@ -247,12 +243,12 @@ decomposeTransition recurse globals probdelta from prob_ dest isSummary =
   fromid <- BH.lookup (chainMap globals) (decode from) >>= return . fromJust
   if isJust maybeid
     then do
-      MM.modify (chain $ summaryChain globals) fromid $ insertEdge (fromJust maybeid)
+      MM.modify (chain globals) fromid $ insertEdge (fromJust maybeid)
     else do
       newIdent <- freshPosId $ idSeq globals
       BH.insert (chainMap globals) (decode dest) newIdent
-      MM.insert (chain $ summaryChain globals) newIdent $ GraphNode {gnId=newIdent, node=dest, edges= []}
-      MM.modify (chain $ summaryChain globals) fromid $ insertEdge newIdent
+      MM.insert (chain globals) newIdent $ GraphNode {gnId=newIdent, node=dest, edges= []}
+      MM.modify (chain globals) fromid $ insertEdge newIdent
       when recurse $ decompose globals probdelta dest
 
 
