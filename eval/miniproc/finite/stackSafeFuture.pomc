@@ -1,0 +1,156 @@
+formulas = G ([|tainted] --> ~(XNu exc Or PNu exc)),
+           G (call And ("Stack::push" Or "Stack::pop") --> ~ (T HUd [|tainted])),
+           G ((call And ("Stack::push" Or "Stack::pop") And XNd ret) --> ~ (T Ud (han And "Stack" And (~han Ud ("T" And PNu exc)))));
+
+program:
+bool tainted;
+u8 vsize, vused;
+u8[6] v;
+
+main() {
+  u8 a;
+  tainted = false;
+
+  Stack::Stack();
+
+  a = 7u8;
+  Stack::push(a);
+
+  tainted = false;
+  Stack::push(42u8);
+
+  tainted = false;
+  Stack::pop();
+
+  tainted = false;
+  // T::Tcp();
+
+  Stack::~Stack();
+  T::~T();
+}
+
+StackImpl::StackImpl(u8 s) {
+  _::operator_new();
+  vsize = s;
+  vused = 0u8;
+}
+
+StackImpl::~StackImpl() {
+  std::destroy(0u8, vused);
+  _::operator_delete();
+}
+
+StackImpl::swap() {
+  std::swap();
+  std::swap();
+  std::swap();
+}
+
+Stack::Stack() {
+  StackImpl::StackImpl(2u8);
+}
+
+Stack::Stackcp() {
+  u8 i, x;
+  StackImpl::StackImpl(vsize);
+  i = 0u8;
+  while (i < vused) {
+    std::construct(v[i], x);
+    v[i] = x;
+    i = i + 1u8;
+  }
+}
+
+Stack::operator=() {
+  Stack::Stackcp();
+  StackImpl::swap();
+}
+
+Stack::size() {}
+
+Stack::push(u8 t) {
+  u8 i, oldvused;
+  u8[6] oldv;
+  if (vused == vsize) {
+    i = 0u8;
+    while (i < vused) {
+      oldv[i] = v[i];
+      i = i + 1u8;
+    }
+    oldvused = vused;
+    StackImpl::StackImpl(vsize + 2u8);
+    while (vused < oldvused) {
+      Stack::push(oldv[vused]);
+      vused = vused + 1u8;
+    }
+    Stack::push(t);
+    StackImpl::swap();
+  } else {
+    std::construct(t, i);
+    v[vused] = i;
+    vused = vused + 1u8;
+  }
+}
+
+Stack::top(u8 &x) {
+  T::Tcp(v[vused], x);
+}
+
+Stack::pop() {
+  if (vused == 0u8) {
+    throw;
+  } else {
+    std::destroy(vused - 1u8, vused);
+    vused = vused - 1u8;
+  }
+}
+
+Stack::~Stack() {
+  StackImpl::~StackImpl();
+}
+
+T::T(u8 &val) {
+  if (*) {
+    throw;
+  } else {
+    val = 0u8;
+  }
+}
+
+T::Tcp(u8 src, u8 &dst) {
+  if (*) {
+    throw;
+  } else {
+    dst = src;
+  }
+}
+
+T::operator=() {
+  if (*) {
+    throw;
+  } else {}
+}
+
+T::~T() {}
+
+std::swap() {
+  tainted = true;
+}
+
+std::construct(u8 src, u8 &dst) {
+  T::Tcp(src, dst);
+}
+
+std::destroy(u8 from, u8 to) {
+  while (from < to) {
+    T::~T();
+    from = from + 1u8;
+  }
+}
+
+_::operator_new() {
+  if (*) {
+    throw;
+  } else {}
+}
+_::operator_delete() {}
