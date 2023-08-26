@@ -1,28 +1,28 @@
-formulas = G ([|tainted] --> ~(XNu exc Or PNu exc)),
-           G (call And ("Stack::push" Or "Stack::pop") --> ~ (T HUd [|tainted])),
+formulas = G ([|modified] --> ~(XNu exc Or PNu exc)),
+           G (call And ("Stack::push" Or "Stack::pop") --> ~ (T HUd [|modified])),
            G ((call And ("Stack::push" Or "Stack::pop") And XNd ret) --> ~ (T Ud (han And "Stack" And (~han Ud ("T" And PNu exc)))));
 
 program:
-bool tainted;
+bool modified;
 u8 vsize, vused;
 u8[6] v;
 
 main() {
   u8 a;
-  tainted = false;
+  modified = false;
 
   Stack::Stack();
 
-  a = 7u8;
+  a = *;
   Stack::push(a);
 
-  tainted = false;
-  Stack::push(42u8);
-
-  tainted = false;
+  modified = false;
   Stack::pop(a);
 
-  tainted = false;
+  modified = false;
+  Stack::push(42u8);
+
+  modified = false;
   // T::Tcp();
 
   Stack::~Stack();
@@ -57,9 +57,9 @@ Stack::push(u8 t) {
     T::operator_delete();
     vsize = vsize + 2u8;
   } else {}
-  tainted = true;
   T::operator=(t, x);
   v[vused] = x; // TODO: allow array access in ref parameter
+  modified = true;
   vused = vused + 1u8;
 }
 
@@ -67,9 +67,9 @@ Stack::pop(u8 &topv) {
   if (vused == 0u8) {
     throw;
   } else {
-    tainted = true;
-    T::Tcp(v[vused - 1u8], topv);
     vused = vused - 1u8;
+    modified = true;
+    T::Tcp(v[vused], topv);
   }
 }
 
@@ -92,11 +92,7 @@ T::T(u8 &val) {
 }
 
 T::Tcp(u8 src, u8 &dst) {
-  if (*) {
-    throw;
-  } else {
-    dst = src;
-  }
+  T::operator=(src, dst);
 }
 
 T::operator_new(u8 size) {
@@ -114,7 +110,11 @@ T::operator_new(u8 size) {
 }
 
 T::operator=(u8 src, u8 &dst) {
-  T::Tcp(src, dst);
+  if (*) {
+    throw;
+  } else {
+    dst = src;
+  }
 }
 
 T::operator_delete() {}
