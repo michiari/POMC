@@ -435,15 +435,15 @@ deltaRules bitenc cl precFunc =
                                      , (any checkAbd, abdShiftFpr)
                                      , (any checkHnd, hndShiftFpr1)
                                      , (any checkHnd, hndShiftFpr2)
+                                     , (any checkHud, hudShiftFpr)
                                      , (any checkHbd, hbdShiftFpr)
+                                     , (any checkHsd, hsdShiftFpr)
                                      ]
         , ruleGroupFrs  = resolve cl [ (const True,   xlXeShiftFr)
                                      , (any checkPn,  pnShiftFr)
                                      , (any checkPb,  pbShiftFr)
                                      , (any checkHuu, huuShiftFr)
                                      , (any checkHsu, hsuShiftFr)
-                                     , (any checkHud, hudShiftFr)
-                                     , (any checkHsd, hsdShiftFr)
                                      ]
         , ruleGroupFsrs = resolve cl [ (any checkXn,  xnShiftFsr) ]
         }
@@ -472,15 +472,15 @@ deltaRules bitenc cl precFunc =
                                      , (any checkAbd, abdPushFpr)
                                      , (any checkHnd, hndPushFpr1)
                                      , (any checkHnd, hndPushFpr2)
+                                     , (any checkHud, hudPushFpr)
                                      , (any checkHbd, hbdPushFpr)
+                                     , (any checkHsd, hsdPushFpr)
                                      ]
         , ruleGroupFrs  = resolve cl [ (const True,   xlXePushFr)
                                      , (any checkPn,  pnPushFr)
                                      , (any checkPb,  pbPushFr)
                                      , (any checkHuu, huuPushFr)
                                      , (any checkHsu, hsuPushFr)
-                                     , (any checkHud, hudShiftFr)
-                                     , (any checkHsd, hsdPushFr)
                                      ]
         , ruleGroupFsrs = resolve cl [ (any checkXn,  xnPushFsr) ]
         }
@@ -1219,15 +1219,15 @@ deltaRules bitenc cl precFunc =
     checkAbdHud (AuxBack Down (HUntil Down _ _)) = True
     checkAbdHud _ = False
 
-    hudPushFr :: FrInfo -> Bool
-    hudPushFr info =
-      let fCurr = frFutureCurr info
-          (_, fXl, _, _) = frFuturePendComb info
-          fCurrHudfs = E.intersect fCurr maskHud
-      in fXl || E.null fCurrHudfs
+    hudPushFpr :: FprInfo -> Bool
+    hudPushFpr info =
+      let pCurr = current $ fprState info
+          (_, fXl, _, _) = fprFuturePendComb info
+          pCurrHudfs = E.intersect pCurr maskHud
+      in fXl || E.null pCurrHudfs
 
-    hudShiftFr :: FrInfo -> Bool
-    hudShiftFr = hudPushFr
+    hudShiftFpr :: FprInfo -> Bool
+    hudShiftFpr = hudPushFpr
 
     hudPopFpr :: FprInfo -> Bool
     hudPopFpr info =
@@ -1254,15 +1254,15 @@ deltaRules bitenc cl precFunc =
     checkAbdHsd (AuxBack Down (HSince Down _ _)) = True
     checkAbdHsd _ = False
 
-    hsdPushFr :: FrInfo -> Bool
-    hsdPushFr info =
-      let fCurr = frFutureCurr info
-          (_, fXl, _, _) = frFuturePendComb info
-          fCurrHsdfs = E.intersect fCurr maskHsd
-      in fXl || E.null fCurrHsdfs
+    hsdPushFpr :: FprInfo -> Bool
+    hsdPushFpr info =
+      let pCurr = current $ fprState info
+          (_, fXl, _, _) = fprFuturePendComb info
+          pCurrHsdfs = E.intersect pCurr maskHsd
+      in fXl || E.null pCurrHsdfs
 
-    hsdShiftFr :: FrInfo -> Bool
-    hsdShiftFr = hsdPushFr
+    hsdShiftFpr :: FprInfo -> Bool
+    hsdShiftFpr = hsdPushFpr
 
     hsdPopFpr :: FprInfo -> Bool
     hsdPopFpr info =

@@ -105,9 +105,14 @@ newGraph iniNodes = do
   newInitials   <- DS.new
   newSummaries  <- newSTRef []
   forM_ (iniNodes) $ \key -> do
-    newId <- freshPosId newIdSequence
-    THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = []} 
-    DS.insert newInitials (newId, True)
+    -- some initial nodes may be duplicate
+    duplicate <- THT.lookupId tht (decode key)
+    if isNothing duplicate
+      then do
+        newId <- freshPosId newIdSequence
+        THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = []} 
+        DS.insert newInitials (newId, True)
+      else return ()
   return $ Graph { idSeq = newIdSequence
                  , gnMap = tht
                  , bStack = newBS
