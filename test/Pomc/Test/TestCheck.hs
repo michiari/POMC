@@ -1035,6 +1035,30 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV2
         , map (S.singleton . Prop) ["call", "call", "ret", "call", "exc"]
         )
+      , ( "HUntil Down True"
+        , True
+        , HUntil Down T $ ap "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "call", "call", "exc"]
+        )
+      , ( "HUntil Down False"
+        , False
+        , HUntil Down T $ ap "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "call", "call", "ret", "ret", "ret"]
+        )
+      , ( "HSince Down True"
+        , True
+        , XNext Down $ HSince Down T $ ap "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "call", "call", "exc"]
+        )
+      , ( "HSince Down False"
+        , False
+        , XNext Down $ HSince Down T $ ap "call"
+        , stlPrecRelV2
+        , map (S.singleton . Prop) ["call", "call", "ret", "call", "call", "ret", "ret", "ret"]
+        )
       ]
 
 
