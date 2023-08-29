@@ -134,6 +134,10 @@ decompose globals probdelta (q,g) = do
       qState = getState q
       precRel = (prec probdelta) (fst . fromJust $ g) qLabel
       cases
+        -- semiconfigurations with empty stack but not the initial one
+        | (isNothing g) && (getId q /= 0) = return ()
+
+        -- this case includes the initial push
         | (isNothing g) || precRel == Just Yield =
           decomposePush globals probdelta q g qState qLabel
 
