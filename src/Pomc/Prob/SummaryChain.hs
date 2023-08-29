@@ -18,9 +18,6 @@ import Pomc.Prob.ProbUtils
 import Pomc.Check (EncPrecFunc)
 import Pomc.Encoding (BitEncoding)
 
--- check imports from here
-
-
 import Pomc.Prec (Prec(..),)
 import Pomc.SetMap
 import qualified Pomc.SetMap as SM
@@ -31,7 +28,7 @@ import Control.Monad.ST (ST)
 import Data.STRef (STRef, newSTRef, readSTRef)
 import Data.Maybe
 
-import qualified Pomc.MaybeMap as MM
+import qualified Pomc.Prob.CustoMap as CM
 
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
@@ -68,7 +65,7 @@ instance  Ord (GraphNode state) where
 type HashTable s k v = BH.HashTable s k v
 
 -- the Summary Chain computed by this module
-type Chain s state = MM.MaybeMap s (GraphNode state)
+type SummaryChain s state = CM.CustoMap s (GraphNode state)
 
 -- the global variables in the algorithm
 data Globals s state = Globals
@@ -77,11 +74,9 @@ data Globals s state = Globals
   , chainMap   :: HashTable s (Int,Int,Int) Int
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds   :: STRef s (SetMap s (StateId state))
-  , chain      :: STRef s (Chain s state)
+  , chain      :: STRef s (SummaryChain s state)
   }
 
--- a type for the output of the decomposition algorithm
-type SummaryChain s state = (SetMap s (Stack state), SetMap s (StateId state), Chain s state)
 
 -- a type for the probabilistic delta relation, parametric with respect to the type of the state
 data ProbDelta state = Delta
@@ -92,6 +87,9 @@ data ProbDelta state = Delta
   , deltaPop :: state -> state -> RichDistr state Label -- deltapop relation
   }
 
+-- assumptions: 
+-- the initial state is mapped to id 0;
+-- the initial semiconfiguration (initialSid, Nothing) is mapped to node 0 in the summary chain.
 decomposeGraph  :: (Eq state, Hashable state, Show state)
         => ProbDelta state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
@@ -106,10 +104,10 @@ decomposeGraph probdelta i iLabel = do
   let initialNode = (initialsId, Nothing)
   newIdSequence <- newSTRef (0 :: Int)
   emptyChainMap <- BH.new
-  emptyChain <- MM.empty
+  emptyChain <- CM.empty
   initialId <- freshPosId newIdSequence
   BH.insert emptyChainMap (decode initialNode) initialId
-  MM.insert emptyChain initialId $ GraphNode {gnId=initialId, node=initialNode, internalEdges= [], summaryEdges = []}
+  CM.insert emptyChain initialId $ GraphNode {gnId=initialId, node=initialNode, internalEdges= [], summaryEdges = []}
   let globals = Globals { sIdGen = newSig
                         , idSeq = newIdSequence
                         , chainMap = emptyChainMap
@@ -119,10 +117,7 @@ decomposeGraph probdelta i iLabel = do
                         }
   -- compute the summary chain of the input popa
   decompose globals probdelta initialNode
-  ss <- readSTRef . suppStarts $ globals
-  se <- readSTRef . suppEnds $ globals
-  c <- readSTRef . chain $ globals
-  return (ss, se, c)
+  readSTRef . chain $ globals
 
 decompose :: (Eq state, Hashable state, Show state)
       => Globals s state -- global variables of the algorithm
@@ -242,29 +237,15 @@ decomposeTransition recurse globals probdelta from prob_ dest isSummary =
     insertEdge to_  True  g@GraphNode{summaryEdges = edges_} = g{summaryEdges = (createSummary to_ ) : edges_}
     insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = (createInternal to_ ) : edges_}
   in do
-  maybeid <- BH.lookup (chainMap globals) (decode dest)
-  fromid <- BH.lookup (chainMap globals) (decode from) >>= return . fromJust
-  if isJust maybeid
-    then do
-      MM.modify (chain globals) fromid $ insertEdge (fromJust maybeid) isSummary
-    else do
-      newIdent <- freshPosId $ idSeq globals
-      BH.insert (chainMap globals) (decode dest) newIdent
-      MM.insert (chain globals) newIdent $ GraphNode {gnId=newIdent, node=dest, internalEdges= [], summaryEdges = []}
-      MM.modify (chain globals) fromid $ insertEdge newIdent isSummary
-      when recurse $ decompose globals probdelta dest
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    maybeid <- BH.lookup (chainMap globals) (decode dest)
+    fromid <- BH.lookup (chainMap globals) (decode from) >>= return . fromJust 
+    if isJust maybeid
+      then do
+        CM.modify (chain globals) fromid $ insertEdge (fromJust maybeid) isSummary
+      else do
+        newIdent <- freshPosId $ idSeq globals
+        BH.insert (chainMap globals) (decode dest) newIdent
+        CM.insert (chain globals) newIdent $ GraphNode {gnId=newIdent, node=dest, internalEdges= [], summaryEdges = []}
+        CM.modify (chain globals) fromid $ insertEdge newIdent isSummary
+        when recurse $ decompose globals probdelta dest
 
