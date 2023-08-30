@@ -20,10 +20,11 @@ import Z3.Monad
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST (stToIO, RealWorld)
 
--- 
+import Data.List (nub)
 import qualified Data.Vector.Mutable as MV
 
 import qualified Data.HashTable.ST.Basic as BH
+
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
@@ -43,10 +44,19 @@ terminationProbs :: (Eq state, Hashable state, Show state)
 terminationProbs = const []
 
 encodeTransition :: InternalEdge -> AST -> Z3 AST 
-encodeTransition e toVar = do 
+encodeTransition e to = do 
   prob <- mkRealNum (toI e)
-  mkMul [toVar, prob]
+  mkMul [to, prob]
 
+lookupVar :: VarMap RealWorld -> (Int, Int) -> Z3 (AST, Bool)
+lookupVar varMap key = do 
+  maybeVar <- liftIO . stToIO $ BH.lookup varMap key 
+  if isJust maybeVar 
+    then return (fromJust maybeVar, True)
+    else do 
+      new_var <- mkFreshRealVar $ show key
+      liftIO . stToIO $ BH.insert varMap key new_var
+      return (new_var, False)
 
 encodeShift :: (Eq state, Hashable state, Show state)
         => VarMap RealWorld
@@ -54,23 +64,15 @@ encodeShift :: (Eq state, Hashable state, Show state)
         -> StateId state 
         -> AST
         -> Z3 (AST, [AST])
-encodeShift vars gn leftContext var = 
-  let 
-    shiftEnc (currs, new_vars) e = do 
-      maybevar <- liftIO . stToIO $ BH.lookup vars (toI e, getId leftContext)
-      if isJust maybevar
-        then do 
-          trans <- encodeTransition e (fromJust maybevar) 
-          return (trans:currs, new_vars)
-        else do 
-          new_var <- mkFreshRealVar $ show (gn, leftContext)
-          liftIO . stToIO $ BH.insert vars (toI e, getId leftContext) new_var
-          trans <- encodeTransition e new_var 
-          return (trans:currs, new_var:new_vars)            
+encodeShift varMap gn leftContext var = 
+  let shiftEnc (currs, new_vars) e = do 
+        (var, alreadyEncoded) <- lookupVar varMap (toI e, getId leftContext)
+        trans <- encodeTransition e var
+        return (trans:currs, if alreadyEncoded then new_vars else var:new_vars)            
   in do 
     (transitions, unencoded_vars) <- foldM shiftEnc ([], []) (internalEdges gn)
     equation <- mkEq var =<< mkAdd transitions
-    return (equation, unencoded_vars)
+    return (equation, unencoded_vars) -- TODO: maybe add a safety check for duplicates in encoded_vars here
 
 
 encodePop :: (Eq state, Hashable state, Show state)
@@ -80,13 +82,34 @@ encodePop :: (Eq state, Hashable state, Show state)
         -> AST
         -> Z3 (AST, [AST])
 encodePop chain gn leftContext var = 
-  let 
-    popEnc acc e = do 
-      gn <- liftIO . stToIO $ MV.unsafeRead chain (toI e)
-      if leftContext == (fst . node $ gn)
-        then return $ acc + (probI e)
-        else return acc
+  let popEnc acc e = do 
+        toGn <- liftIO . stToIO $ MV.unsafeRead chain (toI e)
+        if leftContext == (fst . node $ toGn)
+          then return $ acc + (probI e) -- TODO: can this happen? Can we have multiple pops that go the same state p?
+          else return acc
   in do 
-    equation <- mkEq var =<< mkRealNum =<< foldM popEnc (0 :: Double) (internalEdges gn)
+    equation <- mkEq var =<< mkRealNum =<< foldM popEnc (0 :: Prob) (internalEdges gn)
     return (equation, []) -- pop transitions do not generate new variables
 
+encodePush :: (Eq state, Hashable state, Show state)
+        => SummaryChain RealWorld state
+        -> VarMap RealWorld
+        -> GraphNode state
+        -> StateId state 
+        -> AST
+        -> Z3 (AST, [AST])
+encodePush chain varMap gn leftContext var = 
+  let closeSummaries pushedGn (currs, new_vars) e = do
+        summaryGn <- liftIO . stToIO $ MV.unsafeRead chain (toS e)
+        vars <- mapM (lookupVar varMap) [(gnId pushedGn, getId . fst . node $ summaryGn), (gnId summaryGn, getId leftContext)]
+        eq <- mkMul (map fst vars)
+        return (eq:currs, [x | (x,y) <- vars, not y] ++ new_vars)
+      pushEnc (currs, new_vars) e = do 
+        pushedGn <- liftIO . stToIO $ MV.unsafeRead chain (toI e)
+        (equations, unencoded_vars) <- foldM (closeSummaries pushedGn) ([], []) (summaryEdges gn) 
+        transition <- encodeTransition e =<< mkAdd equations   
+        return (transition:currs, unencoded_vars ++ new_vars)
+  in do 
+    (transitions, unencoded_vars) <- foldM pushEnc ([], []) (internalEdges gn)
+    equation <- mkEq var =<< mkAdd transitions
+    return (equation, nub unencoded_vars) -- TODO: can we remove the safety check nub?
