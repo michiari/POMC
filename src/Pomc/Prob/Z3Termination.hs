@@ -61,12 +61,12 @@ lookupVar varMap key = do
 encodeShift :: (Eq state, Hashable state, Show state)
         => VarMap RealWorld
         -> GraphNode state
-        -> StateId state 
+        -> Int -- the Id of StateId of the right context of this chain
         -> AST
         -> Z3 (AST, [AST])
 encodeShift varMap gn rightContext var = 
   let shiftEnc (currs, new_vars) e = do 
-        (var, alreadyEncoded) <- lookupVar varMap (toI e, getId rightContext)
+        (var, alreadyEncoded) <- lookupVar varMap (toI e, rightContext)
         trans <- encodeTransition e var
         return (trans:currs, if alreadyEncoded then new_vars else var:new_vars)            
   in do 
@@ -78,13 +78,13 @@ encodeShift varMap gn rightContext var =
 encodePop :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> GraphNode state
-        -> StateId state 
+        -> Int -- the Id of StateId of the right context of this chain
         -> AST
         -> Z3 (AST, [AST])
 encodePop chain gn rightContext var = 
   let popEnc acc e = do 
         toGn <- liftIO . stToIO $ MV.unsafeRead chain (toI e)
-        if rightContext == (fst . node $ toGn)
+        if rightContext == (getId . fst . node $ toGn)
           then return $ acc + (probI e) -- TODO: can this happen? Can we have multiple pops that go the same state p?
           else return acc
   in do 
@@ -95,13 +95,13 @@ encodePush :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> VarMap RealWorld
         -> GraphNode state
-        -> StateId state 
+        -> Int -- the Id of StateId of the right context of this chain
         -> AST
         -> Z3 (AST, [AST])
 encodePush chain varMap gn rightContext var = 
   let closeSummaries pushedGn (currs, new_vars) e = do
         summaryGn <- liftIO . stToIO $ MV.unsafeRead chain (toS e)
-        vars <- mapM (lookupVar varMap) [(gnId pushedGn, getId . fst . node $ summaryGn), (gnId summaryGn, getId rightContext)]
+        vars <- mapM (lookupVar varMap) [(gnId pushedGn, getId . fst . node $ summaryGn), (gnId summaryGn, rightContext)]
         eq <- mkMul (map fst vars)
         return (eq:currs, [x | (x,y) <- vars, not y] ++ new_vars)
       pushEnc (currs, new_vars) e = do 
