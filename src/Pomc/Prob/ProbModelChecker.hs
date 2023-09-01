@@ -32,8 +32,8 @@ data Popa s a = Popa
 
 data ExplicitPopa s a = ExplicitPopa
   { epAlphabet       :: Alphabet a -- OP alphabet
-  , epInitial        :: (s, Label) -- initial state of the POPA
-  , epopaDeltaPush   :: [(s, RichDistr s Label)] -- push transition prob. distribution
-  , epopaDeltaShift  :: [(s, RichDistr s Label)] -- shift transition prob. distribution
-  , epopaDeltaPop    :: [(s, RichDistr s Label)] -- pop transition prob. distribution
+  , epInitial        :: (s, Set (Prop a)) -- initial state of the POPA
+  , epopaDeltaPush   :: [(s, RichDistr s (Set (Prop a)))] -- push transition prob. distribution
+  , epopaDeltaShift  :: [(s, RichDistr s (Set (Prop a)))] -- shift transition prob. distribution
+  , epopaDeltaPop    :: [(s, s, RichDistr s (Set (Prop a)))] -- pop transition prob. distribution
   } deriving (Show)
