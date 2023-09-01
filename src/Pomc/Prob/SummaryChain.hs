@@ -201,6 +201,7 @@ decomposePop globals probdelta q g qState =
           mapM_ (closeSupports newState) currentSuppStarts
   in mapM_ doPop $ (deltaPop probdelta) qState (getState . snd . fromJust $ g)
 
+-- this is mainly for tail recursive optimizations
 addEdge :: (Eq state, Hashable state, Show state)
                  => Globals s state
                  -> ProbDelta state
