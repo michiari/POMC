@@ -5,7 +5,7 @@ formulas = G ([|modified] --> ~(XNu exc Or PNu exc)),
 program:
 bool modified;
 u8 vsize, vused;
-u8[6] v;
+u8[4] v;
 
 main() {
   u8 a;
@@ -22,7 +22,7 @@ main() {
   modified = false;
   Stack::push(42u8);
 
-  modified = false;
+  // modified = false;
   // T::Tcp();
 
   Stack::~Stack();
