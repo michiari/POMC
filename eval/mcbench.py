@@ -33,7 +33,7 @@ def exec_bench(fname, finite, smt, verbose):
                               , '--'
                               , fname
                               , '--finite' if finite else '--infinite'
-                              , '--smt={:d}'.format(smt) if smt > 0 else ''
+                              , '--smt={:d}'.format(smt) if smt > 0 else '--smt=0'
                               , '+RTS'
                               , '-t'
                               , '--machine-readable'
