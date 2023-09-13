@@ -21,7 +21,7 @@ if platform.system() == 'Darwin':
 else:
     time_bin = '/usr/bin/time'
 
-def exec_bench(fname, finite, verbose):
+def exec_bench(fname, finite, smt, verbose):
     print('Evaluating file', fname, '...')
 
     raw_res = subprocess.run(['/usr/bin/time'
@@ -33,6 +33,7 @@ def exec_bench(fname, finite, verbose):
                               , '--'
                               , fname
                               , '--finite' if finite else '--infinite'
+                              , '--smt={:d}'.format(smt) if smt > 0 else ''
                               , '+RTS'
                               , '-t'
                               , '--machine-readable'
@@ -59,9 +60,9 @@ def exec_bench(fname, finite, verbose):
             int(mem_match.group(1)), int(memgc_match.group(1)),
             result)
 
-def iter_bench(fname, finite, iters, verbose):
+def iter_bench(fname, finite, smt, iters, verbose):
     get_column = lambda rows, i: [r[i] for r in rows]
-    results = [exec_bench(fname, finite, verbose) for _ in range(0, iters)]
+    results = [exec_bench(fname, finite, smt, verbose) for _ in range(0, iters)]
     states = get_column(results, 0)
     times = get_column(results, 1)
     mems = get_column(results, 2)
@@ -71,12 +72,12 @@ def iter_bench(fname, finite, iters, verbose):
             statistics.mean(mems), statistics.mean(memgcs)/(2**10),
             res[0])
 
-def exec_all(fnames, finite, iters, jobs, verbose):
+def exec_all(fnames, finite, smt, iters, jobs, verbose):
     make_row = lambda fname, states, time, mem, memgc, res: [fname, states, time, mem, memgc, res]
     if jobs <= 1:
-        return [make_row(*iter_bench(fname, finite, iters, verbose)) for fname in fnames]
+        return [make_row(*iter_bench(fname, finite, smt, iters, verbose)) for fname in fnames]
     else:
-        results = joblib.Parallel(n_jobs=jobs)(joblib.delayed(iter_bench)(fname, finite, iters, verbose)
+        results = joblib.Parallel(n_jobs=jobs)(joblib.delayed(iter_bench)(fname, finite, smt, iters, verbose)
                                                for fname in fnames)
         return [make_row(*res) for res in results]
 
@@ -105,6 +106,7 @@ def pretty_print(results, ms):
 if __name__ == '__main__':
     argp = argparse.ArgumentParser()
     argp.add_argument('-f', '--finite', action='store_true', help='Only check finite execution traces (infinite-word model checking is the default)')
+    argp.add_argument('-s', '--smt', type=int, default=0, help='Use the SMT-based engine with the specified trace length limit')
     argp.add_argument('-i', '--iters', type=int, default=1, help='Number of executions for each benchmark')
     argp.add_argument('-j', '--jobs', type=int, default=1, help='Maximum number of benchmarks to execute in parallel')
     argp.add_argument('-m', '--ms', action='store_true', help='Display time in milliseconds instead of seconds')
@@ -113,5 +115,5 @@ if __name__ == '__main__':
     args = argp.parse_args()
 
     print('Running benchmarks...')
-    results = exec_all(expand_files(args.benchmarks), args.finite, args.iters, args.jobs, args.verbose)
+    results = exec_all(expand_files(args.benchmarks), args.finite, args.smt, args.iters, args.jobs, args.verbose)
     pretty_print(results, args.ms)
