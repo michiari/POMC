@@ -1087,7 +1087,7 @@ deltaRules bitenc cl precFunc =
           checkSet = makeOpCheckSet abdg2hndg ppCurr -- all (HNext Down g) formulas such that AuxBack Down g holds in state to pop
       in if not fXl && not fXe
            then fPendHndfs == checkSet
-           else True
+           else E.null fPendHndfs
 
     hndPopFpr2 :: FprInfo -> Bool
     hndPopFpr2 info =
