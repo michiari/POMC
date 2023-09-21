@@ -43,7 +43,7 @@ makeTest :: (TestCase, Word64, SMTStatus)
 makeTest ((name, phi), k, expected) =
   ( name ++ " (" ++ show phi ++ ")"
   , (\f -> do
-        sat <- (smtStatus . DBG.traceShowId) <$> isSatisfiable stlV2Alphabet f k
+        sat <- (smtStatus . DBG.traceShowId) <$> isSatisfiable False stlV2Alphabet f k
         expected @=? sat)
   )
 

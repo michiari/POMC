@@ -68,29 +68,31 @@ data Query = SatQuery { qAlphabet :: Alphabet MP.ExprProp }
              | MiniProcQuery { qProg :: MP.Program }
              deriving Show
 
-isSatisfiable :: Alphabet String
+isSatisfiable :: Bool
+              -> Alphabet String
               -> Formula String
               -> Word64
               -> IO SMTResult
-isSatisfiable alphabet phi maxDepth =
-  checkQuery epPhi (SatQuery epAlphabet) maxDepth
+isSatisfiable simpleEmpty alphabet phi maxDepth =
+  checkQuery simpleEmpty epPhi (SatQuery epAlphabet) maxDepth
   where
     epPhi = fmap (MP.TextProp . T.pack) phi
     epAlphabet = MP.stringToExprPropAlphabet alphabet
 
 modelCheckProgram :: Formula MP.ExprProp -> MP.Program -> Word64 -> IO SMTResult
 modelCheckProgram phi prog maxDepth = do
-  res <- checkQuery (Not phi) (MiniProcQuery prog) maxDepth
+  res <- checkQuery True (Not phi) (MiniProcQuery prog) maxDepth
   return res { smtStatus = flipStatus $ smtStatus res }
   where flipStatus Sat = Unsat
         flipStatus Unsat = Sat
         flipStatus Unknown = Unknown
 
-checkQuery :: Formula MP.ExprProp
+checkQuery :: Bool
+           -> Formula MP.ExprProp
            -> Query
            -> Word64
            -> IO SMTResult
-checkQuery phi query maxDepth = evalZ3 $ do
+checkQuery simpleEmpty phi query maxDepth = evalZ3 $ do
   reset
   t0 <- startTimer
   encData <- initPhiEncoding pnfPhi alphabet maxDepth
@@ -115,7 +117,7 @@ checkQuery phi query maxDepth = evalZ3 $ do
       | otherwise = do
           t0 <- startTimer
           assertPhiEncoding encData from to
-          phiAssumptions <- mkPhiAssumptions encData to
+          phiAssumptions <- mkPhiAssumptions simpleEmpty encData to
           progAssumptions <- case maybeProgData of
             Nothing -> return []
             Just progData -> assertProgEncoding encData (fromJust maybeProgData) from to
@@ -343,7 +345,7 @@ assertPhiEncoding encData from to = do
 
     -- END(xExpr)
     mkEndTerm :: AST -> Z3 AST
-    mkEndTerm x = do
+    mkEndTerm x = do -- TODO: move this stuff to init and old EMPTY
       let fConstMap = zFConstMap encData
           gamma = zGamma encData
           clos = zClos encData
@@ -764,12 +766,43 @@ groundxnf encData theta x = ground (xnf theta) where
 
           applyGamma g = mkApp (zGamma encData) [zFConstMap encData M.! g, x]
 
-mkPhiAssumptions :: EncData -> Word64 -> Z3 [AST]
-mkPhiAssumptions encData k = do
+mkPhiAssumptions :: Bool -> EncData -> Word64 -> Z3 [AST]
+mkPhiAssumptions simpleEmpty encData k = if simpleEmpty
+  then do
   forallXnext <- mkForallNodes [1..k] mkXnext
   emptyk <- mkEmpty k
   return (forallXnext : emptyk)
-  where -- XNEXT(x)
+  else do
+  let clos = zClos encData
+  noNextk <- mkNot =<< mkAnyGammagx k
+             (filter (\g -> case g of
+                         Next _    -> True
+                         PNext _ _ -> True
+                         XNext _ _ -> True
+                         HNext _ _ -> True
+                         HUntil _ T T -> True
+                         _ -> False
+                     ) clos)
+  let forallRules x = do
+        xnextx <- mkXnext x
+        anyHier <- mkAnyGammagx x $ filter (\g -> case g of
+                                               HNext _ _ -> True
+                                               WHNext Down _ -> True
+                                               HUntil Down _ _ -> True
+                                               HRelease Down _ _ -> True
+                                               _ -> False
+                                           ) clos
+        anyHImplNotPending <- mkImplies anyHier =<< mkNot =<< mkPending k x
+        mkAnd [xnextx, anyHImplNotPending]
+  forall <- mkForallNodes [1..k] forallRules
+  return [noNextk, forall]
+  where
+    mkAnyGammagx :: Word64 -> [Formula MP.ExprProp] -> Z3 AST
+    mkAnyGammagx x gs = do
+      xLit <- mkUnsignedInt64 x $ zNodeSort encData
+      mkOrWith (\g -> mkApp (zGamma encData) [zFConstMap encData M.! g, xLit]) gs
+
+    -- XNEXT(x)
     mkXnext :: Word64 -> Z3 AST
     mkXnext x = do
       let nodeSort = zNodeSort encData
@@ -816,6 +849,34 @@ mkPhiAssumptions encData k = do
       stackx <- mkApp1 (zStack encData) xLit
       stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
       return [gammaEndx, stackxEqBot]
+
+    -- PENDING(k, x)
+    mkPending :: Word64 -> Word64 -> Z3 AST
+    mkPending k x = do
+      let nodeSort = zNodeSort encData
+          stack = zStack encData
+      xLit <- mkUnsignedInt64 x nodeSort
+      checkPushx <- mkCheckPrec encData (zYield encData) xLit
+      forallPush <- mkForallNodes [(x+1)..(k-1)]
+                    (\u -> do
+                        uLit <- mkUnsignedInt64 u nodeSort
+                        checkPopu <- mkCheckPrec encData (zTake encData) uLit
+                        stackuEqx <- mkEq xLit =<< mkApp1 stack uLit
+                        mkNot =<< mkAnd [checkPopu, stackuEqx]
+                    )
+      pushAndForall <- mkAnd [checkPushx, forallPush]
+
+      checkShiftx <- mkCheckPrec encData (zEqual encData) xLit
+      stackx <- mkApp1 stack xLit
+      forallShift <- mkForallNodes [(x+1)..(k-1)]
+                     (\u -> do
+                         uLit <- mkUnsignedInt64 u nodeSort
+                         checkPopu <- mkCheckPrec encData (zTake encData) uLit
+                         stackxEqStacku <- mkEq stackx =<< mkApp1 stack uLit
+                         mkNot =<< mkAnd [checkPopu, stackxEqStacku]
+                     )
+      shiftAndForall <- mkAnd [checkShiftx, forallShift]
+      mkOr [pushAndForall, shiftAndForall]
 
 
 data ProgData = ProgData { zProg       :: MP.Program
