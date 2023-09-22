@@ -43,12 +43,12 @@ makeTest :: (TestCase, Word64, SMTStatus)
 makeTest ((name, phi), k, expected) =
   ( name ++ " (" ++ show phi ++ ")"
   , (\f -> do
-        sat <- (smtStatus . DBG.traceShowId) <$> isSatisfiable False stlV2Alphabet f k
+        sat <- (smtStatus . DBG.traceShowId) <$> isSatisfiable True stlV2Alphabet f k
         expected @=? sat)
   )
 
 efTests :: [(TestCase, Word64, SMTStatus)]
-efTests = zip3Expected (filter (isSupported . snd) formulas) (repeat 12) expectedRes
+efTests = zip3Expected (filter (isSupported . snd) formulas) (repeat 20) expectedRes
           -- $ zip3 (filter (isSupported . snd) formulas) (repeat 12) $ repeat Sat
 
 isSupported :: Formula a -> Bool
@@ -86,10 +86,10 @@ isSupported f = case f of
 
 expectedRes :: [SMTStatus]
 expectedRes =
-  [ Sat, Sat, Sat, Unknown, Unknown, Sat -- 5
-  , Sat, Sat, Unknown -- 8
-  , Sat, Sat, Unknown, Sat -- 13
-  , Sat, Unknown -- 16
+  [ Sat, Sat, Sat, Unsat, Unsat, Sat -- 5
+  , Sat, Sat, Unsat -- 8
+  , Sat, Sat, Unsat, Sat -- 13
+  , Sat, Unsat -- 16
   , Sat, Sat, Sat, Sat, Sat, Sat -- base_tests
   , Sat, Sat -- chain_next
   , Sat, Sat, Sat, Sat -- contains_exc
