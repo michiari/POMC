@@ -889,10 +889,16 @@ groundxnf encData theta x = ground (xnf theta) where
 
 mkPhiAssumptions :: Bool -> EncData -> Word64 -> Z3 [AST]
 mkPhiAssumptions simpleEmpty encData k = if simpleEmpty
-  then mkEmpty k -- do
-  -- forallXnext <- mkForallNodes [1..k] mkXnext
-  -- emptyk <- mkEmpty k
-  -- return (forallXnext : emptyk)
+  then do
+  let nodeSort = zNodeSort encData
+  xLit <- mkUnsignedInt64 x nodeSort
+  -- Γ(#, x)
+  gammaEndx <- mkApp (zGamma encData) [zFConstMap encData M.! Atomic End, xLit]
+  -- stack(x) = ⊥
+  stackx <- mkApp1 (zStack encData) xLit
+  stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
+  return [gammaEndx, stackxEqBot]
+
   else do
   let clos = zClos encData
   noNextk <- mkNot =<< mkAnyGammagx k
@@ -923,54 +929,6 @@ mkPhiAssumptions simpleEmpty encData k = if simpleEmpty
     mkAnyGammagx x gs = do
       xLit <- mkUnsignedInt64 x $ zNodeSort encData
       mkOrWith (\g -> mkApp (zGamma encData) [zFConstMap encData M.! g, xLit]) gs
-
-    -- XNEXT(x)
-    mkXnext :: Word64 -> Z3 AST
-    mkXnext x = do
-      let nodeSort = zNodeSort encData
-          struct = zStruct encData
-          yield = zYield encData
-          equal = zEqual encData
-          take = zTake encData
-      xLit <- mkUnsignedInt64 x nodeSort
-      structx <- mkApp1 struct xLit
-      let xnextSat g@(XNext dir arg) = do
-            gammagx <- mkApp (zGamma encData) [zFConstMap encData M.! g, xLit]
-            let satisfied z = do
-                  zLit <- mkUnsignedInt64 z nodeSort
-                  checkPopz <- mkCheckPrec encData (zTake encData) zLit
-                  ctxz <- mkApp1 (zCtx encData) zLit
-                  ctxzEqx <- mkEq ctxz xLit
-                  xnfArgz <- groundxnf encData arg zLit
-                  structz <- mkApp1 struct zLit
-                  precYT <- case dir of
-                    Down -> mkApp yield [structx, structz]
-                    Up   -> mkApp take [structx, structz]
-                  precEq <- mkApp equal [structx, structz]
-                  orPrec <- mkOr [precYT, precEq]
-                  mkAnd [checkPopz, ctxzEqx, xnfArgz, orPrec]
-            exists <- mkExistsNodes [x..k] satisfied
-            -- Implies
-            mkImplies gammagx exists
-          xnextSat _ = error "XNext formula expected."
-      allSat <- mkAndWith xnextSat [g | g@(XNext _ _) <- zClos encData]
-
-      checkPushx <- mkCheckPrec encData yield xLit
-      checkShiftx <- mkCheckPrec encData equal xLit
-      inputx <- mkOr [checkPushx, checkShiftx]
-      mkImplies inputx allSat
-
-    -- EMPTY(x)
-    mkEmpty :: Word64 -> Z3 [AST]
-    mkEmpty x = do
-      let nodeSort = zNodeSort encData
-      xLit <- mkUnsignedInt64 x nodeSort
-      -- Γ(#, x)
-      gammaEndx <- mkApp (zGamma encData) [zFConstMap encData M.! Atomic End, xLit]
-      -- stack(x) = ⊥
-      stackx <- mkApp1 (zStack encData) xLit
-      stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
-      return [gammaEndx, stackxEqBot]
 
 -- PENDING(k, x)
 mkPending :: EncData -> Word64 -> Word64 -> Z3 AST
