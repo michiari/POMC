@@ -18,7 +18,7 @@ import Prelude hiding (take, pred)
 import Pomc.Prop (Prop(..))
 import Pomc.Potl (Dir(..), Formula(..), pnf, atomic)
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
-import Pomc.TimeUtils (startTimer, stopTimer, timeAction)
+import Pomc.TimeUtils (startTimer, stopTimer, timeAction, timeActionAcc)
 import qualified Pomc.MiniProc as MP
 
 import Z3.Monad hiding (Result(..))
@@ -120,29 +120,31 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
                                          , smtTimeModel = 0
                                          }
       | otherwise = do
-          t0 <- startTimer
-          assertPhiEncoding encData from to
-          phiAssumptions <- mkPhiAssumptions True encData to -- TODO: check assumption time separately
-          progAssumptions <- case maybeProgData of
-            Nothing -> return []
-            Just progData -> assertProgEncoding encData (fromJust maybeProgData) from to
-                             >> mkProgAssumptions encData progData to
-          assertTime1 <- stopTimer t0 $ null progAssumptions
+          ((), assertTime1) <- timeActionAcc assertTime0 (== ())
+            $ assertPhiEncoding encData from to
 
-          (res1, checkTime1) <- timeAction (== Z3.Sat) solverCheck
+          (res1, checkTime1) <- timeActionAcc checkTime0 (== Z3.Sat) solverCheck
           case res1 of
             Z3.Unsat -> return SMTResult { smtStatus = Unsat
                                          , smtTableau = Nothing
-                                         , smtTimeAssert = assertTime0 + assertTime1
-                                         , smtTimeCheck = checkTime0 + checkTime1
+                                         , smtTimeAssert = assertTime1
+                                         , smtTimeCheck = checkTime1
                                          , smtTimeModel = 0
                                          }
             Z3.Undef -> error "Z3 unexpectedly reported Undef"
             Z3.Sat -> do
               -- model <- solverGetModel
               -- DBG.traceShowM =<< queryTableau encData to Nothing model
-              
-              (res2, checkTime2) <- timeAction (== Z3.Sat)
+
+              t0 <- startTimer
+              phiAssumptions <- mkPhiAssumptions True encData to
+              progAssumptions <- case maybeProgData of
+                Nothing -> return []
+                Just progData -> assertProgEncoding encData (fromJust maybeProgData) from to
+                                 >> mkProgAssumptions encData progData to
+              assertTime2 <- fmap (+ assertTime1) $ stopTimer t0 $ null progAssumptions
+
+              (res2, checkTime2) <- timeActionAcc checkTime1 (== Z3.Sat)
                 $ solverCheckAssumptions (phiAssumptions ++ progAssumptions)
               case res2 of
                 Z3.Sat -> do
@@ -154,27 +156,27 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
                   -- DBG.traceM =<< showModel model
                   return SMTResult { smtStatus = Sat
                                    , smtTableau = Just tableau
-                                   , smtTimeAssert = assertTime0 + assertTime1
-                                   , smtTimeCheck = checkTime0 + checkTime1 + checkTime2
+                                   , smtTimeAssert = assertTime2
+                                   , smtTimeCheck = checkTime2
                                    , smtTimeModel = modelTime
                                    }
                 Z3.Undef -> error "Z3 unexpectedly reported Undef"
                 Z3.Unsat -> do
-                  ((), assertTime3) <- timeAction (== ()) $ assertPrune encData maybeProgData to
-                  (res3, checkTime3) <- timeAction (== Z3.Sat) solverCheck
+                  ((), assertTime3) <- timeActionAcc assertTime2 (== ())
+                    $ assertPrune encData maybeProgData to
+                  (res3, checkTime3) <- timeActionAcc checkTime2 (== Z3.Sat) solverCheck
                   case res3 of
                     Z3.Unsat -> do
                       -- DBG.traceM "Prune unsat"
                       return SMTResult { smtStatus = Unsat
                                        , smtTableau = Nothing
-                                       , smtTimeAssert = assertTime0 + assertTime1 + assertTime3
-                                       , smtTimeCheck = checkTime0 + checkTime1 + checkTime2 + checkTime3
+                                       , smtTimeAssert = assertTime3
+                                       , smtTimeCheck = checkTime3
                                        , smtTimeModel = 0
                                        }
                     Z3.Undef -> error "Z3 unexpectedly reported Undef"
                     Z3.Sat -> completeCheck encData maybeProgData
-                              (assertTime0 + assertTime1 + assertTime3)
-                              (checkTime0 + checkTime1 + checkTime2 + checkTime3)
+                              assertTime3 checkTime3
                               (to + 1) (to + 1)
 
     partialCheck :: EncData -> Maybe ProgData

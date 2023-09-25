@@ -7,6 +7,7 @@
 
 module Pomc.TimeUtils ( timeFunApp
                       , timeAction
+                      , timeActionAcc
                       , startTimer
                       , stopTimer
                       , timeToString
@@ -27,6 +28,11 @@ timeAction toForce action = do
   a <- action
   time <- stopTimer t1 (toForce a)
   return (a, time)
+
+timeActionAcc :: (MonadIO m, NFData b) => Double -> (a -> b) -> m a -> m (a, Double)
+timeActionAcc acc toForce action = do
+  (a, time) <- timeAction toForce action
+  return (a, acc + time)
 
 startTimer :: MonadIO m => m Word64
 startTimer = liftIO getMonotonicTimeNSec
