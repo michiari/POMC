@@ -139,14 +139,14 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
                                          }
             Z3.Undef -> error "Z3 unexpectedly reported Undef"
             Z3.Sat -> do
-              model <- solverGetModel
-              DBG.traceShowM =<< queryTableau encData to Nothing model
+              -- model <- solverGetModel
+              -- DBG.traceShowM =<< queryTableau encData to Nothing model
               
               (res2, checkTime2) <- timeAction (== Z3.Sat)
                 $ solverCheckAssumptions (phiAssumptions ++ progAssumptions)
               case res2 of
                 Z3.Sat -> do
-                  DBG.traceM "Assumptions satisfied"
+                  -- DBG.traceM "Assumptions satisfied"
                   t1 <- startTimer
                   model <- solverGetModel
                   tableau <- queryTableau encData to Nothing model
@@ -163,12 +163,14 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
                   ((), assertTime3) <- timeAction (== ()) $ assertPrune encData maybeProgData to
                   (res3, checkTime3) <- timeAction (== Z3.Sat) solverCheck
                   case res3 of
-                    Z3.Unsat -> return SMTResult { smtStatus = Unsat
-                                                 , smtTableau = Nothing
-                                                 , smtTimeAssert = assertTime0 + assertTime1 + assertTime3
-                                                 , smtTimeCheck = checkTime0 + checkTime1 + checkTime2 + checkTime3
-                                                 , smtTimeModel = 0
-                                                 }
+                    Z3.Unsat -> do
+                      -- DBG.traceM "Prune unsat"
+                      return SMTResult { smtStatus = Unsat
+                                       , smtTableau = Nothing
+                                       , smtTimeAssert = assertTime0 + assertTime1 + assertTime3
+                                       , smtTimeCheck = checkTime0 + checkTime1 + checkTime2 + checkTime3
+                                       , smtTimeModel = 0
+                                       }
                     Z3.Undef -> error "Z3 unexpectedly reported Undef"
                     Z3.Sat -> completeCheck encData maybeProgData
                               (assertTime0 + assertTime1 + assertTime3)
@@ -968,33 +970,17 @@ assertPrune encData maybeProgData x = do
   smbx <- mkApp1 smb xLit
   stackx <- mkApp1 stack xLit
   ctxx <- mkApp1 ctx xLit
-  prune1 <- mkExistsNodes [0..(x-1)]
-            (\y -> do
-                yLit <- mkUnsignedInt64 y nodeSort
-                sameFsxy <- mkSameFs xLit yLit
-                smbxy <- mkEq smbx =<< mkApp1 smb yLit
-                stackxy <- mkEq stackx =<< mkApp1 stack yLit
-                ctxxy <- mkEq ctxx =<< mkApp1 ctx yLit
-                sameProgStatus <- mkSameProgStatus xLit yLit
-                mkAnd [sameFsxy, smbxy, stackxy, ctxxy, sameProgStatus]
-            )
-
-  checkPushx <- mkCheckPrec encData (zYield encData) xLit
-  checkShiftx <- mkCheckPrec encData (zEqual encData) xLit
-  pushOrShiftx <- mkOr [checkPushx, checkShiftx]
-  existsRep <- mkExistsNodes [0..(x-1)]
-               (\y -> do
-                   yLit <- mkUnsignedInt64 y nodeSort
-                   pending <- mkPending encData x y
-                   sameFsxy <- mkSameFs xLit yLit
-                   smbxy <- mkEq smbx =<< mkApp1 smb yLit
-                   sameFsStack <- mkSameFs stackx =<< mkApp1 stack yLit
-                   sameFsCtx <- mkSameFs ctxx =<< mkApp1 ctx yLit
-                   sameProgStatus <- mkSameProgStatus xLit yLit
-                   mkAnd [pending, sameFsxy, smbxy, sameFsStack, sameFsCtx, sameProgStatus]
-               )
-  prune2 <- mkAnd [pushOrShiftx, existsRep]
-  assert =<< mkNot =<< mkOr [prune1, prune2]
+  assert =<< mkNot =<< mkExistsNodes [0..(x-1)]
+    (\y -> do
+        yLit <- mkUnsignedInt64 y nodeSort
+        pending <- mkPending encData x y
+        sameFsxy <- mkSameFs xLit yLit
+        smbxy <- mkEq smbx =<< mkApp1 smb yLit
+        sameFsStack <- mkSameFs stackx =<< mkApp1 stack yLit
+        sameFsCtx <- mkSameFs ctxx =<< mkApp1 ctx yLit
+        sameProgStatus <- mkSameProgStatus xLit yLit
+        mkAnd [pending, sameFsxy, smbxy, sameFsStack, sameFsCtx, sameProgStatus]
+    )
   where mkSameFs u v = mkAndWith
           (\c -> do
               let gamma = zGamma encData
