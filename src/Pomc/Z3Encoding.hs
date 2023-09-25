@@ -101,7 +101,7 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
     MiniProcQuery prog -> Just <$> initProgEncoding encData prog
   initTime <- stopTimer t0 $ isJust maybeProgData
   if complete
-    then completeCheck encData maybeProgData initTime 0 0 minLength
+    then completeCheck encData maybeProgData initTime 0 1 minLength
     else partialCheck encData maybeProgData initTime 0 1 minLength
   where
     pnfPhi = pnf phi
@@ -276,8 +276,10 @@ initPhiEncoding phi alphabet k = do
   assert =<< mkApp gamma [fConstMap M.! Atomic End, nodeBot]
   assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 struct nodeBot
   assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 smb nodeBot
+  -- stack(0) = ctx(0) = 0
   assert =<< mkEq nodeBot =<< mkApp1 stack nodeBot
   assert =<< mkEq nodeBot =<< mkApp1 ctx nodeBot
+  assert =<< mkEndTerm encData nodeBot
 
   -- xnf(φ)(1)
   node1 <- mkUnsignedInt64 1 nodeSort
@@ -285,11 +287,8 @@ initPhiEncoding phi alphabet k = do
 
   -- smb(1) = #
   assert =<< mkEq (fConstMap M.! Atomic End) =<< mkApp1 smb node1
-
-  -- stack(1) = ⊥
+  -- stack(1) = ctx(1) = ⊥
   assert =<< mkEq nodeBot =<< mkApp1 stack node1
-
-  -- ctx(1) = ⊥
   assert =<< mkEq nodeBot =<< mkApp1 ctx node1
 
   -- Back is false and WBack is true in 1
@@ -349,6 +348,30 @@ initPhiEncoding phi alphabet k = do
             getNegPrec Equal = (yield, take)
             getNegPrec Take = (yield, equal)
 
+-- END(x)
+mkEndTerm :: EncData -> AST -> Z3 AST
+mkEndTerm encData x = do
+  let fConstMap = zFConstMap encData
+      gamma = zGamma encData
+      clos = zClos encData
+      noGamma g = mkNot =<< mkApp gamma [fConstMap M.! g, x]
+  -- Γ(#, x)
+  gammaEndx <- mkApp gamma [fConstMap M.! Atomic End, x]
+  -- ∧_(PNext t α ∈ Cl(φ)) ¬Γ((PNext t α)_G, x)
+  -- ∧_(Next α ∈ Cl(φ)) ¬Γ((Next α)_G, x)
+  -- ∧_(HNext t α ∈ Cl(φ)) ¬Γ((HNext t α)_G, x)
+  -- ∧_(p ∈ AP) ¬Γ(p, x)
+  noGammaAll <- mkAndWith noGamma
+    (filter (\g -> case g of
+                Atomic (Prop _) -> True
+                PNext _ _ -> True
+                Next _ -> True
+                XNext _ _ -> True
+                HNext _ _ -> True
+                _ -> False
+            ) clos)
+  -- Final →
+  mkImplies gammaEndx noGammaAll
 
 assertPhiEncoding :: EncData -> Word64 -> Word64 -> Z3 ()
 assertPhiEncoding encData from to = do
@@ -369,17 +392,15 @@ assertPhiEncoding encData from to = do
         -- wxnextx
         popxImpliesWxnextx <- mkImplies checkPopx =<< mkWxnext x
         -- huaux
-        huauxx <- if x > 0
-          then mkHuaux x checkPushx checkPopx
-          else mkTrue
-        endx <- mkEndTerm xLit
+        huauxx <- mkHuaux x checkPushx checkPopx
+        endx <- mkEndTerm encData xLit
         conflictx <- mkConflict xLit
         mkAnd [ phiAxiom
               , popxImpliesXnextx, popxImpliesWxnextx
               , huauxx
               , endx, conflictx
               ]
-  assert =<< mkForallNodes [from..to] mkTermRules
+  assert =<< mkForallNodes [(max 1 from)..to] mkTermRules
 
   -- x < k
   let mkTransitions x = do
@@ -421,31 +442,6 @@ assertPhiEncoding encData from to = do
       sigmaSmbX <- mkApp1 sigma =<< mkApp1 (zSmb encData) xLit
       gammaStructXX <- mkApp (zGamma encData) [structX, xLit]
       mkAnd [sigmaStructX, sigmaSmbX, gammaStructXX]
-
-    -- END(xExpr)
-    mkEndTerm :: AST -> Z3 AST
-    mkEndTerm x = do
-      let fConstMap = zFConstMap encData
-          gamma = zGamma encData
-          clos = zClos encData
-          noGamma g = mkNot =<< mkApp gamma [fConstMap M.! g, x]
-      -- Γ(#, x)
-      gammaEndx <- mkApp gamma [fConstMap M.! Atomic End, x]
-      -- ∧_(PNext t α ∈ Cl(φ)) ¬Γ((PNext t α)_G, x)
-      -- ∧_(Next α ∈ Cl(φ)) ¬Γ((Next α)_G, x)
-      -- ∧_(HNext t α ∈ Cl(φ)) ¬Γ((HNext t α)_G, x)
-      -- ∧_(p ∈ AP) ¬Γ(p, x)
-      noGammaAll <- mkAndWith noGamma
-        (filter (\g -> case g of
-                    Atomic (Prop _) -> True
-                    PNext _ _ -> True
-                    Next _ -> True
-                    XNext _ _ -> True
-                    HNext _ _ -> True
-                    _ -> False
-                ) clos)
-      -- Final →
-      mkImplies gammaEndx noGammaAll
 
     -- CONFLICT(x)
     mkConflict :: AST -> Z3 AST
@@ -534,7 +530,6 @@ assertPhiEncoding encData from to = do
                         orPrec <- mkOr [precYT, precEq]
                         mkAnd [checkPopz, ctxzEqy, xnfArgz, orPrec]
                   exists <- mkExistsNodes [y..x] satisfied
-                  -- Implies
                   mkImplies gammagy exists
                 xnextSat _ = error "XNext formula expected."
 
