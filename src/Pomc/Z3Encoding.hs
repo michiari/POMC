@@ -891,13 +891,13 @@ mkPhiAssumptions :: Bool -> EncData -> Word64 -> Z3 [AST]
 mkPhiAssumptions simpleEmpty encData k = if simpleEmpty
   then do
   let nodeSort = zNodeSort encData
-  xLit <- mkUnsignedInt64 x nodeSort
-  -- Γ(#, x)
-  gammaEndx <- mkApp (zGamma encData) [zFConstMap encData M.! Atomic End, xLit]
+  kLit <- mkUnsignedInt64 k nodeSort
+  -- Γ(#, k)
+  gammaEndk <- mkApp (zGamma encData) [zFConstMap encData M.! Atomic End, kLit]
   -- stack(x) = ⊥
-  stackx <- mkApp1 (zStack encData) xLit
-  stackxEqBot <- mkEq stackx =<< mkUnsignedInt64 0 nodeSort
-  return [gammaEndx, stackxEqBot]
+  stackk <- mkApp1 (zStack encData) kLit
+  stackkEqBot <- mkEq stackk =<< mkUnsignedInt64 0 nodeSort
+  return [gammaEndk, stackkEqBot]
 
   else do
   let clos = zClos encData
