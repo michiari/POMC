@@ -72,7 +72,8 @@ terminationProbability :: (Eq state, Hashable state, Show state)
         -> Z3 (Maybe Rational)
 terminationProbability chain precFun bound =
   let encode [] _ = return ()
-      encode ((gnId_, rightContext, var):unencoded) varMap = do
+      encode ((gnId_, rightContext):unencoded) varMap = do
+        var <- liftIO . stToIO $ fromJust <$> BH.lookup varMap (gnId_, rightContext)
         gn <- liftIO $ MV.unsafeRead chain gnId_
         let (q,g) = node gn
             qLabel = getLabel q
@@ -101,7 +102,7 @@ terminationProbability chain precFun bound =
     newVarMap <- liftIO . stToIO $ BH.new
     new_var <- mkFreshRealVar "(0,-1)"
     liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var -- by convention, we give rightContext -1 to the initial state
-    encode [(0 ::Int , -1 :: Int, new_var)] newVarMap --encode the probabilistic transition relation
+    encode [(0 ::Int , -1 :: Int)] newVarMap -- encode the probability transition relation via a set of assertions
     assert =<< mkLe new_var =<< mkRealNum bound -- assert the inequality constrain
     fmap snd . withModel $ \m -> fromJust <$> evalReal m new_var
 
@@ -111,14 +112,14 @@ encodePush :: (Eq state, Hashable state, Show state)
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 [(Int, Int, AST)]
+        -> Z3 [(Int, Int)]
 encodePush chain varMap gn rightContext var =
-  let closeSummaries pushedGn (currs, unencoded_vars) e = do
+  let closeSummaries pushGn (currs, unencoded_vars) e = do
         summaryGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
-        let varsIds = [(gnId pushedGn, getId . fst . node $ summaryGn), (gnId summaryGn, rightContext)]
+        let varsIds = [(gnId pushGn, getId . fst . node $ summaryGn), (gnId summaryGn, rightContext)]
         vars <- mapM (lookupVar varMap) varsIds
         eq <- mkMul (map fst vars)
-        return (eq:currs, [(gnId_, rightContext_, x) | ((x,alrEncoded), (gnId_, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars)
+        return (eq:currs, [(gnId_, rightContext_) | ((_,alrEncoded), (gnId_, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars)
       pushEnc (currs, new_vars) e = do
         toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
         (equations, unencoded_vars) <- foldM (closeSummaries toGn) ([], []) (summaryEdges gn)
@@ -134,12 +135,12 @@ encodeShift :: (Eq state, Hashable state, Show state)
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 [(Int, Int, AST)]
+        -> Z3 [(Int, Int)]
 encodeShift varMap gn rightContext var =
   let shiftEnc (currs, new_vars) e = do
         (toVar, alreadyEncoded) <- lookupVar varMap (to e, rightContext)
         trans <- encodeTransition e toVar
-        return (trans:currs, if alreadyEncoded then new_vars else (to e, rightContext, toVar):new_vars)
+        return (trans:currs, if alreadyEncoded then new_vars else (to e, rightContext):new_vars)
   in do
     (transitions, unencoded_vars) <- foldM shiftEnc ([], []) (internalEdges gn)
     assert =<< mkEq var =<< mkAdd transitions
@@ -150,7 +151,7 @@ encodePop :: (Eq state, Hashable state, Show state)
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 [(Int, Int, AST)]
+        -> Z3 [(Int, Int)]
 encodePop chain gn rightContext var =
   let matchContext e = do
         toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
