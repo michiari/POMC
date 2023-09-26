@@ -11,7 +11,7 @@ module Pomc.Prob.SummaryChain ( ProbDelta(..)
                               , GraphNode(..)
                               , Edge(..)
                               ) where
-
+import Prelude hiding (sum)
 import Pomc.Prob.ProbUtils
 
 import Pomc.Check (EncPrecFunc)
@@ -29,6 +29,8 @@ import Control.Monad.ST (ST)
 
 import Data.STRef (STRef, newSTRef, readSTRef)
 import Data.Maybe
+
+import Numeric.Sum(sum, kbn)
 
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
@@ -210,7 +212,7 @@ decomposeTransition :: (Eq state, Hashable state, Show state)
                  -> ST s ()
 decomposeTransition recurse globals probdelta from prob_ dest isSummary =
   let
-    createInternal to_  stored_edges = Edge{to = to_, prob = sum $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
+    createInternal to_  stored_edges = Edge{to = to_, prob = sum kbn $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
     insertEdge to_  True  g@GraphNode{summaryEdges = edges_} = g{summaryEdges = Set.insert Edge{to = to_, prob = prob_} edges_}
     insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }
   in do

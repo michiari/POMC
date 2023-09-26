@@ -7,7 +7,7 @@
 
 module Pomc.Prob.Z3Termination ( terminationQuery
                                 ) where
-
+import Prelude hiding (sum)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.SummaryChain
 import Pomc.Prec (Prec(..),)
@@ -17,6 +17,8 @@ import Pomc.Check (EncPrecFunc)
 import Data.Hashable(Hashable)
 import qualified Data.Set as Set
 import Data.Maybe(fromJust, isJust, isNothing)
+
+import Numeric.Sum(sum, kbn)
 
 import Z3.Monad
 
@@ -159,6 +161,6 @@ encodePop chain gn rightContext var =
   in do
     -- TODO: can we have multiple pops that go to the same rightContext?
     -- assert the equation for this semiconf
-    assert =<< mkEq var =<< mkRealNum =<< sum . map prob <$> filterM matchContext (Set.toList $ internalEdges gn)
+    assert =<< mkEq var =<< mkRealNum =<< sum kbn . map prob <$> filterM matchContext (Set.toList $ internalEdges gn)
     return [] -- pop transitions do not generate new variables
 
