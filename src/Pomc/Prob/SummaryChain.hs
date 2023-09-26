@@ -16,21 +16,19 @@ import Pomc.Prob.ProbUtils
 
 import Pomc.Check (EncPrecFunc)
 import Pomc.Encoding (BitEncoding)
+import qualified Pomc.Prob.CustoMap as CM
+import Pomc.Prec (Prec(..),)
+import Pomc.SetMap(SetMap)
+import qualified Pomc.SetMap as SM
 
 import Data.Set(Set)
 import qualified Data.Set as Set
-
-import Pomc.Prec (Prec(..),)
-import Pomc.SetMap
-import qualified Pomc.SetMap as SM
 
 import Control.Monad (when)
 import Control.Monad.ST (ST)
 
 import Data.STRef (STRef, newSTRef, readSTRef)
 import Data.Maybe
-
-import qualified Pomc.Prob.CustoMap as CM
 
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
@@ -43,7 +41,7 @@ data Edge = Edge
 instance Eq Edge where
   p == q = (to p) == (to q)
 
-instance Ord Edge where 
+instance Ord Edge where
   compare p q = compare (to p) (to q)
 
 -- a node in the graph of semiconfigurations
@@ -76,7 +74,6 @@ data Globals s state = Globals
   , suppEnds   :: STRef s (SetMap s (StateId state))
   , chain      :: STRef s (SummaryChain s state)
   }
-
 
 -- a type for the probabilistic delta relation, parametric with respect to the type of the state
 data ProbDelta state = Delta
@@ -154,11 +151,11 @@ decomposePush :: (Eq state, Hashable state, Show state)
           -> Label
           -> ST s ()
 decomposePush globals probdelta q g qState qLabel =
-  let doPush (p, pLabel, prob) = do
+  let doPush (p, pLabel, prob_) = do
         newState <- wrapState (sIdGen globals) p pLabel
         SM.insert (suppStarts globals) (getId q) g
         decomposeTransition True globals probdelta (q,g)
-          prob (newState, Just (qLabel, q))  False
+          prob_ (newState, Just (qLabel, q))  False
   in do
     mapM_ doPush $ (deltaPush probdelta) qState
     currentSuppEnds <- SM.lookup (suppEnds globals) (getId q)
@@ -176,9 +173,9 @@ decomposeShift :: (Eq state, Hashable state, Show state)
            -> Label
            -> ST s ()
 decomposeShift globals probdelta q g qState qLabel =
-  let doShift (p, pLabel, prob)= do
+  let doShift (p, pLabel, prob_)= do
         newState <- wrapState (sIdGen globals) p pLabel
-        decomposeTransition True globals probdelta (q,g) prob (newState, Just (qLabel, snd . fromJust $ g)) False
+        decomposeTransition True globals probdelta (q,g) prob_ (newState, Just (qLabel, snd . fromJust $ g)) False
   in mapM_ doShift $ (deltaShift probdelta) qState
 
 decomposePop :: (Eq state, Hashable state, Show state)
@@ -192,8 +189,8 @@ decomposePop globals probdelta q g qState =
   let doPop (p, pLabel, prob_) =
         let r = snd . fromJust $ g
             closeSupports pwrapped g' = do
-              decomposeTransition False globals probdelta (r,g') 0 (pwrapped ,g') True
-              decomposeTransition True globals probdelta (q,g) prob_ (pwrapped ,g') False
+              decomposeTransition False globals probdelta (r,g') 0    (pwrapped, g') True
+              decomposeTransition True  globals probdelta (q,g) prob_ (pwrapped, g') False
         in do
           newState <- wrapState (sIdGen globals) p pLabel
           SM.insert (suppEnds globals) (getId r) newState
@@ -213,12 +210,12 @@ decomposeTransition :: (Eq state, Hashable state, Show state)
                  -> ST s ()
 decomposeTransition recurse globals probdelta from prob_ dest isSummary =
   let
-    createInternal to_  stored_edges = Edge{to = to_, prob = sum $ [prob_] ++ (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
+    createInternal to_  stored_edges = Edge{to = to_, prob = sum $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
     insertEdge to_  True  g@GraphNode{summaryEdges = edges_} = g{summaryEdges = Set.insert Edge{to = to_, prob = prob_} edges_}
     insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }
   in do
     maybeid <- BH.lookup (chainMap globals) (decode dest)
-    fromid <- BH.lookup (chainMap globals) (decode from) >>= return . fromJust 
+    fromid <- fromJust <$> BH.lookup (chainMap globals) (decode from)
     if isJust maybeid
       then do
         CM.modify (chain globals) fromid $ insertEdge (fromJust maybeid) isSummary

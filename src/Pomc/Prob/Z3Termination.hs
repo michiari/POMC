@@ -10,17 +10,17 @@ module Pomc.Prob.Z3Termination ( terminationQuery
 
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.SummaryChain
-import Data.Hashable(Hashable)
-
-import Control.Monad (foldM, filterM)
-
 import Pomc.Prec (Prec(..),)
 import Pomc.Check (EncPrecFunc)
 
+
+import Data.Hashable(Hashable)
 import qualified Data.Set as Set
 import Data.Maybe(fromJust, isJust, isNothing)
 
 import Z3.Monad
+
+import Control.Monad (foldM, filterM)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST (stToIO, RealWorld)
 
@@ -31,7 +31,6 @@ import qualified Data.HashTable.ST.Basic as BH
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
-
 
 -- a map (GraphNode, StateId) to Z3 variables
 -- each variable represents [[q,b | p ]]
@@ -119,7 +118,8 @@ encodePush chain varMap gn rightContext var =
         let varsIds = [(gnId pushGn, getId . fst . node $ summaryGn), (gnId summaryGn, rightContext)]
         vars <- mapM (lookupVar varMap) varsIds
         eq <- mkMul (map fst vars)
-        return (eq:currs, [(gnId_, rightContext_) | ((_,alrEncoded), (gnId_, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars)
+        return (eq:currs, 
+              [(gnId_, rightContext_) | ((_,alrEncoded), (gnId_, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars)
       pushEnc (currs, new_vars) e = do
         toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
         (equations, unencoded_vars) <- foldM (closeSummaries toGn) ([], []) (summaryEdges gn)
@@ -127,7 +127,7 @@ encodePush chain varMap gn rightContext var =
         return (transition:currs, unencoded_vars ++ new_vars)
   in do
     (transitions, unencoded_vars) <- foldM pushEnc ([], []) (internalEdges gn)
-    assert =<< mkEq var =<< mkAdd transitions
+    assert =<< mkEq var =<< mkAdd transitions -- assert the equation for this semiconf
     return unencoded_vars
 
 encodeShift :: (Eq state, Hashable state, Show state)
@@ -143,7 +143,7 @@ encodeShift varMap gn rightContext var =
         return (trans:currs, if alreadyEncoded then new_vars else (to e, rightContext):new_vars)
   in do
     (transitions, unencoded_vars) <- foldM shiftEnc ([], []) (internalEdges gn)
-    assert =<< mkEq var =<< mkAdd transitions
+    assert =<< mkEq var =<< mkAdd transitions -- assert the equation for this semiconf
     return unencoded_vars
 
 encodePop :: (Eq state, Hashable state, Show state)
@@ -158,6 +158,7 @@ encodePop chain gn rightContext var =
         return $ rightContext == (getId . fst . node $ toGn)
   in do
     -- TODO: can we have multiple pops that go to the same rightContext?
+    -- assert the equation for this semiconf
     assert =<< mkEq var =<< mkRealNum =<< sum . map prob <$> filterM matchContext (Set.toList $ internalEdges gn)
     return [] -- pop transitions do not generate new variables
 
