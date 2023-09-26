@@ -157,13 +157,13 @@ decomposePush globals probdelta q g qState qLabel =
   let doPush (p, pLabel, prob) = do
         newState <- wrapState (sIdGen globals) p pLabel
         SM.insert (suppStarts globals) (getId q) g
-        exploreTransition globals probdelta (q,g)
+        decomposeTransition True globals probdelta (q,g)
           prob (newState, Just (qLabel, q))  False
   in do
     mapM_ doPush $ (deltaPush probdelta) qState
     currentSuppEnds <- SM.lookup (suppEnds globals) (getId q)
     mapM_ (\s -> do
-                exploreTransition globals probdelta (q,g) 0 (s,g) True
+                decomposeTransition True globals probdelta (q,g) 0 (s,g) True -- summaries are by default assigned probability zero
           )
       currentSuppEnds
 
@@ -178,7 +178,7 @@ decomposeShift :: (Eq state, Hashable state, Show state)
 decomposeShift globals probdelta q g qState qLabel =
   let doShift (p, pLabel, prob)= do
         newState <- wrapState (sIdGen globals) p pLabel
-        exploreTransition globals probdelta (q,g) prob (newState, Just (qLabel, snd . fromJust $ g)) False
+        decomposeTransition True globals probdelta (q,g) prob (newState, Just (qLabel, snd . fromJust $ g)) False
   in mapM_ doShift $ (deltaShift probdelta) qState
 
 decomposePop :: (Eq state, Hashable state, Show state)
@@ -192,8 +192,8 @@ decomposePop globals probdelta q g qState =
   let doPop (p, pLabel, prob_) =
         let r = snd . fromJust $ g
             closeSupports pwrapped g' = do
-              addEdge globals probdelta (r,g') 0 (pwrapped ,g') True
-              exploreTransition globals probdelta (q,g) prob_ (pwrapped ,g') False
+              decomposeTransition False globals probdelta (r,g') 0 (pwrapped ,g') True
+              decomposeTransition True globals probdelta (q,g) prob_ (pwrapped ,g') False
         in do
           newState <- wrapState (sIdGen globals) p pLabel
           SM.insert (suppEnds globals) (getId r) newState
@@ -201,27 +201,7 @@ decomposePop globals probdelta q g qState =
           mapM_ (closeSupports newState) currentSuppStarts
   in mapM_ doPop $ (deltaPop probdelta) qState (getState . snd . fromJust $ g)
 
--- this is mainly for tail recursive optimizations
-addEdge :: (Eq state, Hashable state, Show state)
-                 => Globals s state
-                 -> ProbDelta state
-                 -> (StateId state, Stack state)
-                 -> Prob
-                 -> (StateId state, Stack state)
-                 -> Bool
-                 -> ST s ()
-addEdge = decomposeTransition False
-
-exploreTransition :: (Eq state, Hashable state, Show state)
-                 => Globals s state
-                 -> ProbDelta state
-                 -> (StateId state, Stack state)
-                 -> Prob
-                 -> (StateId state, Stack state)
-                 -> Bool
-                 -> ST s ()
-exploreTransition = decomposeTransition True
-
+-- decomposing a transition to a new semiconfiguration
 decomposeTransition :: (Eq state, Hashable state, Show state)
                  => Bool
                  -> Globals s state
