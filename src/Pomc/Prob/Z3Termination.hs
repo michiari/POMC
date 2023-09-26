@@ -17,14 +17,13 @@ import Control.Monad (foldM, filterM)
 import Pomc.Prec (Prec(..),)
 import Pomc.Check (EncPrecFunc)
 
-
+import qualified Data.Set as Set
 import Data.Maybe(fromJust, isJust, isNothing)
 
 import Z3.Monad
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST (stToIO, RealWorld)
 
-import Data.List (nub)
 import qualified Data.Vector.Mutable as MV
 
 import qualified Data.HashTable.ST.Basic as BH
@@ -42,9 +41,9 @@ type VarMap s = HashTable s (Int,Int) AST
 
 --helpers
 encodeTransition :: Edge -> AST -> Z3 AST
-encodeTransition e to = do
+encodeTransition e toAST = do
   probReal <- mkRealNum (prob e)
-  mkMul [probReal, to]
+  mkMul [probReal, toAST]
 
 lookupVar :: VarMap RealWorld -> (Int, Int) -> Z3 (AST, Bool)
 lookupVar varMap key = do
@@ -60,28 +59,29 @@ lookupVar varMap key = do
 terminationQuery ::(Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> EncPrecFunc
-        -> Prob -- is  the termination prob. of the initial state smaller or equal than the given initial state?
+        -> Prob
         -> IO (Maybe Rational)
-terminationQuery s e p = evalZ3 $ terminationProbability s e p
+terminationQuery summChain e p = evalZ3 $ terminationProbability summChain e p
 
 -- compute the probabilities that a chain will terminate
 -- assumption: the initial state is at position 0
 terminationProbability :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> EncPrecFunc
-        -> Prob -- is  the termination prob. of the initial state smaller or equal than the given initial state?
+        -> Prob -- is  the termination prob. of the initial state smaller or equal than this bound?
         -> Z3 (Maybe Rational)
-terminationProbability chain prec prob =
-  let encode acc [] _ = return acc
-      encode acc ((gnId_, rightContext, var):unencoded) varMap = do
+terminationProbability chain precFun bound =
+  let encode [] _ = return ()
+      encode ((gnId_, rightContext, var):unencoded) varMap = do
         gn <- liftIO $ MV.unsafeRead chain gnId_
         let (q,g) = node gn
             qLabel = getLabel q
-            precRel = prec (fst . fromJust $ g) qLabel
+            precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
             cases
               -- semiconfigurations with empty stack but not the initial one (terminating states -> probability 1)
-              | isNothing g && (getId q /= 0) =
-                  (\a -> return (a, [])) =<< mkEq var =<< mkRealNum (1 :: Prob)
+              | isNothing g && (gnId_ /= 0) = do
+                  assert =<< mkEq var =<< mkRealNum (1 :: Prob)
+                  return []
 
               -- this case includes the initial push
               | isNothing g || precRel == Just Yield =
@@ -95,17 +95,15 @@ terminationProbability chain prec prob =
                 
               | otherwise = fail "unexpected prec rel"
 
-        (a, new_unencoded) <- cases
-        encode (a:acc) (new_unencoded ++ unencoded) varMap
+        new_unencoded <- cases
+        encode (new_unencoded ++ unencoded) varMap
   in do
     newVarMap <- liftIO . stToIO $ BH.new
-    new_var <- mkFreshRealVar $ show "(0,-1)"
+    new_var <- mkFreshRealVar "(0,-1)"
     liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var -- by convention, we give rightContext -1 to the initial state
-    encodings <- encode [] [(0 ::Int , -1 :: Int, new_var)] newVarMap
-    inequality <- mkLe new_var =<< mkRealNum prob
-    assert =<< mkAnd (inequality:[]) -- assert all the equations
+    encode [(0 ::Int , -1 :: Int, new_var)] newVarMap --encode the probabilistic transition relation
+    assert =<< mkLe new_var =<< mkRealNum bound -- assert the inequality constrain
     fmap snd . withModel $ \m -> fromJust <$> evalReal m new_var
-
 
 encodePush :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
@@ -113,14 +111,14 @@ encodePush :: (Eq state, Hashable state, Show state)
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 (AST, [(Int, Int, AST)])
+        -> Z3 [(Int, Int, AST)]
 encodePush chain varMap gn rightContext var =
-  let closeSummaries pushedGn (currs, new_vars) e = do
-        summaryGn <- liftIO . stToIO $ MV.unsafeRead chain (toS e)
+  let closeSummaries pushedGn (currs, unencoded_vars) e = do
+        summaryGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
         let varsIds = [(gnId pushedGn, getId . fst . node $ summaryGn), (gnId summaryGn, rightContext)]
-        vars <- mapM (lookupVar varMap)  varsIds
+        vars <- mapM (lookupVar varMap) varsIds
         eq <- mkMul (map fst vars)
-        return (eq:currs, [(g, con, x) | ((x,y), (g, con)) <- zip vars varsIds, not y] ++ new_vars)
+        return (eq:currs, [(gnId_, rightContext_, x) | ((x,alrEncoded), (gnId_, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars)
       pushEnc (currs, new_vars) e = do
         toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
         (equations, unencoded_vars) <- foldM (closeSummaries toGn) ([], []) (summaryEdges gn)
@@ -128,38 +126,37 @@ encodePush chain varMap gn rightContext var =
         return (transition:currs, unencoded_vars ++ new_vars)
   in do
     (transitions, unencoded_vars) <- foldM pushEnc ([], []) (internalEdges gn)
-    equation <- mkEq var =<< mkAdd transitions
-    return (equation, nub unencoded_vars) -- TODO: can we remove the safety check nub?
+    assert =<< mkEq var =<< mkAdd transitions
+    return unencoded_vars
 
 encodeShift :: (Eq state, Hashable state, Show state)
         => VarMap RealWorld
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 (AST, [(Int, Int, AST)])
+        -> Z3 [(Int, Int, AST)]
 encodeShift varMap gn rightContext var =
   let shiftEnc (currs, new_vars) e = do
-        (var, alreadyEncoded) <- lookupVar varMap (toI e, rightContext)
-        trans <- encodeTransition e var
-        return (trans:currs, if alreadyEncoded then new_vars else (toI e, rightContext,var):new_vars)
+        (toVar, alreadyEncoded) <- lookupVar varMap (to e, rightContext)
+        trans <- encodeTransition e toVar
+        return (trans:currs, if alreadyEncoded then new_vars else (to e, rightContext, toVar):new_vars)
   in do
     (transitions, unencoded_vars) <- foldM shiftEnc ([], []) (internalEdges gn)
-    equation <- mkEq var =<< mkAdd transitions
-    return (equation, unencoded_vars) -- TODO: maybe add a safety check for duplicates in encoded_vars here
-
+    assert =<< mkEq var =<< mkAdd transitions
+    return unencoded_vars
 
 encodePop :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 (AST, [(Int, Int, AST)])
+        -> Z3 [(Int, Int, AST)]
 encodePop chain gn rightContext var =
-  let popEnc acc e = do
+  let matchContext e = do
         toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
-        if rightContext == (getId . fst . node $ toGn)
-          then return $ acc + (prob e) -- TODO: can this happen? Can we have multiple pops that go the same state p?
-          else return acc
+        return $ rightContext == (getId . fst . node $ toGn)
   in do
-    equation <- mkEq var =<< mkRealNum =<< foldM popEnc (0 :: Prob) (internalEdges gn)
-    return (equation, []) -- pop transitions do not generate new variables
+    -- TODO: can we have multiple pops that go to the same rightContext?
+    assert =<< mkEq var =<< mkRealNum =<< sum . map prob <$> filterM matchContext (Set.toList $ internalEdges gn)
+    return [] -- pop transitions do not generate new variables
+
