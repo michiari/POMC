@@ -40,12 +40,11 @@ type HashTable s k v = BH.HashTable s k v
 -- and p is the state associated with the given StateId
 type VarMap s = HashTable s (Int,Int) AST
 
-
 --helpers
-encodeTransition :: InternalEdge -> AST -> Z3 AST
+encodeTransition :: Edge -> AST -> Z3 AST
 encodeTransition e to = do
-  prob <- mkRealNum (toI e)
-  mkMul [to, prob]
+  probReal <- mkRealNum (prob e)
+  mkMul [probReal, to]
 
 lookupVar :: VarMap RealWorld -> (Int, Int) -> Z3 (AST, Bool)
 lookupVar varMap key = do
@@ -123,8 +122,8 @@ encodePush chain varMap gn rightContext var =
         eq <- mkMul (map fst vars)
         return (eq:currs, [(g, con, x) | ((x,y), (g, con)) <- zip vars varsIds, not y] ++ new_vars)
       pushEnc (currs, new_vars) e = do
-        pushedGn <- liftIO . stToIO $ MV.unsafeRead chain (toI e)
-        (equations, unencoded_vars) <- foldM (closeSummaries pushedGn) ([], []) (summaryEdges gn)
+        toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
+        (equations, unencoded_vars) <- foldM (closeSummaries toGn) ([], []) (summaryEdges gn)
         transition <- encodeTransition e =<< mkAdd equations
         return (transition:currs, unencoded_vars ++ new_vars)
   in do
@@ -157,9 +156,9 @@ encodePop :: (Eq state, Hashable state, Show state)
         -> Z3 (AST, [(Int, Int, AST)])
 encodePop chain gn rightContext var =
   let popEnc acc e = do
-        toGn <- liftIO . stToIO $ MV.unsafeRead chain (toI e)
+        toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
         if rightContext == (getId . fst . node $ toGn)
-          then return $ acc + (probI e) -- TODO: can this happen? Can we have multiple pops that go the same state p?
+          then return $ acc + (prob e) -- TODO: can this happen? Can we have multiple pops that go the same state p?
           else return acc
   in do
     equation <- mkEq var =<< mkRealNum =<< foldM popEnc (0 :: Prob) (internalEdges gn)

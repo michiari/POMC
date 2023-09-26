@@ -9,14 +9,16 @@ module Pomc.Prob.SummaryChain ( ProbDelta(..)
                               , SummaryChain
                               , decomposeGraph
                               , GraphNode(..)
-                              , InternalEdge(..)
-                              , SummaryEdge(..)
+                              , Edge(..)
                               ) where
 
 import Pomc.Prob.ProbUtils
 
 import Pomc.Check (EncPrecFunc)
 import Pomc.Encoding (BitEncoding)
+
+import Data.Set(Set)
+import qualified Data.Set as Set
 
 import Pomc.Prec (Prec(..),)
 import Pomc.SetMap
@@ -33,26 +35,24 @@ import qualified Pomc.Prob.CustoMap as CM
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 
-data InternalEdge = Internal
-  { toI    :: Int
-  , probI  :: Prob
+data Edge = Edge
+  { to    :: Int
+  , prob  :: Prob
   } deriving Show
-  
-data SummaryEdge = Summary 
-  { toS  :: Int
-  , probS   :: Prob
-  } deriving Show
+
+instance Eq Edge where
+  p == q = (to p) == (to q)
+
+instance Ord Edge where 
+  compare p q = compare (to p) (to q)
 
 -- a node in the graph of semiconfigurations
 data GraphNode state = GraphNode
   { gnId   :: Int
   , node   :: (StateId state, Stack state)
-  , internalEdges  :: [InternalEdge]
-  , summaryEdges :: [SummaryEdge]
-  }
-
-instance Show (GraphNode state) where
-  show gn =  show $ gnId gn
+  , internalEdges  :: Set Edge
+  , summaryEdges :: Set Edge
+  } deriving Show
 
 instance Eq (GraphNode state) where
   p == q =  gnId p ==  gnId q
@@ -107,7 +107,7 @@ decomposeGraph probdelta i iLabel = do
   emptyChain <- CM.empty
   initialId <- freshPosId newIdSequence
   BH.insert emptyChainMap (decode initialNode) initialId
-  CM.insert emptyChain initialId $ GraphNode {gnId=initialId, node=initialNode, internalEdges= [], summaryEdges = []}
+  CM.insert emptyChain initialId $ GraphNode {gnId=initialId, node=initialNode, internalEdges= Set.empty, summaryEdges = Set.empty}
   let globals = Globals { sIdGen = newSig
                         , idSeq = newIdSequence
                         , chainMap = emptyChainMap
@@ -213,10 +213,9 @@ decomposeTransition :: (Eq state, Hashable state, Show state)
                  -> ST s ()
 decomposeTransition recurse globals probdelta from prob_ dest isSummary =
   let
-    createSummary to_  = Summary{toS = to_, probS = prob_}
-    createInternal to_ = Internal{toI = to_, probI = prob_}
-    insertEdge to_  True  g@GraphNode{summaryEdges = edges_} = g{summaryEdges = (createSummary to_ ) : edges_}
-    insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = (createInternal to_ ) : edges_}
+    createInternal to_  stored_edges = Edge{to = to_, prob = sum $ [prob_] ++ (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
+    insertEdge to_  True  g@GraphNode{summaryEdges = edges_} = g{summaryEdges = Set.insert Edge{to = to_, prob = prob_} edges_}
+    insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }
   in do
     maybeid <- BH.lookup (chainMap globals) (decode dest)
     fromid <- BH.lookup (chainMap globals) (decode from) >>= return . fromJust 
@@ -226,7 +225,7 @@ decomposeTransition recurse globals probdelta from prob_ dest isSummary =
       else do
         newIdent <- freshPosId $ idSeq globals
         BH.insert (chainMap globals) (decode dest) newIdent
-        CM.insert (chain globals) newIdent $ GraphNode {gnId=newIdent, node=dest, internalEdges= [], summaryEdges = []}
+        CM.insert (chain globals) newIdent $ GraphNode {gnId=newIdent, node=dest, internalEdges= Set.empty, summaryEdges = Set.empty}
         CM.modify (chain globals) fromid $ insertEdge newIdent isSummary
         when recurse $ decompose globals probdelta dest
 
