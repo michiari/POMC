@@ -47,6 +47,7 @@ data SMTOpts = SMTOpts { smtMaxDepth  :: Word64
                        , smtVerbose   :: Bool
                        , smtComplete  :: Bool
                        , smtFastEmpty :: Bool
+                       , smtFastPrune :: Bool
                        }
 
 defaultSmtOpts :: Word64 -> SMTOpts
@@ -54,6 +55,7 @@ defaultSmtOpts maxDepth = SMTOpts { smtMaxDepth  = maxDepth
                                   , smtVerbose   = False
                                   , smtComplete  = True
                                   , smtFastEmpty = True
+                                  , smtFastPrune = False
                                   }
 
 data SMTStatus = Sat | Unsat | Unknown deriving (Eq, Show)
@@ -136,8 +138,9 @@ checkQuery smtopts phi query = evalZ3 $ do
                                          , smtTimeModel = 0
                                          }
       | otherwise = do
-          ((), assertTime1) <- timeActionAcc assertTime0 (== ())
-            $ assertPhiEncoding encData from to
+          t0 <- startTimer
+          assertPhiEncoding encData from to
+          assertTime1 <- fmap (+ assertTime0) $ stopTimer t0 ()
 
           (res1, checkTime1) <- timeActionAcc checkTime0 (== Z3.Sat) solverCheck
           case res1 of
@@ -155,13 +158,13 @@ checkQuery smtopts phi query = evalZ3 $ do
               when (smtVerbose smtopts) . liftIO . print
                 =<< queryTableau encData to Nothing =<< solverGetModel
 
-              t0 <- startTimer
+              t1 <- startTimer
               phiAssumptions <- mkPhiAssumptions (smtFastEmpty smtopts) encData to
               progAssumptions <- case maybeProgData of
                 Nothing -> return []
                 Just progData -> assertProgEncoding encData (fromJust maybeProgData) from to
                                  >> mkProgAssumptions encData progData to
-              assertTime2 <- fmap (+ assertTime1) $ stopTimer t0 $ null progAssumptions
+              assertTime2 <- fmap (+ assertTime1) $ stopTimer t1 $ null progAssumptions
 
               (res2, checkTime2) <- timeActionAcc checkTime1 (== Z3.Sat)
                 $ solverCheckAssumptions (phiAssumptions ++ progAssumptions)
@@ -169,10 +172,10 @@ checkQuery smtopts phi query = evalZ3 $ do
                 Z3.Sat -> do
                   when (smtVerbose smtopts) . liftIO . putStrLn
                     $ "Assumptions are SAT (k = " ++ show to ++ ")"
-                  t1 <- startTimer
+                  t2 <- startTimer
                   model <- solverGetModel
                   tableau <- queryTableau encData to Nothing model
-                  modelTime <- stopTimer t1 $ null tableau
+                  modelTime <- stopTimer t2 $ null tableau
                   return SMTResult { smtStatus = Sat
                                    , smtTableau = Just tableau
                                    , smtTimeAssert = assertTime2
@@ -181,8 +184,10 @@ checkQuery smtopts phi query = evalZ3 $ do
                                    }
                 Z3.Undef -> error "Z3 unexpectedly reported Undef"
                 Z3.Unsat -> do
-                  ((), assertTime3) <- timeActionAcc assertTime2 (== ())
-                    $ assertPrune encData maybeProgData to
+                  t3 <- startTimer
+                  assertPrune (smtFastPrune smtopts) encData maybeProgData to
+                  assertTime3 <- fmap (+ assertTime2) $ stopTimer t3 ()
+
                   (res3, checkTime3) <- timeActionAcc checkTime2 (== Z3.Sat) solverCheck
                   case res3 of
                     Z3.Unsat -> do
@@ -227,7 +232,6 @@ checkQuery smtopts phi query = evalZ3 $ do
             model <- solverGetModel
             tableau <- queryTableau encData to Nothing model
             modelTime <- stopTimer t1 $ null tableau
-            -- DBG.traceM =<< showModel model
             return SMTResult { smtStatus = Sat
                              , smtTableau = Just tableau
                              , smtTimeAssert = assertTime + newAssertTime
@@ -978,46 +982,71 @@ mkPending encData k x = do
   shiftAndForall <- mkAnd [checkShiftx, forallShift]
   mkOr [pushAndForall, shiftAndForall]
 
-assertPrune :: EncData -> Maybe ProgData -> Word64 -> Z3 ()
-assertPrune encData maybeProgData x = do
-  let nodeSort = zNodeSort encData
-      smb = zSmb encData
-      stack = zStack encData
-      ctx = zCtx encData
-  xLit <- mkUnsignedInt64 x nodeSort
-  smbx <- mkApp1 smb xLit
-  stackx <- mkApp1 stack xLit
-  ctxx <- mkApp1 ctx xLit
-  assert =<< mkNot =<< mkExistsNodes [0..(x-1)]
-    (\y -> do
-        yLit <- mkUnsignedInt64 y nodeSort
-        pending <- mkPending encData x y
-        sameFsxy <- mkSameFs xLit yLit
-        smbxy <- mkEq smbx =<< mkApp1 smb yLit
-        sameFsStack <- mkSameFs stackx =<< mkApp1 stack yLit
-        sameFsCtx <- mkSameFs ctxx =<< mkApp1 ctx yLit
-        sameProgStatus <- mkSameProgStatus xLit yLit
-        mkAnd [pending, sameFsxy, smbxy, sameFsStack, sameFsCtx, sameProgStatus]
-    )
-  where mkSameFs u v = mkAndWith
-          (\c -> do
-              let gamma = zGamma encData
-              gammacu <- mkApp gamma [c, u]
-              gammacv <- mkApp gamma [c, v]
-              mkEq gammacu gammacv
-          ) $ M.elems $ zFConstMap encData
+assertPrune :: Bool -> EncData -> Maybe ProgData -> Word64 -> Z3 ()
+assertPrune fastPrune encData maybeProgData x
+  | fastPrune = do
+      let nodeSort = zNodeSort encData
+          smb = zSmb encData
+          stack = zStack encData
+          ctx = zCtx encData
+      xLit <- mkUnsignedInt64 x nodeSort
+      smbx <- mkApp1 smb xLit
+      stackx <- mkApp1 stack xLit
+      ctxx <- mkApp1 ctx xLit
+      prune1 <- mkExistsNodes [0..(x-1)]
+                (\y -> do
+                    yLit <- mkUnsignedInt64 y nodeSort
+                    sameFsxy <- mkSameFs xLit yLit
+                    smbxy <- mkEq smbx =<< mkApp1 smb yLit
+                    stackxy <- mkEq stackx =<< mkApp1 stack yLit
+                    ctxxy <- mkEq ctxx =<< mkApp1 ctx yLit
+                    sameProgStatus <- mkSameProgStatus xLit yLit
+                    mkAnd [sameFsxy, smbxy, stackxy, ctxxy, sameProgStatus]
+                )
+      assert =<< mkNot prune1
+      assertPrune2
+  | otherwise = assertPrune2
+  where
+    assertPrune2 = do
+      let nodeSort = zNodeSort encData
+          smb = zSmb encData
+          stack = zStack encData
+          ctx = zCtx encData
+      xLit <- mkUnsignedInt64 x nodeSort
+      smbx <- mkApp1 smb xLit
+      stackx <- mkApp1 stack xLit
+      ctxx <- mkApp1 ctx xLit
+      assert =<< mkNot =<< mkExistsNodes [0..(x-1)]
+        (\y -> do
+            yLit <- mkUnsignedInt64 y nodeSort
+            pending <- mkPending encData x y
+            sameFsxy <- mkSameFs xLit yLit
+            smbxy <- mkEq smbx =<< mkApp1 smb yLit
+            sameFsStack <- mkSameFs stackx =<< mkApp1 stack yLit
+            sameFsCtx <- mkSameFs ctxx =<< mkApp1 ctx yLit
+            sameProgStatus <- mkSameProgStatus xLit yLit
+            mkAnd [pending, sameFsxy, smbxy, sameFsStack, sameFsCtx, sameProgStatus]
+        )
 
-        mkSameProgStatus xLit yLit = case maybeProgData of
-          Nothing -> mkTrue
-          Just progData -> do
-            pcx <- mkApp1 (zPc progData) xLit
-            samePc <- mkEq pcx =<< mkApp1 (zPc progData) yLit
-            let eqVar (vf, _) = do
-                  vx <- mkApp1 vf xLit
-                  vy <- mkApp1 vf yLit
-                  mkEq vx vy
-            sameVars <- mkAndWith eqVar $ V.toList $ zSVarFunVec progData
-            mkAnd [samePc, sameVars]
+    mkSameFs u v = mkAndWith
+      (\c -> do
+          let gamma = zGamma encData
+          gammacu <- mkApp gamma [c, u]
+          gammacv <- mkApp gamma [c, v]
+          mkEq gammacu gammacv
+      ) $ M.elems $ zFConstMap encData
+
+    mkSameProgStatus xLit yLit = case maybeProgData of
+      Nothing -> mkTrue
+      Just progData -> do
+        pcx <- mkApp1 (zPc progData) xLit
+        samePc <- mkEq pcx =<< mkApp1 (zPc progData) yLit
+        let eqVar (vf, _) = do
+              vx <- mkApp1 vf xLit
+              vy <- mkApp1 vf yLit
+              mkEq vx vy
+        sameVars <- mkAndWith eqVar $ V.toList $ zSVarFunVec progData
+        mkAnd [samePc, sameVars]
 
 
 data ProgData = ProgData { zProg       :: MP.Program

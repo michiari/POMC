@@ -50,6 +50,7 @@ makeTest ((name, phi), k, expected) =
                           , smtVerbose   = False
                           , smtComplete  = True
                           , smtFastEmpty = True
+                          , smtFastPrune = False
                           }
 
 efTests :: [(TestCase, Word64, SMTStatus)]
