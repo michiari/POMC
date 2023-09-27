@@ -96,7 +96,8 @@ isSatisfiable smtopts alphabet phi =
 
 modelCheckProgram :: SMTOpts -> Formula MP.ExprProp -> MP.Program -> IO SMTResult
 modelCheckProgram smtopts phi prog = do
-  res <- checkQuery smtopts (Not phi) (MiniProcQuery prog)
+  res <- checkQuery (smtopts { smtFastEmpty = False }) (Not phi) (MiniProcQuery prog)
+  -- fastEmpty leads to false positives with programs
   return res { smtStatus = flipStatus $ smtStatus res }
   where flipStatus Sat = Unsat
         flipStatus Unsat = Sat
