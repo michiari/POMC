@@ -42,19 +42,19 @@ def gen_suite(base_path, filename_template, formulas, prog_template, width_from,
 
 if __name__ == '__main__':
     unsafe_template = load_prog_unsafe()
-    safe_template = load_prog_unsafe()
+    safe_template = load_prog_safe()
 
     wfrom = 8
     wto = 16
 
-    gen_suite('xnext/unsafe', 'unsafe_{width}.pomc', all_formulas[0:1], unsafe_template, wfrom, wto, 32)
-    gen_suite('xnext/safe', 'safe_{width}.pomc', all_formulas[0:1], safe_template, wfrom, wto, 32)
+    gen_suite('xnext/unsafe', 'unsafe_{width:02d}.pomc', all_formulas[0:1], unsafe_template, wfrom, wto, 32)
+    gen_suite('xnext/safe', 'safe_{width:02d}.pomc', all_formulas[0:1], safe_template, wfrom, wto, 32)
 
-    gen_suite('xnext/nondet_unsafe', 'nondet_unsafe_{width}.pomc', all_formulas[0:1], unsafe_template, wfrom, wto)
-    gen_suite('xnext/nondet_safe', 'nondet_safe_{width}.pomc', all_formulas[0:1], safe_template, wfrom, wto)
+    gen_suite('xnext/nondet_unsafe', 'nondet_unsafe_{width:02d}.pomc', all_formulas[0:1], unsafe_template, wfrom, wto)
+    gen_suite('xnext/nondet_safe', 'nondet_safe_{width:02d}.pomc', all_formulas[0:1], safe_template, wfrom, wto)
 
-    gen_suite('huntil/unsafe', 'unsafe_{width}.pomc', all_formulas[1:2], unsafe_template, wfrom, wto, 32)
-    gen_suite('huntil/safe', 'safe_{width}.pomc', all_formulas[1:2], safe_template, wfrom, wto, 32)
+    gen_suite('huntil/unsafe', 'unsafe_{width:02d}.pomc', all_formulas[1:2], unsafe_template, wfrom, wto, 32)
+    gen_suite('huntil/safe', 'safe_{width:02d}.pomc', all_formulas[1:2], safe_template, wfrom, wto, 32)
 
-    gen_suite('huntil/nondet_unsafe', 'nondet_unsafe_{width}.pomc', all_formulas[1:2], unsafe_template, wfrom, wto)
-    gen_suite('huntil/nondet_safe', 'nondet_safe_{width}.pomc', all_formulas[1:2], safe_template, wfrom, wto)
+    gen_suite('huntil/nondet_unsafe', 'nondet_unsafe_{width:02d}.pomc', all_formulas[1:2], unsafe_template, wfrom, wto)
+    gen_suite('huntil/nondet_safe', 'nondet_safe_{width:02d}.pomc', all_formulas[1:2], safe_template, wfrom, wto)
