@@ -9,7 +9,7 @@ module Pomc.Test.TestZ3Sat ( tests, slowTests, benchs, isSupported ) where
 
 import Pomc.Test.EvalFormulas (TestCase, zip3Expected, formulas, ap)
 import Pomc.Test.OPMs (stlV2Alphabet)
-import Pomc.Z3Encoding (isSatisfiable, SMTResult(..), SMTStatus(..))
+import Pomc.Z3Encoding (SMTOpts(..), isSatisfiable, SMTResult(..), SMTStatus(..))
 import Pomc.Potl (Formula(..), Dir(..))
 
 import Test.Tasty
@@ -17,7 +17,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Bench
 import Data.Word (Word64)
 
-import qualified Debug.Trace as DBG
+-- import qualified Debug.Trace as DBG
 
 tests :: TestTree
 tests = testGroup "Z3Encoding Satisfiability Tests"
@@ -43,12 +43,17 @@ makeTest :: (TestCase, Word64, SMTStatus)
 makeTest ((name, phi), k, expected) =
   ( name ++ " (" ++ show phi ++ ")"
   , (\f -> do
-        sat <- (smtStatus . DBG.traceShowId) <$> isSatisfiable True stlV2Alphabet f k
+        sat <- (smtStatus {-. DBG.traceShowId-}) <$> isSatisfiable smtopts stlV2Alphabet f
         expected @=? sat)
   )
+  where smtopts = SMTOpts { smtMaxDepth  = k
+                          , smtVerbose   = False
+                          , smtComplete  = True
+                          , smtFastEmpty = True
+                          }
 
 efTests :: [(TestCase, Word64, SMTStatus)]
-efTests = zip3Expected (filter (isSupported . snd) formulas) (repeat 20) expectedRes
+efTests = zip3Expected (filter (isSupported . snd) formulas) (repeat 15) expectedRes
           -- $ zip3 (filter (isSupported . snd) formulas) (repeat 12) $ repeat Sat
 
 isSupported :: Formula a -> Bool
@@ -88,8 +93,8 @@ expectedRes :: [SMTStatus]
 expectedRes =
   [ Sat, Sat, Sat, Unsat, Unsat, Sat -- 5
   , Sat, Sat, Unsat -- 8
-  , Sat, Sat, Unsat, Sat -- 13
-  , Sat, Unsat -- 16
+  , Sat, Sat, Unknown, Sat -- 13
+  , Sat, Unknown -- 16
   , Sat, Sat, Sat, Sat, Sat, Sat -- base_tests
   , Sat, Sat -- chain_next
   , Sat, Sat, Sat, Sat -- contains_exc

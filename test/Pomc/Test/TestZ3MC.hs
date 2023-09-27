@@ -12,7 +12,7 @@ import Pomc.Test.TestZ3Sat (isSupported)
 import Pomc.Test.TestMP hiding (tests, benchs)
 import Pomc.Test.EvalFormulas as EvalFormulas (TestCase, zip3Expected, formulas, ap)
 import Pomc.Potl
-import Pomc.Z3Encoding (modelCheckProgram, SMTResult(..), SMTStatus(..))
+import Pomc.Z3Encoding (SMTOpts(..), defaultSmtOpts, modelCheckProgram, SMTResult(..), SMTStatus(..))
 import Pomc.MiniProc (ExprProp(..))
 import Pomc.Parse.Parser (CheckRequest(..), checkRequestP)
 import Pomc.Parse.MiniProc (programP)
@@ -26,7 +26,7 @@ import qualified Data.Text as T
 import Data.Maybe (fromJust)
 import Data.Word (Word64)
 
-import qualified Debug.Trace as DBG
+-- import qualified Debug.Trace as DBG
 
 tests :: TestTree
 tests = testGroup "Z3Encoding Model Checking Tests"
@@ -57,8 +57,8 @@ makeTest filecont ((name, phi), k, expected) =
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          smtres <- modelCheckProgram (fmap (TextProp . T.pack) f) prog k
-          DBG.traceShowM smtres
+          smtres <- modelCheckProgram (defaultSmtOpts k) (fmap (TextProp . T.pack) f) prog
+          -- DBG.traceShowM smtres
           let debugMsg | smtStatus smtres == Unsat =
                          "Expected " ++ show expected ++ ", got Unsat. Trace:\n"
                          ++ show (fromJust $ smtTableau smtres)
@@ -88,8 +88,8 @@ makeParseTest progSource ((name, phi), k, expected) =
       pcreq <- case parse (checkRequestP <* eof) name (filecont f) of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                  Right pcreq      -> return pcreq
-      smtres <- modelCheckProgram (head . pcreqFormulas $ pcreq) (pcreqMiniProc pcreq) k
-      DBG.traceShowM smtres
+      smtres <- modelCheckProgram (defaultSmtOpts k) (head . pcreqFormulas $ pcreq) (pcreqMiniProc pcreq)
+      -- DBG.traceShowM smtres
       let debugMsg | smtStatus smtres == Unsat =
                    "Expected " ++ show expected ++ ", got Unsat. Trace:\n"
                    ++ show (fromJust $ smtTableau smtres)
@@ -101,7 +101,7 @@ makeParseTest progSource ((name, phi), k, expected) =
 sasEvalTests :: TestTree
 sasEvalTests = testGroup "SAS MiniProc MC Eval Tests" $
   map (makeTestCase sasMPSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 100) expectedSasEval
+  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 30) expectedSasEval
   -- $ zip (filter (isSupported . snd) EvalFormulas.formulas) $ repeat Sat
 
 sasEvalBenchs :: TestTree

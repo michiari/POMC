@@ -6,7 +6,9 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Z3Encoding ( SMTStatus(..)
+module Pomc.Z3Encoding ( SMTOpts(..)
+                       , defaultSmtOpts
+                       , SMTStatus(..)
                        , SMTResult(..)
                        , TableauNode(..)
                        , isSatisfiable
@@ -25,7 +27,8 @@ import Z3.Monad hiding (Result(..))
 import qualified Z3.Monad as Z3
 
 import qualified Control.Exception as E
-import Control.Monad ((<=<), filterM)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad ((<=<), filterM, when)
 import Data.List ((\\), intercalate, singleton)
 import Data.Bits (finiteBitSize, countLeadingZeros)
 import Data.Map.Lazy (Map)
@@ -38,7 +41,20 @@ import qualified Data.Vector as V
 import qualified Data.BitVector as BV
 import qualified Data.Text as T
 
-import qualified Debug.Trace as DBG
+-- import qualified Debug.Trace as DBG
+
+data SMTOpts = SMTOpts { smtMaxDepth  :: Word64
+                       , smtVerbose   :: Bool
+                       , smtComplete  :: Bool
+                       , smtFastEmpty :: Bool
+                       }
+
+defaultSmtOpts :: Word64 -> SMTOpts
+defaultSmtOpts maxDepth = SMTOpts { smtMaxDepth  = maxDepth
+                                  , smtVerbose   = False
+                                  , smtComplete  = True
+                                  , smtFastEmpty = True
+                                  }
 
 data SMTStatus = Sat | Unsat | Unknown deriving (Eq, Show)
 
@@ -68,31 +84,29 @@ data Query = SatQuery { qAlphabet :: Alphabet MP.ExprProp }
              | MiniProcQuery { qProg :: MP.Program }
              deriving Show
 
-isSatisfiable :: Bool
+isSatisfiable :: SMTOpts
               -> Alphabet String
               -> Formula String
-              -> Word64
               -> IO SMTResult
-isSatisfiable complete alphabet phi maxDepth =
-  checkQuery complete epPhi (SatQuery epAlphabet) maxDepth
+isSatisfiable smtopts alphabet phi =
+  checkQuery smtopts epPhi (SatQuery epAlphabet)
   where
     epPhi = fmap (MP.TextProp . T.pack) phi
     epAlphabet = MP.stringToExprPropAlphabet alphabet
 
-modelCheckProgram :: Formula MP.ExprProp -> MP.Program -> Word64 -> IO SMTResult
-modelCheckProgram phi prog maxDepth = do
-  res <- checkQuery True (Not phi) (MiniProcQuery prog) maxDepth
+modelCheckProgram :: SMTOpts -> Formula MP.ExprProp -> MP.Program -> IO SMTResult
+modelCheckProgram smtopts phi prog = do
+  res <- checkQuery smtopts (Not phi) (MiniProcQuery prog)
   return res { smtStatus = flipStatus $ smtStatus res }
   where flipStatus Sat = Unsat
         flipStatus Unsat = Sat
         flipStatus Unknown = Unknown
 
-checkQuery :: Bool
+checkQuery :: SMTOpts
            -> Formula MP.ExprProp
            -> Query
-           -> Word64
            -> IO SMTResult
-checkQuery complete phi query maxDepth = evalZ3 $ do
+checkQuery smtopts phi query = evalZ3 $ do
   reset
   t0 <- startTimer
   encData <- initPhiEncoding pnfPhi alphabet maxDepth
@@ -100,11 +114,12 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
     SatQuery {} -> return Nothing
     MiniProcQuery prog -> Just <$> initProgEncoding encData prog
   initTime <- stopTimer t0 $ isJust maybeProgData
-  if complete
+  if smtComplete smtopts
     then completeCheck encData maybeProgData initTime 0 1 minLength
     else partialCheck encData maybeProgData initTime 0 1 minLength
   where
     pnfPhi = pnf phi
+    maxDepth = smtMaxDepth smtopts
     (minLength, alphabet) = case query of
       SatQuery a -> (1, a)
       MiniProcQuery _ -> (2, MP.miniProcAlphabet)
@@ -125,19 +140,22 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
 
           (res1, checkTime1) <- timeActionAcc checkTime0 (== Z3.Sat) solverCheck
           case res1 of
-            Z3.Unsat -> return SMTResult { smtStatus = Unsat
-                                         , smtTableau = Nothing
-                                         , smtTimeAssert = assertTime1
-                                         , smtTimeCheck = checkTime1
-                                         , smtTimeModel = 0
-                                         }
+            Z3.Unsat -> do
+              when (smtVerbose smtopts) . liftIO . putStrLn
+                $ "Unraveling is UNSAT (k = " ++ show to ++ ")"
+              return SMTResult { smtStatus = Unsat
+                               , smtTableau = Nothing
+                               , smtTimeAssert = assertTime1
+                               , smtTimeCheck = checkTime1
+                               , smtTimeModel = 0
+                               }
             Z3.Undef -> error "Z3 unexpectedly reported Undef"
             Z3.Sat -> do
-              -- model <- solverGetModel
-              -- DBG.traceShowM =<< queryTableau encData to Nothing model
+              when (smtVerbose smtopts) . liftIO . print
+                =<< queryTableau encData to Nothing =<< solverGetModel
 
               t0 <- startTimer
-              phiAssumptions <- mkPhiAssumptions True encData to
+              phiAssumptions <- mkPhiAssumptions (smtFastEmpty smtopts) encData to
               progAssumptions <- case maybeProgData of
                 Nothing -> return []
                 Just progData -> assertProgEncoding encData (fromJust maybeProgData) from to
@@ -148,12 +166,12 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
                 $ solverCheckAssumptions (phiAssumptions ++ progAssumptions)
               case res2 of
                 Z3.Sat -> do
-                  -- DBG.traceM "Assumptions satisfied"
+                  when (smtVerbose smtopts) . liftIO . putStrLn
+                    $ "Assumptions are SAT (k = " ++ show to ++ ")"
                   t1 <- startTimer
                   model <- solverGetModel
                   tableau <- queryTableau encData to Nothing model
                   modelTime <- stopTimer t1 $ null tableau
-                  -- DBG.traceM =<< showModel model
                   return SMTResult { smtStatus = Sat
                                    , smtTableau = Just tableau
                                    , smtTimeAssert = assertTime2
@@ -167,7 +185,8 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
                   (res3, checkTime3) <- timeActionAcc checkTime2 (== Z3.Sat) solverCheck
                   case res3 of
                     Z3.Unsat -> do
-                      -- DBG.traceM "Prune unsat"
+                      when (smtVerbose smtopts) . liftIO . putStrLn
+                        $ "Prune rule is UNSAT (k = " ++ show to ++ ")"
                       return SMTResult { smtStatus = Unsat
                                        , smtTableau = Nothing
                                        , smtTimeAssert = assertTime3
@@ -192,7 +211,7 @@ checkQuery complete phi query maxDepth = evalZ3 $ do
       | otherwise = do
           t0 <- startTimer
           assertPhiEncoding encData from to
-          phiAssumptions <- mkPhiAssumptions True encData to
+          phiAssumptions <- mkPhiAssumptions (smtFastEmpty smtopts) encData to
           progAssumptions <- case maybeProgData of
             Nothing -> return []
             Just progData -> assertProgEncoding encData (fromJust maybeProgData) from to
@@ -892,8 +911,7 @@ groundxnf encData theta x = ground (xnf theta) where
           applyGamma g = mkApp (zGamma encData) [zFConstMap encData M.! g, x]
 
 mkPhiAssumptions :: Bool -> EncData -> Word64 -> Z3 [AST]
-mkPhiAssumptions simpleEmpty encData k = if simpleEmpty
-  then do
+mkPhiAssumptions False encData k = do
   let nodeSort = zNodeSort encData
   kLit <- mkUnsignedInt64 k nodeSort
   -- Γ(#, k)
@@ -902,8 +920,7 @@ mkPhiAssumptions simpleEmpty encData k = if simpleEmpty
   stackk <- mkApp1 (zStack encData) kLit
   stackkEqBot <- mkEq stackk =<< mkUnsignedInt64 0 nodeSort
   return [gammaEndk, stackkEqBot]
-
-  else do
+mkPhiAssumptions True encData k = do
   let clos = zClos encData
   noNextk <- mkNot =<< mkAnyGammagx k
              (filter (\g -> case g of
@@ -915,7 +932,6 @@ mkPhiAssumptions simpleEmpty encData k = if simpleEmpty
                          _ -> False
                      ) clos)
   let forallRules x = do
-        -- xnextx <- mkXnext x
         anyHier <- mkAnyGammagx x $ filter (\g -> case g of
                                                XNext _ _ -> True
                                                HNext _ _ -> True
@@ -925,7 +941,6 @@ mkPhiAssumptions simpleEmpty encData k = if simpleEmpty
                                                _ -> False
                                            ) clos
         mkImplies anyHier =<< mkNot =<< mkPending encData k x
-        -- mkAnd [xnextx, anyHImplNotPending]
   forall <- mkForallNodes [1..k] forallRules
   return [noNextk, forall]
   where

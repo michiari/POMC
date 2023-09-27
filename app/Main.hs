@@ -11,7 +11,9 @@ module Main (main) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
-import qualified Pomc.Z3Encoding as Z3 (modelCheckProgram, SMTResult(..), SMTStatus(..))
+import qualified Pomc.Z3Encoding as Z3 ( SMTOpts(..), defaultSmtOpts
+                                       , modelCheckProgram, SMTResult(..), SMTStatus(..)
+                                       )
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
@@ -42,6 +44,7 @@ data PomcArgs = PomcArgs
   , explicit :: Bool
   , smt      :: Word64
   , fileName :: FilePath
+  , verbose  :: Bool
   } deriving (Data, Typeable, Show, Eq)
 
 pomcArgs :: PomcArgs
@@ -51,6 +54,7 @@ pomcArgs = PomcArgs
   , explicit = False &= help "Use the explicit-state model checking engine (default)"
   , smt = 0 &= help "Use the SMT-based model checking engine, specifying the maximum trace length"
   , fileName = def &= args &= typFile -- &= help "Input file"
+  , verbose = False &= help "Print more info about model checking progress (currently only works with --smt)"
   }
   &= summary "POMC v2.1.0"
   &= details [ "Only one input file can be specified."
@@ -92,7 +96,8 @@ main = do
 
           return $ sum stringTimes + sum mcTimes
 
-    ProgCheckRequest phis prog -> sum <$> forM phis (runProg isOmega isExplicit (smt pargs) prog)
+    ProgCheckRequest phis prog -> sum <$> forM phis
+      (runProg isOmega isExplicit (verbose pargs) (smt pargs) prog)
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
@@ -103,7 +108,7 @@ main = do
                      , "\nResult:  "
                      ])
       (sat, time) <- timeFunApp id (fastcheckGen phi precRels) s
-      putStr $ show sat
+      print sat
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
@@ -113,26 +118,25 @@ main = do
                      , "\nResult:  "
                      ])
       ((sat, trace), time) <- timeFunApp fst (modelCheckExplicitGen isOmega phi) opa
-      putStr $ show sat
+      print sat
       unless sat $ putStr $ "\nCounterexample: " ++ showPrettyTrace "..." T.unpack trace
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
-    runProg isOmega True _ prog phi = do
+    runProg isOmega True _ _ prog phi = do
       putStr (concat [ "\nModel Checking\nFormula: ", show phi
                      , "\nResult:  "
                      ])
       ((sat, trace), time) <- timeFunApp fst (modelCheckProgram isOmega phi) prog
-      putStr $ show sat
+      print sat
       unless (sat || isOmega) $ putStr $ "\nCounterexample: " ++ showPrettyTrace "..." show trace
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
-    runProg False False maxDepth prog phi = do
-      putStr (concat [ "\nSMT-based Model Checking\nFormula: ", show phi
-                     , "\nResult:  "
-                     ])
-      smtres <- Z3.modelCheckProgram phi prog maxDepth
-      putStr $ show $ Z3.smtStatus smtres
+    runProg False False isVerbose maxDepth prog phi = do
+      putStrLn $ "\nSMT-based Model Checking\nFormula: " ++ show phi
+      smtres <- Z3.modelCheckProgram ((Z3.defaultSmtOpts maxDepth) { Z3.smtVerbose = isVerbose })
+                phi prog
+      putStr $ "Result:  " ++ show (Z3.smtStatus smtres)
       when (Z3.smtStatus smtres == Z3.Unsat)
         $ putStr $ "\nCounterexample: " ++ show (fromJust $ Z3.smtTableau smtres)
       let time = Z3.smtTimeAssert smtres + Z3.smtTimeCheck smtres + Z3.smtTimeModel smtres
@@ -143,7 +147,7 @@ main = do
                         , ")"
                         ]
       return time
-    runProg True False _ _ _ =
+    runProg True False _ _ _ _ =
       error "Infinite-word model checking not yet supported in SMT mode."
 
     addEndPrec precRels = noEndPR
