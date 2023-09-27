@@ -11,7 +11,7 @@ from tabulate import tabulate
 
 time_pattern = re.compile(r"Total elapsed time: .+ \(([0-9]+\.[0-9]+e[\+\-0-9]+) s\)")
 mem_pattern = re.compile(r"Max memory used \(KB\): ([0-9]+)")
-result_pattern = re.compile(r"Result:  ((True)|(False))")
+result_pattern = re.compile(r"Result:  ((True)|(False)|(Sat)|(Unsat)|(Unknown))")
 states_pattern = re.compile(r"Input OPA state count: ([0-9]+)")
 memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
@@ -54,7 +54,7 @@ def exec_bench(fname, finite, smt, verbose):
     result_match = [r[0] for r in result_pattern.findall(raw_stdout)]
     states_match = states_pattern.search(raw_stdout)
     memgc_match = memgc_pattern.search(raw_stderr)
-    result = 'False' if 'False' in result_match else 'True'
+    result = result_match[0]
     states = int(states_match.group(1)) if states_match else '?'
     return (states, float(time_match.group(1)),
             int(mem_match.group(1)), int(memgc_match.group(1)),
