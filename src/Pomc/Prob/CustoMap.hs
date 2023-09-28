@@ -10,9 +10,11 @@ module Pomc.Prob.CustoMap ( CustoMap
                      , insert
                      , lookup
                      , modify
+                     , take
+                     , showMap
                      ) where
 
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, take)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 
@@ -23,29 +25,39 @@ type CustoMap s v = MV.MVector s v
 
 empty :: ST.ST s (STRef s (CustoMap s v))
 empty = do
-  mm <- MV.new 4
-  newSTRef mm
+  cm <- MV.new 4
+  newSTRef cm
 
 insert :: STRef s (CustoMap s v) -> Int -> v -> ST.ST s ()
-insert mmref k val = do
-  mm <- readSTRef mmref
-  let len = MV.length mm
+insert cmref k val = do
+  cm <- readSTRef cmref
+  let len = MV.length cm
   if k < len
-    then MV.unsafeWrite mm k val
+    then MV.unsafeWrite cm k val
     else let newLen = computeLen len k
              computeLen size idx | idx < size = size
                                  | otherwise = computeLen (size*2) idx
-         in do { grown <- MV.grow mm (newLen-len)
+         in do { grown <- MV.grow cm (newLen-len)
                ; MV.unsafeWrite grown k val
-               ; writeSTRef mmref grown
+               ; writeSTRef cmref grown
                }
 
 lookup :: STRef s (CustoMap s v) -> Int -> ST.ST s v
-lookup mmref k  = do
-  mm <- readSTRef mmref
-  MV.unsafeRead mm k
+lookup cmref k  = do
+  cm <- readSTRef cmref
+  MV.unsafeRead cm k
 
-modify ::STRef s (CustoMap s v) -> Int -> (v -> v) -> ST.ST s ()
-modify mmref k f = do
-  mm <- readSTRef mmref
-  MV.unsafeModify mm f k
+modify :: STRef s (CustoMap s v) -> Int -> (v -> v) -> ST.ST s ()
+modify cmref k f = do
+  cm <- readSTRef cmref
+  MV.unsafeModify cm f k
+
+-- removing uninitialized elements
+take :: Int -> CustoMap s v -> CustoMap s v
+take = MV.unsafeTake
+
+-- for debugging purposes
+showMap :: (Show  v) => CustoMap s v -> ST.ST s String
+showMap = MV.ifoldl'
+    (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n")
+    ""
