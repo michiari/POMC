@@ -24,11 +24,11 @@ import qualified Pomc.SetMap as SM
 import Data.Set(Set)
 import qualified Data.Set as Set
 
-import Control.Monad (when)
-import Control.Monad.ST (ST)
+import Control.Monad(when)
 
+import Control.Monad.ST (ST)
 import Data.STRef (STRef, newSTRef, readSTRef)
-import Data.Maybe
+import Data.Maybe (fromJust, isNothing)
 
 import Numeric.Sum(sum, kbn)
 
@@ -157,13 +157,13 @@ decomposePush globals probdelta q g qState qLabel =
   let doPush (p, pLabel, prob_) = do
         newState <- wrapState (sIdGen globals) p pLabel
         SM.insert (suppStarts globals) (getId q) g
-        decomposeTransition True globals probdelta (q,g)
-          prob_ (newState, Just (qLabel, q))  False
+        decomposeTransition globals probdelta (Just (q,g)) Nothing
+          prob_ (newState, Just (qLabel, q))
   in do
     mapM_ doPush $ (deltaPush probdelta) qState
     currentSuppEnds <- SM.lookup (suppEnds globals) (getId q)
     mapM_ (\s -> do
-                decomposeTransition True globals probdelta (q,g) 0 (s,g) True -- summaries are by default assigned probability zero
+                decomposeTransition globals probdelta Nothing (Just (q,g)) 0 (s,g)  -- summaries are by default assigned probability zero
           )
       currentSuppEnds
 
@@ -178,7 +178,7 @@ decomposeShift :: (Eq state, Hashable state, Show state)
 decomposeShift globals probdelta q g qState qLabel =
   let doShift (p, pLabel, prob_)= do
         newState <- wrapState (sIdGen globals) p pLabel
-        decomposeTransition True globals probdelta (q,g) prob_ (newState, Just (qLabel, snd . fromJust $ g)) False
+        decomposeTransition globals probdelta (Just (q,g)) Nothing prob_ (newState, Just (qLabel, snd . fromJust $ g))
   in mapM_ doShift $ (deltaShift probdelta) qState
 
 decomposePop :: (Eq state, Hashable state, Show state)
@@ -192,8 +192,7 @@ decomposePop globals probdelta q g qState =
   let doPop (p, pLabel, prob_) =
         let r = snd . fromJust $ g
             closeSupports pwrapped g' = do
-              decomposeTransition False globals probdelta (r,g') 0    (pwrapped, g') True
-              decomposeTransition True  globals probdelta (q,g) prob_ (pwrapped, g') False
+              decomposeTransition globals probdelta (Just (q,g)) (Just (r,g')) prob_ (pwrapped, g')
         in do
           newState <- wrapState (sIdGen globals) p pLabel
           SM.insert (suppEnds globals) (getId r) newState
@@ -203,29 +202,26 @@ decomposePop globals probdelta q g qState =
 
 -- decomposing a transition to a new semiconfiguration
 decomposeTransition :: (Eq state, Hashable state, Show state)
-                 => Bool
-                 -> Globals s state
+                 => Globals s state
                  -> ProbDelta state
-                 -> (StateId state, Stack state)
+                 -> Maybe (StateId state, Stack state) -- from state (internal transition)
+                 -> Maybe (StateId state, Stack state) -- from state (summary transition)
                  -> Prob
                  -> (StateId state, Stack state)
-                 -> Bool
                  -> ST s ()
-decomposeTransition recurse globals probdelta from prob_ dest isSummary =
+decomposeTransition globals probdelta fromInternal fromSummary prob_ dest =
   let
     createInternal to_  stored_edges = Edge{to = to_, prob = sum kbn $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
-    insertEdge to_  True  g@GraphNode{summaryEdges = edges_} = g{summaryEdges = Set.insert Edge{to = to_, prob = prob_} edges_}
+    insertEdge to_  True  g@GraphNode{summaryEdges = edges_} = g{summaryEdges = Set.insert Edge{to = to_, prob = 0} edges_} -- summaries are assigned prob 0 by default
     insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }
+    lookupInsert to_ isSummary from = BH.lookup (chainMap globals) (decode from) >>= CM.modify (chain globals) (insertEdge to_ isSummary) . fromJust
   in do
-    maybeid <- BH.lookup (chainMap globals) (decode dest)
-    fromid <- fromJust <$> BH.lookup (chainMap globals) (decode from)
-    if isJust maybeid
-      then do
-        CM.modify (chain globals) fromid $ insertEdge (fromJust maybeid) isSummary
-      else do
-        newIdent <- freshPosId $ idSeq globals
-        BH.insert (chainMap globals) (decode dest) newIdent
-        CM.insert (chain globals) newIdent $ GraphNode {gnId=newIdent, node=dest, internalEdges= Set.empty, summaryEdges = Set.empty}
-        CM.modify (chain globals) fromid $ insertEdge newIdent isSummary
-        when recurse $ decompose globals probdelta dest
+    maybeId <- BH.lookup (chainMap globals) (decode dest)
+    actualId <- maybe (freshPosId $ idSeq globals) return maybeId
+    when (isNothing maybeId) $ do
+        BH.insert (chainMap globals) (decode dest) actualId
+        CM.insert (chain globals) actualId $ GraphNode {gnId=actualId, node=dest, internalEdges= Set.empty, summaryEdges = Set.empty}
+    maybe (return ()) (lookupInsert actualId False) fromInternal
+    maybe (return ()) (lookupInsert actualId True) fromSummary
+    when (isNothing maybeId) $ decompose globals probdelta dest
 

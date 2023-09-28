@@ -155,12 +155,18 @@ encodePop :: (Eq state, Hashable state, Show state)
         -> AST
         -> Z3 [(Int, Int)]
 encodePop chain gn rightContext var =
-  let matchContext e = do
+  let checkEdge e = do
         toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
         return $ rightContext == (getId . fst . node $ toGn)
+      matchContext [] = return (0 :: Prob)
+      matchContext (e:es) = do 
+        found <- checkEdge e 
+        if found
+          then return (prob e)
+          else matchContext es
   in do
     -- TODO: can we have multiple pops that go to the same rightContext?
     -- assert the equation for this semiconf
-    assert =<< mkEq var =<< mkRealNum =<< sum kbn . map prob <$> filterM matchContext (Set.toList $ internalEdges gn)
+    assert =<< mkEq var =<< mkRealNum =<< matchContext (Set.toList $ internalEdges gn)
     return [] -- pop transitions do not generate new variables
 
