@@ -47,8 +47,8 @@ lookup cmref k  = do
   cm <- readSTRef cmref
   MV.unsafeRead cm k
 
-modify :: STRef s (CustoMap s v) -> Int -> (v -> v) -> ST.ST s ()
-modify cmref k f = do
+modify :: STRef s (CustoMap s v) -> (v -> v) -> Int -> ST.ST s ()
+modify cmref f k = do
   cm <- readSTRef cmref
   MV.unsafeModify cm f k
 
