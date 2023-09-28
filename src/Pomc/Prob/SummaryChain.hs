@@ -116,7 +116,8 @@ decomposeGraph probdelta i iLabel = do
                         }
   -- compute the summary chain of the input popa
   decompose globals probdelta initialNode
-  readSTRef . chain $ globals
+  idx <- readSTRef . idSeq $ globals
+  fmap (CM.take idx) $ readSTRef . chain $ globals
 
 decompose :: (Eq state, Hashable state, Show state)
       => Globals s state -- global variables of the algorithm
