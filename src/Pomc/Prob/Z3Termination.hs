@@ -7,7 +7,8 @@
 
 module Pomc.Prob.Z3Termination ( terminationQuery
                                 ) where
-import Prelude
+
+import Prelude hiding (LT, GT)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.SummaryChain
 import Pomc.Prec (Prec(..),)
@@ -27,16 +28,17 @@ import Control.Monad.ST (stToIO, RealWorld)
 import qualified Data.Vector.Mutable as MV
 
 import qualified Data.HashTable.ST.Basic as BH
+import qualified Data.HashTable.Class as BC
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
 
--- a map (GraphNode, StateId) to Z3 variables
+-- a map (gnId GraphNode, getId StateId) to Z3 variables
 -- each variable represents [[q,b | p ]]
--- where q,b is the semiconfiguration associated with the graphNode
--- and p is the state associated with the given StateId
-type VarMap s = HashTable s (Int,Int) AST
+-- where q,b is the semiconfiguration associated with the graphNode of the key
+-- and p is the state associated with the StateId of the key
+type VarMap = HashTable RealWorld (Int,Int) AST
 
 --helpers
 encodeTransition :: Edge -> AST -> Z3 AST
@@ -44,7 +46,7 @@ encodeTransition e toAST = do
   probReal <- mkRealNum (prob e)
   mkMul [probReal, toAST]
 
-lookupVar :: VarMap RealWorld -> (Int, Int) -> Z3 (AST, Bool)
+lookupVar :: VarMap -> (Int, Int) -> Z3 (AST, Bool)
 lookupVar varMap key = do
   maybeVar <- liftIO . stToIO $ BH.lookup varMap key
   if isJust maybeVar
@@ -55,21 +57,15 @@ lookupVar varMap key = do
       return (new_var, False)
 -- end helpers
 
-terminationQuery ::(Eq state, Hashable state, Show state)
-        => SummaryChain RealWorld state
-        -> EncPrecFunc
-        -> Prob
-        -> IO (Maybe Rational, String)
-terminationQuery summChain e p = evalZ3 $ terminationProbability summChain e p
 
 -- compute the probabilities that a chain will terminate
 -- assumption: the initial state is at position 0
-terminationProbability :: (Eq state, Hashable state, Show state)
+terminationQuery :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> EncPrecFunc
-        -> Prob -- is  the termination prob. of the initial state smaller or equal than this bound?
-        -> Z3 (Maybe Rational, String)
-terminationProbability chain precFun bound =
+        -> TermQuery
+        -> Z3 (Maybe TermResult, String)
+terminationQuery chain precFun query =
   let encode [] _  eqs = return eqs
       encode ((gnId_, rightContext):unencoded) varMap eqs = do
         var <- liftIO . stToIO $ fromJust <$> BH.lookup varMap (gnId_, rightContext)
@@ -99,24 +95,24 @@ terminationProbability chain precFun bound =
         encode (new_unencoded ++ unencoded) varMap (eq:eqs)
   in do
     newVarMap <- liftIO . stToIO $ BH.new
-    new_var <- mkFreshRealVar "(0,-1)"
-    liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var -- by convention, we give rightContext -1 to the initial state
+    new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
+    liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var 
     equations <- encode [(0 ::Int , -1 :: Int)] newVarMap [] -- encode the probability transition relation via a set of Z3 formulas represented via ASTs
-    mapM_ assert equations
+    
+    -- a string representation of the SMT Encoding for debugging purposes
     debugMsg <- foldM (\acc eq -> do 
       eqString <- astToString eq
       return (acc ++ eqString ++ "\n")
       ) 
       "" 
       equations
-    assert =<< mkLe new_var =<< mkRealNum bound -- assert the inequality constrain
+    encodeQuery query new_var equations newVarMap
     termProb <- fmap snd . withModel $ \m -> fromJust <$> evalReal m new_var
     return (termProb, debugMsg)
                               
-
 encodePush :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
-        -> VarMap RealWorld
+        -> VarMap
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
@@ -140,7 +136,7 @@ encodePush chain varMap gn rightContext var =
     return (unencoded_vars, equation)
 
 encodeShift :: (Eq state, Hashable state, Show state)
-        => VarMap RealWorld
+        => VarMap
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
@@ -172,7 +168,29 @@ encodePop chain gn rightContext var =
           then return (prob e) -- we return the probability of the first one matched
           else matchContext es
   in do
-    -- assert the equation for this semiconf
+    -- generate the equation for this semiconf
     equation <- mkEq var =<< mkRealNum =<< matchContext (Set.toList $ internalEdges gn)
     return ([], equation) -- pop transitions do not generate new variables
 
+encodeQuery :: TermQuery -> AST -> [AST] -> VarMap  -> Z3 ()
+encodeQuery q
+  | ApproxQuery <- q = encodeApproxQuery
+  | (LT bound) <- q  = encodeComparison mkExistsConst mkLt bound
+  | (LE bound) <- q  = encodeComparison mkExistsConst mkLe bound
+  | (GT bound) <- q  = encodeComparison mkForallConst mkGt bound
+  | (GE bound) <- q  = encodeComparison mkForallConst mkGe bound
+  where encodeComparison quant comp bound var eqs varMap = do 
+          varDeclarations <- mapM toApp =<< (liftIO . stToIO $ map snd <$> BC.toList varMap)
+          ineq <- comp var =<< mkRealNum bound
+          assert =<< quant [] varDeclarations =<< mkAnd (ineq:eqs)
+        encodeApproxQuery = error "not implemented yet"
+
+computeResult :: TermQuery -> AST -> Z3 TermResult
+computeResult ApproxQuery var = fmap (ApproxResult . fromJust . snd) . withModel $ \m -> fromJust <$> evalReal m var
+computeResult _ _ = do 
+  r <- check
+  let cases
+        | Sat <- r = return TermSat
+        | Unsat <- r = return TermUnsat 
+        | Undef <- r = error "Undefined solution error"
+  cases

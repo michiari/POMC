@@ -12,6 +12,8 @@ module Pomc.Prob.ProbUtils ( Prob
                         , StateId(..)
                         , Stack
                         , SIdGen
+                        , TermQuery(..)
+                        , TermResult(..)
                         , initSIdGen
                         , wrapState
                         , freshPosId
@@ -87,6 +89,16 @@ wrapState sig q l = do
 
 -- Stack symbol: (input token, state) || Bottom if empty stack
 type Stack state = Maybe (Input, StateId state)
+
+-- different termination queries
+-- Approx requires to approximate the termination probability
+data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxQuery
+  deriving Show
+
+-- different possible results of a termination quer
+-- Estimate represents the approximated probability to terminate of the given popa
+data TermResult = TermSat | TermUnsat | ApproxResult Prob
+  deriving Show
 
 freshPosId :: STRef s Int -> ST.ST s Int
 freshPosId idSeq = do
