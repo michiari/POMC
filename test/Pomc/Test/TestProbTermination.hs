@@ -9,52 +9,120 @@ module Pomc.Test.TestProbTermination(tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Pomc.Test.EvalFormulas (TestCase, ap, zipExpected, excludeIndices, formulas)
-import Pomc.Test.OPMs (stlV2Alphabet, makeInputSet)
-
+import Pomc.Test.OPMs (stlV2Alphabet, stlV3Alphabet, makeInputSet)
+import Data.Maybe(fromJust, isJust)
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), terminationExplicit)
 
+import Data.Ratio((%))
+
 tests :: TestTree
-tests = testGroup "ProbModelChecking.hs Termination Tests" [ dummyTest]
+tests = testGroup "ProbModelChecking.hs Termination Tests" $ map makeTestCase [dummyModel, pseudoRandomWalk, symmetricRandomWalk,
+                                                                                            biasedRandomWalk]
 
-dummyTest :: TestTree
-dummyTest= testCase "Random Walk over the Stack" $ do 
-    terminationExplicit example (0 :: Double)  >>= \mbSol ->
-        case mbSol of
-             Nothing  -> assertBool  "No solution found." $ False
-             Just sol -> assertBool  ("Solution: " ++ show ((fromRational sol) :: Double)) $ False
-    
+type Prob = Rational
+makeTestCase :: (ExplicitPopa Word String, String, Prob)
+             -> TestTree
+makeTestCase (popa, name, expected) = testCase name $ do 
+  (mbSol, info) <- terminationExplicit popa expected
+  -- assert that a solution is found
+  assertBool ("No solution found. Additional diagnostic info: " ++ info) (isJust mbSol)
+  let 
+    p = fromJust mbSol
+    debugMsg = "Expected " ++ show expected ++ " but got " ++ show p ++ ". Additional diagnostic information: " ++ info
+  -- assert that the computed termination probability is equal to the expected one.
+  assertBool debugMsg (p == expected)
+  --(fromJust mbSol) @?= expected 
+  
+dummyModel :: (ExplicitPopa Word String, String, Prob)
+dummyModel = (ExplicitPopa
+                { epAlphabet = stlV2Alphabet
+                , epInitial = (0, makeInputSet ["call"])
+                , epopaDeltaPush =
+                    [ (0, [(1, makeInputSet ["ret"], 1 :: Prob)])
+                    ]
+                , epopaDeltaShift =
+                    [ (1, [(2, makeInputSet ["ret"], 1 :: Prob)])
+                    ]
+                , epopaDeltaPop =
+                    [ (2, 0, [(3, makeInputSet ["ret"], 1 :: Prob)])
+                    ]
+                }
+              , "Dummy model"
+              ,  1 :: Prob 
+              )
 
--- State encoding:
--- M0 = 0, F0 = 1, F1 = 2, F2 = 3, M1 = 4,
-pseudoRandomWalk :: ExplicitPopa Word String
-pseudoRandomWalk = ExplicitPopa
-            { epAlphabet = stlV2Alphabet
-            , epInitial = (0, makeInputSet ["call"])
-            , epopaDeltaPush =
-                [ (0, [(0, makeInputSet ["call"], 0.5 :: Double), (1, makeInputSet ["ret"], 0.5 :: Double)])
-                ]
-            , epopaDeltaShift =
-                [ (1, [(2, makeInputSet ["ret"], 1 :: Double)]),
-                  (3, [(2, makeInputSet ["ret"], 1 :: Double)])
-                ]
-            , epopaDeltaPop =
-                [ (2, 1, [(3, makeInputSet ["ret"], 1 :: Double)]),
-                  (2, 0, [(4, makeInputSet ["ret"], 1 :: Double)])
-                ]
-            }
+pseudoRandomWalk :: (ExplicitPopa Word String, String, Prob)
+pseudoRandomWalk = (ExplicitPopa
+                      { epAlphabet = stlV2Alphabet
+                      , epInitial = (0, makeInputSet ["call"])
+                      , epopaDeltaPush =
+                          [ (0, [(0, makeInputSet ["call"], 0.5 :: Prob), (1, makeInputSet ["ret"], 0.5 :: Prob)])
+                          ]
+                      , epopaDeltaShift =
+                          [ (1, [(2, makeInputSet ["ret"], 1 :: Prob)]),
+                            (3, [(2, makeInputSet ["ret"], 1 :: Prob)])
+                          ]
+                      , epopaDeltaPop =
+                          [ (2, 0, [(3, makeInputSet ["ret"], 1 :: Prob)])
+                          ]
+                      }
+                    , "Pseudo Random Walk with a single recursive call"
+                    , 1 :: Prob
+                    )
 
-example :: ExplicitPopa Word String
-example = ExplicitPopa
-            { epAlphabet = stlV2Alphabet
-            , epInitial = (0, makeInputSet ["call"])
-            , epopaDeltaPush =
-                [ (0, [(1, makeInputSet ["ret"], 1 :: Double)])
-                ]
-            , epopaDeltaShift =
-                [ (1, [(2, makeInputSet ["ret"], 1 :: Double)])
-                ]
-            , epopaDeltaPop =
-                [ (2, 0, [(3, makeInputSet ["ret"], 1 :: Double)])
-                ]
-            }
+symmetricRandomWalk :: (ExplicitPopa Word String, String, Prob)
+symmetricRandomWalk = (ExplicitPopa
+                        { epAlphabet = stlV2Alphabet
+                        , epInitial = (0, makeInputSet ["call"])
+                        , epopaDeltaPush =
+                            [ (0, [(1, makeInputSet ["call"], 1 :: Prob)]),
+                              (1, [(2, makeInputSet ["ret"], 1 :: Prob)]),
+                              (6, [(1, makeInputSet ["call"], 1 :: Prob)]),
+                              (8, [(1, makeInputSet ["call"], 1 :: Prob)])
+                            ]
+                        , epopaDeltaShift =
+                            [ (2, [(3, makeInputSet ["ret"], 0.5 :: Prob)]),
+                              (2, [(4, makeInputSet ["ret"], 0.5 :: Prob)]),
+                              (5, [(7, makeInputSet ["ret"],   1 :: Prob)]),
+                              (9, [(7, makeInputSet ["ret"],   1 :: Prob)])
+                            ]
+                        , epopaDeltaPop =
+                            [ (3, 1, [(5, makeInputSet ["ret"], 1 :: Prob)]),
+                              (4, 1, [(6, makeInputSet ["call"], 1 :: Prob)]),
+                              (7, 6, [(8, makeInputSet ["call"], 1 :: Prob)]),
+                              (7, 8, [(9, makeInputSet ["ret"], 1 :: Prob)]),
+                              (7, 0, [(10, makeInputSet ["ret"], 1 :: Prob)])
+                            ]
+                        }
+                      , "Symmetric Random Walk - two recursive calls"
+                      , 1 :: Prob
+                      )
+
+-- example 1: termination probability = 2/3
+biasedRandomWalk :: (ExplicitPopa Word String, String, Prob)
+biasedRandomWalk = (ExplicitPopa
+                      { epAlphabet = stlV3Alphabet
+                      , epInitial = (0, makeInputSet ["call"])
+                      , epopaDeltaPush =
+                        [ (0, [(1, makeInputSet ["stm"],  1 :: Prob)]),
+                          (1, [(2, makeInputSet ["stm"],  0.6 :: Prob)]),
+                          (1, [(3, makeInputSet ["stm"],  0.4 :: Prob)]),
+                          (4, [(1, makeInputSet ["stm"],  1 :: Prob)])
+                        ]
+                      , epopaDeltaShift =
+                        [ (5, [(6, makeInputSet ["stm"],  1 :: Prob)])
+                        ]
+                      , epopaDeltaPop =
+                        [ (2, 1, [(4, makeInputSet ["call"], 1 :: Prob)]),
+                          (3, 1, [(5, makeInputSet ["ret"], 1 :: Prob)]),
+                          (6, 4, [(1, makeInputSet ["stm"], 1 :: Prob)]),
+                          (6, 0, [(7, makeInputSet ["ret"], 1 :: Prob)])  
+                        ] 
+
+                      } 
+                   , "Biased Random Walk - p = 0.6"
+                   , 2 % 3 :: Prob
+                   )
+
+              
+
