@@ -7,7 +7,7 @@
 
 module Pomc.Prob.Z3Termination ( terminationQuery
                                 ) where
-import Prelude hiding (sum)
+import Prelude
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.SummaryChain
 import Pomc.Prec (Prec(..),)
@@ -18,11 +18,9 @@ import Data.Hashable(Hashable)
 import qualified Data.Set as Set
 import Data.Maybe(fromJust, isJust, isNothing)
 
-import Numeric.Sum(sum, kbn)
-
 import Z3.Monad
 
-import Control.Monad (foldM, filterM)
+import Control.Monad (foldM)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST (stToIO, RealWorld)
 

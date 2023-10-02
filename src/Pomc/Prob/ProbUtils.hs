@@ -28,7 +28,7 @@ import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
-type Prob = Double
+type Prob = Rational
 newtype Distr a = Distr [(a, Prob)] deriving Show
 -- a distribution over elements of type a 
 -- with some additional labels of type b

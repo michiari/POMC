@@ -50,7 +50,6 @@ library:
   - random
   - filepath
   - z3
-  - math-functions
 
 executables:
   pomc:
