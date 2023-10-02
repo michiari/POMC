@@ -61,7 +61,7 @@ terminationQuery ::(Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> EncPrecFunc
         -> Prob
-        -> IO (Maybe Rational)
+        -> IO (Maybe Rational, String)
 terminationQuery summChain e p = evalZ3 $ terminationProbability summChain e p
 
 -- compute the probabilities that a chain will terminate
@@ -70,10 +70,10 @@ terminationProbability :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> EncPrecFunc
         -> Prob -- is  the termination prob. of the initial state smaller or equal than this bound?
-        -> Z3 (Maybe Rational)
+        -> Z3 (Maybe Rational, String)
 terminationProbability chain precFun bound =
-  let encode [] _ = return ()
-      encode ((gnId_, rightContext):unencoded) varMap = do
+  let encode [] _ debugMsg = return debugMsg
+      encode ((gnId_, rightContext):unencoded) varMap debugMsg = do
         var <- liftIO . stToIO $ fromJust <$> BH.lookup varMap (gnId_, rightContext)
         gn <- liftIO $ MV.unsafeRead chain gnId_
         let (q,g) = node gn
@@ -82,8 +82,10 @@ terminationProbability chain precFun bound =
             cases
               -- semiconfigurations with empty stack but not the initial one (terminating states -> probability 1)
               | isNothing g && (gnId_ /= 0) = do
-                  assert =<< mkEq var =<< mkRealNum (1 :: Prob)
-                  return []
+                  as <- mkEq var =<< mkRealNum (1 :: Prob)
+                  assert as
+                  asString <- astToString as
+                  return ([], asString)
 
               -- this case includes the initial push
               | isNothing g || precRel == Just Yield =
@@ -97,15 +99,17 @@ terminationProbability chain precFun bound =
                 
               | otherwise = fail "unexpected prec rel"
 
-        new_unencoded <- cases
-        encode (new_unencoded ++ unencoded) varMap
+        (new_unencoded, msg) <- cases
+        encode (new_unencoded ++ unencoded) varMap (debugMsg ++ ".........." ++ msg)
   in do
     newVarMap <- liftIO . stToIO $ BH.new
     new_var <- mkFreshRealVar "(0,-1)"
     liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var -- by convention, we give rightContext -1 to the initial state
-    encode [(0 ::Int , -1 :: Int)] newVarMap -- encode the probability transition relation via a set of assertions
+    debugMsg <- encode [(0 ::Int , -1 :: Int)] newVarMap "" -- encode the probability transition relation via a set of assertions
     assert =<< mkLe new_var =<< mkRealNum bound -- assert the inequality constrain
-    fmap snd . withModel $ \m -> fromJust <$> evalReal m new_var
+    termProb <- fmap snd . withModel $ \m -> fromJust <$> evalReal m new_var
+    return (termProb, debugMsg)
+                              
 
 encodePush :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
@@ -113,7 +117,7 @@ encodePush :: (Eq state, Hashable state, Show state)
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 [(Int, Int)]
+        -> Z3 ([(Int, Int)], String)
 encodePush chain varMap gn rightContext var =
   let closeSummaries pushGn (currs, unencoded_vars) e = do
         summaryGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
@@ -129,15 +133,17 @@ encodePush chain varMap gn rightContext var =
         return (transition:currs, unencoded_vars ++ new_vars)
   in do
     (transitions, unencoded_vars) <- foldM pushEnc ([], []) (internalEdges gn)
-    assert =<< mkEq var =<< mkAdd transitions -- assert the equation for this semiconf
-    return unencoded_vars
+    as <- mkEq var =<< mkAdd transitions -- assert the equation for this semiconf
+    assert as
+    asString <- astToString as
+    return (unencoded_vars, asString)
 
 encodeShift :: (Eq state, Hashable state, Show state)
         => VarMap RealWorld
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 [(Int, Int)]
+        -> Z3 ([(Int, Int)], String)
 encodeShift varMap gn rightContext var =
   let shiftEnc (currs, new_vars) e = do
         (toVar, alreadyEncoded) <- lookupVar varMap (to e, rightContext)
@@ -145,15 +151,17 @@ encodeShift varMap gn rightContext var =
         return (trans:currs, if alreadyEncoded then new_vars else (to e, rightContext):new_vars)
   in do
     (transitions, unencoded_vars) <- foldM shiftEnc ([], []) (internalEdges gn)
-    assert =<< mkEq var =<< mkAdd transitions -- assert the equation for this semiconf
-    return unencoded_vars
+    as <- mkEq var =<< mkAdd transitions -- assert the equation for this semiconf
+    assert as
+    asString <- astToString as
+    return (unencoded_vars, asString)
 
 encodePop :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
-        -> Z3 [(Int, Int)]
+        -> Z3 ([(Int, Int)], String)
 encodePop chain gn rightContext var =
   let checkEdge e = do
         toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
@@ -165,8 +173,9 @@ encodePop chain gn rightContext var =
           then return (prob e)
           else matchContext es
   in do
-    -- TODO: can we have multiple pops that go to the same rightContext?
     -- assert the equation for this semiconf
-    assert =<< mkEq var =<< mkRealNum =<< matchContext (Set.toList $ internalEdges gn)
-    return [] -- pop transitions do not generate new variables
+    as <- mkEq var =<< mkRealNum =<< matchContext (Set.toList $ internalEdges gn)
+    assert as
+    asString <- astToString as
+    return ([], asString) -- pop transitions do not generate new variables
 
