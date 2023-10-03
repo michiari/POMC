@@ -92,7 +92,8 @@ terminationQuery chain precFun query =
               | otherwise = fail "unexpected prec rel"
 
         (new_unencoded, eq) <- cases
-        encode (new_unencoded ++ unencoded) varMap (eq:eqs)
+        geZero <- mkGe var =<< mkRational 0
+        encode (new_unencoded ++ unencoded) varMap ([eq,geZero] ++ eqs)
   in do
     newVarMap <- liftIO . stToIO $ BH.new
     new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
