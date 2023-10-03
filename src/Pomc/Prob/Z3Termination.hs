@@ -175,14 +175,14 @@ encodePop chain gn rightContext var =
 encodeQuery :: TermQuery -> AST -> [AST] -> VarMap  -> Z3 ()
 encodeQuery q
   | ApproxQuery <- q = encodeApproxQuery
-  | (LT bound) <- q  = encodeComparison mkExistsConst mkLt bound
-  | (LE bound) <- q  = encodeComparison mkExistsConst mkLe bound
-  | (GT bound) <- q  = encodeComparison mkForallConst mkGt bound
-  | (GE bound) <- q  = encodeComparison mkForallConst mkGe bound
-  where encodeComparison quant comp bound var eqs varMap = do 
+  | (LT bound) <- q  = encodeComparison return mkExistsConst mkLt bound
+  | (LE bound) <- q  = encodeComparison return mkExistsConst mkLe bound
+  | (GT bound) <- q  = encodeComparison mkNot  mkExistsConst mkLe bound
+  | (GE bound) <- q  = encodeComparison mkNot  mkExistsConst mkLt bound
+  where encodeComparison maybeneg quant comp bound var eqs varMap = do 
           varDeclarations <- mapM toApp =<< (liftIO . stToIO $ map snd <$> BC.toList varMap)
           ineq <- comp var =<< mkRealNum bound
-          assert =<< quant [] varDeclarations =<< mkAnd (ineq:eqs)
+          assert =<< maybeneg =<< quant [] varDeclarations =<< mkAnd (ineq:eqs)
         encodeApproxQuery = error "not implemented yet"
 
 computeResult :: TermQuery -> AST -> Z3 TermResult
