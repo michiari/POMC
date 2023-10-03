@@ -17,7 +17,7 @@ import Data.Ratio((%))
 
 tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Termination Tests" $ [dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests,
-                                                                                            biasedRandomWalkTests]
+                                                              biasedRandomWalkTests, nestedRandomWalkTests]
 
 type Prob = Rational
 type TestCase = (String, (ExplicitPopa Word String -> IO (Bool, String)))
@@ -166,3 +166,46 @@ expectedBiasedRandomWalk = [ False, False, True,
                              True, True, False,
                              True, True, False
                            ]
+
+
+nestedRandomWalkTests :: TestTree
+nestedRandomWalkTests = testGroup "Nested Random WalkTests" $
+  map (makeTestCase nestedRandomWalk) (zip termQueries expectedNestedRandomWalk)
+
+-- termination probability = 0.5?
+nestedRandomWalk :: (ExplicitPopa Word String)
+nestedRandomWalk = ExplicitPopa
+                        { epAlphabet = stlV3Alphabet
+                        , epInitial = (0, makeInputSet ["call"])
+                        , epopaDeltaPush =
+                            [ (0, [(1, makeInputSet ["stm"],   1 :: Prob)]),
+                              (1, [(2, makeInputSet ["stm"], 0.5 :: Prob)]),
+                              (1, [(3, makeInputSet ["stm"], 0.5 :: Prob)]),
+                              (4, [(5, makeInputSet ["stm"],   1 :: Prob)]),
+                              (5, [(6, makeInputSet ["stm"], 0.5 :: Prob)]),
+                              (5, [(7, makeInputSet ["stm"], 0.5 :: Prob)]),
+                              (8, [(5, makeInputSet ["stm"],   1 :: Prob)]),
+                              (9, [(1, makeInputSet ["stm"],   1 :: Prob)])
+                            ]
+                        , epopaDeltaShift =
+                            [ (10, [(11, makeInputSet ["stm"], 1 :: Prob)]),
+                              (13, [(14, makeInputSet ["stm"], 1 :: Prob)])
+                            ]
+                        , epopaDeltaPop =
+                            [ (2, 1, [(4, makeInputSet ["call"], 1 :: Prob)]),
+                              (6, 5, [(8, makeInputSet ["call"], 1 :: Prob)]),
+                              (7, 5, [(9, makeInputSet ["call"], 1 :: Prob)]),
+                              (3, 1, [(10, makeInputSet ["ret"], 1 :: Prob)]),
+                              (11, 0, [(12, makeInputSet ["ret"], 1 :: Prob)]),
+                              (11, 9, [(13, makeInputSet ["ret"], 1 :: Prob)]),
+                              (14, 8, [(9, makeInputSet ["call"], 1 :: Prob)]),
+                              (14, 10, [(4, makeInputSet ["ret"], 1 :: Prob)])     
+                            ]
+                        }
+
+expectedNestedRandomWalk :: [Bool]
+expectedNestedRandomWalk = [ False, False, True,
+                             False, True, True,
+                             True, False, False,
+                             True, True, False
+                            ]
