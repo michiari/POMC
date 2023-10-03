@@ -64,7 +64,7 @@ terminationQuery :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> EncPrecFunc
         -> TermQuery
-        -> Z3 (Maybe TermResult, String)
+        -> Z3 (TermResult, String)
 terminationQuery chain precFun query =
   let encode [] _  eqs = return eqs
       encode ((gnId_, rightContext):unencoded) varMap eqs = do
@@ -107,8 +107,8 @@ terminationQuery chain precFun query =
       "" 
       equations
     encodeQuery query new_var equations newVarMap
-    termProb <- fmap snd . withModel $ \m -> fromJust <$> evalReal m new_var
-    return (termProb, debugMsg)
+    termRes <- computeResult query new_var 
+    return (termRes, debugMsg)
                               
 encodePush :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
