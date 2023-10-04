@@ -46,6 +46,8 @@ import Data.Hashable
 
 import qualified Pomc.DoubleSet as DS
 
+import Control.Monad(when)
+
 import Control.DeepSeq(NFData(..))
   
 data Edge = Internal -- a transition
@@ -107,12 +109,10 @@ newGraph iniNodes = do
   forM_ (iniNodes) $ \key -> do
     -- some initial nodes may be duplicate
     duplicate <- THT.lookupId tht (decode key)
-    if isNothing duplicate
-      then do
-        newId <- freshPosId newIdSequence
-        THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = []} 
-        DS.insert newInitials (newId, True)
-      else return ()
+    when (isNothing duplicate) $ do
+      newId <- freshPosId newIdSequence
+      THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = []} 
+      DS.insert newInitials (newId, True)
   return $ Graph { idSeq = newIdSequence
                  , gnMap = tht
                  , bStack = newBS
@@ -331,7 +331,7 @@ merge graph idents areFinal = do
 nullSummaries :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
               => Graph s state 
               -> ST.ST s Bool
-nullSummaries graph = (readSTRef $ summaries graph) >>= return . null
+nullSummaries graph = null <$> readSTRef (summaries graph)
 
 toCollapsePhase :: (NFData state, SatState state, Eq state, Hashable state, Show state) 
                 => Graph s state 
