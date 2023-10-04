@@ -16,7 +16,11 @@ import Pomc.Check (EncPrecFunc)
 
 
 import Data.Hashable(Hashable)
+
 import qualified Data.Set as Set
+
+import qualified Data.IntMap.Strict as Map 
+
 import Data.Maybe(fromJust, isJust, isNothing)
 
 import Z3.Monad
@@ -86,8 +90,9 @@ terminationQuery chain precFun query =
               | precRel == Just Equal =
                   encodeShift varMap gn rightContext var
 
-              | precRel == Just Take =
-                  encodePop chain gn rightContext var
+              | precRel == Just Take = do
+                    equation <- mkEq var =<< mkRealNum (Map.findWithDefault 0 rightContext (popContexts gn))
+                    return ([], equation) -- pop transitions do not generate new variables
                 
               | otherwise = fail "unexpected prec rel"
 
@@ -151,27 +156,6 @@ encodeShift varMap gn rightContext var =
     (transitions, unencoded_vars) <- foldM shiftEnc ([], []) (internalEdges gn)
     equation <- mkEq var =<< mkAdd transitions -- generate the equation for this semiconf
     return (unencoded_vars, equation)
-
-encodePop :: (Eq state, Hashable state, Show state)
-        => SummaryChain RealWorld state
-        -> GraphNode state
-        -> Int -- the Id of StateId of the right context of this chain
-        -> AST
-        -> Z3 ([(Int, Int)], AST)
-encodePop chain gn rightContext var =
-  let checkEdge e = do
-        toGn <- liftIO . stToIO $ MV.unsafeRead chain (to e)
-        return $ rightContext == (getId . fst . node $ toGn)
-      matchContext [] = return (0 :: Prob)
-      matchContext (e:es) = do 
-        found <- checkEdge e 
-        if found
-          then return (prob e) -- we return the probability of the first one matched
-          else matchContext es
-  in do
-    -- generate the equation for this semiconf
-    equation <- mkEq var =<< mkRealNum =<< matchContext (Set.toList $ internalEdges gn)
-    return ([], equation) -- pop transitions do not generate new variables
 
 encodeQuery :: TermQuery -> AST -> [AST] -> VarMap  -> Z3 ()
 encodeQuery q
