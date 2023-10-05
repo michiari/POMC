@@ -20,7 +20,8 @@ module Pomc.Prob.ProbUtils ( Prob
                         , freshPosId
                         , decode
                         , isApprox
-                        ) where
+                        ) where                        
+import Prelude hiding (GT, LT)
 
 import Pomc.State(Input)
 import Pomc.Encoding (nat, BitEncoding)
