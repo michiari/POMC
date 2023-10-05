@@ -18,8 +18,8 @@ import Pomc.Prob.SummaryChain
 
 import Data.Hashable(Hashable)
 
-import Data.Set(Set)
-import qualified Data.Set as Set
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 
 import qualified Data.IntMap.Strict as Map
 
@@ -81,7 +81,7 @@ terminationQuery chain precFun query =
             precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
             --update the set of pop semiconfs, if needed
             recordPop = isApprox query && isJust g && precRel == Just Take 
-            new_pops = if recordPop then Set.insert gnId_ pops else pops
+            new_pops = if recordPop then IntSet.insert gnId_ pops else pops
             cases
               -- semiconfigurations with empty stack but not the initial one (terminating states -> probability 1)
               | isNothing g && (gnId_ /= 0) = do
@@ -107,7 +107,7 @@ terminationQuery chain precFun query =
     newVarMap <- liftIO . stToIO $ BH.new
     new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
     liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var
-    pops <- encode [(0 ::Int , -1 :: Int)] newVarMap Set.empty -- encode the probability transition relation via a set of Z3 formulas represented via ASTs
+    pops <- encode [(0 ::Int , -1 :: Int)] newVarMap IntSet.empty -- encode the probability transition relation via a set of Z3 formulas represented via ASTs
     solveQuery query new_var pops chain newVarMap
 
 encodePush :: (Eq state, Hashable state, Show state)
@@ -153,7 +153,7 @@ encodeShift varMap gn rightContext var =
     assert =<< mkGe var =<< mkRational 0
     return unencoded_vars
 
-solveQuery :: TermQuery -> AST -> Set Int -> SummaryChain RealWorld state -> VarMap  -> Z3 TermResult
+solveQuery :: TermQuery -> AST -> IntSet -> SummaryChain RealWorld state -> VarMap  -> Z3 TermResult
 solveQuery q
   | ApproxQuery <- q = encodeApproxQuery
   | (LT bound) <- q  = encodeComparison mkLt bound
@@ -184,10 +184,10 @@ groupASTs varMap l = do
   BH.mapM_ (\(key, ast) -> MV.unsafeModify new_mv (ast :) (fst key)) varMap
   V.freeze new_mv
 
-checkDeficiency :: Set Int -> Int -> [AST] -> Z3 AST
+checkDeficiency :: IntSet -> Int -> [AST] -> Z3 AST
 checkDeficiency pops i asts = do
   sumAst <- mkAdd asts 
-  unless (Set.member i pops) $ do -- pop semiconfs do not need additional constraints
+  unless (IntSet.member i pops) $ do -- pop semiconfs do not need additional constraints
     less1 <- mkLt sumAst =<< mkRational (1 :: Prob)
     r <- checkAssumptions [less1]
     let cases 
