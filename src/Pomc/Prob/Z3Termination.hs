@@ -33,6 +33,7 @@ import qualified Control.Monad.ST as ST
 import Control.Monad.ST (stToIO, RealWorld)
 
 import qualified Data.Vector.Mutable as MV
+import Data.Vector(Vector,(!))
 import qualified Data.Vector as V
 
 import qualified Data.HashTable.ST.Basic as BH
@@ -155,18 +156,23 @@ encodeShift varMap gn rightContext var =
 
 solveQuery :: TermQuery -> AST -> IntSet -> SummaryChain RealWorld state -> VarMap  -> Z3 TermResult
 solveQuery q
-  | ApproxQuery <- q = encodeApproxQuery
-  | (LT bound) <- q  = encodeComparison mkLt bound
-  | (LE bound) <- q  = encodeComparison mkLe bound
-  | (GT bound) <- q  = encodeComparison mkLe bound
-  | (GE bound) <- q  = encodeComparison mkLt bound
+  | ApproxAllQuery <- q     = encodeApproxAllQuery
+  | ApproxSingleQuery <- q  = encodeApproxSingleQuery
+  | (LT bound) <- q         = encodeComparison mkLt bound
+  | (LE bound) <- q         = encodeComparison mkLe bound
+  | (GT bound) <- q         = encodeComparison mkLe bound
+  | (GE bound) <- q         = encodeComparison mkLt bound
   where encodeComparison comp bound var _ _ _ = do
           assert =<< comp var =<< mkRealNum bound
           parseResult q <$> check
-        encodeApproxQuery _ pops chain varMap = do 
+        encodeApproxAllQuery _ pops chain varMap = do 
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length chain)
           sumAstVec <- V.imapM (checkDeficiency pops) vec 
-          fmap (ApproxResult . fromJust . snd) . withModel $ \m -> fromJust <$> mapEval evalReal m sumAstVec
+          fmap (ApproxAllResult . fromJust . snd) . withModel $ \m -> fromJust <$> mapEval evalReal m sumAstVec
+        encodeApproxSingleQuery _ pops chain varMap = do 
+          vec <- liftIO . stToIO $ groupASTs varMap (MV.length chain)
+          sumAstVec <- V.imapM (checkDeficiency pops) vec 
+          fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> fromJust <$> evalReal m (sumAstVec ! 0)
           
 -- Query solving helpers
 parseResult :: TermQuery -> Result -> TermResult
@@ -178,7 +184,7 @@ parseResult     _  Sat   = TermSat
 parseResult     _  Unsat = TermUnsat 
 parseResult     _  Undef = error "Undef result error"
 
-groupASTs :: VarMap -> Int -> ST.ST RealWorld (V.Vector [AST])
+groupASTs :: VarMap -> Int -> ST.ST RealWorld (Vector [AST])
 groupASTs varMap l = do
   new_mv <- MV.replicate l []
   BH.mapM_ (\(key, ast) -> MV.unsafeModify new_mv (ast :) (fst key)) varMap
