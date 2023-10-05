@@ -5,12 +5,13 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Prob.ProbUtils ( Prob 
+module Pomc.Prob.ProbUtils ( Prob
                         , Distr(..)
                         , RichDistr
                         , Label
                         , StateId(..)
                         , Stack
+                        , ProbDelta(..)
                         , SIdGen
                         , TermQuery(..)
                         , TermResult(..)
@@ -18,10 +19,12 @@ module Pomc.Prob.ProbUtils ( Prob
                         , wrapState
                         , freshPosId
                         , decode
+                        , isApprox
                         ) where
 
 import Pomc.State(Input)
-import Pomc.Encoding(nat)
+import Pomc.Encoding (nat, BitEncoding)
+import Pomc.Check (EncPrecFunc)
 
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
@@ -29,6 +32,8 @@ import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
+
+import qualified Data.Vector as V
 
 type Prob = Rational
 newtype Distr a = Distr [(a, Prob)] deriving Show
@@ -46,7 +51,7 @@ type HashTable s k v = BH.HashTable s k v
 -- States with unique IDs
 data StateId state = StateId { getId :: !Int
                              , getState :: state
-                             , getLabel :: Label 
+                             , getLabel :: Label
                              } deriving (Show)
 
 instance Eq (StateId state) where
@@ -90,14 +95,28 @@ wrapState sig q l = do
 -- Stack symbol: (input token, state) || Bottom if empty stack
 type Stack state = Maybe (Input, StateId state)
 
+-- a type for the probabilistic delta relation, parametric with respect to the type of the state
+data ProbDelta state = Delta
+  { bitenc :: BitEncoding
+  , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
+  , deltaPush :: state -> RichDistr state Label-- deltaPush relation
+  , deltaShift :: state -> RichDistr state Label  -- deltaShift relation
+  , deltaPop :: state -> state -> RichDistr state Label -- deltapop relation
+  }
+
 -- different termination queries
 -- Approx requires to approximate the termination probability
 data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxQuery
   deriving Show
 
+-- does the query require to compute some numbers?
+isApprox :: TermQuery -> Bool 
+isApprox ApproxQuery = True
+isApprox _ = False
+
 -- different possible results of a termination quer
 -- Estimate represents the approximated probability to terminate of the given popa
-data TermResult = TermSat | TermUnsat | ApproxResult Prob
+data TermResult = TermSat | TermUnsat | ApproxResult (V.Vector Prob)
   deriving Show
 
 freshPosId :: STRef s Int -> ST.ST s Int
