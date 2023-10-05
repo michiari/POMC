@@ -20,6 +20,9 @@ module Pomc.Prob.ProbUtils ( Prob
                         , freshPosId
                         , decode
                         , isApprox
+                        , toBool
+                        , toProb
+                        , toProbVec
                         ) where                        
 import Prelude hiding (GT, LT)
 
@@ -34,7 +37,7 @@ import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
-import qualified Data.Vector as V
+import Data.Vector(Vector)
 
 type Prob = Rational
 newtype Distr a = Distr [(a, Prob)] deriving Show
@@ -106,19 +109,35 @@ data ProbDelta state = Delta
   }
 
 -- different termination queries
--- Approx requires to approximate the termination probability
-data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxQuery
+-- ApproxQuery requires to approximate the termination probabilities of all semiconfs of the summary chain
+-- ApproxTermination requires to approximate just the overall termination probability of the given popa
+data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxAllQuery | ApproxSingleQuery
   deriving Show
 
 -- does the query require to compute some numbers?
 isApprox :: TermQuery -> Bool 
-isApprox ApproxQuery = True
+isApprox ApproxAllQuery    = True
+isApprox ApproxSingleQuery = True
 isApprox _ = False
 
--- different possible results of a termination quer
--- Estimate represents the approximated probability to terminate of the given popa
-data TermResult = TermSat | TermUnsat | ApproxResult (V.Vector Prob)
+-- different possible results of a termination query
+-- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 
+-- 
+data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob) | ApproxSingleResult Prob
   deriving Show
+
+toBool :: TermResult -> Bool 
+toBool TermSat = True 
+toBool TermUnsat = False 
+toBool r = error $ "cannot convert a non boolean result. Got instead: " ++ show r
+
+toProb :: TermResult -> Prob 
+toProb (ApproxSingleResult p) = p
+toProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
+
+toProbVec :: TermResult -> Vector Prob
+toProbVec (ApproxAllResult v) = v 
+toProbVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
 freshPosId :: STRef s Int -> ST.ST s Int
 freshPosId idSeq = do

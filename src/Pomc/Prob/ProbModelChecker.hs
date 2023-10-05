@@ -9,27 +9,40 @@
 
 module Pomc.Prob.ProbModelChecker ( Popa(..)
                                   , ExplicitPopa(..)
-                                  , terminationExplicit
+                                  , terminationLTExplicit
+                                  , terminationLEExplicit
+                                  , terminationGTExplicit
+                                  , terminationGEExplicit
+                                  , terminationApproxExplicit
                                   ) where
-
+import Prelude hiding (LT,GT)
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
-import qualified Pomc.Encoding as E
-import Data.Set (Set)
-import qualified Data.Set as Set 
-
-import qualified Data.Map as Map
-
+import Pomc.Potl (Formula(T))
 import Pomc.Check(makeOpa)
 import Pomc.PropConv ( convProps, PropConv(encodeProp) )
 
-import Pomc.Prob.SummaryChain(decomposeGraph, ProbDelta)
+import qualified Pomc.Encoding as E
+
+import Pomc.Prob.SummaryChain(decomposeGraph)
 import qualified Pomc.Prob.SummaryChain as SC
+
+import qualified Pomc.Prob.CustoMap as CM
+
 import Pomc.Prob.Z3Termination(terminationQuery)
-import Pomc.Prob.ProbUtils(Prob, RichDistr, Label)
-import Data.Hashable
-import Pomc.Potl (Formula(T))
+import Pomc.Prob.ProbUtils
+
+import Data.Set (Set)
+import qualified Data.Set as Set
+import qualified Data.Map as Map
+
+import Data.Bifunctor(first)
+
+
+import Data.Hashable ( Hashable )
 import Control.Monad.ST (stToIO)
+
+import Z3.Monad (evalZ3)
 
 data Popa s a = Popa
   { alphabet       :: Alphabet a -- OP alphabet
@@ -49,44 +62,62 @@ data ExplicitPopa s a = ExplicitPopa
   , epopaDeltaPop    :: [(s, s, RichDistr s (Set (Prop a)))] -- pop transition prob. distribution
   } deriving (Show)
 
+terminationLTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
+terminationLTExplicit popa bound = (first toBool) <$> terminationExplicit popa (LT bound)
+
+terminationLEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
+terminationLEExplicit popa bound = (first toBool) <$> terminationExplicit popa (LE bound)
+
+terminationGTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
+terminationGTExplicit popa bound = (first toBool) <$> terminationExplicit popa (GT bound)
+
+terminationGEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
+terminationGEExplicit popa bound = (first toBool) <$> terminationExplicit popa (GE bound)
+
+terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> IO (Prob, String)
+terminationApproxExplicit popa = (first toProb) <$> terminationExplicit popa ApproxSingleQuery
 
 terminationExplicit :: (Ord s, Hashable s, Show s, Ord a)
                     => ExplicitPopa s a
-                    -> Prob
-                    -> IO (Maybe Rational)
-terminationExplicit popa prob = 
-  let 
+                    -> TermQuery
+                    -> IO (TermResult, String)
+terminationExplicit popa query =
+  let
     (sls, prec) = epAlphabet popa
     (_, tprec, [tsls], pconv) = convProps T prec [sls]
-    
+
     (bitenc, precFunc, _, _, _, _, _, _) =
       makeOpa T False (tsls, tprec) (\_ _ -> True)
 
     maybeList Nothing = []
     maybeList (Just l) = l
-    
+
     -- generate the delta relation of the input opa
     encodeDistr = map (\(s, b, p) -> (s, E.encodeInput bitenc (Set.map (encodeProp pconv) b), p))
-    makeDeltaMapI delta = Map.fromList $
+    makeDeltaMapI delta = Map.fromListWith (++) $
       map (\(q, distr) -> (q, encodeDistr  distr))
           delta
     deltaPush  = makeDeltaMapI  (epopaDeltaPush popa)
     deltaShift  = makeDeltaMapI  (epopaDeltaShift popa)
-    popaDeltaPush  q = maybeList $ Map.lookup q (deltaPush ) 
-    popaDeltaShift  q = maybeList $ Map.lookup q (deltaShift  )
+    popaDeltaPush  q = maybeList $ Map.lookup q deltaPush
+    popaDeltaShift  q = maybeList $ Map.lookup q deltaShift
 
-    makeDeltaMapS  delta = Map.fromList $
+    makeDeltaMapS  delta = Map.fromListWith (++) $
       map (\(q, q', distr) -> ((q, q'), encodeDistr  distr))
           delta
-    popaDeltaPop  q q' = maybeList $ Map.lookup (q, q') $ makeDeltaMapS   (epopaDeltaPop popa) 
+    deltaPop = makeDeltaMapS   (epopaDeltaPop popa)
+    popaDeltaPop  q q' = maybeList $ Map.lookup (q, q') deltaPop
 
-    pDelta = SC.Delta
-            { SC.bitenc = bitenc
-            , SC.prec = precFunc
-            , SC.deltaPush = popaDeltaPush
-            , SC.deltaShift = popaDeltaShift
-            , SC.deltaPop = popaDeltaPop
+    pDelta = Delta
+            { bitenc = bitenc
+            , prec = precFunc
+            , deltaPush = popaDeltaPush
+            , deltaShift = popaDeltaShift
+            , deltaPop = popaDeltaPop
             }
-  in do 
+
+  in do
     sc <- stToIO $ decomposeGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
-    terminationQuery sc precFunc prob
+    scString <- stToIO $ CM.showMap sc
+    p <- evalZ3 $ terminationQuery sc precFunc query
+    return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
