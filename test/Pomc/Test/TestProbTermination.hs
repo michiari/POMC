@@ -11,35 +11,42 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Pomc.Test.OPMs (stlV2Alphabet, stlV3Alphabet, makeInputSet)
 import Data.Maybe(fromJust, isJust)
-import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), terminationLTExplicit, terminationLEExplicit, terminationGTExplicit, terminationGEExplicit)
+import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), terminationLTExplicit, terminationLEExplicit, terminationGTExplicit, terminationGEExplicit,
+                                  terminationApproxExplicit)
 
 import Data.Ratio((%))
 
 tests :: TestTree
-tests = testGroup "ProbModelChecking.hs Termination Tests" $ [dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests,
-                                                              biasedRandomWalkTests, nestedRandomWalkTests]
+tests = testGroup "ProbModelChecking.hs Termination Tests" $ 
+            [ testGroup "Boolean Termination Tests" [dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests,
+                                                     biasedRandomWalkTests, nestedRandomWalkTests]
+            , testGroup "Estimating Termination Probabilities" 
+                $ map (\(popa, expected, s) -> makeTestCase popa ((s, terminationApproxExplicit), expected)) exactTerminationProbabilities
+            ]
 
 type Prob = Rational
-type TestCase = (String, (ExplicitPopa Word String -> IO (Bool, String)))
+type TestCase a = (String, (ExplicitPopa Word String -> IO (a, String)))
 
-termQueries :: [TestCase]
+termQueries :: [TestCase Bool]
 termQueries = [(s ++ show b, \popa -> f popa b) | (s,f) <- termFunctions, b <- termBounds]
   where termFunctions = [("LT ", terminationLTExplicit), ("LE ", terminationLEExplicit), ("GT ", terminationGTExplicit), ("GE ", terminationGEExplicit)]
         termBounds = [0.0, 0.5, 1.0]
 
-makeTestCase :: (ExplicitPopa Word String)
-             -> (TestCase, Bool)
+exactTerminationProbabilities :: [(ExplicitPopa Word String, Prob, String)]
+exactTerminationProbabilities = [(dummyModel, 1, "Dummy Model"), 
+                                 (pseudoRandomWalk, 1, "Pseudo Random Walk"), 
+                                 (symmetricRandomWalk, 1, "Symmetric Random Walk"),
+                                 (biasedRandomWalk, 2%3, "Biased Random Walk"), 
+                                 (nestedRandomWalk, 1%2, "Nested Random Walk")]
+
+makeTestCase :: (Eq a, Show a)
+             => (ExplicitPopa Word String)
+             -> (TestCase a, a)
              -> TestTree
 makeTestCase popa ((name, query), expected) = testCase name $ do 
   (res, info) <- query popa
-  -- assert that a solution is found
-  --assertBool ("No solution found. Additional diagnostic info: " ++ info) (isJust mbSol)
-  let 
-    --p = fromJust mbSol
-    debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
-  -- assert that the computed termination probability is equal to the expected one.
+  let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
   assertBool debugMsg (res == expected)
-  --(fromJust mbSol) @?= expected 
 
 dummyModelTests :: TestTree
 dummyModelTests = testGroup "Dummy Model Tests" $
