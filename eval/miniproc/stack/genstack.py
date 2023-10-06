@@ -4,9 +4,9 @@ import os.path as path
 from os import makedirs
 
 all_formulas = [
-    'G ([|modified] --> ~(XNu exc Or PNu exc))',
-    'G (call And ("Stack::push" Or "Stack::pop") --> ~ (T HUd [|modified]))',
-    'G ((call And ("Stack::push" Or "Stack::pop") And XNd ret) --> ~ (T Ud (han And "Stack" And (~han Ud ("T" And PNu exc)))))'
+    ('safety_xnext', 'G ([|modified] --> ~(XNu exc Or PNu exc))'),
+    ('safety_huntil', 'G (call And ("Stack::push" Or "Stack::pop") --> ~ (T HUd [|modified]))'),
+    ('neutrality', 'G ((call And ("Stack::push" Or "Stack::pop") And XNd ret) --> ~ (T Ud (han And "Stack" And (~han Ud ("T" And PNu exc)))))')
 ]
 
 bench_template = \
@@ -44,17 +44,9 @@ if __name__ == '__main__':
     unsafe_template = load_prog_unsafe()
     safe_template = load_prog_safe()
 
-    wfrom = 8
-    wto = 16
+    wfrom = 1
+    wto = 8
 
-    gen_suite('xnext/unsafe', 'unsafe_{width:02d}.pomc', all_formulas[0:1], unsafe_template, wfrom, wto, 32)
-    gen_suite('xnext/safe', 'safe_{width:02d}.pomc', all_formulas[0:1], safe_template, wfrom, wto, 32)
-
-    gen_suite('xnext/nondet_unsafe', 'nondet_unsafe_{width:02d}.pomc', all_formulas[0:1], unsafe_template, wfrom, wto)
-    gen_suite('xnext/nondet_safe', 'nondet_safe_{width:02d}.pomc', all_formulas[0:1], safe_template, wfrom, wto)
-
-    gen_suite('huntil/unsafe', 'unsafe_{width:02d}.pomc', all_formulas[1:2], unsafe_template, wfrom, wto, 32)
-    gen_suite('huntil/safe', 'safe_{width:02d}.pomc', all_formulas[1:2], safe_template, wfrom, wto, 32)
-
-    gen_suite('huntil/nondet_unsafe', 'nondet_unsafe_{width:02d}.pomc', all_formulas[1:2], unsafe_template, wfrom, wto)
-    gen_suite('huntil/nondet_safe', 'nondet_safe_{width:02d}.pomc', all_formulas[1:2], safe_template, wfrom, wto)
+    for fname, f in all_formulas:
+        gen_suite(path.join('unsafe', fname), '{width:02d}.pomc', [f], unsafe_template, wfrom, wto)
+        gen_suite(path.join('safe', fname), '{width:02d}.pomc', [f], unsafe_template, wfrom, wto)
