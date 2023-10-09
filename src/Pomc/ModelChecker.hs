@@ -43,8 +43,6 @@ import qualified Data.HashMap.Strict as Map
 import GHC.Generics (Generic)
 import Data.Hashable
 
-import Control.DeepSeq(NFData(..), deepseq)
-
 data ExplicitOpa s a = ExplicitOpa
   { eoAlphabet :: Alphabet a -- OP alphabet
   , eoInitials   :: [s] -- initial states of the OPA
@@ -56,9 +54,6 @@ data ExplicitOpa s a = ExplicitOpa
 
 -- a specific type for the model checker state: the parametric s is for the input OPA, the second field is for the generated opa from the input formula
 data MCState s = MCState s State deriving (Generic, Eq, Show, Ord)
-
-instance NFData (MCState s) where
-  rnf (MCState _ s2) = s2 `deepseq` ()
 
 instance Hashable s => Hashable (MCState s)
 

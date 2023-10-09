@@ -30,8 +30,6 @@ import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
-import Control.DeepSeq(NFData(..), deepseq)
-
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
@@ -60,9 +58,6 @@ instance Ord (StateId state) where
 
 instance Hashable (StateId state) where
   hashWithSalt salt s = hashWithSalt salt $ getId s
-
-instance (NFData state) => NFData (StateId state) where
-  rnf (StateId i s) = i `deepseq` s `deepseq` ()
 
 -- a type to keep track of state to id relation
 data SIdGen s state = SIdGen
