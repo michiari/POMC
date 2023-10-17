@@ -49,4 +49,4 @@ if __name__ == '__main__':
 
     for fname, f in all_formulas:
         gen_suite(path.join('unsafe', fname), '{width:02d}.pomc', [f], unsafe_template, wfrom, wto)
-        gen_suite(path.join('safe', fname), '{width:02d}.pomc', [f], unsafe_template, wfrom, wto)
+        gen_suite(path.join('safe', fname), '{width:02d}.pomc', [f], safe_template, wfrom, wto)
