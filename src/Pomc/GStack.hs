@@ -15,8 +15,6 @@ module Pomc.GStack ( GStack
                    , multPop
                    , popWhile
                    , popWhile_
-                   , peekWhile
-                   , peekWhileM
                    ) where
 
 import Control.Monad.ST (ST)
@@ -88,20 +86,3 @@ popWhile_ (gsref, lenref) cond =
     gs <- readSTRef gsref
     l <- readSTRef lenref
     recurse (cond $ head gs) gs l 
-
-peekWhile :: GStack s v -> (v -> Bool) -> ST s [v]
-peekWhile (gsref, _) cond = do 
-    gs <- readSTRef gsref
-    return $ takeWhile cond gs 
-
-peekWhileM :: GStack s v -> (v -> ST s Bool) -> ST s [v]
-peekWhileM (gsref, _) cond = 
-  let recurse gs acc = do 
-        condEval <- cond $ head gs 
-        if condEval 
-          then recurse (tail gs) (head gs : acc)
-          else return acc 
-  in do 
-    gs <- readSTRef gsref
-    recurse gs []
-

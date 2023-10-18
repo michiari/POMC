@@ -19,7 +19,6 @@ module Pomc.SatUtil( SatState(..)
 import Pomc.State(Input, State(..))
 import Pomc.Encoding (BitEncoding, extractInput, nat)
 
-import Data.Maybe
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 
@@ -79,25 +78,20 @@ wrapState :: (Eq state, Hashable state)
           -> ST.ST s (StateId state)
 wrapState sig q = do
   qwrapped <- H.lookup (stateToId sig) q
-  if isJust qwrapped
-    then return $ fromJust qwrapped
-    else do
+  maybe (do
     let idSeq = idSequence sig
     newId <- readSTRef idSeq
     modifySTRef' idSeq (+1)
     let newQwrapped = StateId newId q
     H.insert (stateToId sig) q newQwrapped
-    return newQwrapped
+    return newQwrapped) return qwrapped
 
 -- wrap a list of states into the ST monad, giving to each of them a unique ID
 wrapStates :: (Eq state, Hashable state)
            => SIdGen s state -- keep track of state to id relation
            -> [state]
            -> ST.ST s (Vector (StateId state))
-wrapStates sig states = do
-  wrappedList <- V.mapM (wrapState sig) (V.fromList states)
-  return wrappedList
-
+wrapStates sig states = V.mapM (wrapState sig) (V.fromList states)
 
 -- Stack symbol: (input token, state) || Bottom if empty stack
 type Stack state = Maybe (Input, StateId state)

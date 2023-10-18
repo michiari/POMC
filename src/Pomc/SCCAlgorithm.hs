@@ -6,7 +6,6 @@
 -}
 
 module Pomc.SCCAlgorithm ( Graph
-                         , SummaryBody
                          , Edge
                          , newGraph
                          , alreadyDiscovered
@@ -25,15 +24,20 @@ module Pomc.SCCAlgorithm ( Graph
                          ) where
 
 import Pomc.SatUtil
-import qualified  Pomc.TripleHashTable as THT
 import Pomc.GStack(GStack)
 import qualified Pomc.GStack as GS
 
-import Control.Monad (forM_, foldM)
-import qualified Control.Monad.ST as ST
+import qualified Pomc.DoubleSet as DS
 
+import Pomc.OmegaEncoding(OmegaBitencoding, OmegaEncodedSet)
+import qualified Pomc.OmegaEncoding as OE
+
+import Control.Monad (forM_, foldM, when)
+import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
-import Data.Maybe
+
+import qualified Data.HashTable.ST.Basic as BH
+import qualified Pomc.MaybeMap as MM
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -41,36 +45,31 @@ import qualified Data.Set as Set
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 
-import Data.List(partition)
+import Data.IntMap.Strict(IntMap)
+import qualified Data.IntMap.Strict as Map
 
+import Data.List(partition)
 import Data.Vector (Vector)
+import Data.Maybe
 
 import Data.Hashable
 
-import qualified Pomc.DoubleSet as DS
-
-import Control.Monad(when)
-
-data Edge = Internal -- a transition
-  { to  :: Int 
-  } | Summary -- a chain support
-  { to :: Int
-  , body :: IntSet
-  } deriving (Show, Eq, Ord)
-
-type SummaryBody = IntSet
-
+-- the recordedSatSet is needed to determine whether we have to re-explore a semiconfiguration
 data GraphNode state = SCComponent
-  { gnId     :: Int
-  , iValue   :: Int -- changes at each iteration of the Gabow algorithm
-  , nodes    :: [(StateId state, Stack state)]
-  , edges    :: [Edge]
-  , seIdents :: IntSet -- nodes of the self edges
+  { gnId           :: Int
+  , iValue         :: Int -- changes at each iteration of the Gabow algorithm
+  , semiconfs      :: [(StateId state, Stack state)]
+  , internalEdges  :: IntSet
+  , supportEdges   :: IntMap OmegaEncodedSet
+  , recordedSatSet :: OmegaEncodedSet -- formulae that were holding the last time this node has been explored
+  , sccSatSet      :: OmegaEncodedSet -- formulae that hold on the cycle represented by this SCC
   } | SingleNode
-  { gnId   :: Int
-  , iValue :: Int
-  , node   :: (StateId state, Stack state)
-  , edges  :: [Edge]
+  { gnId           :: Int
+  , iValue         :: Int
+  , semiconf       :: [(StateId state, Stack state)]
+  , internalEdges  :: IntSet
+  , supportEdges   :: IntMap OmegaEncodedSet
+  , recordedSatSet :: OmegaEncodedSet -- formulae that were holding the last time this node has been explored
   }
 
 instance (Show state) => Show (GraphNode  state) where
@@ -83,40 +82,47 @@ instance  Ord (GraphNode state) where
   compare p q = compare ( gnId p) ( gnId q)
 
 instance Hashable (GraphNode state) where
-  hashWithSalt salt s = hashWithSalt salt $  gnId s
+  hashWithSalt salt s = hashWithSalt salt $ gnId s
 
 type Key state = (StateId state, Stack state)
 type Value state = GraphNode state
 
+-- a basic open-addressing hashtable using linear probing
+-- s = thread state, k = key, v = value.
+type HashTable s k v = BH.HashTable s k v
+
 data Graph s state = Graph
   { idSeq      :: STRef s Int
-  , gnMap      :: THT.TripleHashTable s (Value state)
-  , bStack     :: GStack s Int 
-  , sStack     :: GStack s (Maybe Edge) 
+  , semiconfsGraphMap :: HashTable s (Int,Int,Int) Int
+  , semiconfsGraph :: STRef s (MM.MaybeMap s (Value state))
+  , sStack     :: GStack s Int
   , initials   :: DS.DoubleSet s
-  , summaries  :: STRef s [(Int, SummaryBody, Key state)]
+  , summaries  :: STRef s (IntMap (Key state, OmegaEncodedSet))
   }
 
 newGraph :: (SatState state, Eq state, Hashable state, Show state)
          => Vector (Key state)
+         -> OmegaBitencoding state
          -> ST.ST s (Graph s state)
-newGraph iniNodes = do
+newGraph iniNodes oBitEnc = do
   newIdSequence <- newSTRef (0 :: Int)
-  tht           <- THT.empty
-  newBS         <- GS.new
+  newGraphMap <- BH.new
+  newGraph <- MM.empty
   newSS         <- GS.new
   newInitials   <- DS.new
-  newSummaries  <- newSTRef []
-  forM_ (iniNodes) $ \key -> do
+  newSummaries  <- newSTRef Map.empty
+  forM_ iniNodes $ \key -> do
     -- some initial nodes may be duplicate
-    duplicate <- THT.lookupId tht (decode key)
+    duplicate <- BH.lookup newGraphMap (decode key)
     when (isNothing duplicate) $ do
       newId <- freshPosId newIdSequence
-      THT.insert tht (decode key) newId $ SingleNode { gnId = newId, iValue = 0, node = key, edges = []} 
+      BH.insert newGraphMap (decode key) newId
+      MM.insert newGraph newId 
+        $ SingleNode { gnId = newId, iValue = 0, semiconf = key, internalEdges = IntSet.empty, supportEdges = Map.empty, recordedSatSet = OE.empty oBitEnc} 
       DS.insert newInitials (newId, True)
   return $ Graph { idSeq = newIdSequence
-                 , gnMap = tht
-                 , bStack = newBS
+                 , semiconfsGraphMap = newGraphMap
+                 , semiconfsGraph = newGraph
                  , sStack = newSS
                  , initials = newInitials
                  , summaries = newSummaries
@@ -128,19 +134,6 @@ setgnIValue new gn@SingleNode{}  = gn{iValue = new}
 
 resetgnIValue :: GraphNode state -> GraphNode state
 resetgnIValue  = setgnIValue 0
-
--- nodes of the self edges
-sEdgeIdents :: GraphNode state -> IntSet
-sEdgeIdents SingleNode{} = IntSet.empty 
-sEdgeIdents SCComponent{seIdents = seIx} = seIx
-
-summaryIdents :: Edge -> IntSet
-summaryIdents (Internal _) = IntSet.empty 
-summaryIdents (Summary _ b)  = b
-
-visitedIdents :: Edge -> IntSet 
-visitedIdents (Internal t) = IntSet.singleton t 
-visitedIdents (Summary t b) = IntSet.insert t b
 
 components :: GraphNode state -> [(StateId state, Stack state)]
 components SingleNode{node = n}    = [n]
