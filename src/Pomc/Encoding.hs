@@ -105,9 +105,6 @@ empty :: BitEncoding -> EncodedAtom
 empty bitenc = EncodedAtom . BV.zeros $ width bitenc
 {-# INLINABLE empty #-}
 
-full :: BitEncoding -> EncodedAtom
-full bitenc = EncodedAtom . BV.ones $ width bitenc
-{-# INLINABLE full #-}
 
 -- generate the powerset of the Formula parts of EncodedAtoms
 -- must be concatenated with an encoded Input to make an entire EncodedAtom
