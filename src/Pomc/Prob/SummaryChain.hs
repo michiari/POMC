@@ -147,10 +147,10 @@ decomposePush :: (Eq state, Hashable state, Show state)
 decomposePush globals probdelta q g qState qLabel =
   let doPush (p, pLabel, prob_) = do
         newState <- wrapState (sIdGen globals) p pLabel
-        SM.insert (suppStarts globals) (getId q) g
         decomposeTransition globals probdelta (q,g) False
           prob_ (newState, Just (qLabel, q))
   in do
+    SM.insert (suppStarts globals) (getId q) g
     mapM_ doPush $ (deltaPush probdelta) qState
     currentSuppEnds <- SM.lookup (suppEnds globals) (getId q)
     mapM_ (\s -> decomposeTransition globals probdelta (q,g) True 0 (s,g))  -- summaries are by default assigned probability zero
