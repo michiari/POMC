@@ -28,6 +28,7 @@ import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, PropConv(..), convProps, encodeFormula)
 import qualified Pomc.Encoding as E
 import Pomc.MiniProc (Program, VarState, ExprProp, programToOpa)
+import qualified Pomc.OmegaEncoding as OE
 #ifndef NDEBUG
 import Pomc.Satisfiability (toInputTrace, showTrace)
 import qualified Debug.Trace as DBG
@@ -107,9 +108,7 @@ modelCheck isOmega phi alphabet inputFilter stateFilter
     -- new isFinal function for the cartesian product:
     -- both underlying opas must be in an acceptance state
     cIsFinal (MCState q p) = opaIsFinal q && phiIsFinal T p
-    cIsFinalOmega states =
-      (any (\(MCState q _) -> opaIsFinal q) states) &&
-      (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) cl)
+    obe = OE.makeOmegaBitEncoding cl (\(MCState q _) -> opaIsFinal q) phiIsFinal
 
     cDeltaPush (MCState q p) b =
       cartesianFilter (stateFilter bitenc) (opaDeltaPush bitenc q b) (phiDeltaPush p Nothing)
@@ -125,7 +124,7 @@ modelCheck isOmega phi alphabet inputFilter stateFilter
              , Sat.deltaPop = cDeltaPop
              }
     (sat, trace) = if isOmega
-                   then isEmptyOmega cDelta cInitials cIsFinalOmega
+                   then isEmptyOmega cDelta cInitials obe
                    else isEmpty cDelta cInitials cIsFinal
 #ifndef NDEBUG
   in DBG.trace (showTrace bitenc pconv trace)
