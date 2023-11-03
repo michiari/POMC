@@ -13,7 +13,6 @@ module Pomc.SCCAlgorithm ( Graph
                          , updateSCCs
                          , createComponentGn
                          , insertSummary
-                         , removeSummary
                          , toSearchPhase
                          , toCollapsePhase
                          , updateSccInitial
@@ -35,7 +34,6 @@ import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 
 import qualified Data.HashTable.ST.Basic as BH
-import qualified Data.HashTable.Class as BC
 
 import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
@@ -90,7 +88,7 @@ data Graph s state = Graph
   , sStack     :: GStack s Edge
   , bStack     :: GStack s Int
   , initials   :: STRef s (IntMap OmegaEncodedSet)
-  , summaries  :: STRef s (HashTable s (Int,Int,Int, Int) (Key state, OmegaEncodedSet, OmegaEncodedSet))
+  , summaries  :: STRef s [(Int, Key state, OmegaEncodedSet, OmegaEncodedSet)]
   , bitenc :: OmegaBitencoding state -- different from the usual bitenc
   }
 
@@ -105,7 +103,7 @@ newGraph iniNodes oBitEnc = do
   newSS         <- GS.new
   newBS         <- GS.new
   newInitials   <- newSTRef Map.empty
-  newSummaries  <- newSTRef =<< BH.new
+  newSummaries  <- newSTRef []
   forM_ iniNodes $ \key -> do
     -- some initial nodes may be duplicate
     duplicate <- BH.lookup newGraphMap (decode key)
@@ -174,7 +172,7 @@ updateSccInitialWith graph semiconf_ pathSatSet =
       newStateSatSet = OE.encodeSatState (bitenc graph) (getState . fst $ semiconf_)
       cases gn newSCCPathSatSet
        | iValue gn == 0 = addtoPathWith graph gn (Internal (gnId gn)) newSCCPathSatSet >> return (Explore newSCCPathSatSet)
-       | iValue gn < 0 && not (recordedSatSet gn `OE.implies` newSCCPathSatSet) = addtoPathWith graph gn (Internal (gnId gn)) newSCCPathSatSet >> return (Explore newSCCPathSatSet)
+       | iValue gn < 0 && not (recordedSatSet gn `OE.subsumes` newSCCPathSatSet) = addtoPathWith graph gn (Internal (gnId gn)) newSCCPathSatSet >> return (Explore newSCCPathSatSet)
        | iValue gn < 0 = return AlreadyContracted
        | otherwise = error "unexpected case in updateSccInitial"
   in do
@@ -216,7 +214,7 @@ updateSCCs graph new_semiconf pathSatSet mSuppSatSet =
       -- different cases of a semiconf that has already been "seen" by the algorithm
       cases gn ini newSCCPathSatSet
         | Map.member (gnId gn) ini && (iValue gn == 0)                              = addtoPathWith graph gn (createEdge (gnId gn) mSuppSatSet) newSCCPathSatSet >> return (Explore newSCCPathSatSet) -- an initial state that requires exploration
-        | (iValue gn <= 0) && not (recordedSatSet gn `OE.implies` newSCCPathSatSet) = addtoPathWith graph gn (createEdge (gnId gn) mSuppSatSet) newSCCPathSatSet >> return (Explore newSCCPathSatSet) -- we require new exploration because of a non implied satset 
+        | (iValue gn <= 0) && not (recordedSatSet gn `OE.subsumes` newSCCPathSatSet) = addtoPathWith graph gn (createEdge (gnId gn) mSuppSatSet) newSCCPathSatSet >> return (Explore newSCCPathSatSet) -- we require new exploration because of a non implied satset 
         | (iValue gn == 0)                                                          = addtoPathWith graph gn (createEdge (gnId gn) mSuppSatSet) (recordedSatSet gn) >>= sccAlgorithm graph >>= convert -- perform the SCC algorithm, but do not discover new supports
         | (iValue gn < 0)                                                           = addEdge (createEdge (gnId gn) mSuppSatSet) >> return AlreadyContracted
         | (iValue gn > 0)                                                           = addEdge (createEdge (gnId gn) mSuppSatSet) >> merge graph gn (createEdge (gnId gn) mSuppSatSet) >>= convert
@@ -292,45 +290,40 @@ toCollapsePhase :: Graph s state
                 -> ST.ST s (Bool, IntMap OmegaEncodedSet) -- (are there summaries?, new initials for the next search phase)
 toCollapsePhase graph =
   let -- just some sugaring
-      f ((_, a,b,c),(_, chainSatSet, lcSatSet)) = ((a,b,c), OE.union chainSatSet lcSatSet)
+      f (_, to_semiconf, chainSatSet, lcSatSet) = (decode to_semiconf, OE.union chainSatSet lcSatSet)
       -- adding a summary to the graph, various cases may occurr
-      resolveSummary foldedSatSet m ((gnId_, a,b,c),(to_semiconf, chainSatSet, _)) = do
-        maybeIdent <- BH.lookup (semiconfsGraphMap graph) (a,b,c)
+      cases fss (b,m) gnFrom gnTo chainSatSet
+        | ((recordedSatSet gnTo) `OE.subsumes` fromJust (GeneralMap.lookup (decode . semiconf $ gnTo) fss)) &&
+          Map.member (gnId gnTo) (edges gnFrom) && (( edges gnFrom Map.! gnId gnTo) `OE.subsumes` chainSatSet) = return (b,m)
+        | ((recordedSatSet gnTo) `OE.subsumes` fromJust (GeneralMap.lookup (decode . semiconf $ gnTo) fss)) = insertEdge graph (gnId gnFrom) (Support (gnId gnTo) chainSatSet) >> return (True, m)
+        | Map.notMember (gnId gnTo) (edges gnFrom) || not (( (edges gnFrom) Map.!(gnId gnTo)) `OE.subsumes` chainSatSet) = do
+            insertEdge graph (gnId gnFrom) (Support (gnId gnTo) chainSatSet)
+            return (True, Map.insert (gnId gnTo) (fromJust $ GeneralMap.lookup (decode . semiconf $ gnTo) fss) m)
+        | otherwise = error "unexpected case in toCollapsePhase"
+      resolveSummary foldedSatSet (b, m) (gnId_, to_semiconf, chainSatSet, _) = do
+        maybeIdent <- BH.lookup (semiconfsGraphMap graph) (decode to_semiconf)
         if isNothing maybeIdent
           then do -- the destination does not exist in the graph
             newIdent <- freshPosId $ idSeq graph
-            BH.insert (semiconfsGraphMap graph) (a,b,c) newIdent
+            BH.insert (semiconfsGraphMap graph) (decode to_semiconf) newIdent
             CM.insert (semiconfsGraph graph) newIdent (GraphNode{ gnId = newIdent, iValue = 0, semiconf = to_semiconf, edges = Map.empty, recordedSatSet = OE.empty (bitenc graph)})
             insertEdge graph gnId_ (Support newIdent chainSatSet)
-            return $ Map.insert newIdent (fromJust $ GeneralMap.lookup (a,b,c) foldedSatSet) m
+            return (True, Map.insert newIdent (fromJust $ GeneralMap.lookup (decode to_semiconf) foldedSatSet) m)
           else do
-            gn <- CM.lookup (semiconfsGraph graph) (fromJust maybeIdent)
-            insertEdge graph gnId_ (Support (fromJust maybeIdent) chainSatSet)
-            if not ((recordedSatSet gn) `OE.implies` fromJust (GeneralMap.lookup (a,b,c) foldedSatSet))
-              then return $ Map.insert (fromJust maybeIdent) (fromJust $ GeneralMap.lookup (a,b,c) foldedSatSet) m
-              else return m
+            gnTo <- CM.lookup (semiconfsGraph graph) (fromJust maybeIdent)
+            gnFrom <- CM.lookup (semiconfsGraph graph) gnId_
+            cases foldedSatSet (b,m) gnFrom gnTo chainSatSet
   in do
     -- fold all sat sets for the corner case that we have multiple support edges that point to the same semiconf
-    foldedSatSet <- GeneralMap.fromListWith OE.union . map f <$> (BC.toList =<< readSTRef (summaries graph))
-    if GeneralMap.null foldedSatSet
+    foldedSatSet <- GeneralMap.fromListWith OE.union . map f <$> readSTRef (summaries graph)
+    (mustCollapse, newInitials) <- foldM (resolveSummary foldedSatSet) (False, Map.empty) =<< readSTRef (summaries graph)
+    if not mustCollapse
       then return (False, Map.empty)
       else do
-        newInitials <- BC.foldM (resolveSummary foldedSatSet) Map.empty =<< readSTRef (summaries graph)
-        writeSTRef (summaries graph) =<< BH.new
+        writeSTRef (summaries graph) []
         len <- readSTRef (idSeq graph)
         CM.modifyAll (semiconfsGraph graph) len resetgnIValue
         return (True, newInitials)
-
--- consume a summary
-removeSummary ::  Graph s state
-                -> Key state
-                -> Key state
-                -> ST.ST s ()
-removeSummary graph fromSemiconf toSemiconf = do
-  gnId_ <- fromJust <$> BH.lookup (semiconfsGraphMap graph) (decode fromSemiconf)
-  let (a,b,c) = decode toSemiconf
-  summ <- readSTRef (summaries graph)
-  BH.delete summ (gnId_, a, b, c)
 
 insertSummary :: Graph s state
                 -> Key state
@@ -340,9 +333,7 @@ insertSummary :: Graph s state
                 -> ST.ST s ()
 insertSummary graph fromSemiconf toSemiconf pathSatSet leftContextpathSatSet = do
   gnId_ <- fromJust <$> BH.lookup (semiconfsGraphMap graph) (decode fromSemiconf)
-  let (a,b,c) = decode toSemiconf
-  summ <- readSTRef (summaries graph)
-  BH.insert summ (gnId_, a, b, c) (toSemiconf, pathSatSet, leftContextpathSatSet)
+  modifySTRef' (summaries graph) $ \l -> (gnId_, toSemiconf, pathSatSet, leftContextpathSatSet):l
 
 --------------------------------------------------------
 --- running the Gabow SCC algorithm only ---------------

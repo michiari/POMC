@@ -360,9 +360,7 @@ reachOmegaPush globals delta (q,g) qState pathSatSet =
       currentSuppEnds <- SM.lookup (wSuppEnds globals) (getId q)
       foldM (\acc (SuppContext s supportSatSet)  -> if acc
                                                       then return True
-                                                      else do 
-                                                        removeSummary (graph globals) (q,g) (s,g)
-                                                        reachTransition globals delta (s,g) (Just pathSatSet) (Just supportSatSet))
+                                                      else reachTransition globals delta (s,g) (Just pathSatSet) (Just supportSatSet))
         False
         currentSuppEnds
 

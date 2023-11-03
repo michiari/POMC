@@ -13,7 +13,7 @@ module Pomc.OmegaEncoding( OmegaBitencoding
                          , unions
                          , encode
                          , encodeSatState
-                         , implies
+                         , subsumes
                          , isSatisfying
                          , showOmegaEncoding
                          ) where
@@ -76,9 +76,9 @@ encodeSatState omegabitenc s
  | otherwise = UnsatModel eatom 
    where eatom = E.suchThat (bitenc omegabitenc) (\f -> (isPhiFinal omegabitenc) f (getSatState s))
 
-implies :: OmegaEncodedSet -> OmegaEncodedSet -> Bool 
-implies (UnsatModel _) (SatModel _)  = False
-implies oset1 oset2 = E.union (eset oset1) (eset oset2) == (eset oset1)
+subsumes :: OmegaEncodedSet -> OmegaEncodedSet -> Bool 
+subsumes (UnsatModel _) (SatModel _)  = False
+subsumes oset1 oset2 = E.union (eset oset1) (eset oset2) == (eset oset1)
 
 -- are all formulae satisfied?
 isSatisfying :: OmegaEncodedSet -> Bool 
