@@ -147,10 +147,9 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
 reachPush isDestState isDestStack globals delta q g qState trace =
   let qProps = getStateProps (bitenc delta) qState
       doPush res@(True, _) _ = return res
-      doPush (False, _) p = do
-        SM.insert (suppStarts globals) (getId q) g
-        reach isDestState isDestStack globals delta p (Just (qProps, q)) ((Push, q, g) : trace)
+      doPush (False, _) p = reach isDestState isDestStack globals delta p (Just (qProps, q)) ((Push, q, g) : trace)
   in do
+    SM.insert (suppStarts globals) (getId q) g
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
     res@(pushReached, _) <- V.foldM' doPush (False, []) newStates
     if pushReached
