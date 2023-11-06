@@ -19,7 +19,7 @@ tests = testGroup "ModelChecking.hs Omega Tests" [ sasEvalTests, lREvalTests
                                                  , inspectionTest, overflowTest
                                                  , jensenTests, jensenFullTests
                                                  , stackExcTests, stackExcSwapTests
-                                                 , xnextdRegressionTests
+                                                 , xnextdRegressionTests, dummySupportsTest
                                                  ]
 
 sasEvalTests :: TestTree
@@ -863,3 +863,25 @@ lRSlowTests = testGroup "LargerRec OPA MC Omega Slow Tests" $
                                , (formulas !! 38, True)
                                , (formulas !! 44, False)
                                ]
+
+dummySupportsTest :: TestTree
+dummySupportsTest = testGroup "Dummy Support OPA MC Omega Eval Tests" $
+  [makeTestCase dummySupportOPA (("Support states are needed to find an accepting cycle", Not T), False)]
+
+
+dummySupportOPA :: ExplicitOpa Word String
+dummySupportOPA = ExplicitOpa
+            { eoAlphabet = stlV2Alphabet
+            , eoInitials = [0]
+            , eoFinals = [1]
+            , eoDeltaPush =
+                [ (0, makeInputSet ["call"],   [1,2])
+                ]
+            , eoDeltaShift =
+                [ (1, makeInputSet ["ret"],         [3])
+                , (2, makeInputSet ["ret"], [3])
+                ]
+            , eoDeltaPop =
+                [ (3, 0, [0])
+                ]
+            }
