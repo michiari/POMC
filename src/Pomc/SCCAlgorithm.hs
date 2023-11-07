@@ -43,8 +43,6 @@ import Data.Maybe (catMaybes, fromJust, isNothing, mapMaybe)
 
 import Data.Hashable
 
-import qualified Data.Map as GeneralMap
-
 data Edge = Internal {to :: Int} |
   Support {to :: Int, supportSatSet :: OmegaEncodedSet }
   deriving Show
@@ -286,21 +284,20 @@ toSearchPhase graph newInitials = do
   unless (Map.null newInitials) $ CM.modifyAll (semiconfsGraph graph) len resetgnIValue
   writeSTRef (initials graph) newInitials
 
-toCollapsePhase :: Graph s state
+toCollapsePhase :: (Show state) => Graph s state
                 -> ST.ST s (Bool, IntMap OmegaEncodedSet) -- (are there summaries?, new initials for the next search phase)
 toCollapsePhase graph =
-  let -- just some sugaring
-      f (_, to_semiconf, chainSatSet, lcSatSet) = (decode to_semiconf, OE.union chainSatSet lcSatSet)
-      -- adding a summary to the graph, various cases may occurr
-      cases fss (b,m) gnFrom gnTo chainSatSet
-        | ((recordedSatSet gnTo) `OE.subsumes` fromJust (GeneralMap.lookup (decode . semiconf $ gnTo) fss)) &&
+  let -- adding a summary to the graph, various cases may occurr
+      cases (b,m) gnFrom gnTo chainSatSet unionSatSet
+        | ((recordedSatSet gnTo) `OE.subsumes` unionSatSet) &&
           Map.member (gnId gnTo) (edges gnFrom) && (( edges gnFrom Map.! gnId gnTo) `OE.subsumes` chainSatSet) = return (b,m)
-        | ((recordedSatSet gnTo) `OE.subsumes` fromJust (GeneralMap.lookup (decode . semiconf $ gnTo) fss)) = insertEdge graph (gnId gnFrom) (Support (gnId gnTo) chainSatSet) >> return (True, m)
+        | ((recordedSatSet gnTo) `OE.subsumes` unionSatSet) = insertEdge graph (gnId gnFrom) (Support (gnId gnTo) chainSatSet) >> return (True, m)
         | Map.notMember (gnId gnTo) (edges gnFrom) || not (( (edges gnFrom) Map.!(gnId gnTo)) `OE.subsumes` chainSatSet) = do
             insertEdge graph (gnId gnFrom) (Support (gnId gnTo) chainSatSet)
-            return (True, Map.insert (gnId gnTo) (fromJust $ GeneralMap.lookup (decode . semiconf $ gnTo) fss) m)
-        | otherwise = error "unexpected case in toCollapsePhase"
-      resolveSummary foldedSatSet (b, m) (gnId_, to_semiconf, chainSatSet, _) = do
+            return (True, Map.insertWith OE.union (gnId gnTo) unionSatSet m)
+        | Map.member (gnId gnTo) m = return (b,m)
+        | otherwise = error ("unexpected case in toCollapsePhase" ++ show gnFrom ++ "\n\n---\n" ++ show gnTo ++ "\n\n---\n" ++ OE.showOmegaEncoding (bitenc graph) chainSatSet ++ "\nEdge to add: " ++ show chainSatSet ++ "\n\n\nLc + edge: " ++ show unionSatSet)
+      resolveSummary (b, m) (gnId_, to_semiconf, chainSatSet, lcSatSet) = do
         maybeIdent <- BH.lookup (semiconfsGraphMap graph) (decode to_semiconf)
         if isNothing maybeIdent
           then do -- the destination does not exist in the graph
@@ -308,15 +305,13 @@ toCollapsePhase graph =
             BH.insert (semiconfsGraphMap graph) (decode to_semiconf) newIdent
             CM.insert (semiconfsGraph graph) newIdent (GraphNode{ gnId = newIdent, iValue = 0, semiconf = to_semiconf, edges = Map.empty, recordedSatSet = OE.empty (bitenc graph)})
             insertEdge graph gnId_ (Support newIdent chainSatSet)
-            return (True, Map.insert newIdent (fromJust $ GeneralMap.lookup (decode to_semiconf) foldedSatSet) m)
+            return (True, Map.insertWith OE.union newIdent (OE.union chainSatSet lcSatSet) m)
           else do
             gnTo <- CM.lookup (semiconfsGraph graph) (fromJust maybeIdent)
             gnFrom <- CM.lookup (semiconfsGraph graph) gnId_
-            cases foldedSatSet (b,m) gnFrom gnTo chainSatSet
+            cases (b,m) gnFrom gnTo chainSatSet (OE.union chainSatSet lcSatSet)
   in do
-    -- fold all sat sets for the corner case that we have multiple support edges that point to the same semiconf
-    foldedSatSet <- GeneralMap.fromListWith OE.union . map f <$> readSTRef (summaries graph)
-    (mustCollapse, newInitials) <- foldM (resolveSummary foldedSatSet) (False, Map.empty) =<< readSTRef (summaries graph)
+    (mustCollapse, newInitials) <- foldM resolveSummary (False, Map.empty) =<< readSTRef (summaries graph)
     if not mustCollapse
       then return (False, Map.empty)
       else do
