@@ -30,7 +30,7 @@ sasEvalTests = testGroup "SAS OPA MC Omega Eval Tests" $
 lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Omega Eval Tests" $
   map (makeTestCase largerRec) (zipExpected lRFormulas expectedLargerRecEval)
-  where lRFormulas = excludeIndices formulas [18, 22, 33, 38, 44]
+  where lRFormulas = excludeIndices formulas [33, 38, 44]
 
 makeTestCase :: ExplicitOpa Word String
              -> (TestCase, Bool)
@@ -857,9 +857,7 @@ sasSlowTests = testGroup "SAS OPA MC Omega Slow Tests" $
 
 lRSlowTests :: TestTree
 lRSlowTests = testGroup "LargerRec OPA MC Omega Slow Tests" $
-  map (makeTestCase largerRec) [ (formulas !! 18, False)
-                               , (formulas !! 22, False)
-                               , (formulas !! 33, True)
+  map (makeTestCase largerRec) [ (formulas !! 33, True)
                                , (formulas !! 38, True)
                                , (formulas !! 44, False)
                                ]
