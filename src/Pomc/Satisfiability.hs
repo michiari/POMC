@@ -36,8 +36,6 @@ import qualified Data.Set as Set
 import Data.Hashable
 import qualified Data.Vector as V
 
-import Control.DeepSeq(NFData(..))
-
 -- import qualified Debug.Trace as DBG
 
 -- global variables in the algorithms
@@ -103,7 +101,7 @@ showTrace be pconv trace = concatMap showMove trace
         showStack Nothing = "Bottom"
 -- End debugging stuff
 
-reach :: (NFData state, SatState state, Eq state, Hashable state, Show state)
+reach :: (SatState state, Eq state, Hashable state, Show state)
       => (StateId state -> Bool) -- is the state as desired?
       -> (Stack state -> Bool) -- is the stack as desired?
       -> Globals s state -- global variables of the algorithm
@@ -136,7 +134,7 @@ reach isDestState isDestStack globals delta q g trace = do
     cases
 
 
-reachPush :: (NFData state, SatState state, Eq state, Hashable state, Show state)
+reachPush :: (SatState state, Eq state, Hashable state, Show state)
           => (StateId state -> Bool)
           -> (Stack state -> Bool)
           -> Globals s state
@@ -166,7 +164,7 @@ reachPush isDestState isDestStack globals delta q g qState trace =
         currentSuppEnds
 
 
-reachShift :: (NFData state, SatState state, Eq state, Hashable state, Show state)
+reachShift :: (SatState state, Eq state, Hashable state, Show state)
            => (StateId state -> Bool)
            -> (Stack state -> Bool)
            -> Globals s state
@@ -186,7 +184,7 @@ reachShift isDestState isDestStack globals delta q g qState trace =
     V.foldM' doShift (False, []) newStates
 
 
-reachPop :: (NFData state, SatState state, Eq state, Hashable state, Show state)
+reachPop :: (SatState state, Eq state, Hashable state, Show state)
          => (StateId state -> Bool)
          -> (Stack state -> Bool)
          -> Globals s state
@@ -214,7 +212,7 @@ reachPop isDestState isDestStack globals delta q g qState trace =
     V.foldM' doPop (False, []) newStates
 
 -- check the emptiness of the Language expressed by an automaton
-isEmpty :: (NFData state, SatState state, Eq state, Hashable state, Show state)
+isEmpty :: (SatState state, Eq state, Hashable state, Show state)
         => Delta state -- delta relation of the opa
         -> [state] -- list of initial states of the opa
         -> (state -> Bool) -- determine whether a state is final
@@ -241,7 +239,7 @@ isEmpty delta initials isFinal =
 
 -- The omega case does not print counterexamples at the moment
 ------------------------------------------------------------------------------------------
-isEmptyOmega  :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+isEmptyOmega  :: (SatState state, Ord state, Hashable state, Show state)
         => Delta state -- delta relation of an opa
         -> [state] -- list of initial states of the opba
         -> ([state] -> Bool) -- determine whether a list of states determine an accepting computation
@@ -262,7 +260,7 @@ isEmptyOmega delta initialOpbaStates areFinal = (not $
                 in searchPhase areFinal globals delta
             ), [])
 
-searchPhase :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+searchPhase :: (SatState state, Ord state, Hashable state, Show state)
                   => ([state] -> Bool)
                   -> Globals s state
                   -> Delta state
@@ -287,7 +285,7 @@ searchPhase areFinal globals delta  =
         collapsePhase nullSumm initials areFinal globals delta
 
 
-collapsePhase :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+collapsePhase :: (SatState state, Ord state, Hashable state, Show state)
                   => Bool
                   -> [(StateId state, Stack state)]
                   -> ([state] -> Bool)
@@ -314,7 +312,7 @@ collapsePhase _ initials areFinal globals delta =
         toSearchPhase (graph globals) newInitials
         searchPhase areFinal globals delta
 
-reachOmega :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+reachOmega :: (SatState state, Ord state, Hashable state, Show state)
                => ([state] -> Bool)
                -> Globals s state
                -> Delta state
@@ -342,7 +340,7 @@ reachOmega areFinal globals delta me (q,g) = do
     else createComponent (graph globals) (q,g) areFinal
 
 
-reachOmegaPush :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+reachOmegaPush :: (SatState state, Ord state, Hashable state, Show state)
           => ([state] -> Bool)
           -> Globals s state
           -> Delta state
@@ -369,7 +367,7 @@ reachOmegaPush areFinal globals delta (q,g) qState =
         currentSuppEnds
 
 
-reachOmegaShift :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+reachOmegaShift :: (SatState state, Ord state, Hashable state, Show state)
            => ( [state] -> Bool)
            -> Globals s state
            -> Delta state
@@ -385,7 +383,7 @@ reachOmegaShift areFinal globals delta (q,g) qState =
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
     V.foldM' doShift False newStates
 
-reachOmegaPop :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+reachOmegaPop :: (SatState state, Ord state, Hashable state, Show state)
          => Globals s state
          -> Delta state
          -> (StateId state, Stack state)
@@ -407,7 +405,7 @@ reachOmegaPop globals delta (_,g) qState =
     return False
 
 
-reachTransition :: (NFData state, SatState state, Ord state, Hashable state, Show state)
+reachTransition :: (SatState state, Ord state, Hashable state, Show state)
                  => Maybe SummaryBody
                  -> ([state] -> Bool)
                  -> Globals s state

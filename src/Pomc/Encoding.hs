@@ -45,7 +45,6 @@ import Data.Bits (Bits(..))
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 import Data.Hashable
-import Control.DeepSeq (NFData(..))
 import Control.Monad (foldM)
 
 type EncodedSet = EncodedAtom
@@ -72,9 +71,6 @@ newBitEncoding fetch_ index_ width_ propBits_ =
 
 -- an encoded atom is just a bitset
 newtype EncodedAtom = EncodedAtom BitVector deriving (Eq, Ord, Show)
-
-instance NFData EncodedAtom where
-  rnf (EncodedAtom vect) = vect `seq` ()
 
 instance Hashable EncodedAtom where
   hashWithSalt salt (EncodedAtom bv) = hashWithSalt salt $ BV.nat bv
