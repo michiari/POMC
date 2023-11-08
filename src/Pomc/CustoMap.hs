@@ -12,10 +12,12 @@ module Pomc.CustoMap ( CustoMap
                      , modify
                      , multModify
                      , modifyAll
+                     , take
                      , showMap
+                     , showSTRefMap
                      ) where
 
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, take)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 
@@ -46,24 +48,33 @@ lookup cmref k  = do
   cm <- readSTRef cmref
   MV.unsafeRead cm k
 
-modify ::STRef s (CustoMap s v) -> Int -> (v -> v) -> ST.ST s ()
-modify cmref k f = do
+modify :: STRef s (CustoMap s v) -> (v -> v) -> Int -> ST.ST s ()
+modify cmref f k = do
   cm <- readSTRef cmref
   MV.unsafeModify cm f k
 
-multModify :: STRef s (CustoMap s v) -> [Int] -> (v -> v) -> ST.ST s ()
-multModify cmref keys f = do
+multModify :: STRef s (CustoMap s v) -> (v -> v) -> [Int] -> ST.ST s ()
+multModify cmref f keys = do
   cm <- readSTRef cmref
   mapM_ (MV.unsafeModify cm f) keys
 
-modifyAll :: STRef s (CustoMap s v) -> Int -> (v -> v) -> ST.ST s ()
-modifyAll cmref len f = do
+modifyAll :: STRef s (CustoMap s v) -> (v -> v) -> Int -> ST.ST s ()
+modifyAll cmref f len = do
   cm <- readSTRef cmref
   mapM_ (MV.unsafeModify cm f) [0..(len -1)]
 
+-- removing uninitialized elements
+take :: Int -> CustoMap s v -> CustoMap s v
+take = MV.unsafeTake
+
 -- for debugging purposes
-showMap :: (Show  v) => STRef s (CustoMap s v) -> ST.ST s String
-showMap cmref = do 
+showMap :: (Show  v) => CustoMap s v -> ST.ST s String
+showMap = MV.ifoldl'
+    (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n")
+    ""
+
+showSTRefMap :: (Show  v) => STRef s (CustoMap s v) -> ST.ST s String
+showSTRefMap cmref = do 
   cm <- readSTRef cmref
   MV.ifoldl'
     (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n")

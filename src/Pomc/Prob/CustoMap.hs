@@ -61,3 +61,11 @@ showMap :: (Show  v) => CustoMap s v -> ST.ST s String
 showMap = MV.ifoldl'
     (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n")
     ""
+
+showSTRefMap :: (Show  v) => STRef s (CustoMap s v) -> ST.ST s String
+showSTRefMap cmref = do 
+  cm <- readSTRef cmref
+  MV.ifoldl'
+    (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n")
+    ""
+    cm

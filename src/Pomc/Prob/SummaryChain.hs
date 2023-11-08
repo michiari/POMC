@@ -13,7 +13,7 @@ module Pomc.Prob.SummaryChain ( SummaryChain
 import Prelude
 import Pomc.Prob.ProbUtils
 
-import qualified Pomc.Prob.CustoMap as CM
+import qualified Pomc.CustoMap as CM
 import Pomc.Prec (Prec(..),)
 
 import Pomc.SetMap(SetMap)

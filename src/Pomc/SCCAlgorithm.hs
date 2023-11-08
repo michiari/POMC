@@ -145,7 +145,7 @@ decodeEdge b (Internal _) = OE.empty b
 decodeEdge _ (Support _ suppSatSet) = suppSatSet
 
 insertEdge :: Graph s state -> Int -> Edge -> ST.ST s ()
-insertEdge graph ident edge = CM.modify (semiconfsGraph graph) ident $ \g@GraphNode{edges = edges_} -> g{edges = Map.insertWith OE.union (to edge) (decodeEdge (bitenc graph) edge) edges_}
+insertEdge graph ident edge = CM.modify (semiconfsGraph graph) (\g@GraphNode{edges = edges_} -> g{edges = Map.insertWith OE.union (to edge) (decodeEdge (bitenc graph) edge) edges_}) ident
 -- end helpers
 
 ------------------------------------------------------------------------------------------------------
@@ -156,7 +156,7 @@ addtoPathWith :: Graph s state -> GraphNode state -> Edge -> OmegaEncodedSet -> 
 addtoPathWith graph gn edge newPathSatSet = do
   GS.push (sStack graph) edge
   sSize <- GS.size $ sStack graph
-  CM.modify (semiconfsGraph graph) (gnId gn) $ \g -> g{recordedSatSet = newPathSatSet, iValue = sSize}
+  CM.modify (semiconfsGraph graph) (\g -> g{recordedSatSet = newPathSatSet, iValue = sSize}) (gnId gn)
   GS.push (bStack graph) sSize
   return gn{recordedSatSet = newPathSatSet, iValue = sSize}
 
@@ -261,8 +261,9 @@ createComponent graph gn =
           then return () -- we are creating the component for the initial state of this depth-first search
           else insertEdge graph (to . fromJust $ me) edge
       addEdge edge l = do
-        CM.modify (semiconfsGraph graph) (to . head $ l)
-          $ \g@GraphNode{edges = edges_} -> g{iValue = -1, edges = Map.insertWith OE.union (to edge) (decodeEdge (bitenc graph)  edge) edges_}
+        CM.modify (semiconfsGraph graph)
+          (\g@GraphNode{edges = edges_} -> g{iValue = -1, edges = Map.insertWith OE.union (to edge) (decodeEdge (bitenc graph)  edge) edges_})
+          (to . head $ l)
         addEdge (head l) (tail l)
   in do
   topB <- GS.peek $ bStack graph
@@ -271,7 +272,7 @@ createComponent graph gn =
       sSize <- GS.size $ sStack graph
       poppedEdges <- GS.multPop (sStack graph) (sSize - (iValue gn) + 1) -- the last one is to gn
       -- marking the SCC (we don't care about SCCs, so we assign to all of them iValue -1)
-      CM.modify (semiconfsGraph graph) (to . head $ poppedEdges) (setgnIValue (-1))
+      CM.modify (semiconfsGraph graph) (setgnIValue (-1)) (to . head $ poppedEdges) 
       addEdge (head poppedEdges) (tail poppedEdges)
 
 toSearchPhase :: (SatState state, Eq state, Hashable state, Show state)
@@ -281,7 +282,7 @@ toSearchPhase :: (SatState state, Eq state, Hashable state, Show state)
 toSearchPhase graph newInitials = do
   len <- readSTRef (idSeq graph)
   -- if there are no initials, the new search phase will be aborted immediately
-  unless (Map.null newInitials) $ CM.modifyAll (semiconfsGraph graph) len resetgnIValue
+  unless (Map.null newInitials) $ CM.modifyAll (semiconfsGraph graph) resetgnIValue len
   writeSTRef (initials graph) newInitials
 
 toCollapsePhase :: (Show state) => Graph s state
@@ -317,7 +318,7 @@ toCollapsePhase graph =
       else do
         writeSTRef (summaries graph) []
         len <- readSTRef (idSeq graph)
-        CM.modifyAll (semiconfsGraph graph) len resetgnIValue
+        CM.modifyAll (semiconfsGraph graph) resetgnIValue len 
         return (True, newInitials)
 
 insertSummary :: Graph s state
@@ -352,7 +353,7 @@ addtoPath :: Graph s state -> GraphNode state -> Edge -> ST.ST s (GraphNode stat
 addtoPath graph gn edge  = do
   GS.push (sStack graph) edge
   sSize <- GS.size $ sStack graph
-  CM.modify (semiconfsGraph graph) (gnId gn) $ \g -> g{iValue = sSize }
+  CM.modify (semiconfsGraph graph) (\g -> g{iValue = sSize }) (gnId gn)
   GS.push (bStack graph) sSize
   return gn{iValue = sSize}
 
@@ -368,7 +369,7 @@ createComponent_ graph gn = do
       poppedEdges <- GS.multPop (sStack graph) (sSize - (iValue gn) + 1) -- the last one is to gn
       -- marking the SCC (we don't care about SCCs, so we assign to all of them iValue -1)
       -- in this case don't add edges to the stored graph, we have already stored them
-      CM.multModify (semiconfsGraph graph) (map to poppedEdges) (setgnIValue (-1))
+      CM.multModify (semiconfsGraph graph) (setgnIValue (-1)) (map to poppedEdges) 
 
 sccAlgorithm :: (Show state) => SatState state
                => Graph s state
