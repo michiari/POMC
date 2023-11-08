@@ -91,8 +91,7 @@ wrapStates :: (Eq state, Hashable state)
            => SIdGen s state -- keep track of state to id relation
            -> [state]
            -> ST.ST s (Vector (StateId state))
-wrapStates sig states = do
-  V.mapM (wrapState sig) (V.fromList states)
+wrapStates sig states = V.mapM (wrapState sig) (V.fromList states)
 
 -- Stack symbol: (input token, state) || Bottom if empty stack
 type Stack state = Maybe (Input, StateId state)
