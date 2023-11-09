@@ -27,7 +27,7 @@ import qualified Pomc.Encoding as E
 import Pomc.Prob.SummaryChain(decomposeGraph)
 import qualified Pomc.Prob.SummaryChain as SC
 
-import qualified Pomc.Prob.CustoMap as CM
+import qualified Pomc.CustoMap as CM
 
 import Pomc.Prob.Z3Termination(terminationQuery)
 import Pomc.Prob.ProbUtils

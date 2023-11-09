@@ -42,8 +42,8 @@ import qualified Data.HashTable.ST.Basic as BH
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
 
--- a map (gnId GraphNode, getId StateId) to Z3 variables
--- each variable represents [[q,b | p ]]
+-- a map Key: (gnId GraphNode, getId StateId) - value : Z3 variables (represented as ASTs)
+-- each Z3 variable represents [[q,b | p ]]
 -- where q,b is the semiconfiguration associated with the graphNode of the key
 -- and p is the state associated with the StateId of the key
 type VarMap = HashTable RealWorld (Int,Int) AST
@@ -54,6 +54,7 @@ encodeTransition e toAST = do
   probReal <- mkRealNum (prob e)
   mkMul [probReal, toAST]
 
+-- (Z3 Var, was it already present?)
 lookupVar :: VarMap -> (Int, Int) -> Z3 (AST, Bool)
 lookupVar varMap key = do
   maybeVar <- liftIO . stToIO $ BH.lookup varMap key
@@ -66,7 +67,7 @@ lookupVar varMap key = do
 -- end helpers
 
 -- compute the probabilities that a chain will terminate
--- assumption: the initial state is at position 0
+-- reuires: the initial semiconfiguration is at position 0
 terminationQuery :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> EncPrecFunc
@@ -77,14 +78,14 @@ terminationQuery chain precFun query =
       encode ((gnId_, rightContext):unencoded) varMap pops = do
         var <- liftIO . stToIO $ fromJust <$> BH.lookup varMap (gnId_, rightContext)
         gn <- liftIO $ MV.unsafeRead chain gnId_
-        let (q,g) = node gn
+        let (q,g) = semiconf gn
             qLabel = getLabel q
             precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
             --update the set of pop semiconfs, if needed
             recordPop = isApprox query && isJust g && precRel == Just Take 
             new_pops = if recordPop then IntSet.insert gnId_ pops else pops
             cases
-              -- semiconfigurations with empty stack but not the initial one (terminating states -> probability 1)
+              -- semiconfigurations with empty stack but not the initial one (terminating semiconfigs -> probability 1)
               | isNothing g && (gnId_ /= 0) = do
                   assert =<< mkEq var =<< mkRealNum (1 :: Prob)
                   return []
@@ -108,9 +109,13 @@ terminationQuery chain precFun query =
     newVarMap <- liftIO . stToIO $ BH.new
     new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
     liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var
-    pops <- encode [(0 ::Int , -1 :: Int)] newVarMap IntSet.empty -- encode the probability transition relation via a set of Z3 formulas represented via ASTs
+    -- encode the probability transition relation by asserting a set of Z3 formulas
+    -- for optimization purposes, we keep track of pop semiconfigurations
+    pops <- encode [(0 ::Int , -1 :: Int)] newVarMap IntSet.empty
     solveQuery query new_var pops chain newVarMap
 
+
+-- encoding helpers --
 encodePush :: (Eq state, Hashable state, Show state)
         => SummaryChain RealWorld state
         -> VarMap
@@ -121,7 +126,7 @@ encodePush :: (Eq state, Hashable state, Show state)
 encodePush chain varMap gn rightContext var =
   let closeSummaries pushGn (currs, unencoded_vars) e = do
         summaryGn <- liftIO $ MV.unsafeRead chain (to e)
-        let varsIds = [(gnId pushGn, getId . fst . node $ summaryGn), (gnId summaryGn, rightContext)]
+        let varsIds = [(gnId pushGn, getId . fst . semiconf $ summaryGn), (gnId summaryGn, rightContext)]
         vars <- mapM (lookupVar varMap) varsIds
         eq <- mkMul (map fst vars)
         return (eq:currs,
@@ -135,6 +140,7 @@ encodePush chain varMap gn rightContext var =
     (transitions, unencoded_vars) <- foldM pushEnc ([], []) (internalEdges gn)
     assert =<< mkEq var =<< mkAdd transitions -- generate the equation for this semiconf
     assert =<< mkGe var =<< mkRational 0
+    -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
     return unencoded_vars
 
 encodeShift :: (Eq state, Hashable state, Show state)
@@ -152,8 +158,11 @@ encodeShift varMap gn rightContext var =
     (transitions, unencoded_vars) <- foldM shiftEnc ([], []) (internalEdges gn)
     assert =<< mkEq var =<< mkAdd transitions -- generate the equation for this semiconf
     assert =<< mkGe var =<< mkRational 0
+    -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
     return unencoded_vars
+-- end 
 
+-- 
 solveQuery :: TermQuery -> AST -> IntSet -> SummaryChain RealWorld state -> VarMap  -> Z3 TermResult
 solveQuery q
   | ApproxAllQuery <- q     = encodeApproxAllQuery
@@ -199,6 +208,6 @@ checkDeficiency pops i asts = do
     let cases 
           | Sat <- r = assert less1 
           | Unsat <- r = assert =<< mkEq sumAst =<< mkRational (1 :: Prob) -- semiconf i is not deficient
-          | Undef <- r = error $ "Undefined result error when checking deficiency of node" ++ show i
+          | Undef <- r = error $ "Undefined result error when checking deficiency of semiconf" ++ show i
     cases 
   return sumAst
