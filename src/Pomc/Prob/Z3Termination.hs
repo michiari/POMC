@@ -14,7 +14,7 @@ import Pomc.Prec (Prec(..),)
 import Pomc.Check (EncPrecFunc)
 
 import Pomc.Prob.ProbUtils
-import Pomc.Prob.SummaryChain
+import Pomc.Prob.SupportChain
 
 import Data.Hashable(Hashable)
 
@@ -69,7 +69,7 @@ lookupVar varMap key = do
 -- compute the probabilities that a chain will terminate
 -- reuires: the initial semiconfiguration is at position 0
 terminationQuery :: (Eq state, Hashable state, Show state)
-        => SummaryChain RealWorld state
+        => SupportChain RealWorld state
         -> EncPrecFunc
         -> TermQuery
         -> Z3 TermResult
@@ -117,7 +117,7 @@ terminationQuery chain precFun query =
 
 -- encoding helpers --
 encodePush :: (Eq state, Hashable state, Show state)
-        => SummaryChain RealWorld state
+        => SupportChain RealWorld state
         -> VarMap
         -> GraphNode state
         -> Int -- the Id of StateId of the right context of this chain
@@ -125,15 +125,15 @@ encodePush :: (Eq state, Hashable state, Show state)
         -> Z3 [(Int, Int)]
 encodePush chain varMap gn rightContext var =
   let closeSummaries pushGn (currs, unencoded_vars) e = do
-        summaryGn <- liftIO $ MV.unsafeRead chain (to e)
-        let varsIds = [(gnId pushGn, getId . fst . semiconf $ summaryGn), (gnId summaryGn, rightContext)]
+        supportGn <- liftIO $ MV.unsafeRead chain (to e)
+        let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
         vars <- mapM (lookupVar varMap) varsIds
         eq <- mkMul (map fst vars)
         return (eq:currs,
               [(gnId_, rightContext_) | ((_,alrEncoded), (gnId_, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars)
       pushEnc (currs, new_vars) e = do
         toGn <- liftIO $ MV.unsafeRead chain (to e)
-        (equations, unencoded_vars) <- foldM (closeSummaries toGn) ([], []) (summaryEdges gn)
+        (equations, unencoded_vars) <- foldM (closeSummaries toGn) ([], []) (supportEdges gn)
         transition <- encodeTransition e =<< mkAdd equations
         return (transition:currs, unencoded_vars ++ new_vars)
   in do
@@ -163,7 +163,7 @@ encodeShift varMap gn rightContext var =
 -- end 
 
 -- 
-solveQuery :: TermQuery -> AST -> IntSet -> SummaryChain RealWorld state -> VarMap  -> Z3 TermResult
+solveQuery :: TermQuery -> AST -> IntSet -> SupportChain RealWorld state -> VarMap  -> Z3 TermResult
 solveQuery q
   | ApproxAllQuery <- q     = encodeApproxAllQuery
   | ApproxSingleQuery <- q  = encodeApproxSingleQuery

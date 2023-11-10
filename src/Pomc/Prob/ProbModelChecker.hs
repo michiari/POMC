@@ -24,8 +24,8 @@ import Pomc.PropConv ( convProps, PropConv(encodeProp) )
 
 import qualified Pomc.Encoding as E
 
-import Pomc.Prob.SummaryChain(decomposeGraph)
-import qualified Pomc.Prob.SummaryChain as SC
+import Pomc.Prob.SupportChain(decomposeGraph)
+import qualified Pomc.Prob.SupportChain as SC
 
 import qualified Pomc.CustoMap as CM
 

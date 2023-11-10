@@ -1,11 +1,11 @@
 {- |
-   Module      : Pomc.Prob.SummaryChain
+   Module      : Pomc.Prob.SupportChain
    Copyright   : 2023 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Prob.SummaryChain ( SummaryChain
+module Pomc.Prob.SupportChain ( SupportChain
                               , decomposeGraph
                               , GraphNode(..)
                               , Edge(..)
@@ -50,7 +50,7 @@ data GraphNode state = GraphNode
   { gnId   :: Int
   , semiconf   :: (StateId state, Stack state)
   , internalEdges :: Set Edge
-  , summaryEdges  :: Set Edge
+  , supportEdges  :: Set Edge
   , popContexts :: IntMap Prob
   } deriving Show
 
@@ -64,8 +64,8 @@ instance  Ord (GraphNode state) where
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
 
--- the Summary Chain computed by this module
-type SummaryChain s state = CM.CustoMap s (GraphNode state)
+-- the Support Chain computed by this module
+type SupportChain s state = CM.CustoMap s (GraphNode state)
 
 -- the global variables in the algorithm
 data Globals s state = Globals
@@ -74,17 +74,17 @@ data Globals s state = Globals
   , chainMap   :: HashTable s (Int,Int,Int) Int
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds   :: STRef s (SetMap s (StateId state))
-  , chain      :: STRef s (SummaryChain s state)
+  , chain      :: STRef s (SupportChain s state)
   }
 
 -- assumptions: 
 -- the initial state is mapped to id 0;
--- the initial semiconfiguration (initialSid, Nothing) is mapped to node 0 in the summary chain.
+-- the initial semiconfiguration (initialSid, Nothing) is mapped to node 0 in the support chain.
 decomposeGraph  :: (Eq state, Hashable state, Show state)
         => ProbDelta state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
         -> Label -- label of the initial state
-        -> ST s (SummaryChain s state) -- returning a chain
+        -> ST s (SupportChain s state) -- returning a chain
 decomposeGraph probdelta i iLabel = do
   -- initialize the global variables
   newSig <- initSIdGen
@@ -97,7 +97,7 @@ decomposeGraph probdelta i iLabel = do
   emptyChain <- CM.empty
   initialId <- freshPosId newIdSequence
   BH.insert emptyChainMap (decode initialNode) initialId
-  CM.insert emptyChain initialId $ GraphNode {gnId=initialId, semiconf=initialNode, internalEdges= Set.empty, summaryEdges = Set.empty, popContexts = Map.empty}
+  CM.insert emptyChain initialId $ GraphNode {gnId=initialId, semiconf=initialNode, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
   let globals = Globals { sIdGen = newSig
                         , idSeq = newIdSequence
                         , chainMap = emptyChainMap
@@ -105,7 +105,7 @@ decomposeGraph probdelta i iLabel = do
                         , suppEnds = emptySuppEnds
                         , chain = emptyChain
                         }
-  -- compute the summary chain of the input popa
+  -- compute the support chain of the input popa
   decompose globals probdelta initialNode
   idx <- readSTRef . idSeq $ globals
   fmap (CM.take idx) $ readSTRef . chain $ globals
@@ -190,7 +190,7 @@ decomposePop globals probdelta q g qState =
   in mapM_ doPop $ (deltaPop probdelta) qState (getState . snd . fromJust $ g)
 
 --
--- functions that modify the stored summary chain
+-- functions that modify the stored support chain
 --
 
 -- add a right context to a pop semiconfiguration
@@ -211,22 +211,22 @@ decomposeTransition :: (Eq state, Hashable state, Show state)
                  => Globals s state
                  -> ProbDelta state
                  -> (StateId state, Stack state) -- from semiconf 
-                 -> Bool -- is Summary
+                 -> Bool -- is Support
                  -> Prob
                  -> (StateId state, Stack state) -- to semiconf
                  -> ST s ()
-decomposeTransition globals probdelta from isSummary prob_ dest =
+decomposeTransition globals probdelta from isSupport prob_ dest =
   let
     createInternal to_  stored_edges = Edge{to = to_, prob = sum $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
-    insertEdge to_  True  g@GraphNode{summaryEdges = edges_} = g{summaryEdges = Set.insert Edge{to = to_, prob = 0} edges_} -- summaries are assigned prob 0 by default
+    insertEdge to_  True  g@GraphNode{supportEdges = edges_} = g{supportEdges = Set.insert Edge{to = to_, prob = 0} edges_} -- summaries are assigned prob 0 by default
     insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }
-    lookupInsert to_ = BH.lookup (chainMap globals) (decode from) >>= CM.modify (chain globals) (insertEdge to_ isSummary) . fromJust
+    lookupInsert to_ = BH.lookup (chainMap globals) (decode from) >>= CM.modify (chain globals) (insertEdge to_ isSupport) . fromJust
   in do
     maybeId <- BH.lookup (chainMap globals) (decode dest)
     actualId <- maybe (freshPosId $ idSeq globals) return maybeId
     when (isNothing maybeId) $ do
         BH.insert (chainMap globals) (decode dest) actualId
-        CM.insert (chain globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= Set.empty, summaryEdges = Set.empty, popContexts = Map.empty}
+        CM.insert (chain globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
     lookupInsert actualId 
     when (isNothing maybeId) $ decompose globals probdelta dest
 
