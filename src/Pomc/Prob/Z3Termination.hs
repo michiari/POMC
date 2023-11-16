@@ -98,7 +98,8 @@ terminationQuery chain precFun query =
                   encodeShift varMap gn rightContext var
 
               | precRel == Just Take = do
-                  assert =<< mkEq var =<< mkRealNum (Map.findWithDefault 0 rightContext (popContexts gn))
+                  -- we don't use Map.findWithDefault 0 to "assert" that the support chain has been built properly
+                  assert =<< mkEq var =<< mkRealNum ((Map.!) (popContexts gn) rightContext)
                   return [] -- pop transitions do not generate new variables
 
               | otherwise = fail "unexpected prec rel"

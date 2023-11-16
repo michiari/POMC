@@ -19,6 +19,7 @@ import Pomc.Prec (Prec(..),)
 import Pomc.SetMap(SetMap)
 import qualified Pomc.SetMap as SM
 
+
 import Data.Set(Set)
 import qualified Data.Set as Set
 
@@ -51,6 +52,7 @@ data GraphNode state = GraphNode
   , semiconf   :: (StateId state, Stack state)
   , internalEdges :: Set Edge
   , supportEdges  :: Set Edge
+  -- if the semiconf is a pop one, then popContexts represents the probability distribution of the pop transition 
   , popContexts :: IntMap Prob
   } deriving Show
 
