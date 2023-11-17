@@ -18,9 +18,6 @@ import Pomc.Prob.SupportChain
 
 import Data.Hashable(Hashable)
 
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
-
 import qualified Data.IntMap.Strict as Map
 
 import Data.Maybe(fromJust, isJust, isNothing)
@@ -42,7 +39,7 @@ import qualified Data.HashTable.ST.Basic as BH
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
 
--- a map Key: (gnId GraphNode, getId StateId) - value : Z3 variables (represented as ASTs)
+-- a map Key: (gnId ChainNode, getId StateId) - value : Z3 variables (represented as ASTs)
 -- each Z3 variable represents [[q,b | p ]]
 -- where q,b is the semiconfiguration associated with the graphNode of the key
 -- and p is the state associated with the StateId of the key
@@ -115,7 +112,7 @@ terminationQuery chain precFun query =
 encodePush :: (Eq state, Hashable state, Show state)
         => SupportChain RealWorld state
         -> VarMap
-        -> GraphNode state
+        -> ChainNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
         -> Z3 [(Int, Int)]
@@ -141,7 +138,7 @@ encodePush chain varMap gn rightContext var =
 
 encodeShift :: (Eq state, Hashable state, Show state)
         => VarMap
-        -> GraphNode state
+        -> ChainNode state
         -> Int -- the Id of StateId of the right context of this chain
         -> AST
         -> Z3 [(Int, Int)]

@@ -7,7 +7,7 @@
 
 module Pomc.Prob.SupportChain ( SupportChain
                               , decomposeGraph
-                              , GraphNode(..)
+                              , ChainNode(..)
                               , Edge(..)
                               ) where
 import Prelude
@@ -46,8 +46,8 @@ instance Eq Edge where
 instance Ord Edge where
   compare p q = compare (to p) (to q)
 
--- a node in the graph of semiconfigurations
-data GraphNode state = GraphNode
+-- a node in the support chain, corresponding to a semiconfiguration
+data ChainNode state = ChainNode
   { gnId   :: Int
   , semiconf   :: (StateId state, Stack state)
   , internalEdges :: Set Edge
@@ -56,10 +56,10 @@ data GraphNode state = GraphNode
   , popContexts :: IntMap Prob
   } deriving Show
 
-instance Eq (GraphNode state) where
+instance Eq (ChainNode state) where
   p == q =  gnId p ==  gnId q
 
-instance  Ord (GraphNode state) where
+instance  Ord (ChainNode state) where
   compare r q = compare ( gnId r) ( gnId q)
 
 -- a basic open-addressing hashtable using linear probing
@@ -67,7 +67,7 @@ instance  Ord (GraphNode state) where
 type HashTable s k v = BH.HashTable s k v
 
 -- the Support Chain computed by this module
-type SupportChain s state = CM.CustoMap s (GraphNode state)
+type SupportChain s state = CM.CustoMap s (ChainNode state)
 
 -- the global variables in the algorithm
 data Globals s state = Globals
@@ -99,7 +99,7 @@ decomposeGraph probdelta i iLabel = do
   emptyChain <- CM.empty
   initialId <- freshPosId newIdSequence
   BH.insert emptyChainMap (decode initialNode) initialId
-  CM.insert emptyChain initialId $ GraphNode {gnId=initialId, semiconf=initialNode, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
+  CM.insert emptyChain initialId $ ChainNode {gnId=initialId, semiconf=initialNode, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
   let globals = Globals { sIdGen = newSig
                         , idSeq = newIdSequence
                         , chainMap = emptyChainMap
@@ -206,7 +206,7 @@ addPopContext :: (Eq state, Hashable state, Show state)
 addPopContext globals from prob_ rightContext = 
   let 
     -- we use insertWith + because the input distribution might not be normalized - i.e., there might be duplicate pop transitions
-    insertContext g@GraphNode{popContexts= cntxs} =g{popContexts = Map.insertWith (+) (getId rightContext) prob_ cntxs}
+    insertContext g@ChainNode{popContexts= cntxs} =g{popContexts = Map.insertWith (+) (getId rightContext) prob_ cntxs}
   in BH.lookup (chainMap globals) (decode from) >>= CM.modify (chain globals) (insertContext) . fromJust
 
 -- decomposing a transition to a new semiconfiguration
@@ -221,15 +221,15 @@ decomposeTransition :: (Eq state, Hashable state, Show state)
 decomposeTransition globals probdelta from isSupport prob_ dest =
   let
     createInternal to_  stored_edges = Edge{to = to_, prob = sum $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
-    insertEdge to_  True  g@GraphNode{supportEdges = edges_} = g{supportEdges = Set.insert Edge{to = to_, prob = 0} edges_} -- summaries are assigned prob 0 by default
-    insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }
+    insertEdge to_  True  g@ChainNode{supportEdges = edges_} = g{supportEdges = Set.insert Edge{to = to_, prob = 0} edges_} -- summaries are assigned prob 0 by default
+    insertEdge to_  False g@ChainNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }
     lookupInsert to_ = BH.lookup (chainMap globals) (decode from) >>= CM.modify (chain globals) (insertEdge to_ isSupport) . fromJust
   in do
     maybeId <- BH.lookup (chainMap globals) (decode dest)
     actualId <- maybe (freshPosId $ idSeq globals) return maybeId
     when (isNothing maybeId) $ do
         BH.insert (chainMap globals) (decode dest) actualId
-        CM.insert (chain globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
+        CM.insert (chain globals) actualId $ ChainNode {gnId=actualId, semiconf=dest, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
     lookupInsert actualId 
     when (isNothing maybeId) $ decompose globals probdelta dest
 
