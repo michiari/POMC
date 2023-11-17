@@ -160,7 +160,7 @@ expectedLargerRecEval =
   [ True,  False, False, False, False, False
   , False, True,  False, False, False, False
   , False, False, False, False, False, False
-  , False, False, False, False -- base_tests
+  , False, False, False, False, False, False -- base_tests
   , False, False, False, False, False -- chain_next
   , False, False, False, False        -- contains_exc
   , False, False, False, False        -- empty_frame
