@@ -11,10 +11,11 @@ module Main (main) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
+import Pomc.Prob.ProbModelChecker (programTermination)
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.TimeUtils (timeFunApp, timeToString)
+import Pomc.TimeUtils (timeAction, timeFunApp, timeToString)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
@@ -81,6 +82,8 @@ main = do
 
     ProgCheckRequest phis prog -> sum <$> forM phis (runProg isOmega prog)
 
+    ProbCheckRequest tquery prog -> runProb tquery prog
+
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
   where
@@ -112,6 +115,15 @@ main = do
       ((sat, trace), time) <- timeFunApp fst (modelCheckProgram isOmega phi) prog
       putStr $ show sat
       unless sat $ putStr $ "\nCounterexample: " ++ showPrettyTrace "..." show trace
+      putStrLn (concat ["\nElapsed time: ", timeToString time])
+      return time
+
+    runProb tquery prog = do
+      putStr (concat [ "\nProbabilistic Termination Checking\nQuery: ", show tquery
+                     , "\nResult:  "
+                     ])
+      ((tres, _), time) <- timeAction fst $ programTermination prog tquery
+      putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 

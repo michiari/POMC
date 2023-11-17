@@ -13,12 +13,15 @@ module Pomc.Parse.Parser ( checkRequestP
                          , includeP
                          ) where
 
+import Prelude hiding (GT, LT)
+
 import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.Potl as P
 import Pomc.MiniIR (Program(..), ExprProp(..))
 import Pomc.Parse.MiniProc
 import Pomc.ModelChecker (ExplicitOpa(..))
+import Pomc.Prob.ProbUtils (TermQuery(..))
 
 import Data.Void (Void)
 import Data.Text (Text, pack)
@@ -43,6 +46,9 @@ data CheckRequest =
                    } |
   ProgCheckRequest { pcreqFormulas :: [P.Formula ExprProp]
                    , pcreqMiniProc :: Program
+                   } |
+  ProbCheckRequest { bcreqTermQuery :: TermQuery
+                   , bcreqMiniProb  :: Program
                    }
 
 spaceP :: Parser ()
@@ -252,32 +258,56 @@ opaSectionP = do
   _ <- symbolP ";"
   return (ExplicitOpa ([], []) opaInitials opaFinals opaDeltaPush opaDeltaShift opaDeltaPop)
 
+termQueryP :: Parser TermQuery
+termQueryP = do
+  _ <- symbolP "probabilistic query"
+  _ <- symbolP ":"
+  tquery <- choice [ try $ LT <$> (symbolP "<" >> probP)
+                   , try $ LE <$> (symbolP "<=" >> probP)
+                   , try $ GT <$> (symbolP ">" >> probP)
+                   , try $ GE <$> (symbolP ">=" >> probP)
+                   , ApproxSingleQuery <$ symbolP "approximate"
+                   ]
+  _ <- symbolP ";"
+  return tquery
+
 checkRequestP :: Parser CheckRequest
-checkRequestP = do
-  fs <- formulaSectionP
-  opaStringP fs <|> progSectionP fs
-  where opaStringP fs = do
-          prs <- precSectionP
-          pss <- optional stringSectionP
-          opa <- optional opaSectionP
-          return ExplCheckRequest { ecreqFormulas = map untypePropFormula fs
-                                  , ecreqPrecRels = prs
-                                  , ecreqStrings = pss
-                                  , ecreqOpa = fullOpa opa prs
-                                  }
+checkRequestP = nonProbModeP <|> probModeP where
+  nonProbModeP = do
+    fs <- formulaSectionP
+    opaStringP fs <|> progSectionP fs
 
-        progSectionP fs = do
-          _ <- symbolP "program"
-          _ <- symbolP ":"
-          prog <- programP
-          return ProgCheckRequest { pcreqFormulas = map (untypeExprFormula prog) fs
-                                  , pcreqMiniProc = prog
-                                  }
+  opaStringP fs = do
+    prs <- precSectionP
+    pss <- optional stringSectionP
+    opa <- optional opaSectionP
+    return ExplCheckRequest { ecreqFormulas = map untypePropFormula fs
+                            , ecreqPrecRels = prs
+                            , ecreqStrings = pss
+                            , ecreqOpa = fullOpa opa prs
+                            }
 
-        untypePropFormula = fmap $ \p -> case p of
-          TextTProp t -> t
-          ExprTProp _ _ ->
-            error "Cannot use expressions in formulas to be checked on OPAs or strings."
+  progSectionP fs = do
+    _ <- symbolP "program"
+    _ <- symbolP ":"
+    prog <- programP
+    return ProgCheckRequest { pcreqFormulas = map (untypeExprFormula prog) fs
+                            , pcreqMiniProc = prog
+                            }
+
+  probModeP = do
+    tquery <- termQueryP
+    _ <- symbolP "program"
+    _ <- symbolP ":"
+    prog <- programP
+    return ProbCheckRequest { bcreqTermQuery = tquery
+                            , bcreqMiniProb  = prog
+                            }
+
+  untypePropFormula = fmap $ \p -> case p of
+    TextTProp t -> t
+    ExprTProp _ _ ->
+      error "Cannot use expressions in formulas to be checked on OPAs or strings."
 
 fullOpa :: Maybe (ExplicitOpa Word Text)
         -> [StructPrecRel Text]

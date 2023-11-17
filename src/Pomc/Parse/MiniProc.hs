@@ -13,10 +13,12 @@ module Pomc.Parse.MiniProc ( programP
                            , untypeExprFormula
                            , identifierP
                            , typedExprP
+                           , probP
                            ) where
 
 import Pomc.MiniIR
 import Pomc.Potl (Formula)
+import Pomc.Prob.ProbUtils (Prob)
 
 import Data.Void (Void)
 import Data.Text (Text)
@@ -152,6 +154,9 @@ literalP = boolLiteralP <|> intLiteralP
             then fail "Negative literal declared unsigned"
             else return (BV.bitVec (typeWidth ty) value, ty)
 
+probP :: Parser Prob
+probP = toRational <$> L.scientific
+
 variableP :: Maybe (Map Text Variable) -> Parser Variable
 variableP (Just varmap) = identifierP >>= variableLookup
   where variableLookup :: Text -> Parser Variable
@@ -265,7 +270,7 @@ assOrCatP varmap = try $ do
   lhs <- lValueP varmap
   _ <- symbolP "="
   firstExpr <- teP
-  maybeCat <- optional $ some ((,) <$> probP <*> teP)
+  maybeCat <- optional $ some ((,) <$> probLitP <*> teP)
   _ <- symbolP ";"
   let lhsType = case lhs of
         LScalar var -> varType var
@@ -275,7 +280,7 @@ assOrCatP varmap = try $ do
     Just l -> let (probs, exprs) = unzip l
               in Categorical lhs (map (untypeExprWithCast lhsType) (firstExpr:exprs)) probs
   where teP = typedExprP $ Just varmap
-        probP = between (symbolP "{") (symbolP "}") L.float
+        probLitP = between (symbolP "{") (symbolP "}") probP
 
 callP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 callP varmap = try $ do
