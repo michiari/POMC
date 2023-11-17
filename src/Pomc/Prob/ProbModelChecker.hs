@@ -7,13 +7,13 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Prob.ProbModelChecker ( Popa(..)
-                                  , ExplicitPopa(..)
+module Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   , terminationLTExplicit
                                   , terminationLEExplicit
                                   , terminationGTExplicit
                                   , terminationGEExplicit
                                   , terminationApproxExplicit
+                                  , programTermination
                                   ) where
 import Prelude hiding (LT,GT)
 import Pomc.Prop (Prop(..))
@@ -24,13 +24,13 @@ import Pomc.PropConv ( convProps, PropConv(encodeProp) )
 
 import qualified Pomc.Encoding as E
 
-import Pomc.Prob.SupportChain(decomposeGraph)
-import qualified Pomc.Prob.SupportChain as SC
+import Pomc.Prob.SupportChain (decomposeGraph)
 
 import qualified Pomc.CustoMap as CM
 
-import Pomc.Prob.Z3Termination(terminationQuery)
+import Pomc.Prob.Z3Termination (terminationQuery)
 import Pomc.Prob.ProbUtils
+import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..))
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -43,15 +43,6 @@ import Data.Hashable ( Hashable )
 import Control.Monad.ST (stToIO)
 
 import Z3.Monad (evalZ3)
-
-data Popa s a = Popa
-  { alphabet       :: Alphabet a -- OP alphabet
-  , initial        :: (s, Label) -- initial state of the POPA
-  , popaDeltaPush  :: E.BitEncoding -> s -> RichDistr s Label -- push transition prob. distribution
-  , popaDeltaShift :: E.BitEncoding -> s -> RichDistr s Label -- shift transition prob. distribution
-  , popaDeltaPop   :: s -> s -> RichDistr s Label -- pop transition prob. distribution
-  , labelling      :: s -> Set (Prop a) -- labelling function
-  }
 
 -- TODO: add normalize RichDistr to optimize the encoding
 data ExplicitPopa s a = ExplicitPopa
@@ -121,3 +112,25 @@ terminationExplicit popa query =
     scString <- stToIO $ CM.showMap sc
     p <- evalZ3 $ terminationQuery sc precFunc query
     return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
+
+programTermination :: Program -> TermQuery -> IO (TermResult, String)
+programTermination prog query =
+  let (_, popa) = programToPopa False prog Set.empty
+      (tsls, tprec) = popaAlphabet popa
+      (bitenc, precFunc, _, _, _, _, _, _) =
+        makeOpa T False (tsls, tprec) (\_ _ -> True)
+
+      (initVs, initLbl) = popaInitial popa bitenc
+      pDelta = Delta
+               { bitenc = bitenc
+               , prec = precFunc
+               , deltaPush = popaDeltaPush popa bitenc
+               , deltaShift = popaDeltaShift popa bitenc
+               , deltaPop = popaDeltaPop popa bitenc
+               }
+
+  in do
+    sc <- stToIO $ decomposeGraph pDelta initVs initLbl
+    scString <- stToIO $ CM.showMap sc
+    p <- evalZ3 $ terminationQuery sc precFunc query
+    return (p, scString ++ "\n" ++ show query)

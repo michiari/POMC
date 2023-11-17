@@ -37,6 +37,8 @@ module Pomc.MiniIR ( Program(..)
                    , getLocalIdx
                    ) where
 
+import Pomc.Prob.ProbUtils (Prob)
+
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Set (Set)
@@ -93,7 +95,7 @@ data LValue = LScalar Variable | LArray Variable Expr deriving (Eq, Ord, Show)
 data ActualParam = ActualVal Expr | ActualValRes Variable deriving (Eq, Ord, Show)
 data Statement = Assignment LValue Expr
                | Nondeterministic LValue
-               | Categorical LValue [Expr] [Double]
+               | Categorical LValue [Expr] [Prob]
                | Call FunctionName [ActualParam]
                | TryCatch [Statement] [Statement]
                | IfThenElse (Maybe Expr) [Statement] [Statement]

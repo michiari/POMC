@@ -31,8 +31,11 @@ library:
   - Pomc.Parse.MiniProc
   - Pomc.OpaGen
   - Pomc.MiniProc
+  - Pomc.MiniIR
   - Pomc.TimeUtils
   - Pomc.Prob.ProbModelChecker
+  - Pomc.Prob.MiniProb
+  - Pomc.Prob.ProbUtils
   ghc-options:
   - -Wall
   - -O2

@@ -5,9 +5,13 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Prob.MiniProb ( Program
+module Pomc.Prob.MiniProb ( Popa(..)
+                          , Program
                           , ExprProp
                           , programToPopa
+                          -- TODO: remove the following eventually
+                          , sksToExtendedOpa
+                          , LowerState(..)
                           ) where
 
 import Pomc.MiniIR
@@ -16,7 +20,7 @@ import Pomc.Prop (Prop(..), unprop)
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
 import Pomc.Prec (Alphabet)
 import qualified Pomc.Encoding as E
-import Pomc.State (Input)
+import Pomc.Prob.ProbUtils (Prob, Label, RichDistr)
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -30,11 +34,19 @@ import qualified Data.Vector as V
 
 -- import qualified Debug.Trace as DBG
 
+data Popa s a = Popa
+  { popaAlphabet   :: Alphabet a -- OP alphabet
+  , popaInitial    :: E.BitEncoding -> (s, Label) -- initial state of the POPA
+  , popaDeltaPush  :: E.BitEncoding -> s -> RichDistr s Label -- push transition prob. distribution
+  , popaDeltaShift :: E.BitEncoding -> s -> RichDistr s Label -- shift transition prob. distribution
+  , popaDeltaPop   :: E.BitEncoding -> s -> s -> RichDistr s Label -- pop transition prob. distribution
+  }
+
 -- Generation of the Extended OPA
 
 -- Data structures
 data Action = Assign LValue Expr
-  | Cat LValue [(Expr, Double)]
+  | Cat LValue [(Expr, Prob)]
   | CallOp FunctionName [FormalParam] [ActualParam]
   | Return
   | Handle
@@ -273,27 +285,13 @@ lowerBlock sks lowerState thisFinfo linkPred block =
                 lowerStatement sks lowerState1 thisFinfo linkPred1 stmt
           in foldBlock lowerState2 linkPred2 stmts
 
--- Conversion of the Extended OPA to a plain OPA
+-- Conversion of the Extended pOPA to a plain pOPA
 programToPopa :: Bool -> Program -> Set (Prop ExprProp)
-             -> ( PropConv ExprProp
-                , Alphabet APType
-                --, (E.BitEncoding -> Input -> Bool)
-                --, (E.BitEncoding -> VarState -> State -> Bool)
-                , VarState
-                , (E.BitEncoding -> VarState -> [(VarState, Input, Double)])
-                , (E.BitEncoding -> VarState -> [(VarState, Input, Double)])
-                , (E.BitEncoding -> VarState -> VarState -> [(VarState, Input, Double)])
-                )
+              -> ( PropConv ExprProp
+                 , Popa VarState APType
+                 )
 programToPopa isOmega prog additionalProps =
   let (lowerState, ini) = sksToExtendedOpa isOmega (pSks prog)
-      eInitial = (psId ini, initVal)
-        where (gScalars, gArrays) =
-                initialValuation (\_ i -> i) (pGlobalScalars prog) (pGlobalArrays prog)
-              initVal = VarValuation { vGlobalScalars = gScalars
-                                     , vGlobalArrays = gArrays
-                                     , vLocalScalars = V.empty
-                                     , vLocalArrays = V.empty
-                                     }
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
@@ -315,15 +313,29 @@ programToPopa isOmega prog additionalProps =
                 where filterExpr (Prop (ExprProp s _)) | s == scope = True
                       filterExpr _ = False
               globExprMap = makeExprPropMap Nothing
+      eInitial = (psId ini, initVal)
+        where (gScalars, gArrays) =
+                initialValuation (\_ i -> i) (pGlobalScalars prog) (pGlobalArrays prog)
+              (_, lScalars, lArrays) = localsInfo M.! fst (psLabels ini)
+              initVal = VarValuation { vGlobalScalars = gScalars
+                                     , vGlobalArrays = gArrays
+                                     , vLocalScalars = lScalars
+                                     , vLocalArrays = lArrays
+                                     }
+
   in ( pconv
-     , encodeAlphabet pconv miniProcAlphabet
+     , Popa { popaAlphabet = encodeAlphabet pconv miniProcAlphabet
+            , popaInitial = (\bitenc -> (eInitial, pStateToLabel bitenc pconv allProps gvii localsInfo ini $ snd eInitial))
+            , popaDeltaPush = applyDeltaInput pconv allProps gvii localsInfo
+                              $ lsDPush lowerState
+            , popaDeltaShift = applyDeltaInput pconv allProps gvii localsInfo
+                               $ lsDShift lowerState
+            , popaDeltaPop = applyDeltaPop pconv allProps gvii localsInfo
+                             $ lsDPop lowerState
+            }
+     )
      -- TODO check if we still need the inputFilter
      -- TODO check if we still need the stateFilter
-     , eInitial
-     , applyDeltaInput pconv allProps gvii localsInfo $ lsDPush lowerState
-     , applyDeltaInput pconv allProps gvii localsInfo $ lsDShift lowerState
-     , applyDeltaPop pconv allProps gvii localsInfo $ lsDPop lowerState
-     )
 
 applyDeltaInput :: PropConv ExprProp
                 -> Set (Prop ExprProp)
@@ -332,7 +344,7 @@ applyDeltaInput :: PropConv ExprProp
                 -> Map Word (PState, DeltaTarget)
                 -> E.BitEncoding
                 -> VarState
-                -> [(VarState, Input, Double)]
+                -> RichDistr VarState Label
 applyDeltaInput pconv allProps gvii localsInfo delta bitenc (sid, svval) =
   case M.lookup sid delta of
     Nothing -> error "Unexpected dead state"
@@ -346,7 +358,7 @@ applyDeltaPop :: PropConv ExprProp
               -> E.BitEncoding
               -> VarState
               -> VarState
-              -> [(VarState, Input, Double)]
+              -> RichDistr VarState Label
 applyDeltaPop pconv allProps gvii localsInfo delta bitenc (sid, svval) (stackSid, stackVval) =
   case M.lookup (sid, stackSid) delta of
     Nothing -> error "Unexpected dead state"
@@ -371,7 +383,7 @@ computeDsts :: E.BitEncoding
             -> VarValuation
             -> Action
             -> DeltaTarget
-            -> [(VarState, Input, Double)]
+            -> RichDistr VarState Label
 computeDsts bitenc pconv allProps gvii localsInfo vval act dt =
   let newDsts = case dt of
         Det ps -> map (\(newVval, prob) -> ((ps, newVval), prob)) newVvals
@@ -380,7 +392,7 @@ computeDsts bitenc pconv allProps gvii localsInfo vval act dt =
   in map (\((ps, vval0), prob) ->
             let vval1 = prepareForCall (psAction ps) (fst $ psLabels ps) vval0
             in ( (psId ps, vval1)
-               , pStateToLabel ps vval1
+               , pStateToLabel bitenc pconv allProps gvii localsInfo ps vval1
                , prob
                )
          ) -- Calls must be evaluated immediately, other actions will be in the next state
@@ -422,16 +434,21 @@ computeDsts bitenc pconv allProps gvii localsInfo vval act dt =
           in foldl evalArg newVval $ zip fargs aargs
         prepareForCall _ _ svval = svval
 
-        pStateToLabel :: PState -> VarValuation -> Input
-        pStateToLabel ps svval =
-          let (exprPropMap, _, _) = localsInfo M.! (fst $ psLabels ps)
-              trueExprProps = M.keysSet $ M.filter (toBool . evalExpr gvii svval) exprPropMap
-              lsProps = S.fromList
-                        $ map (encodeProp pconv)
-                        $ filter (`S.member` allProps)
-                        $ (actionStruct $ psAction ps)
-                        : (map (Prop . TextProp) $ (fst $ psLabels ps) : (snd $ psLabels ps))
-          in E.encodeInput bitenc $ lsProps `S.union` trueExprProps
+pStateToLabel :: E.BitEncoding
+              -> PropConv ExprProp
+              -> Set (Prop ExprProp)
+              -> VarIdInfo
+              -> Map FunctionName (Map (Prop APType) Expr, Vector IntValue, Vector ArrayValue)
+              -> PState -> VarValuation -> Label
+pStateToLabel bitenc pconv allProps gvii localsInfo ps svval =
+  let (exprPropMap, _, _) = localsInfo M.! (fst $ psLabels ps)
+      trueExprProps = M.keysSet $ M.filter (toBool . evalExpr gvii svval) exprPropMap
+      lsProps = S.fromList
+                $ map (encodeProp pconv)
+                $ filter (`S.member` allProps)
+                $ (actionStruct $ psAction ps)
+                : (map (Prop . TextProp) $ (fst $ psLabels ps) : (snd $ psLabels ps))
+  in E.encodeInput bitenc $ lsProps `S.union` trueExprProps
 
 actionStruct :: Action -> Prop ExprProp
 actionStruct Flush = End

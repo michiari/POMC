@@ -275,7 +275,7 @@ assOrCatP varmap = try $ do
     Just l -> let (probs, exprs) = unzip l
               in Categorical lhs (map (untypeExprWithCast lhsType) (firstExpr:exprs)) probs
   where teP = typedExprP $ Just varmap
-        probP = between (symbolP "{") (symbolP "}") L.float
+        probP = between (symbolP "{") (symbolP "}") (toRational <$> L.scientific)
 
 callP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 callP varmap = try $ do

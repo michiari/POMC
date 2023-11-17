@@ -127,7 +127,7 @@ decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
 -- ApproxTermination requires to approximate just the overall termination probability of the given popa
 -- Pending requires to compute the ids of pending semiconfs, i.e. those that have a positive probability of non terminating
 data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxAllQuery | ApproxSingleQuery | PendingQuery
-  deriving Show
+  deriving (Show, Eq)
 
 -- does the query require to compute some numbers?
 isApprox :: TermQuery -> Bool 
@@ -140,7 +140,7 @@ isApprox _ = False
 -- ApproxSingleResult represents the approximate probability to terminate of the popa 
 -- PendingResult represents whether a semiconf is pending (i.e. it has positive probability to non terminate) for all semiconfs of the popa
 data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob) | ApproxSingleResult Prob | PendingResult (Vector Bool)
-  deriving Show
+  deriving (Show, Eq)
 
 toBool :: TermResult -> Bool 
 toBool TermSat = True 
