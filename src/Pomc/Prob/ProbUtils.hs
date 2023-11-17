@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+
 {- |
    Module      : Pomc.Prob.ProbUtils.hs
    Copyright   : 2023 Francesco Pontiggia
@@ -24,7 +26,7 @@ module Pomc.Prob.ProbUtils ( Prob
                         , toProb
                         , toProbVec
                         , debug
-                        ) where                        
+                        ) where
 import Prelude hiding (GT, LT)
 
 import Pomc.State(Input)
@@ -33,6 +35,8 @@ import Pomc.Check (EncPrecFunc)
 
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
+import GHC.Generics (Generic)
+import Control.DeepSeq (NFData)
 
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
@@ -140,7 +144,7 @@ isApprox _ = False
 -- ApproxSingleResult represents the approximate probability to terminate of the popa 
 -- PendingResult represents whether a semiconf is pending (i.e. it has positive probability to non terminate) for all semiconfs of the popa
 data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob) | ApproxSingleResult Prob | PendingResult (Vector Bool)
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, NFData)
 
 toBool :: TermResult -> Bool 
 toBool TermSat = True 
