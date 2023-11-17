@@ -71,7 +71,7 @@ type SupportGraph s state = CM.CustoMap s (GraphNode state)
 data Globals s state = Globals
   { sIdGen     :: SIdGen s state
   , idSeq      :: STRef s Int
-  , chainMap   :: HashTable s (Int,Int,Int) Int
+  , graphMap   :: HashTable s (Int,Int,Int) Int
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds   :: STRef s (SetMap s (StateId state))
   , graph      :: STRef s (SupportGraph s state)
@@ -97,7 +97,7 @@ decomposeGraph probdelta i iLabel = do
   CM.insert emptyGraph initialId $ GraphNode {gnId=initialId, semiconf=initialNode, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
   let globals = Globals { sIdGen = newSig
                         , idSeq = newIdSequence
-                        , chainMap = emptyGraphMap
+                        , graphMap = emptyGraphMap
                         , suppStarts = emptySuppStarts
                         , suppEnds = emptySuppEnds
                         , graph = emptyGraph
@@ -202,7 +202,7 @@ addPopContext globals from prob_ rightContext =
   let 
     -- we use insertWith + because the input distribution might not be normalized - i.e., there might be duplicate pop transitions
     insertContext g@GraphNode{popContexts= cntxs} =g{popContexts = Map.insertWith (+) (getId rightContext) prob_ cntxs}
-  in BH.lookup (chainMap globals) (decode from) >>= CM.modify (graph globals) (insertContext) . fromJust
+  in BH.lookup (graphMap globals) (decode from) >>= CM.modify (graph globals) (insertContext) . fromJust
 
 -- decomposing a transition to a new semiconfiguration
 decomposeTransition :: (Eq state, Hashable state, Show state)
@@ -218,12 +218,12 @@ decomposeTransition globals probdelta from isSupport prob_ dest =
     createInternal to_  stored_edges = Edge{to = to_, prob = sum $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
     insertEdge to_  True  g@GraphNode{supportEdges = edges_} = g{supportEdges = Set.insert Edge{to = to_, prob = 0} edges_} -- summaries are assigned prob 0 by default
     insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }
-    lookupInsert to_ = BH.lookup (chainMap globals) (decode from) >>= CM.modify (graph globals) (insertEdge to_ isSupport) . fromJust
+    lookupInsert to_ = BH.lookup (graphMap globals) (decode from) >>= CM.modify (graph globals) (insertEdge to_ isSupport) . fromJust
   in do
-    maybeId <- BH.lookup (chainMap globals) (decode dest)
+    maybeId <- BH.lookup (graphMap globals) (decode dest)
     actualId <- maybe (freshPosId $ idSeq globals) return maybeId
     when (isNothing maybeId) $ do
-        BH.insert (chainMap globals) (decode dest) actualId
+        BH.insert (graphMap globals) (decode dest) actualId
         CM.insert (graph globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
     lookupInsert actualId 
     when (isNothing maybeId) $ decompose globals probdelta dest

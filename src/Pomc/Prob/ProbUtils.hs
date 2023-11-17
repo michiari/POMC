@@ -123,7 +123,7 @@ decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
   
 -- different termination queries
 -- the first four data constructors ask whether the probability to terminate is, resp, <, <=, >, >= than the given probability
--- ApproxQuery requires to approximate the termination probabilities of all semiconfs of the support chain
+-- ApproxQuery requires to approximate the termination probabilities of all semiconfs of the support graph
 -- ApproxTermination requires to approximate just the overall termination probability of the given popa
 -- Pending requires to compute the ids of pending semiconfs, i.e. those that have a positive probability of non terminating
 data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxAllQuery | ApproxSingleQuery | PendingQuery
