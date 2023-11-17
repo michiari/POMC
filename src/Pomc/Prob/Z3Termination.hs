@@ -67,23 +67,20 @@ lookupVar varMap key = do
 -- end helpers
 
 -- compute the probabilities that a chain will terminate
--- reuires: the initial semiconfiguration is at position 0
+-- reuires: the initial semiconfiguration is at position 0 in the Support chain
 terminationQuery :: (Eq state, Hashable state, Show state)
         => SupportChain RealWorld state
         -> EncPrecFunc
         -> TermQuery
         -> Z3 TermResult
 terminationQuery chain precFun query =
-  let encode [] _  pops = return pops
-      encode ((gnId_, rightContext):unencoded) varMap pops = do
+  let encode [] _  = return ()
+      encode ((gnId_, rightContext):unencoded) varMap = do
         var <- liftIO . stToIO $ fromJust <$> BH.lookup varMap (gnId_, rightContext)
         gn <- liftIO $ MV.unsafeRead chain gnId_
         let (q,g) = semiconf gn
             qLabel = getLabel q
             precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
-            --update the set of pop semiconfs, if needed
-            recordPop = isApprox query && isJust g && precRel == Just Take 
-            new_pops = if recordPop then IntSet.insert gnId_ pops else pops
             cases
               -- semiconfigurations with empty stack but not the initial one (terminating semiconfigs -> probability 1)
               | isNothing g && (gnId_ /= 0) = do
@@ -104,15 +101,14 @@ terminationQuery chain precFun query =
               | otherwise = fail "unexpected prec rel"
 
         new_unencoded <- cases
-        encode (new_unencoded ++ unencoded) varMap new_pops
+        encode (new_unencoded ++ unencoded) varMap
   in do
     newVarMap <- liftIO . stToIO $ BH.new
     new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
     liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var
     -- encode the probability transition relation by asserting a set of Z3 formulas
-    -- for optimization purposes, we keep track of pop semiconfigurations
-    pops <- encode [(0 ::Int , -1 :: Int)] newVarMap IntSet.empty
-    solveQuery query new_var pops chain newVarMap
+    encode [(0 ::Int , -1 :: Int)] newVarMap
+    solveQuery query new_var chain newVarMap
 
 
 -- encoding helpers --
@@ -162,8 +158,12 @@ encodeShift varMap gn rightContext var =
     return unencoded_vars
 -- end 
 
--- 
-solveQuery :: TermQuery -> AST -> IntSet -> SupportChain RealWorld state -> VarMap  -> Z3 TermResult
+-- params:
+-- (q :: TermQuery) = input query
+-- (var:: AST) = Z3 var associated with the initial semiconf
+-- (chain :: SupportChain RealWorld state :: ) = the chain 
+-- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
+solveQuery :: TermQuery -> AST -> SupportChain RealWorld state -> VarMap  -> Z3 TermResult
 solveQuery q
   | ApproxAllQuery <- q     = encodeApproxAllQuery
   | ApproxSingleQuery <- q  = encodeApproxSingleQuery
@@ -171,16 +171,16 @@ solveQuery q
   | (LE bound) <- q         = encodeComparison mkLe bound
   | (GT bound) <- q         = encodeComparison mkLe bound
   | (GE bound) <- q         = encodeComparison mkLt bound
-  where encodeComparison comp bound var _ _ _ = do
+  where encodeComparison comp bound var _ _ = do
           assert =<< comp var =<< mkRealNum bound
-          parseResult q <$> check
-        encodeApproxAllQuery _ pops chain varMap = do 
+          parseResult q <$> check -- check feasibility of all the asserts and interpret the result
+        encodeApproxAllQuery _ chain varMap = do 
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length chain)
-          sumAstVec <- V.imapM (checkDeficiency pops) vec 
+          sumAstVec <- V.imapM (checkPending chain) vec 
           fmap (ApproxAllResult . fromJust . snd) . withModel $ \m -> fromJust <$> mapEval evalReal m sumAstVec
-        encodeApproxSingleQuery _ pops chain varMap = do 
+        encodeApproxSingleQuery _ chain varMap = do 
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length chain)
-          sumAstVec <- V.imapM (checkDeficiency pops) vec 
+          sumAstVec <- V.imapM (checkPending chain) vec 
           fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> fromJust <$> evalReal m (sumAstVec ! 0)
           
 -- Query solving helpers
@@ -199,15 +199,26 @@ groupASTs varMap l = do
   BH.mapM_ (\(key, ast) -> MV.unsafeModify new_mv (ast :) (fst key)) varMap
   V.freeze new_mv
 
-checkDeficiency :: IntSet -> Int -> [AST] -> Z3 AST
-checkDeficiency pops i asts = do
+-- for estimating exact termination probabilities
+checkPending :: SupportChain RealWorld state -> Int -> [AST] -> Z3 AST
+checkPending chain i asts = do
   sumAst <- mkAdd asts 
-  unless (IntSet.member i pops) $ do -- pop semiconfs do not need additional constraints
-    less1 <- mkLt sumAst =<< mkRational (1 :: Prob)
+  -- some optimizations for cases where the encoding already contains actual termination probabilities
+  -- so there is no need for additional checks
+  -- if a semiconf is a pop, then of course it terminates almost surely
+  isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead chain i
+  -- if no variable has been encoded for this semiconf, it means it cannot reach any pop (and hence it has zero prob to terminate)
+  -- so all the checks down here would be useless (we would be asserting 0 <= 1)
+  let noVar = null asts
+  -- if a semiconf has bottom stack, then it terminates almost surely 
+  -- apart from the initial one, but leaving it out from the encoding does not break uniqueness of solutions
+  isBottomStack <- liftIO $ isNothing . snd . semiconf <$> MV.unsafeRead chain i
+  unless (isPop || noVar || isBottomStack) $ do -- pop semiconfs do not need additional constraints
+    less1 <- mkLt sumAst =<< mkRational (1 :: Prob) -- check if it can be pending
     r <- checkAssumptions [less1]
     let cases 
-          | Sat <- r = assert less1 
-          | Unsat <- r = assert =<< mkEq sumAst =<< mkRational (1 :: Prob) -- semiconf i is not deficient
+          | Sat <- r = assert less1 -- semiconf i is pending
+          | Unsat <- r = assert =<< mkEq sumAst =<< mkRational (1 :: Prob) -- semiconf i is not pending
           | Undef <- r = error $ "Undefined result error when checking deficiency of semiconf" ++ show i
     cases 
   return sumAst
