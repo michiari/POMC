@@ -1,0 +1,37 @@
+probabilistic query: >= 1;
+
+program:
+main() {
+  bool r;
+  and(r);
+}
+
+and(bool &r) {
+  bool x;
+  x = 1u1 {0.5} 0u1;
+  if (x) {
+    r = 1u1 {0.5} 0u1;
+  } else {
+    or(x);
+    if (!x) {
+      r = 0u1;
+    } else {
+      or(r);
+    }
+  }
+}
+
+or(bool &r) {
+  bool x;
+  x = 1u1 {0.5} 0u1;
+  if (x) {
+    r = 1u1 {0.5} 0u1;
+  } else {
+    and(x);
+    if (x) {
+      r = 1u1;
+    } else {
+      and(r);
+    }
+  }
+}

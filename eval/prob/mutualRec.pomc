@@ -1,0 +1,24 @@
+probabilistic query: approximate;
+
+program:
+f() {
+  u2 x;
+  x = 0u2 {0.3} 1u2 {0.3} 2u2;
+  if (x == 0u2) {
+    f();
+  } else {
+    if (x == 1u2) {
+      g();
+    } else { }
+  }
+}
+
+g() {
+  bool x;
+  x = true {0.5} false;
+  if (x) {
+    f();
+  } else {
+    g();
+  }
+}

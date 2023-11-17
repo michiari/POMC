@@ -1,0 +1,10 @@
+probabilistic query: approximate;
+
+program:
+f() {
+  bool x;
+  x = 0u1 {0.5} 1u1;
+  if (x) {
+    f();
+  } else { }
+}
