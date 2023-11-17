@@ -167,6 +167,7 @@ solveQuery :: TermQuery -> AST -> SupportChain RealWorld state -> VarMap  -> Z3 
 solveQuery q
   | ApproxAllQuery <- q     = encodeApproxAllQuery
   | ApproxSingleQuery <- q  = encodeApproxSingleQuery
+  | PendingQuery <- q       = encodePendingQuery
   | (LT bound) <- q         = encodeComparison mkLt bound
   | (LE bound) <- q         = encodeComparison mkLe bound
   | (GT bound) <- q         = encodeComparison mkLe bound
@@ -182,6 +183,9 @@ solveQuery q
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length chain)
           sumAstVec <- V.imapM (checkPending chain) vec 
           fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> fromJust <$> evalReal m (sumAstVec ! 0)
+        encodePendingQuery _ chain varMap = do 
+          vec <- liftIO . stToIO $ groupASTs varMap (MV.length chain)
+          PendingResult <$> V.imapM (isPending chain) vec
           
 -- Query solving helpers
 parseResult :: TermQuery -> Result -> TermResult
@@ -197,7 +201,7 @@ groupASTs :: VarMap -> Int -> ST.ST RealWorld (Vector [AST])
 groupASTs varMap l = do
   new_mv <- MV.replicate l []
   BH.mapM_ (\(key, ast) -> MV.unsafeModify new_mv (ast :) (fst key)) varMap
-  V.freeze new_mv
+  V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support chain
 
 -- for estimating exact termination probabilities
 checkPending :: SupportChain RealWorld state -> Int -> [AST] -> Z3 AST
@@ -209,16 +213,41 @@ checkPending chain i asts = do
   isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead chain i
   -- if no variable has been encoded for this semiconf, it means it cannot reach any pop (and hence it has zero prob to terminate)
   -- so all the checks down here would be useless (we would be asserting 0 <= 1)
-  let noVar = null asts
+  let noVars = null asts
   -- if a semiconf has bottom stack, then it terminates almost surely 
   -- apart from the initial one, but leaving it out from the encoding does not break uniqueness of solutions
   isBottomStack <- liftIO $ isNothing . snd . semiconf <$> MV.unsafeRead chain i
-  unless (isPop || noVar || isBottomStack) $ do -- pop semiconfs do not need additional constraints
+  unless (isPop || noVars || isBottomStack) $ do
     less1 <- mkLt sumAst =<< mkRational (1 :: Prob) -- check if it can be pending
     r <- checkAssumptions [less1]
     let cases 
           | Sat <- r = assert less1 -- semiconf i is pending
           | Unsat <- r = assert =<< mkEq sumAst =<< mkRational (1 :: Prob) -- semiconf i is not pending
-          | Undef <- r = error $ "Undefined result error when checking deficiency of semiconf" ++ show i
+          | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show i
     cases 
   return sumAst
+
+-- is a semiconf pending?
+isPending :: SupportChain RealWorld state -> Int -> [AST] -> Z3 Bool
+isPending chain i asts = do
+  sumAst <- mkAdd asts 
+  -- some optimizations for cases where we already know if the semiconf is pending
+  -- so there is no need for additional checks
+  -- if a semiconf is a pop, then of course it terminates almost surely (and hence it is not pending)
+  isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead chain i
+  -- if no variable has been encoded for this semiconf, it means it ha zero prob to reach a pop (and hence it is pending)
+  let noVars = null asts
+  -- if a semiconf has bottom stack, then it belongs necessarily to the support chain
+  isBottomStack <- liftIO $ isNothing . snd . semiconf <$> MV.unsafeRead chain i
+  if isPop 
+    then return False 
+    else if noVars || isBottomStack
+      then return True
+      else do 
+        less1 <- mkLt sumAst =<< mkRational (1 :: Prob) -- check if it can be pending
+        r <- checkAssumptions [less1]
+        let cases 
+              | Sat <- r = return True -- semiconf i is pending
+              | Unsat <- r = return False -- semiconf i is not pending
+              | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show i
+        cases 

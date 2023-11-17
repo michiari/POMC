@@ -79,9 +79,9 @@ data Globals s state = Globals
   , chain      :: STRef s (SupportChain s state)
   }
 
--- assumptions: 
--- the initial state is mapped to id 0;
--- the initial semiconfiguration (initialSid, Nothing) is mapped to node 0 in the support chain.
+-- note that the computed Support Chain contains all reachable semiconfigurations of the underlying OPA, 
+-- i.e. it represent the Support Graph augmented with probabilities on the edges
+-- this decomposition is preliminary to the computation of pending semiconfigurations
 decomposeGraph  :: (Eq state, Hashable state, Show state)
         => ProbDelta state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
@@ -112,6 +112,7 @@ decomposeGraph probdelta i iLabel = do
   idx <- readSTRef . idSeq $ globals
   fmap (CM.take idx) $ readSTRef . chain $ globals
 
+-- requires: the initial state of the OPA is mapped to StateId with getId 0
 decompose :: (Eq state, Hashable state, Show state)
       => Globals s state -- global variables of the algorithm
       -> ProbDelta state -- delta relation of the opa

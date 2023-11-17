@@ -23,6 +23,7 @@ module Pomc.Prob.ProbUtils ( Prob
                         , toBool
                         , toProb
                         , toProbVec
+                        , debug
                         ) where                        
 import Prelude hiding (GT, LT)
 
@@ -38,6 +39,8 @@ import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
 import Data.Vector(Vector)
+
+import Debug.Trace(trace)
 
 type Prob = Rational
 newtype Distr a = Distr [(a, Prob)] deriving Show
@@ -108,10 +111,22 @@ data ProbDelta state = Delta
   , deltaPop :: state -> state -> RichDistr state Label -- deltapop relation
   }
 
+freshPosId :: STRef s Int -> ST.ST s Int
+freshPosId idSeq = do
+  curr <- readSTRef idSeq
+  modifySTRef' idSeq (+1);
+  return curr
+
+decode :: (StateId state, Stack state) -> (Int,Int,Int)
+decode (s1, Nothing) = (getId s1, 0, 0)
+decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
+  
 -- different termination queries
--- ApproxQuery requires to approximate the termination probabilities of all semiconfs of the summary chain
+-- the first four data constructors ask whether the probability to terminate is, resp, <, <=, >, >= than the given probability
+-- ApproxQuery requires to approximate the termination probabilities of all semiconfs of the support chain
 -- ApproxTermination requires to approximate just the overall termination probability of the given popa
-data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxAllQuery | ApproxSingleQuery
+-- Pending requires to compute the ids of pending semiconfs, i.e. those that have a positive probability of non terminating
+data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxAllQuery | ApproxSingleQuery | PendingQuery
   deriving Show
 
 -- does the query require to compute some numbers?
@@ -122,8 +137,9 @@ isApprox _ = False
 
 -- different possible results of a termination query
 -- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 
--- 
-data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob) | ApproxSingleResult Prob
+-- ApproxSingleResult represents the approximate probability to terminate of the popa 
+-- PendingResult represents whether a semiconf is pending (i.e. it has positive probability to non terminate) for all semiconfs of the popa
+data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob) | ApproxSingleResult Prob | PendingResult (Vector Bool)
   deriving Show
 
 toBool :: TermResult -> Bool 
@@ -139,13 +155,6 @@ toProbVec :: TermResult -> Vector Prob
 toProbVec (ApproxAllResult v) = v 
 toProbVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
-freshPosId :: STRef s Int -> ST.ST s Int
-freshPosId idSeq = do
-  curr <- readSTRef idSeq
-  modifySTRef' idSeq (+1);
-  return curr
-
-decode :: (StateId state, Stack state) -> (Int,Int,Int)
-decode (s1, Nothing) = (getId s1, 0, 0)
-decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
-
+debug :: String -> a -> a 
+--debug = trace
+debug _ x = x
