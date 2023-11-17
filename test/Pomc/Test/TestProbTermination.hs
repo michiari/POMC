@@ -19,8 +19,8 @@ import Data.Ratio((%))
 tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Termination Tests" $ 
             [ testGroup "Boolean Termination Tests" [dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests,
-                                                     biasedRandomWalkTests, nestedRandomWalkTests]
-            , testGroup "Estimating Termination Probabilities" 
+                                                     biasedRandomWalkTests, nestedRandomWalkTests, nonTerminatingTests]
+             , testGroup "Estimating Termination Probabilities" 
                 $ map (\(popa, expected, s) -> makeTestCase popa ((s, terminationApproxExplicit), expected)) exactTerminationProbabilities
             ]
 
@@ -37,7 +37,9 @@ exactTerminationProbabilities = [(dummyModel, 1, "Dummy Model"),
                                  (pseudoRandomWalk, 1, "Pseudo Random Walk"), 
                                  (symmetricRandomWalk, 1, "Symmetric Random Walk"),
                                  (biasedRandomWalk, 2%3, "Biased Random Walk"), 
-                                 (nestedRandomWalk, 1%2, "Nested Random Walk")]
+                                 (nestedRandomWalk, 1, "Nested Random Walk"),
+                                 (nonTerminating, 0, "Non terminating POPA")
+                                 ]
 
 makeTestCase :: (Eq a, Show a)
              => (ExplicitPopa Word String)
@@ -48,6 +50,7 @@ makeTestCase popa ((name, query), expected) = testCase name $ do
   let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
   assertBool debugMsg (res == expected)
 
+-- dummy model
 dummyModelTests :: TestTree
 dummyModelTests = testGroup "Dummy Model Tests" $
   map (makeTestCase dummyModel) (zip termQueries expectedDummyModel)
@@ -68,7 +71,6 @@ dummyModel = ExplicitPopa
                   ]
               }
 
-
 expectedDummyModel :: [Bool]
 expectedDummyModel = [False, False, False,
                       False, False, True,
@@ -76,6 +78,7 @@ expectedDummyModel = [False, False, False,
                       True, True, True
                       ]
 
+-- pseudo Random Walk
 pseudoRandomWalkTests :: TestTree
 pseudoRandomWalkTests = testGroup "Pseudo Random Walk Tests" $
   map (makeTestCase pseudoRandomWalk) (zip termQueries expectedPseudoRandomWalk)
@@ -104,6 +107,7 @@ expectedPseudoRandomWalk = [False, False, False,
                             True, True, True
                            ]
 
+-- symmetric Random Walk                          
 symmetricRandomWalkTests :: TestTree
 symmetricRandomWalkTests = testGroup "Symmetric Random Walk Tests" $
   map (makeTestCase symmetricRandomWalk) (zip termQueries expectedSymmetricRandomWalk)
@@ -141,6 +145,7 @@ expectedSymmetricRandomWalk = [ False, False, False,
                                 True, True, True
                               ]
 
+-- biased Random Walk                             
 biasedRandomWalkTests :: TestTree
 biasedRandomWalkTests = testGroup "Biased Random Walk Tests" $
   map (makeTestCase biasedRandomWalk) (zip termQueries expectedBiasedRandomWalk)
@@ -174,12 +179,12 @@ expectedBiasedRandomWalk = [ False, False, True,
                              True, True, False
                            ]
 
-
+-- nested Random Walk
 nestedRandomWalkTests :: TestTree
-nestedRandomWalkTests = testGroup "Nested Random WalkTests" $
+nestedRandomWalkTests = testGroup "Nested Random Walk Tests" $
   map (makeTestCase nestedRandomWalk) (zip termQueries expectedNestedRandomWalk)
 
--- termination probability = 0.5?
+-- termination probability = 1?
 nestedRandomWalk :: (ExplicitPopa Word String)
 nestedRandomWalk = ExplicitPopa
                         { epAlphabet = stlV3Alphabet
@@ -206,13 +211,42 @@ nestedRandomWalk = ExplicitPopa
                               (11, 0, [(12, makeInputSet ["ret"], 1 :: Prob)]),
                               (11, 9, [(13, makeInputSet ["ret"], 1 :: Prob)]),
                               (14, 8, [(9, makeInputSet ["call"], 1 :: Prob)]),
-                              (14, 10, [(4, makeInputSet ["ret"], 1 :: Prob)])     
+                              (14, 4, [(10, makeInputSet ["ret"], 1 :: Prob)])     
                             ]
                         }
 
 expectedNestedRandomWalk :: [Bool]
-expectedNestedRandomWalk = [ False, False, True,
-                             False, True, True,
-                             True, False, False,
-                             True, True, False
+expectedNestedRandomWalk = [ False, False, False,
+                             False, False, True,
+                             True, True, False,
+                             True, True, True
+                            ]
+
+-- a non terminating POPA
+nonTerminatingTests :: TestTree
+nonTerminatingTests = testGroup "Non terminating POPA Tests" $
+  map (makeTestCase nonTerminating) (zip termQueries expectedNonTerminating)
+
+-- termination probability = 0
+nonTerminating :: (ExplicitPopa Word String)
+nonTerminating = ExplicitPopa
+                        { epAlphabet = stlV3Alphabet
+                        , epInitial = (0, makeInputSet ["call"])
+                        , epopaDeltaPush =
+                            [ (0, [(1, makeInputSet ["call"],   1 :: Prob)]),
+                              (1, [(1, makeInputSet ["call"],   1 :: Prob)])
+                            ]
+                        , epopaDeltaShift =
+                            [ 
+                            ]
+                        , epopaDeltaPop =
+                            [   
+                            ]
+                        }
+
+expectedNonTerminating :: [Bool]
+expectedNonTerminating = [ False, True, True,
+                             True, True, True,
+                             False, False, False,
+                             True, False, False
                             ]
