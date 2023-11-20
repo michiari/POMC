@@ -1,0 +1,19 @@
+probabilistic query: >= 0.9;
+
+program:
+main() {
+  f(1s4);
+}
+
+f(s4 n) {
+  bool x;
+  while (n > 0s4) {
+    x = true {0.6} false; // TODO: has to be 2/3
+    if (x) {
+      f(n - 1s4);
+    } else {
+      f((n + 1s4) % 7s4);
+    }
+    n = n - 1s4;
+  }
+}
