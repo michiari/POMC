@@ -66,7 +66,7 @@ lookupVar varMap key = do
 -- end helpers
 
 -- compute the probabilities that a graph will terminate
--- reuires: the initial semiconfiguration is at position 0 in the Support graph
+-- requires: the initial semiconfiguration is at position 0 in the Support graph
 terminationQuery :: (Eq state, Hashable state, Show state)
         => SupportGraph RealWorld state
         -> EncPrecFunc
@@ -177,15 +177,17 @@ solveQuery q
         encodeApproxAllQuery _ graph varMap = do 
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
           sumAstVec <- V.imapM (checkPending graph) vec 
+          _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
+          _ <- parseSMTLib2String "(set-option :pp.decimal_precision 4)" [] [] [] []
           fmap (ApproxAllResult . fromJust . snd ) . withModel $ \m -> 
             V.forM sumAstVec $ \a -> do 
               s <- astToString . fromJust =<< eval m a
               return $ toRational (read (init s) :: Scientific)
         encodeApproxSingleQuery _ graph varMap = do 
-          _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
-          _ <- parseSMTLib2String "(set-option :pp.decimal_precision 4)" [] [] [] []
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
           sumAstVec <- V.imapM (checkPending graph) vec 
+          _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
+          _ <- parseSMTLib2String "(set-option :pp.decimal_precision 4)" [] [] [] []
           fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> do 
             s <- astToString . fromJust =<< eval m (sumAstVec ! 0)
             return (toRational (read (init s) :: Scientific))
