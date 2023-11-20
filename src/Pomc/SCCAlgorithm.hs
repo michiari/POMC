@@ -86,7 +86,7 @@ data Graph s state = Graph
   , sStack     :: GStack s Edge
   , bStack     :: GStack s Int
   , initials   :: STRef s (IntMap OmegaEncodedSet)
-  , summaries  :: STRef s [(Int, Key state, OmegaEncodedSet, OmegaEncodedSet)]
+  , summaries  :: STRef s [(Int, Key state, OmegaEncodedSet)]
   , bitenc :: OmegaBitencoding state -- different from the usual bitenc
   }
 
@@ -298,19 +298,19 @@ toCollapsePhase graph =
             return (True, Map.insertWith OE.union (gnId gnTo) unionSatSet m)
         | Map.member (gnId gnTo) m = return (b,m)
         | otherwise = error ("unexpected case in toCollapsePhase" ++ show gnFrom ++ "\n\n---\n" ++ show gnTo ++ "\n\n---\n" ++ OE.showOmegaEncoding (bitenc graph) chainSatSet ++ "\nEdge to add: " ++ show chainSatSet ++ "\n\n\nLc + edge: " ++ show unionSatSet)
-      resolveSummary (b, m) (gnId_, to_semiconf, chainSatSet, lcSatSet) = do
+      resolveSummary (b, m) (gnId_, to_semiconf, chainSatSet) = do
         maybeIdent <- BH.lookup (semiconfsGraphMap graph) (decode to_semiconf)
+        gnFrom <- CM.lookup (semiconfsGraph graph) gnId_
         if isNothing maybeIdent
           then do -- the destination does not exist in the graph
             newIdent <- freshPosId $ idSeq graph
             BH.insert (semiconfsGraphMap graph) (decode to_semiconf) newIdent
             CM.insert (semiconfsGraph graph) newIdent (GraphNode{ gnId = newIdent, iValue = 0, semiconf = to_semiconf, edges = Map.empty, recordedSatSet = OE.empty (bitenc graph)})
             insertEdge graph gnId_ (Support newIdent chainSatSet)
-            return (True, Map.insertWith OE.union newIdent (OE.union chainSatSet lcSatSet) m)
+            return (True, Map.insertWith OE.union newIdent (OE.union chainSatSet (recordedSatSet gnFrom)) m)
           else do
             gnTo <- CM.lookup (semiconfsGraph graph) (fromJust maybeIdent)
-            gnFrom <- CM.lookup (semiconfsGraph graph) gnId_
-            cases (b,m) gnFrom gnTo chainSatSet (OE.union chainSatSet lcSatSet)
+            cases (b,m) gnFrom gnTo chainSatSet (OE.union chainSatSet (recordedSatSet gnFrom))
   in do
     (mustCollapse, newInitials) <- foldM resolveSummary (False, Map.empty) =<< readSTRef (summaries graph)
     if not mustCollapse
@@ -325,11 +325,10 @@ insertSummary :: Graph s state
                 -> Key state
                 -> Key state
                 -> OmegaEncodedSet -- the current pathSatSet 
-                -> OmegaEncodedSet -- the recorded pathSatSet of the left context
                 -> ST.ST s ()
-insertSummary graph fromSemiconf toSemiconf pathSatSet leftContextpathSatSet = do
+insertSummary graph fromSemiconf toSemiconf pathSatSet = do
   gnId_ <- fromJust <$> BH.lookup (semiconfsGraphMap graph) (decode fromSemiconf)
-  modifySTRef' (summaries graph) $ \l -> (gnId_, toSemiconf, pathSatSet, leftContextpathSatSet):l
+  modifySTRef' (summaries graph) $ \l -> (gnId_, toSemiconf, pathSatSet):l
 
 --------------------------------------------------------
 --- running the Gabow SCC algorithm only ---------------
