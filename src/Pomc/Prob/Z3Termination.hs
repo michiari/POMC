@@ -33,6 +33,8 @@ import qualified Data.Vector.Mutable as MV
 import Data.Vector(Vector,(!))
 import qualified Data.Vector as V
 
+import Data.Scientific
+
 import qualified Data.HashTable.ST.Basic as BH
 
 -- a basic open-addressing hashtable using linear probing
@@ -175,11 +177,18 @@ solveQuery q
         encodeApproxAllQuery _ graph varMap = do 
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
           sumAstVec <- V.imapM (checkPending graph) vec 
-          fmap (ApproxAllResult . fromJust . snd) . withModel $ \m -> fromJust <$> mapEval evalReal m sumAstVec
+          fmap (ApproxAllResult . fromJust . snd ) . withModel $ \m -> 
+            V.forM sumAstVec $ \a -> do 
+              s <- astToString . fromJust =<< eval m a
+              return $ toRational (read (init s) :: Scientific)
         encodeApproxSingleQuery _ graph varMap = do 
+          _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
+          _ <- parseSMTLib2String "(set-option :pp.decimal_precision 4)" [] [] [] []
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
           sumAstVec <- V.imapM (checkPending graph) vec 
-          fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> fromJust <$> evalReal m (sumAstVec ! 0)
+          fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> do 
+            s <- astToString . fromJust =<< eval m (sumAstVec ! 0)
+            return (toRational (read (init s) :: Scientific))
         encodePendingQuery _ graph varMap = do 
           vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
           PendingResult <$> V.imapM (isPending graph) vec
@@ -215,11 +224,11 @@ checkPending graph i asts = do
   -- apart from the initial one, but leaving it out from the encoding does not break uniqueness of solutions
   isBottomStack <- liftIO $ isNothing . snd . semiconf <$> MV.unsafeRead graph i
   unless (isPop || noVars || isBottomStack) $ do
-    less1 <- mkLt sumAst =<< mkRational (1 :: Prob) -- check if it can be pending
+    less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
     r <- checkAssumptions [less1]
     let cases 
           | Sat <- r = assert less1 -- semiconf i is pending
-          | Unsat <- r = assert =<< mkEq sumAst =<< mkRational (1 :: Prob) -- semiconf i is not pending
+          | Unsat <- r = assert =<< mkEq sumAst =<< mkRealNum (1 :: Prob) -- semiconf i is not pending
           | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show i
     cases 
   return sumAst
@@ -241,7 +250,7 @@ isPending graph i asts = do
     else if noVars || isBottomStack
       then return True
       else do 
-        less1 <- mkLt sumAst =<< mkRational (1 :: Prob) -- check if it can be pending
+        less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
         r <- checkAssumptions [less1]
         let cases 
               | Sat <- r = return True -- semiconf i is pending

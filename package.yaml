@@ -53,6 +53,7 @@ library:
   - random
   - filepath
   - z3
+  - scientific
 
 executables:
   pomc:
