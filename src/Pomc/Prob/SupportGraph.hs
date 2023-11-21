@@ -30,8 +30,11 @@ import Control.Monad.ST (ST)
 import Data.STRef (STRef, newSTRef, readSTRef)
 import Data.Maybe (fromJust, isNothing)
 
-import Data.Hashable
+import Data.Hashable (Hashable)
 import qualified Data.HashTable.ST.Basic as BH
+-- a basic open-addressing hashtable using linear probing
+-- s = thread state, k = key, v = value.
+type HashTable s k v = BH.HashTable s k v
 
 data Edge = Edge
   { to    :: Int
@@ -59,10 +62,6 @@ instance Eq (GraphNode state) where
 
 instance  Ord (GraphNode state) where
   compare r q = compare ( gnId r) ( gnId q)
-
--- a basic open-addressing hashtable using linear probing
--- s = thread state, k = key, v = value.
-type HashTable s k v = BH.HashTable s k v
 
 -- the Support Graph computed by this module
 type SupportGraph s state = CM.CustoMap s (GraphNode state)
@@ -110,7 +109,7 @@ decomposeGraph probdelta i iLabel = do
 -- requires: the initial state of the OPA is mapped to StateId with getId 0
 decompose :: (Eq state, Hashable state, Show state)
       => Globals s state -- global variables of the algorithm
-      -> ProbDelta state -- delta relation of the opa
+      -> ProbDelta state -- delta relation of the popa
       -> (StateId state, Stack state) -- current semiconfiguration
       -> ST s ()
 decompose globals probdelta (q,g) = do
@@ -215,6 +214,7 @@ decomposeTransition :: (Eq state, Hashable state, Show state)
                  -> ST s ()
 decomposeTransition globals probdelta from isSupport prob_ dest =
   let
+    -- we use sum here to handle non normalized probability distributions (i.e., multiple probabilities to go to the same state, that have to be summed)
     createInternal to_  stored_edges = Edge{to = to_, prob = sum $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
     insertEdge to_  True  g@GraphNode{supportEdges = edges_} = g{supportEdges = Set.insert Edge{to = to_, prob = 0} edges_} -- summaries are assigned prob 0 by default
     insertEdge to_  False g@GraphNode{internalEdges = edges_} = g{internalEdges = Set.insert (createInternal to_ edges_) edges_  }

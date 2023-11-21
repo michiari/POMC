@@ -224,7 +224,7 @@ updateSCCs graph new_semiconf pathSatSet mSuppSatSet =
       else do
         storedGn <- CM.lookup (semiconfsGraph graph) (fromJust maybeIdent)
         iniSet <- readSTRef (initials graph)
-        cases storedGn iniSet (OE.unions (newStateSatSet : (recordedSatSet storedGn) : catMaybes [pathSatSet, mSuppSatSet]))
+        cases storedGn iniSet (OE.unions ((recordedSatSet storedGn) : catMaybes [pathSatSet, mSuppSatSet])) -- recordedSatSet always subsumes newStateSatSet
 
 merge :: (Show state, SatState state)
       => Graph s state

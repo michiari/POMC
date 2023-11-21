@@ -355,8 +355,8 @@ reachOmegaPush globals delta (q,g) qState pathSatSet =
       else do
       currentSuppEnds <- MM.lookup (wSuppEnds globals) (getId q)
       foldM (\acc (s, supportSatSet)  -> if acc
-                                                      then return True
-                                                      else reachTransition globals delta (s,g) (Just pathSatSet) (Just supportSatSet))
+                                            then return True
+                                            else reachTransition globals delta (s,g) (Just pathSatSet) (Just supportSatSet))
         False
         currentSuppEnds
 
@@ -367,11 +367,11 @@ reachOmegaShift :: (SatState state, Ord state, Hashable state, Show state)
            -> state
            -> OmegaEncodedSet
            -> ST s Bool
-reachOmegaShift globals delta (_,g) qState tracesatSet =
+reachOmegaShift globals delta (_,g) qState pathSatSet =
   let qProps = getStateProps (bitenc delta) qState
       doShift True _ = return True
       doShift False p =
-        reachTransition globals delta (p, Just (qProps, (snd . fromJust $ g))) (Just tracesatSet) Nothing
+        reachTransition globals delta (p, Just (qProps, (snd . fromJust $ g))) (Just pathSatSet) Nothing
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
     V.foldM' doShift False newStates
@@ -401,8 +401,8 @@ reachTransition :: (SatState state, Ord state, Hashable state, Show state)
                  => Globals s state
                  -> Delta state
                  -> (StateId state, Stack state)
-                 -> Maybe OmegaEncodedSet
-                 -> Maybe OmegaEncodedSet
+                 -> Maybe OmegaEncodedSet -- pathSatSet
+                 -> Maybe OmegaEncodedSet -- supportSatSet for edges
                  -> ST s Bool
 reachTransition globals delta to_semiconf pathSatSet edgeSatSet =
   let execute (Explore ss) = reachOmega globals delta to_semiconf ss
