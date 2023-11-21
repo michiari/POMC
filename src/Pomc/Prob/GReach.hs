@@ -5,14 +5,14 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Prob.GReach ( Globals
-                        , newGlobals
+module Pomc.Prob.GReach ( GRobals
+                        , newGRobals
                         , reachableStates 
                         , Delta(..)
                         ) where 
 
-import Pomc.OmegaEncoding (OmegaEncodedSet, OmegaBitencoding)
-import qualified Pomc.OmegaEncoding as OE
+import Pomc.Prob.ProbEncoding (ProbEncodedSet, ProBitencoding)
+import qualified Pomc.Prob.ProbEncoding as PE
 
 import Pomc.Encoding (BitEncoding)
 import Pomc.Prec (Prec(..))
@@ -45,12 +45,12 @@ import qualified Data.HashTable.ST.Basic as BH
 type HashTable s k v = BH.HashTable s k v
 
 -- global variables in the algorithms
-data Globals s state = Globals
+data GRobals s state = GRobals
   { sIdGen :: SIdGen s state
-  , visited :: HashTable s (Int,Int,Int) OmegaEncodedSet -- we store the recorded sat set as well
+  , visited :: HashTable s (Int,Int,Int) ProbEncodedSet -- we store the recorded sat set as well
   , suppStarts :: STRef s (SetMap s (Stack state))
-  , suppEnds :: STRef s (MapMap s (StateId state) OmegaEncodedSet) -- we store the formulae satisfied in the support
-  , obitenc :: OmegaBitencoding state -- different from the usual bitenc
+  , suppEnds :: STRef s (MapMap s (StateId state) ProbEncodedSet) -- we store the formulae satisfied in the support
+  , obitenc :: ProBitencoding  -- different from the usual bitenc
   , currentInitial :: STRef s Int -- stateId of the current initial state
   }
 
@@ -63,14 +63,14 @@ data Delta state = Delta
   , deltaPop :: state -> state -> [state] -- deltapop relation
   }
 
-newGlobals :: OmegaBitencoding state -> ST.ST s (Globals s state)
-newGlobals obe = do 
+newGRobals :: ProBitencoding -> ST.ST s (GRobals s state)
+newGRobals obe = do 
   newSig <- initSIdGen
   emptyVisited <- BH.new
   emptySuppStarts <- SM.empty
   emptySuppEnds <- MM.empty
   noInitial <- newSTRef (-1 :: Int)
-  return $ Globals { sIdGen = newSig
+  return $ GRobals { sIdGen = newSig
                    , visited = emptyVisited 
                    , suppStarts = emptySuppStarts 
                    , suppEnds = emptySuppEnds
@@ -79,10 +79,10 @@ newGlobals obe = do
                    }
 
 reachableStates :: (SatState state, Eq state, Hashable state, Show state)
-   => Globals s state
+   => GRobals s state
    -> Delta state -- delta relation of the opa
    -> state -- current state
-   -> ST s [(state, OmegaEncodedSet)]
+   -> ST s [(state, ProbEncodedSet)]
 reachableStates globals delta state = do 
   q <- wrapState (sIdGen globals) state
   currentSuppEnds <- MM.lookup (suppEnds globals) (getId q)
@@ -90,16 +90,16 @@ reachableStates globals delta state = do
     then return $ map (first getState) currentSuppEnds
     else do 
       writeSTRef (currentInitial globals) (getId q)
-      let newStateSatSet = OE.encodeSatState (obitenc globals) state
+      let newStateSatSet = PE.encodeSatState (obitenc globals) state
       BH.insert (visited globals) (decode (q,Nothing)) newStateSatSet
       reach globals delta (q,Nothing) newStateSatSet
       map (first getState) <$> MM.lookup (suppEnds globals) (getId q)
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
-      => Globals s state -- global variables of the algorithm
+      => GRobals s state -- global variables of the algorithm
       -> Delta state -- delta relation of the opa
       -> (StateId state, Stack state) -- current semiconfiguration
-      -> OmegaEncodedSet -- current satset
+      -> ProbEncodedSet -- current satset
       -> ST s ()
 reach globals delta (q,g) pathSatSet = do
   let qState = getState q
@@ -123,12 +123,12 @@ reach globals delta (q,g) pathSatSet = do
   cases iniId
 
 reachPush :: (SatState state, Eq state, Hashable state, Show state)
-  => Globals s state
+  => GRobals s state
   -> Delta state
   -> StateId state
   -> Stack state
   -> state
-  -> OmegaEncodedSet
+  -> ProbEncodedSet
   -> ST s ()
 reachPush globals delta q g qState pathSatSet = 
   let qProps = getStateProps (bitenc delta) qState
@@ -142,12 +142,12 @@ reachPush globals delta q g qState pathSatSet =
       currentSuppEnds
 
 reachShift :: (SatState state, Eq state, Hashable state, Show state)
-      => Globals s state
+      => GRobals s state
       -> Delta state
       -> StateId state
       -> Stack state
       -> state
-      -> OmegaEncodedSet
+      -> ProbEncodedSet
       -> ST s ()
 reachShift globals delta _ g qState pathSatSet = 
   let qProps = getStateProps (bitenc delta) qState
@@ -157,12 +157,12 @@ reachShift globals delta _ g qState pathSatSet =
     mapM_ doShift newStates
 
 reachPop :: (SatState state, Eq state, Hashable state, Show state)
-    => Globals s state
+    => GRobals s state
     -> Delta state
     -> StateId state
     -> Stack state
     -> state
-    -> OmegaEncodedSet
+    -> ProbEncodedSet
     -> ST s ()
 reachPop globals delta _ g qState pathSatSet = 
   let doPop p =
@@ -171,7 +171,7 @@ reachPop globals delta _ g qState pathSatSet =
               lcSatSet <- fromJust <$> BH.lookup (visited globals) (decode (r,g'))
               reachTransition globals delta (Just lcSatSet) (Just pathSatSet) (p, g')
         in do
-          MM.insertWith (suppEnds globals) (getId r) OE.union p pathSatSet
+          MM.insertWith (suppEnds globals) (getId r) PE.union p pathSatSet
           currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
           mapM_ closeSupports currentSuppStarts
   in do 
@@ -181,16 +181,16 @@ reachPop globals delta _ g qState pathSatSet =
 
 -- handling the transition to a new semiconfiguration
 reachTransition :: (SatState state, Eq state, Hashable state, Show state)
-                 => Globals s state
+                 => GRobals s state
                  -> Delta state
-                 -> Maybe OmegaEncodedSet -- the SatSet established on the path so far
-                 -> Maybe OmegaEncodedSet -- the SatSet of the edge (Nothing if it is not a Support edge)        
+                 -> Maybe ProbEncodedSet -- the SatSet established on the path so far
+                 -> Maybe ProbEncodedSet -- the SatSet of the edge (Nothing if it is not a Support edge)        
                  -> (StateId state, Stack state) -- to semiconf
                  -> ST s ()
 reachTransition globals delta pathSatSet mSuppSatSet dest = 
   let -- computing the new set of sat formulae for the current path in the chain
-    newStateSatSet = OE.encodeSatState (obitenc globals) (getState . fst $ dest)
-    newPathSatSet = OE.unions (newStateSatSet : catMaybes [pathSatSet, mSuppSatSet])
+    newStateSatSet = PE.encodeSatState (obitenc globals) (getState . fst $ dest)
+    newPathSatSet = PE.unions (newStateSatSet : catMaybes [pathSatSet, mSuppSatSet])
   in do 
   maybeSatSet <- BH.lookup (visited globals) (decode dest)
   if isNothing maybeSatSet
@@ -200,8 +200,8 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
       reach globals delta dest newPathSatSet
     else do 
       let recordedSatSet = fromJust maybeSatSet
-      let augmentedPathSatSet = OE.unions (recordedSatSet : catMaybes [pathSatSet, mSuppSatSet])
-      unless (recordedSatSet `OE.subsumes` augmentedPathSatSet) $ do
+      let augmentedPathSatSet = PE.unions (recordedSatSet : catMaybes [pathSatSet, mSuppSatSet])
+      unless (recordedSatSet `PE.subsumes` augmentedPathSatSet) $ do
         -- dest semiconf has been visited, but with a set of sat formulae that does not include the current one
         BH.insert (visited globals) (decode dest) augmentedPathSatSet
         reach globals delta dest augmentedPathSatSet
