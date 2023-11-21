@@ -10,6 +10,7 @@ module Pomc.SatUtil( SatState(..)
                    , Stack
                    , SIdGen
                    , initSIdGen
+                   , wrapState
                    , wrapStates
                    , debug
                    , freshPosId
