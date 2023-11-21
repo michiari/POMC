@@ -50,13 +50,13 @@ data GRobals s state = GRobals
   , visited :: HashTable s (Int,Int,Int) ProbEncodedSet -- we store the recorded sat set as well
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (MapMap s (StateId state) ProbEncodedSet) -- we store the formulae satisfied in the support
-  , obitenc :: ProBitencoding  -- different from the usual bitenc
+  , proBitenc :: ProBitencoding  -- different from the usual bitenc
   , currentInitial :: STRef s Int -- stateId of the current initial state
   }
 
 -- a type for the delta relation, parametric with respect to the type of the state
 data Delta state = Delta
-  { bitenc :: BitEncoding
+  { phiBitenc :: BitEncoding
   , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
   , deltaPush :: state -> [state] -- deltaPush relation
   , deltaShift :: state -> [state] -- deltaShift relation
@@ -64,7 +64,7 @@ data Delta state = Delta
   }
 
 newGRobals :: ProBitencoding -> ST.ST s (GRobals s state)
-newGRobals obe = do 
+newGRobals probe = do 
   newSig <- initSIdGen
   emptyVisited <- BH.new
   emptySuppStarts <- SM.empty
@@ -74,7 +74,7 @@ newGRobals obe = do
                    , visited = emptyVisited 
                    , suppStarts = emptySuppStarts 
                    , suppEnds = emptySuppEnds
-                   , obitenc = obe
+                   , proBitenc = probe
                    , currentInitial = noInitial
                    }
 
@@ -90,7 +90,7 @@ reachableStates globals delta state = do
     then return $ map (first getState) currentSuppEnds
     else do 
       writeSTRef (currentInitial globals) (getId q)
-      let newStateSatSet = PE.encodeSatState (obitenc globals) state
+      let newStateSatSet = PE.encodeSatState (proBitenc globals) state
       BH.insert (visited globals) (decode (q,Nothing)) newStateSatSet
       reach globals delta (q,Nothing) newStateSatSet
       map (first getState) <$> MM.lookup (suppEnds globals) (getId q)
@@ -131,7 +131,7 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
   -> ProbEncodedSet
   -> ST s ()
 reachPush globals delta q g qState pathSatSet = 
-  let qProps = getStateProps (bitenc delta) qState
+  let qProps = getStateProps (phiBitenc delta) qState
       doPush p = reachTransition globals delta Nothing Nothing (p, Just (qProps, q))
   in do
     SM.insert (suppStarts globals) (getId q) g
@@ -150,7 +150,7 @@ reachShift :: (SatState state, Eq state, Hashable state, Show state)
       -> ProbEncodedSet
       -> ST s ()
 reachShift globals delta _ g qState pathSatSet = 
-  let qProps = getStateProps (bitenc delta) qState
+  let qProps = getStateProps (phiBitenc delta) qState
       doShift p = reachTransition globals delta (Just pathSatSet) Nothing (p, Just (qProps, snd . fromJust $ g))
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState
@@ -189,7 +189,7 @@ reachTransition :: (SatState state, Eq state, Hashable state, Show state)
                  -> ST s ()
 reachTransition globals delta pathSatSet mSuppSatSet dest = 
   let -- computing the new set of sat formulae for the current path in the chain
-    newStateSatSet = PE.encodeSatState (obitenc globals) (getState . fst $ dest)
+    newStateSatSet = PE.encodeSatState (proBitenc globals) (getState . fst $ dest)
     newPathSatSet = PE.unions (newStateSatSet : catMaybes [pathSatSet, mSuppSatSet])
   in do 
   maybeSatSet <- BH.lookup (visited globals) (decode dest)
