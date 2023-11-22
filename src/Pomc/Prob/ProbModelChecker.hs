@@ -17,7 +17,7 @@ module Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   , qualitativeModelCheckExplicit
                                   , qualitativeModelCheckExplicitGen
                                   ) where
-import Prelude hiding (LT,GT)
+
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
 import Pomc.Potl (Formula(..), getProps)
@@ -72,16 +72,16 @@ data ExplicitPopa s a = ExplicitPopa
 -- is the probability to terminate respectively <, <=, >=, > than the given probability?
 -- (the return String is a debugging message for developing purposes)
 terminationLTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
-terminationLTExplicit popa bound = first toBool <$> terminationExplicit popa (LT bound)
+terminationLTExplicit popa bound = first toBool <$> terminationExplicit popa (CompQuery Lt bound PureSMT)
 
 terminationLEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
-terminationLEExplicit popa bound = first toBool <$> terminationExplicit popa (LE bound)
+terminationLEExplicit popa bound = first toBool <$> terminationExplicit popa (CompQuery Le bound PureSMT)
 
 terminationGTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
-terminationGTExplicit popa bound = first toBool <$> terminationExplicit popa (GT bound)
+terminationGTExplicit popa bound = first toBool <$> terminationExplicit popa (CompQuery Gt bound PureSMT)
 
 terminationGEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
-terminationGEExplicit popa bound = first toBool <$> terminationExplicit popa (GE bound)
+terminationGEExplicit popa bound = first toBool <$> terminationExplicit popa (CompQuery Ge bound PureSMT)
 
 -- what is the probability that the input POPA terminates?
 terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> IO (Prob, String)

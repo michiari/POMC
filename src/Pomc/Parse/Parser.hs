@@ -21,7 +21,7 @@ import qualified Pomc.Potl as P
 import Pomc.MiniIR (Program(..), ExprProp(..))
 import Pomc.Parse.MiniProc
 import Pomc.ModelChecker (ExplicitOpa(..))
-import Pomc.Prob.ProbUtils (Solver(..), TermQuery(..))
+import Pomc.Prob.ProbUtils (Solver(..), Comp(..), TermQuery(..))
 
 import Data.Void (Void)
 import Data.Text (Text, pack)
@@ -262,14 +262,17 @@ termQueryP :: Parser TermQuery
 termQueryP = do
   _ <- symbolP "probabilistic query"
   _ <- symbolP ":"
-  tquery <- choice [ try $ LT <$> (symbolP "<" >> probP)
-                   , try $ LE <$> (symbolP "<=" >> probP)
-                   , try $ GT <$> (symbolP ">" >> probP)
-                   , try $ GE <$> (symbolP ">=" >> probP)
-                   , ApproxSingleQuery SMTWithHints <$ symbolP "approximate"
-                   ]
+  tquery <- boundQueryP <|> (ApproxSingleQuery SMTWithHints <$ symbolP "approximate")
   _ <- symbolP ";"
   return tquery
+  where boundQueryP = do
+          comp <- choice [ Le <$ try (symbolP "<=")
+                         , Lt <$ try (symbolP "<")
+                         , Ge <$ try (symbolP ">=")
+                         , Gt <$ try (symbolP ">")
+                         ]
+          prob <- probP
+          return $ CompQuery comp prob PureSMT
 
 checkRequestP :: Parser CheckRequest
 checkRequestP = nonProbModeP <|> probModeP where

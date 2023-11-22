@@ -194,17 +194,11 @@ encodeShift varMap eqMap mkComp gn rightContext varKey var =
 solveQuery :: TermQuery -> AST -> SupportGraph RealWorld state
            -> VarMap -> EqMap -> Z3 TermResult
 solveQuery q
-  | ApproxAllQuery solv <- q     = encodeApproxAllQuery solv
-  | ApproxSingleQuery solv <- q  = encodeApproxSingleQuery solv
-  | PendingQuery _ <- q       = encodePendingQuery -- TODO: enable hints here and see if it's any better
-  | (LT bound) <- q         = encodeComparison mkLt bound
-  | (LE bound) <- q         = encodeComparison mkLe bound
-  | (GT bound) <- q         = encodeComparison mkLe bound
-  | (GE bound) <- q         = encodeComparison mkLt bound
+  | ApproxAllQuery solv <- q = encodeApproxAllQuery solv
+  | ApproxSingleQuery solv <- q = encodeApproxSingleQuery solv
+  | PendingQuery _ <- q = encodePendingQuery -- TODO: enable hints here and see if it's any better
+  | CompQuery comp bound solver <- q = encodeComparison comp bound solver
   where
-    encodeComparison comp bound var _ _ _ = do
-      assert =<< comp var =<< mkRealNum bound
-      parseResult q <$> check -- check feasibility of all the asserts and interpret the result
     encodeApproxAllQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
       vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
@@ -248,17 +242,26 @@ solveQuery q
       _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
       return ()
 
+    encodeComparison comp bound solver var _ _ _ = do
+      let mkComp = case comp of
+            Lt -> mkLt
+            Le -> mkLe
+            Gt -> mkLt
+            Ge -> mkLe
+      assert =<< mkComp var =<< mkRealNum bound
+      -- check feasibility of all the asserts and interpret the result
+      parseResult comp <$> check
+        where parseResult :: Comp -> Result -> TermResult
+              parseResult Ge Sat   = TermUnsat
+              parseResult Ge Unsat = TermSat
+              parseResult Gt Sat   = TermUnsat
+              parseResult Gt Unsat = TermSat
+              parseResult _  Sat   = TermSat
+              parseResult _  Unsat = TermUnsat
+              parseResult _  Undef = error "Undef result error"
+
 
 -- Query solving helpers
-parseResult :: TermQuery -> Result -> TermResult
-parseResult (GE _) Sat   = TermUnsat
-parseResult (GE _) Unsat = TermSat
-parseResult (GT _) Sat   = TermUnsat
-parseResult (GT _) Unsat = TermSat
-parseResult     _  Sat   = TermSat
-parseResult     _  Unsat = TermUnsat
-parseResult     _  Undef = error "Undef result error"
-
 groupASTs :: VarMap -> Int -> ST.ST RealWorld (Vector [AST])
 groupASTs varMap l = do
   new_mv <- MV.replicate l []

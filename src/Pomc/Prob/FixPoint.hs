@@ -22,7 +22,6 @@ module Pomc.Prob.FixPoint ( VarKey
 import Pomc.Prob.ProbUtils (Prob)
 
 import Data.Ratio (approxRational)
-import Control.Monad.ST (RealWorld, stToIO)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import qualified Data.HashTable.IO as HT
 
