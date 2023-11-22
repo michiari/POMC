@@ -85,7 +85,7 @@ terminationGEExplicit popa bound = first toBool <$> terminationExplicit popa (GE
 
 -- what is the probability that the input POPA terminates?
 terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> IO (Prob, String)
-terminationApproxExplicit popa = first toProb <$> terminationExplicit popa ApproxSingleQuery
+terminationApproxExplicit popa = first toProb <$> terminationExplicit popa (ApproxSingleQuery SMTWithHints)
 
 -- handling the termination query
 terminationExplicit :: (Ord s, Hashable s, Show s, Ord a)
@@ -218,7 +218,7 @@ qualitativeModelCheckExplicit phi popa =
     sc <- stToIO $ decomposeGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.intersection essentialAP . snd .  epInitial $ popa)
     scString <- stToIO $ CM.showMap sc
     debug scString $ return ()
-    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc PendingQuery
+    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc $ PendingQuery PureSMT
     debug (show pendVector) $ return ()
     (g, i) <- stToIO $ GG.decomposeGGraph wrapper phiInitials (MV.unsafeRead sc) (toBoolVec pendVector V.!)
     gString <- stToIO $ CM.showMap g

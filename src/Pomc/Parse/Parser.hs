@@ -21,7 +21,7 @@ import qualified Pomc.Potl as P
 import Pomc.MiniIR (Program(..), ExprProp(..))
 import Pomc.Parse.MiniProc
 import Pomc.ModelChecker (ExplicitOpa(..))
-import Pomc.Prob.ProbUtils (TermQuery(..))
+import Pomc.Prob.ProbUtils (Solver(..), TermQuery(..))
 
 import Data.Void (Void)
 import Data.Text (Text, pack)
@@ -266,7 +266,7 @@ termQueryP = do
                    , try $ LE <$> (symbolP "<=" >> probP)
                    , try $ GT <$> (symbolP ">" >> probP)
                    , try $ GE <$> (symbolP ">=" >> probP)
-                   , ApproxSingleQuery <$ symbolP "approximate"
+                   , ApproxSingleQuery SMTWithHints <$ symbolP "approximate"
                    ]
   _ <- symbolP ";"
   return tquery

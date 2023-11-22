@@ -1,4 +1,4 @@
-probabilistic query: >= 0.9;
+probabilistic query: approximate;
 
 program:
 main() {
@@ -8,7 +8,7 @@ main() {
 f(s4 n) {
   bool x;
   while (n > 0s4) {
-    x = true {0.6} false; // TODO: has to be 2/3
+    x = true {0.666667} false; // TODO: has to be 2/3
     if (x) {
       f(n - 1s4);
     } else {

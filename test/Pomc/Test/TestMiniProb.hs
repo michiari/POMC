@@ -9,7 +9,7 @@
 module Pomc.Test.TestMiniProb (tests) where
 
 import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
-import Pomc.Prob.ProbUtils (TermQuery(..), TermResult(..))
+import Pomc.Prob.ProbUtils (Solver(..), TermQuery(..), TermResult(..))
 import Pomc.Prob.ProbModelChecker (programTermination)
 
 import Test.Tasty
@@ -48,9 +48,9 @@ makeParseTest progSource (name, phi, tquery, expected) =
 
 basicTests :: TestTree
 basicTests = testGroup "Basic Tests"
-  $ [ makeParseTestCase linRecSrc ("Linearly Recursive Function Termination", "F T", ApproxSingleQuery, ApproxSingleResult 1)
-    , makeParseTestCase randomWalkSrc ("1D Random Walk Termination", "F T", ApproxSingleQuery, ApproxSingleResult (2 % 3))
-    , makeParseTestCase mutualRecSrc ("Mutual Recursion Termination", "F T", ApproxSingleQuery, ApproxSingleResult 1)
+  $ [ makeParseTestCase linRecSrc ("Linearly Recursive Function Termination", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
+    , makeParseTestCase randomWalkSrc ("1D Random Walk Termination", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult (2 % 3))
+    , makeParseTestCase mutualRecSrc ("Mutual Recursion Termination", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
     ]
 
 linRecSrc :: T.Text

@@ -8,26 +8,29 @@
 -}
 
 module Pomc.Prob.ProbUtils ( Prob
-                        , Distr(..)
-                        , RichDistr
-                        , Label
-                        , StateId(..)
-                        , Stack
-                        , ProbDelta(..)
-                        , SIdGen
-                        , TermQuery(..)
-                        , TermResult(..)
-                        , initSIdGen
-                        , wrapState
-                        , freshPosId
-                        , decode
-                        , isApprox
-                        , toBool
-                        , toProb
-                        , toProbVec
-                        , toBoolVec
-                        , debug
-                        ) where
+                           , Distr(..)
+                           , RichDistr
+                           , Label
+                           , StateId(..)
+                           , Stack
+                           , ProbDelta(..)
+                           , SIdGen
+                           , Solver(..)
+                           , TermQuery(..)
+                           , TermResult(..)
+                           , initSIdGen
+                           , wrapState
+                           , freshPosId
+                           , decode
+                           , defaultTolerance
+                           , isApprox
+                           , isCert
+                           , toBool
+                           , toBoolVec
+                           , toProb
+                           , toProbVec
+                           , debug
+                           ) where
 import Prelude hiding (GT, LT)
 
 import Pomc.State(Input)
@@ -45,11 +48,11 @@ import qualified Data.HashTable.Class as H
 
 import Data.Vector(Vector)
 
-import Debug.Trace(trace)
+-- import qualified Debug.Trace as DBG
 
 type Prob = Rational
 newtype Distr a = Distr [(a, Prob)] deriving Show
--- a distribution over elements of type a 
+-- a distribution over elements of type a
 -- with some additional labels of type b
 type RichDistr a b = [(a, b, Prob)]
 
@@ -125,20 +128,41 @@ freshPosId idSeq = do
 decode :: (StateId state, Stack state) -> (Int,Int,Int)
 decode (s1, Nothing) = (getId s1, 0, 0)
 decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
-  
+
+-- Strategy to use to compute the result
+-- PureSMT: just query the SMT solver
+-- SMTWithHints: compute a lower approximation of the solution
+--               with an iterative method and use it as a hint for the SMT solver
+-- SMTCert: approximate the solution with an iterative method and ask the SMT solver
+--          for a certificate within the given tolerance
+data Solver = PureSMT | SMTWithHints | SMTCert Double deriving (Eq, Show)
+
+-- Default tolerance to be used with SMTCert
+defaultTolerance :: Double
+defaultTolerance = 1e-3
+
 -- different termination queries
 -- the first four data constructors ask whether the probability to terminate is, resp, <, <=, >, >= than the given probability
 -- ApproxQuery requires to approximate the termination probabilities of all semiconfs of the support graph
 -- ApproxTermination requires to approximate just the overall termination probability of the given popa
 -- Pending requires to compute the ids of pending semiconfs, i.e. those that have a positive probability of non terminating
-data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob | ApproxAllQuery | ApproxSingleQuery | PendingQuery
+data TermQuery = LT Prob | LE Prob | GT Prob | GE Prob
+               | ApproxAllQuery Solver
+               | ApproxSingleQuery Solver
+               | PendingQuery Solver
   deriving (Show, Eq)
 
 -- does the query require to compute some numbers?
 isApprox :: TermQuery -> Bool 
-isApprox ApproxAllQuery    = True
-isApprox ApproxSingleQuery = True
+isApprox (ApproxAllQuery _) = True
+isApprox (ApproxSingleQuery _) = True
 isApprox _ = False
+
+isCert :: TermQuery -> Bool
+isCert (ApproxAllQuery (SMTCert _)) = True
+isCert (ApproxSingleQuery (SMTCert _)) = True
+isCert (PendingQuery (SMTCert _)) = True
+isCert _ = False
 
 -- different possible results of a termination query
 -- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 

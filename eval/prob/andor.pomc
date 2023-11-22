@@ -1,4 +1,4 @@
-probabilistic query: >= 1;
+probabilistic query: approximate;
 
 program:
 main() {
