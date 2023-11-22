@@ -272,7 +272,7 @@ termQueryP = do
                          , Gt <$ try (symbolP ">")
                          ]
           prob <- probP
-          return $ CompQuery comp prob PureSMT
+          return $ CompQuery comp prob SMTWithHints
 
 checkRequestP :: Parser CheckRequest
 checkRequestP = nonProbModeP <|> probModeP where

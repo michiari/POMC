@@ -28,7 +28,7 @@ import qualified Data.HashTable.IO as HT
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HM
 
-import qualified Debug.Trace as DBG
+-- import qualified Debug.Trace as DBG
 
 type VarKey = (Int, Int)
 
@@ -70,7 +70,7 @@ approxFixpFrom eqSys eps batch maxIters probVec
           foldl (\(n, _) _ -> (evalEqSys eqSys n, n)) (probVec, probVec) [0..batch]
     in if all (<= eps) $ HM.unionWith (-) newVec prevVec -- should be newVec >= prevVec -- TODO: use relative error
        then newVec
-       else DBG.traceShow newVec $ approxFixpFrom eqSys eps (min batch maxIters) (maxIters - batch) newVec
+       else approxFixpFrom eqSys eps (min batch maxIters) (maxIters - batch) newVec
 
 approxFixp :: (Ord n, Fractional n, Show n) => EqSys -> n -> Int -> Int -> ProbVec n
 approxFixp eqSys eps batch maxIters = approxFixpFrom eqSys eps batch maxIters $ zeroVec eqSys

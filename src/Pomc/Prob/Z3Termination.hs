@@ -197,7 +197,7 @@ solveQuery q
   | ApproxAllQuery solv <- q = encodeApproxAllQuery solv
   | ApproxSingleQuery solv <- q = encodeApproxSingleQuery solv
   | PendingQuery _ <- q = encodePendingQuery -- TODO: enable hints here and see if it's any better
-  | CompQuery comp bound solver <- q = encodeComparison comp bound solver
+  | CompQuery comp bound solv <- q = encodeComparison comp bound solv
   where
     encodeApproxAllQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
@@ -242,7 +242,8 @@ solveQuery q
       _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
       return ()
 
-    encodeComparison comp bound solver var _ _ _ = do
+    encodeComparison comp bound solver var _ varMap eqMap = do
+      assertHints varMap eqMap solver
       let mkComp = case comp of
             Lt -> mkLt
             Le -> mkLe
