@@ -11,7 +11,7 @@ module Pomc.Prob.SupportGraph ( SupportGraph
                               , Edge(..)
                               ) where
 import Pomc.Prob.ProbUtils
-import Pomc.Prec (Prec(..),)
+import Pomc.Prec (Prec(..))
 
 import qualified Pomc.CustoMap as CM
 

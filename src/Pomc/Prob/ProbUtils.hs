@@ -25,6 +25,7 @@ module Pomc.Prob.ProbUtils ( Prob
                         , toBool
                         , toProb
                         , toProbVec
+                        , toBoolVec
                         , debug
                         ) where
 import Prelude hiding (GT, LT)
@@ -158,6 +159,10 @@ toProb r = error $ "cannot convert a non single probability result. Got instead:
 toProbVec :: TermResult -> Vector Prob
 toProbVec (ApproxAllResult v) = v 
 toProbVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
+
+toBoolVec :: TermResult -> Vector Bool
+toBoolVec (PendingResult v) = v 
+toBoolVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
 debug :: String -> a -> a 
 --debug = trace

@@ -70,13 +70,13 @@ take = MV.unsafeTake
 -- for debugging purposes
 showMap :: (Show  v) => CustoMap s v -> ST.ST s String
 showMap = MV.ifoldl'
-    (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n")
+    (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n\n")
     ""
 
 showSTRefMap :: (Show  v) => STRef s (CustoMap s v) -> ST.ST s String
 showSTRefMap cmref = do 
   cm <- readSTRef cmref
   MV.ifoldl'
-    (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n")
+    (\acc idx el -> acc ++ "Element at position " ++ show idx ++ " : " ++ show el ++ "\n\n")
     ""
     cm
