@@ -11,7 +11,6 @@ module Pomc.OmegaEncoding( OmegaBitencoding
                          , empty
                          , union
                          , unions
-                         , encode
                          , encodeSatState
                          , subsumes
                          , isSatisfying
@@ -20,7 +19,7 @@ module Pomc.OmegaEncoding( OmegaBitencoding
 
 import Pomc.Check(makeBitEncoding, isNotTrivialOmega)
 import Pomc.Potl (Formula)
-import Pomc.Encoding (BitEncoding, EncodedSet, FormulaSet)
+import Pomc.Encoding (BitEncoding, EncodedSet)
 import qualified Pomc.Encoding as E
 import Pomc.PropConv(APType)
 import Pomc.State(State)
@@ -62,12 +61,6 @@ union oset1 oset2 = SatModel (E.union (eset oset1) (eset oset2))
 unions :: [OmegaEncodedSet] -> OmegaEncodedSet
 unions l = foldl' union (head l) (tail l)
 
--- encode a set of formulas into an EncodedAtom
-encode :: OmegaBitencoding state -> FormulaSet -> state -> OmegaEncodedSet
-encode omegabitenc set state 
- | (isModelFinal omegabitenc) state = SatModel eatom
- | otherwise = UnsatModel eatom
-    where eatom = E.encode (bitenc omegabitenc) set
 
 -- encode a satState into the formulae for which this state is final
 encodeSatState :: (SatState state) => OmegaBitencoding state -> state -> OmegaEncodedSet

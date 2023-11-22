@@ -17,7 +17,7 @@ module Pomc.Satisfiability ( Delta(..)
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), Alphabet)
 import Pomc.Potl (Formula(..))
-import Pomc.Check (EncPrecFunc, makeOpa)
+import Pomc.Check (EncPrecFunc, makeOpa, InitialsComputation(..))
 import Pomc.PropConv (APType, PropConv(..), convProps)
 import Pomc.State (Input, State(..), showState, showAtom)
 import Pomc.Encoding (PropSet, BitEncoding, extractInput, decodeInput)
@@ -419,8 +419,11 @@ isSatisfiable :: Bool
               -> Alphabet APType
               -> (Bool, [PropSet])
 isSatisfiable isOmega phi alphabet =
-  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) =
-        makeOpa phi isOmega alphabet (\_ _ -> True)
+  let encode True = IsOmega
+      encode False = IsFinite
+      
+      (be, precf, initials, isFinal, dPush, dShift, dPop, cl) =
+        makeOpa phi (encode isOmega) alphabet (\_ _ -> True)
       delta = Delta
         { bitenc = be
         , prec = precf

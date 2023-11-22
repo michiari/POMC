@@ -11,6 +11,7 @@ module Pomc.Check ( fastcheck
                   , makeOpa
                   , makeBitEncoding
                   , isNotTrivialOmega
+                  , InitialsComputation(..)
                   ) where
 
 import Pomc.Prop (Prop(..))
@@ -371,26 +372,36 @@ stackCombs bitenc clos =
   let xns = [f | f@(XNext _ _) <- clos]
   in E.powerSet bitenc xns
 
+
+data InitialsComputation = IsOmega | IsProb | IsFinite
+
+detInitials :: Bool -> BitEncoding -> Formula APType -> [Formula APType] -> [Atom] -> [State]
+detInitials True = initials IsOmega
+detInitials False = initials IsFinite
+
 -- given phi, its closure, and the set of all consistent atoms, generate all initial states
-initials :: Bool -> BitEncoding -> Formula APType -> [Formula APType] -> [Atom] -> [State]
-initials isOmega bitenc phi clos atoms =
-  let compatible atom =
-        let checkNotComp (PBack _ _) = True
-            checkNotComp (AuxBack Down _) = True
-            checkNotComp (XBack _ _) = True
-            checkNotComp _ = False
-            maskNotComp = E.suchThat bitenc checkNotComp
-        in E.member bitenc phi atom && E.null (E.intersect atom maskNotComp)
-           -- phi must be satisfied in the initial state and it must contain no incompatible formulas
+initials :: InitialsComputation -> BitEncoding -> Formula APType -> [Formula APType] -> [Atom] -> [State]
+initials query bitenc phi clos atoms =
+  let checkNotComp (PBack _ _) = True
+      checkNotComp (AuxBack Down _) = True
+      checkNotComp (XBack _ _) = True
+      checkNotComp _ = False
+      maskNotComp = E.suchThat bitenc checkNotComp
+      compatible atom = E.member bitenc phi atom && E.null (E.intersect atom maskNotComp)
+      -- phi must be satisfied in the initial state and it must contain no incompatible formulas
+      compatibleProb atom = E.null (E.intersect atom maskNotComp)
+      compProbAtoms = filter compatibleProb atoms
       compAtoms = filter compatible atoms
       xndfSets = E.powerSet bitenc [f | f@(XNext Down _) <- clos]
   -- list of all compatible states and the powerset of all possible future obligations
   -- for the Omega case, there are no stack obligations in the initial states
-  in if (isOmega)
-     then [WState phia phip (E.empty bitenc) True False False
-          | phia <- compAtoms, phip <- xndfSets]
-     else [FState phia phip True False False
-          | phia <- compAtoms, phip <- xndfSets]
+  in case query of
+      IsOmega ->  [WState phia phip (E.empty bitenc) True False False
+                  | phia <- compAtoms, phip <- xndfSets]
+      IsFinite -> [FState phia phip True False False
+                  | phia <- compAtoms, phip <- xndfSets]
+      IsProb ->   [WState phia phip (E.empty bitenc) True False False
+                  | phia <- compProbAtoms, phip <- xndfSets]
 
 -- return all deltaRules b satisfying condition (i -> Bool) on i (a closure)
 resolve :: i -> [(i -> Bool, b)] -> [b]
@@ -1519,7 +1530,7 @@ fastcheck phi sprs ts =
         as = genAtoms bitenc cl inputSet
         -- generate all possible pending obligations
         pcs = pendCombs bitenc cl
-        is = filter compInitial (initials False bitenc nphi cl as)
+        is = filter compInitial (detInitials False bitenc nphi cl as)
         (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl prec
 
         compInitial s = fromMaybe True
@@ -1554,7 +1565,7 @@ fastcheckGen phi precr ts =
 ---------------------------------------------------------------------------------
 --- generate an OPA corresponding to a POTL formula
 makeOpa :: Formula APType -- the input formula
-        -> Bool -- is it opba?
+        -> InitialsComputation -- is it a opba? and if so, is it for probabilistic model checking?
         -> Alphabet APType -- OP alphabet
         -> (BitEncoding -> Input -> Bool)
         -> ( BitEncoding -- data for encoding and decoding between bitsets and formulas and props
@@ -1566,7 +1577,7 @@ makeOpa :: Formula APType -- the input formula
            , State -> State -> [State] -- deltaPop
            , [Formula APType] -- closure
            )
-makeOpa phi isOmega (sls, sprs) inputFilter =
+makeOpa phi isOmegaOrProb (sls, sprs) inputFilter =
   ( bitenc
   , prec
   , is
@@ -1598,7 +1609,7 @@ makeOpa phi isOmega (sls, sprs) inputFilter =
         -- generate all possible stack obligations for the omega case
         scs = stackCombs bitenc cl
         -- generate initial states
-        is = initials isOmega bitenc nphi cl as
+        is = initials isOmegaOrProb bitenc nphi cl as
 
         -- generate all delta rules of the OPA
         (shiftRules, pushRules, popRules) = deltaRules bitenc cl prec
