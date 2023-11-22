@@ -17,40 +17,29 @@ import Pomc.Prob.ProbUtils
 import Pomc.Prob.SupportGraph
 import Pomc.Prob.FixPoint
 
+import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad (foldM, unless)
+import Control.Monad.ST (RealWorld)
+
 import Data.Hashable (Hashable)
-
 import qualified Data.IntMap.Strict as Map
-
+import qualified Data.HashTable.IO as HT
+import qualified Data.HashMap.Lazy as HM
 import Data.Maybe(fromJust, isJust, isNothing)
+import qualified Data.Vector.Mutable as MV
+import Data.Vector (Vector, (!))
+import qualified Data.Vector as V
+import Data.Scientific (Scientific)
 
 import Z3.Monad
 
-import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad(foldM, unless)
-import qualified Control.Monad.ST as ST
-import Control.Monad.ST (stToIO, RealWorld)
-
-import qualified Data.Vector.Mutable as MV
-import Data.Vector(Vector,(!))
-import qualified Data.Vector as V
-
-import Data.Scientific
-
-import qualified Data.HashTable.Class as H
-import qualified Data.HashTable.ST.Basic as BH
-import qualified Data.HashMap.Lazy as HM
-
 -- import qualified Debug.Trace as DBG
-
--- a basic open-addressing hashtable using linear probing
--- s = thread state, k = key, v = value.
-type HashTable s k v = BH.HashTable s k v
 
 -- a map Key: (gnId GraphNode, getId StateId) - value : Z3 variables (represented as ASTs)
 -- each Z3 variable represents [[q,b | p ]]
 -- where q,b is the semiconfiguration associated with the graphNode of the key
 -- and p is the state associated with the StateId of the key
-type VarMap = HashTable RealWorld (Int,Int) AST
+type VarMap = HT.BasicHashTable VarKey AST
 
 --helpers
 encodeTransition :: Edge -> AST -> Z3 AST
@@ -61,29 +50,29 @@ encodeTransition e toAST = do
 -- (Z3 Var, was it already present?)
 lookupVar :: VarMap -> (Int, Int) -> Z3 (AST, Bool)
 lookupVar varMap key = do
-  maybeVar <- liftIO . stToIO $ BH.lookup varMap key
+  maybeVar <- liftIO $ HT.lookup varMap key
   if isJust maybeVar
     then return (fromJust maybeVar, True)
     else do
       new_var <- mkFreshRealVar $ show key
-      liftIO . stToIO $ BH.insert varMap key new_var
+      liftIO $ HT.insert varMap key new_var
       return (new_var, False)
 -- end helpers
 
 -- compute the probabilities that a graph will terminate
 -- requires: the initial semiconfiguration is at position 0 in the Support graph
 terminationQuery :: (Eq state, Hashable state, Show state)
-        => SupportGraph RealWorld state
-        -> EncPrecFunc
-        -> TermQuery
-        -> Z3 TermResult
+                 => SupportGraph RealWorld state
+                 -> EncPrecFunc
+                 -> TermQuery
+                 -> Z3 TermResult
 terminationQuery graph precFun query =
   let mkComp | isCert query = mkGe
              | otherwise = mkEq
       encode [] _ _ = return ()
       encode ((gnId_, rightContext):unencoded) varMap eqMap = do
         let varKey = (gnId_, rightContext)
-        var <- liftIO . stToIO $ fromJust <$> BH.lookup varMap varKey
+        var <- liftIO $ fromJust <$> HT.lookup varMap varKey
         gn <- liftIO $ MV.unsafeRead graph gnId_
         let (q,g) = semiconf gn
             qLabel = getLabel q
@@ -113,10 +102,10 @@ terminationQuery graph precFun query =
         new_unencoded <- cases
         encode (new_unencoded ++ unencoded) varMap eqMap
   in do
-    newVarMap <- liftIO . stToIO $ BH.new
+    newVarMap <- liftIO HT.new
     new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
-    liftIO . stToIO $ BH.insert newVarMap (0 :: Int, -1 :: Int) new_var
-    eqMap <- liftIO . stToIO $ BH.new
+    liftIO $ HT.insert newVarMap (0 :: Int, -1 :: Int) new_var
+    eqMap <- liftIO HT.new
     -- encode the probability transition relation by asserting a set of Z3 formulas
     encode [(0 ::Int , -1 :: Int)] newVarMap eqMap
     solveQuery query new_var graph newVarMap eqMap
@@ -201,7 +190,7 @@ solveQuery q
   where
     encodeApproxAllQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
-      vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
+      vec <- liftIO $ groupASTs varMap (MV.length graph)
       sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
       fmap (ApproxAllResult . fromJust . snd) . withModel $ \m ->
@@ -210,14 +199,14 @@ solveQuery q
           return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
     encodeApproxSingleQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
-      vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
+      vec <- liftIO $ groupASTs varMap (MV.length graph)
       sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
       fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> do
         s <- astToString . fromJust =<< eval m (sumAstVec ! 0)
         return (toRational (read (takeWhile (/= '?') s) :: Scientific))
     encodePendingQuery _ graph varMap _ = do
-      vec <- liftIO . stToIO $ groupASTs varMap (MV.length graph)
+      vec <- liftIO $ groupASTs varMap (MV.length graph)
       PendingResult <$> V.imapM (isPending graph) vec
 
     assertHints varMap eqMap solver = case solver of
@@ -263,10 +252,10 @@ solveQuery q
 
 
 -- Query solving helpers
-groupASTs :: VarMap -> Int -> ST.ST RealWorld (Vector [AST])
+groupASTs :: VarMap -> Int -> IO (Vector [AST])
 groupASTs varMap l = do
   new_mv <- MV.replicate l []
-  BH.mapM_ (\(key, ast) -> MV.unsafeModify new_mv (ast :) (fst key)) varMap
+  HT.mapM_ (\(key, ast) -> MV.unsafeModify new_mv (ast :) (fst key)) varMap
   V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support graph
 
 -- for estimating exact termination probabilities
