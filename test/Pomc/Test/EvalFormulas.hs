@@ -5,7 +5,13 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Test.EvalFormulas (TestCase, ap, zipExpected, excludeIndices, formulas) where
+module Pomc.Test.EvalFormulas ( TestCase
+                              , ap
+                              , zipExpected
+                              , excludeIndices
+                              , formulas
+                              , probFormulas
+                              ) where
 
 import Pomc.Potl (Formula(..), Dir(..), Prop(..))
 
@@ -14,7 +20,7 @@ type TestCase = (String, Formula String)
 ap :: a -> Formula a
 ap = Atomic . Prop
 
-zipExpected :: [TestCase] -> [Bool] -> [(TestCase, Bool)]
+zipExpected :: [TestCase] -> [a] -> [(TestCase, a)]
 zipExpected cases expected
   | length cases == length expected = zip cases expected
   | otherwise = error "TestCases and Expected values of different lengths!"
@@ -22,6 +28,13 @@ zipExpected cases expected
 excludeIndices :: Ord a => [a] -> [Int] -> [a]
 excludeIndices l is = fst $
   foldr (\x (xs, i) -> if i `notElem` is then (x:xs, i-1) else (xs, i-1)) ([], length l - 1) l
+
+probFormulas :: [TestCase]
+probFormulas = 
+  [ ( "0 - First Call"
+   , Eventually (ap "perr")
+  )
+  ]
 
 formulas :: [TestCase]
 formulas =
