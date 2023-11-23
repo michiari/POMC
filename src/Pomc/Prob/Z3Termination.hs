@@ -236,8 +236,8 @@ solveQuery q
       let mkComp = case comp of
             Lt -> mkLt
             Le -> mkLe
-            Gt -> mkLt
-            Ge -> mkLe
+            Gt -> mkLe
+            Ge -> mkLt
       assert =<< mkComp var =<< mkRealNum bound
       -- check feasibility of all the asserts and interpret the result
       parseResult comp <$> check
