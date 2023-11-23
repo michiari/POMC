@@ -86,10 +86,10 @@ terminationQuery graph precFun query =
 
               -- this case includes the initial push
               | isNothing g || precRel == Just Yield =
-                  encodePush graph varMap eqMap mkComp gn rightContext varKey var
+                  encodePush graph varMap eqMap mkComp gn varKey var
 
               | precRel == Just Equal =
-                  encodeShift varMap eqMap mkComp gn rightContext varKey var
+                  encodeShift varMap eqMap mkComp gn varKey var
 
               | precRel == Just Take = do
                   let e = Map.findWithDefault 0 rightContext (popContexts gn)
@@ -118,11 +118,10 @@ encodePush :: (Eq state, Hashable state, Show state)
            -> EqMap
            -> (AST -> AST -> Z3 AST)
            -> GraphNode state
-           -> Int -- the Id of StateId of the right context of this graph
            -> VarKey
            -> AST
            -> Z3 [(Int, Int)]
-encodePush graph varMap eqMap mkComp gn rightContext varKey var =
+encodePush graph varMap eqMap mkComp gn varKey@(_, rightContext) var =
   let closeSummaries pushGn (currs, unencoded_vars, terms) e = do
         supportGn <- liftIO $ MV.unsafeRead graph (to e)
         let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
@@ -153,11 +152,10 @@ encodeShift :: (Eq state, Hashable state, Show state)
             -> EqMap
             -> (AST -> AST -> Z3 AST)
             -> GraphNode state
-            -> Int -- the Id of StateId of the right context of this graph
             -> VarKey
             -> AST
             -> Z3 [(Int, Int)]
-encodeShift varMap eqMap mkComp gn rightContext varKey var =
+encodeShift varMap eqMap mkComp gn varKey@(_, rightContext) var =
   let shiftEnc (currs, new_vars, terms) e = do
         let target = (to e, rightContext)
         (toVar, alreadyEncoded) <- lookupVar varMap target
