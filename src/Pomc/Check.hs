@@ -404,8 +404,8 @@ deltaRules bitenc cl precFunc =
       shiftGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True,   xlShiftPr)
-                                     , (const True,   xeShiftPr)
+          ruleGroupPrs  = resolve cl [ (any needXl,   xlShiftPr)
+                                     , (any needXe,   xeShiftPr)
                                      , (const True,   propShiftPr)
                                      , (any checkXnd, xndShiftPr)
                                      , (any checkXnu, xnuShiftPr)
@@ -442,8 +442,8 @@ deltaRules bitenc cl precFunc =
       pushGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True,   xlPushPr)
-                                     , (const True,   xePushPr)
+          ruleGroupPrs  = resolve cl [ (any needXl,   xlPushPr)
+                                     , (any needXe,   xePushPr)
                                      , (const True,   propPushPr)
                                      , (any checkXbd, xbdPushPr)
                                      , (any checkXbu, xbuPushPr)
@@ -479,15 +479,18 @@ deltaRules bitenc cl precFunc =
       popGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (const True,   xlPopPr)
-                                     , (const True,   xePopPr)
+          ruleGroupPrs  = resolve cl [ (any needXl,   xlPopPr)
+                                     , (any needXe,   xePopPr)
                                      , (any checkXnd, xndPopPr)
                                      , (any checkXnu, xnuPopPr)
                                      , (any checkHnu, hnuPopPr)
                                      ]
         , ruleGroupFcrs = resolve cl [ (any checkEv,  evPopFcr)
                                      ]
-        , ruleGroupFprs = resolve cl [ (const True,   xrPopFpr)
+          -- decrease nondeterminism by fixing Xl and Xe when not needed
+        , ruleGroupFprs = resolve cl [ (not . any needXl,   xlDisableFpr)
+                                     , (not . any needXe,   xeDisableFpr)
+                                     , (const True,   xrPopFpr)
                                      , (any checkXnd, xndPopFpr)
                                      , (any checkXnu, xnuPopFpr)
                                      , (any checkXbd, xbdPopFpr)
@@ -535,15 +538,28 @@ deltaRules bitenc cl precFunc =
       op2OpMap
 
     -- XL rules :: PrInfo -> Bool
+    -- if no operator needs Xl, we don't case about its value
+    needXl f = any ($ f) [ checkPn, checkPb, checkXnd, checkXnu, checkXbu
+                         , checkHbu, checkHnd, checkHbd
+                         , checkHuu, checkHsu, checkHud, checkHsd
+                         ]
+
     xlShiftPr info = not $ mustPush (prState info)
     xlPushPr  info = mustPush (prState info)
-    xlPopPr   info = not $ mustPush (prState info)
+    xlPopPr        = xlShiftPr
+    xlDisableFpr info = let (_, fXl, _, _) = fprFuturePendComb info in not fXl
     --
 
     -- XE rules :: PrInfo -> Bool
+    -- if no operator needs Xe, we don't case about its value
+    needXe f = any ($ f) [ checkPn, checkPb
+                         , checkHnd, checkHbd, checkHuu, checkHsu, checkHud, checkHsd
+                         ]
+
     xeShiftPr info = mustShift (prState info)
     xePushPr  info = not $ mustShift (prState info)
-    xePopPr   info = not $ mustShift (prState info)
+    xePopPr        = xePushPr
+    xeDisableFpr info = let (_, _, fXe, _) = fprFuturePendComb info in not fXe
     --
 
     xlXePushFr :: FrInfo -> Bool
