@@ -47,12 +47,11 @@ makeTest ((name, phi), expected) =
   )
 
 normalTestCases :: [(TestCase, Bool)]
-normalTestCases = excludeIndices allTestCases [18, 41, 42] ++ [xNextNoEqual]
+normalTestCases = excludeIndices allTestCases [18, 41] ++ [xNextNoEqual]
 
 slowTestCases :: [(TestCase, Bool)]
 slowTestCases = [ allTestCases !! 18
                 , allTestCases !! 41
-                , allTestCases !! 42
                 ]
 
 allTestCases :: [(TestCase, Bool)]
