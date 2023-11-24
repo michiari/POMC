@@ -399,13 +399,14 @@ resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) condi
 -- given a BitEncoding, the closure of phi, and the precedence function, generate all Rule groups: (shift rules, push rules, pop rules)
 deltaRules :: BitEncoding -> [Formula APType] -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
 deltaRules bitenc cl precFunc =
-  let
+  let needXl = any checkXl cl
+      needXe = any checkXe cl
       -- SHIFT RULES
       shiftGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (any needXl,   xlShiftPr)
-                                     , (any needXe,   xeShiftPr)
+          ruleGroupPrs  = resolve cl [ (const needXl,   xlShiftPr)
+                                     , (const needXe,   xeShiftPr)
                                      , (const True,   propShiftPr)
                                      , (any checkXnd, xndShiftPr)
                                      , (any checkXnu, xnuShiftPr)
@@ -430,7 +431,7 @@ deltaRules bitenc cl precFunc =
                                      , (any checkHbd, hbdShiftFpr)
                                      , (any checkHsd, hsdShiftFpr)
                                      ]
-        , ruleGroupFrs  = resolve cl [ (const True,   xlXeShiftFr)
+        , ruleGroupFrs  = resolve cl [ (const True,   xlXeShiftFr needXl needXe)
                                      , (any checkPn,  pnShiftFr)
                                      , (any checkPb,  pbShiftFr)
                                      , (any checkHuu, huuShiftFr)
@@ -442,8 +443,8 @@ deltaRules bitenc cl precFunc =
       pushGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (any needXl,   xlPushPr)
-                                     , (any needXe,   xePushPr)
+          ruleGroupPrs  = resolve cl [ (const needXl,   xlPushPr)
+                                     , (const needXe,   xePushPr)
                                      , (const True,   propPushPr)
                                      , (any checkXbd, xbdPushPr)
                                      , (any checkXbu, xbuPushPr)
@@ -467,7 +468,7 @@ deltaRules bitenc cl precFunc =
                                      , (any checkHbd, hbdPushFpr)
                                      , (any checkHsd, hsdPushFpr)
                                      ]
-        , ruleGroupFrs  = resolve cl [ (const True,   xlXePushFr)
+        , ruleGroupFrs  = resolve cl [ (const True,   xlXePushFr needXl needXe)
                                      , (any checkPn,  pnPushFr)
                                      , (any checkPb,  pbPushFr)
                                      , (any checkHuu, huuPushFr)
@@ -479,8 +480,8 @@ deltaRules bitenc cl precFunc =
       popGroup = RuleGroup
         {
           -- present rules
-          ruleGroupPrs  = resolve cl [ (any needXl,   xlPopPr)
-                                     , (any needXe,   xePopPr)
+          ruleGroupPrs  = resolve cl [ (const needXl,   xlPopPr)
+                                     , (const needXe,   xePopPr)
                                      , (any checkXnd, xndPopPr)
                                      , (any checkXnu, xnuPopPr)
                                      , (any checkHnu, hnuPopPr)
@@ -488,8 +489,8 @@ deltaRules bitenc cl precFunc =
         , ruleGroupFcrs = resolve cl [ (any checkEv,  evPopFcr)
                                      ]
           -- decrease nondeterminism by fixing Xl and Xe when not needed
-        , ruleGroupFprs = resolve cl [ (not . any needXl,   xlDisableFpr)
-                                     , (not . any needXe,   xeDisableFpr)
+        , ruleGroupFprs = resolve cl [ (const $ not needXl,   xlDisableFpr)
+                                     , (const $ not needXe,   xeDisableFpr)
                                      , (const True,   xrPopFpr)
                                      , (any checkXnd, xndPopFpr)
                                      , (any checkXnu, xnuPopFpr)
@@ -539,10 +540,10 @@ deltaRules bitenc cl precFunc =
 
     -- XL rules :: PrInfo -> Bool
     -- if no operator needs Xl, we don't case about its value
-    needXl f = any ($ f) [ checkPn, checkPb, checkXnd, checkXnu, checkXbu
-                         , checkHbu, checkHnd, checkHbd
-                         , checkHuu, checkHsu, checkHud, checkHsd
-                         ]
+    checkXl f = any ($ f) [ checkPn, checkPb, checkXnd, checkXnu, checkXbu
+                          , checkHbu, checkHnd, checkHbd
+                          , checkHuu, checkHsu, checkHud, checkHsd
+                          ]
 
     xlShiftPr info = not $ mustPush (prState info)
     xlPushPr  info = mustPush (prState info)
@@ -552,9 +553,9 @@ deltaRules bitenc cl precFunc =
 
     -- XE rules :: PrInfo -> Bool
     -- if no operator needs Xe, we don't case about its value
-    needXe f = any ($ f) [ checkPn, checkPb
-                         , checkHnd, checkHbd, checkHuu, checkHsu, checkHud, checkHsd
-                         ]
+    checkXe f = any ($ f) [ checkPn, checkPb
+                          , checkHnd, checkHbd, checkHuu, checkHsu, checkHud, checkHsd
+                          ]
 
     xeShiftPr info = mustShift (prState info)
     xePushPr  info = not $ mustShift (prState info)
@@ -562,20 +563,20 @@ deltaRules bitenc cl precFunc =
     xeDisableFpr info = let (_, _, fXe, _) = fprFuturePendComb info in not fXe
     --
 
-    xlXePushFr :: FrInfo -> Bool
-    xlXePushFr info =
+    xlXePushFr :: Bool -> Bool -> FrInfo -> Bool
+    xlXePushFr hasXl hasXe info =
       let pCurr = current $ frState info -- set of formulas that hold in current position
           fCurr = frFutureCurr info -- future current holding formulas
           (_, fXl, fXe, _) = frFuturePendComb info
           -- since the symbol read by a push or a shift gets on top of the stack,
           -- the next move is determined by the precedence relation between it and the next input
       in case precFunc pCurr fCurr of
-        Just Yield -> fXl && not fXe
-        Just Equal -> fXe && not fXl
+        Just Yield -> fXl == hasXl && not fXe
+        Just Equal -> fXe == hasXe && not fXl
         Just Take -> not (fXe || fXl)
         Nothing -> False
 
-    xlXeShiftFr :: FrInfo -> Bool
+    xlXeShiftFr :: Bool -> Bool -> FrInfo -> Bool
     xlXeShiftFr = xlXePushFr
 
     -- XR rules :: FprInfo -> Bool
