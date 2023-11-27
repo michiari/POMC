@@ -95,7 +95,7 @@ data LValue = LScalar Variable | LArray Variable Expr deriving (Eq, Ord, Show)
 data ActualParam = ActualVal Expr | ActualValRes Variable deriving (Eq, Ord, Show)
 data Statement = Assignment LValue Expr
                | Nondeterministic LValue
-               | Categorical LValue [Expr] [Prob]
+               | Categorical LValue [Expr] [(Expr, Expr)]
                | Call FunctionName [ActualParam]
                | TryCatch [Statement] [Statement]
                | IfThenElse (Maybe Expr) [Statement] [Statement]

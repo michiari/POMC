@@ -27,6 +27,7 @@ import Data.Void (Void)
 import Data.Text (Text, pack)
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Ratio ((%))
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -271,8 +272,17 @@ termQueryP = do
                          , Ge <$ try (symbolP ">=")
                          , Gt <$ try (symbolP ">")
                          ]
-          prob <- probP
+          prob <- choice [
+            try $ do
+              num <- L.lexeme spaceP L.decimal
+              _ <- symbolP ":"
+              den <- L.lexeme spaceP L.decimal
+              return (num % den)
+            , (0%1) <$ symbolP "0"
+            , (1%1) <$ symbolP "1"
+            ]
           return $ CompQuery comp prob SMTWithHints
+
 
 checkRequestP :: Parser CheckRequest
 checkRequestP = nonProbModeP <|> probModeP where

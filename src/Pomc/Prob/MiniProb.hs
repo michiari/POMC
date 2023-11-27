@@ -20,8 +20,10 @@ import Pomc.Prop (Prop(..), unprop)
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
 import Pomc.Prec (Alphabet)
 import qualified Pomc.Encoding as E
-import Pomc.Prob.ProbUtils (Prob, Label, RichDistr)
+import Pomc.Prob.ProbUtils (Label, RichDistr)
 
+import Data.Ratio ((%))
+import qualified Data.BitVector as B
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Map (Map)
@@ -46,7 +48,7 @@ data Popa s a = Popa
 
 -- Data structures
 data Action = Assign LValue Expr
-  | Cat LValue [(Expr, Prob)]
+  | Cat LValue [Expr] [(Expr, Expr)] -- lhs [rhs] [(num, den)]
   | CallOp FunctionName [FormalParam] [ActualParam]
   | Return
   | Handle
@@ -169,9 +171,8 @@ lowerStatement _ _ _ _ (Nondeterministic _) =
   error "Nondeterministic assignments not allowed in probabilistic programs."
 
 lowerStatement _ ls0 thisFinfo linkPred (Categorical lhs exprs probs) =
-  let exprProbs = zip exprs $ probs ++ [1 - (sum probs)]
-      catSid = lsSid ls0
-      catState = PState catSid (mkPSLabels $ fiSkeleton thisFinfo) (Cat lhs exprProbs)
+  let catSid = lsSid ls0
+      catState = PState catSid (mkPSLabels $ fiSkeleton thisFinfo) (Cat lhs exprs probs)
       lowerState1 = linkPred (ls0 { lsSid = catSid + 1 }) (Det catState)
       dPush' = M.insert catSid (catState, Det catState) (lsDPush lowerState1)
 
@@ -405,15 +406,17 @@ computeDsts bitenc pconv allProps gvii localsInfo vval act dt =
           Assign (LScalar lhs) rhs -> [(scalarAssign gvii vval lhs $ evalExpr gvii vval rhs, 1)]
           Assign (LArray var idxExpr) rhs ->
             [(arrayAssign gvii vval var idxExpr $ evalExpr gvii vval rhs, 1)]
-          Cat (LScalar lhs) rhs ->
-            map (\(expr, prob) ->
-                   (scalarAssign gvii vval lhs $ evalExpr gvii vval expr, prob))
-            rhs
-          Cat (LArray var idxExpr) rhs ->
-            map (\(expr, prob) ->
-                   (arrayAssign gvii vval var idxExpr $ evalExpr gvii vval expr, prob))
-            rhs
+          Cat (LScalar lhs) exprs probs -> evalCat (scalarAssign gvii vval lhs) exprs probs
+          Cat (LArray var idxExpr) exprs probs ->
+            evalCat (arrayAssign gvii vval var idxExpr) exprs probs
           _ -> [(vval, 1)]
+
+        evalCat assThunk exprs probs =
+          let assVvals = map (assThunk . evalExpr gvii vval) exprs
+              probVals = map (\(n, d) -> B.nat (evalExpr gvii vval n)
+                                         % B.nat (evalExpr gvii vval d)) probs
+              allProbVals = probVals ++ [1 - sum probVals]
+          in zip assVvals allProbVals
 
         prepareForCall :: Action -> FunctionName -> VarValuation -> VarValuation
         prepareForCall (CallOp _ fargs aargs) fname svval =

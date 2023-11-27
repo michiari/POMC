@@ -3,7 +3,7 @@ probabilistic query: approximate;
 program:
 f() {
   bool x;
-  x = 1u1 {0.5} 0u1;
+  x = 1u1 {1u2 : 2u2} 0u1;
   if (x) {
     f();
     f();

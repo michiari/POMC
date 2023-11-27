@@ -8,7 +8,7 @@ main() {
 f(s4 n) {
   bool x;
   while (n > 0s4) {
-    x = true {0.666667} false; // TODO: has to be 2/3
+    x = true {2u3 : 3u3} false;
     if (x) {
       f(n - 1s4);
     } else {

@@ -8,9 +8,9 @@ main() {
 
 and(bool &r) {
   bool x;
-  x = 1u1 {0.5} 0u1;
+  x = 1u1 {1u2 : 2u2} 0u1;
   if (x) {
-    r = 1u1 {0.5} 0u1;
+    r = 1u1 {1u2 : 2u2} 0u1;
   } else {
     or(x);
     if (!x) {
@@ -23,9 +23,9 @@ and(bool &r) {
 
 or(bool &r) {
   bool x;
-  x = 1u1 {0.5} 0u1;
+  x = 1u1 {1u2 : 2u2} 0u1;
   if (x) {
-    r = 1u1 {0.5} 0u1;
+    r = 1u1 {1u2 : 2u2} 0u1;
   } else {
     and(x);
     if (x) {
