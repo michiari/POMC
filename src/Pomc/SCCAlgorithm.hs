@@ -39,7 +39,7 @@ import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
 
 import Data.Vector (Vector)
-import Data.Maybe (catMaybes, fromJust, isNothing, mapMaybe)
+import Data.Maybe (catMaybes, fromJust, isNothing, mapMaybe, maybeToList)
 
 import Data.Hashable
 
@@ -194,9 +194,12 @@ updateSCCs graph new_semiconf pathSatSet mSuppSatSet =
       -- computing the new set of sat formulae for the current chain
       newStateSatSet = OE.encodeSatState (bitenc graph) (getState . fst $ new_semiconf)
       newPathSatSet = OE.unions (newStateSatSet : catMaybes [pathSatSet, mSuppSatSet])
-      -- push a node on the stack representing the current path
+      -- create a Edge
       createEdge ident Nothing = Internal ident
       createEdge ident (Just csf) = Support{to = ident, supportSatSet=csf}
+      -- if it might influence acceptance, push the edge on the stack
+      maybePush e@(Internal _ ) = return (Just e)
+      maybePush e@Support{} = GS.push (sStack graph) e >> return Nothing
       -- adding new edge to the graph
       addEdge e = do
         lastEdge <- GS.peek (sStack graph)
@@ -212,12 +215,12 @@ updateSCCs graph new_semiconf pathSatSet mSuppSatSet =
         CM.insert (semiconfsGraph graph) newIdent (GraphNode{ gnId = newIdent, iValue = sSize, semiconf = new_semiconf, edges = Map.empty, recordedSatSet = newPathSatSet})
         GS.push (bStack graph) sSize
       -- different cases of a semiconf that has already been "seen" by the algorithm
-      cases gn ini newSCCPathSatSet
-        | Map.member (gnId gn) ini && (iValue gn == 0)                              = let e = createEdge (gnId gn) mSuppSatSet in addEdge e >> addtoPathWith graph gn e newSCCPathSatSet >> return (Explore newSCCPathSatSet) -- an initial state that requires exploration
-        | (iValue gn <= 0) && not (recordedSatSet gn `OE.subsumes` newSCCPathSatSet) = let e = createEdge (gnId gn) mSuppSatSet in addEdge e >> addtoPathWith graph gn e newSCCPathSatSet >> return (Explore newSCCPathSatSet) -- we require new exploration because of a non implied satset 
-        | (iValue gn == 0)                                                          = let e = createEdge (gnId gn) mSuppSatSet in addEdge e >> addtoPathWith graph gn e (recordedSatSet gn) >>= sccAlgorithm graph >>= convert -- perform the SCC algorithm, but do not discover new supports
-        | (iValue gn < 0)                                                           = addEdge (createEdge (gnId gn) mSuppSatSet) >> return AlreadyContracted
-        | (iValue gn > 0)                                                           = addEdge (createEdge (gnId gn) mSuppSatSet) >> merge graph gn (createEdge (gnId gn) mSuppSatSet) >>= convert
+      cases gn e ini newSCCPathSatSet
+        | Map.member (gnId gn) ini && (iValue gn == 0)                              = addEdge e >> addtoPathWith graph gn e newSCCPathSatSet >> return (Explore newSCCPathSatSet) -- an initial state that requires exploration
+        | (iValue gn <= 0) && not (recordedSatSet gn `OE.subsumes` newSCCPathSatSet) = addEdge e >> addtoPathWith graph gn e newSCCPathSatSet >> return (Explore newSCCPathSatSet) -- we require new exploration because of a non implied satset 
+        | (iValue gn == 0)                                                          = addEdge e >> addtoPathWith graph gn e (recordedSatSet gn) >>= sccAlgorithm graph >>= convert -- perform the SCC algorithm, but do not discover new supports
+        | (iValue gn < 0)                                                           = addEdge e >> return AlreadyContracted
+        | (iValue gn > 0)                                                           = addEdge e >> maybePush e >>= merge graph gn >>= convert
         |  otherwise                                                                = error "at least one condition must be satified"
   in do
     maybeIdent <- BH.lookup (semiconfsGraphMap graph) (decode new_semiconf)
@@ -226,19 +229,20 @@ updateSCCs graph new_semiconf pathSatSet mSuppSatSet =
       else do
         storedGn <- CM.lookup (semiconfsGraph graph) (fromJust maybeIdent)
         iniSet <- readSTRef (initials graph)
-        cases storedGn iniSet (OE.unions ((recordedSatSet storedGn) : catMaybes [pathSatSet, mSuppSatSet])) -- recordedSatSet always subsumes newStateSatSet
+        cases storedGn (createEdge (gnId storedGn) mSuppSatSet) iniSet (OE.unions ((recordedSatSet storedGn) : catMaybes [pathSatSet, mSuppSatSet])) -- recordedSatSet always subsumes newStateSatSet
 
 merge :: (Show state, SatState state)
       => Graph s state
       -> GraphNode state
-      -> Edge
+      -> Maybe Edge
       -> ST.ST s Bool
 merge graph gn e = do
     -- contract the B stack, that represents the boundaries between SCCs on the current path (the S stack)
     GS.popWhile_ (bStack graph) (\x -> iValue gn < x)
     -- checking acceptance of the found cycle
     sSize <- GS.size $ sStack graph
-    sccEdges <- (e :) <$> GS.multPeek (sStack graph) (sSize - (iValue gn))
+    sccEdges <- (maybeToList e ++) <$> GS.multPeek (sStack graph) (sSize - (iValue gn))
+    -- these gns might be duplicated, but we lazily don't care, as it is actually faster
     gns <- mapM (CM.lookup (semiconfsGraph graph) . to) sccEdges
     let maybeSupport (Internal _ ) = Nothing
         maybeSupport (Support _ csf) = Just csf
@@ -346,31 +350,20 @@ addtoPath graph gn edge  = do
   GS.push (bStack graph) sSize
   return gn{iValue = sSize}
 
--- the same as create Component, but discards the popped edges
-createComponent_ :: Graph s state
-                -> GraphNode state
-                -> ST.ST s ()
-createComponent_ graph gn = do
-  topB <- GS.peek $ bStack graph
-  when ((iValue gn) == topB) $ do
-      GS.pop_ (bStack graph)
-      sSize <- GS.size $ sStack graph
-      poppedEdges <- GS.multPop (sStack graph) (sSize - (iValue gn) + 1) -- the last one is to gn
-      -- marking the SCC (we don't care about SCCs, so we assign to all of them iValue -1)
-      -- in this case don't add edges to the stored graph, we have already stored them
-      CM.multModify (semiconfsGraph graph) (setgnIValue (-1)) (map to poppedEdges)
-
 sccAlgorithm :: (Show state, SatState state)
                => Graph s state
                -> GraphNode state
                -> ST.ST s Bool
 sccAlgorithm graph gn =
   let
+    -- if it might influence acceptance, push the edge on the stack
+    maybePush e@(Internal _ ) = return (Just e)
+    maybePush e@Support{} = GS.push (sStack graph) e >> return Nothing
     -- different cases of the Gabow SCC algorithm
     cases e nextGn
       | (iValue nextGn == 0) = addtoPath graph nextGn e >>= sccAlgorithm graph
       | (iValue nextGn < 0)  = return False
-      | (iValue nextGn > 0)  = merge graph nextGn e
+      | (iValue nextGn > 0)  = maybePush e >>= merge graph nextGn
       | otherwise = error "unreachable error"
   in do
   success <-  foldM (\acc (ident, supportEdge) -> if acc
@@ -379,6 +372,6 @@ sccAlgorithm graph gn =
                     )
                     False
                     (Map.toList $ edges gn)
-  createComponent_ graph gn
+  createComponent graph gn
   return success
 
