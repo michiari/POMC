@@ -21,6 +21,8 @@ import Prelude hiding (lookup, take)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 
+import Data.List(nub)
+
 import qualified Data.Vector.Mutable as MV
 
 -- a custom mutable Map
@@ -56,7 +58,7 @@ modify cmref f k = do
 multModify :: STRef s (CustoMap s v) -> (v -> v) -> [Int] -> ST.ST s ()
 multModify cmref f keys = do
   cm <- readSTRef cmref
-  mapM_ (MV.unsafeModify cm f) keys
+  mapM_ (MV.unsafeModify cm f) $ nub keys
 
 modifyAll :: STRef s (CustoMap s v) -> (v -> v) -> Int -> ST.ST s ()
 modifyAll cmref f len = do
