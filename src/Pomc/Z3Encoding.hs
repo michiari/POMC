@@ -746,16 +746,21 @@ assertPhiEncoding encData from to = do
           gamma = zGamma encData
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
+      -- Γ(#, x)
+      gammaEndxp1 <- mkApp gamma [fConstMap M.! Atomic End, xp1]
       -- PNext, Next and WNext
-      let propagateNext (next, arg) = do
+      let propagateNext (next, arg, weak) = do
             lhs <- mkApp gamma [fConstMap M.! next, xLit]
-            rhs <- groundxnf encData arg xp1
+            ground <- groundxnf encData arg xp1
+            rhs <- if weak -- Just for finite-word semantics
+                   then mkOr [gammaEndxp1, ground]
+                   else mkNot gammaEndxp1 >>= (\noend -> mkAnd [noend, ground])
             mkImplies lhs rhs
       -- big and
       nextRule <- mkAndWith propagateNext
-        ([(g, alpha) | g@(PNext _ alpha) <- clos]
-         ++ [(g, alpha) | g@(Next alpha) <- clos]
-         ++ [(g, alpha) | g@(WNext alpha) <- clos])
+        ([(g, alpha, False) | g@(PNext _ alpha) <- clos]
+         ++ [(g, alpha, False) | g@(Next alpha) <- clos]
+         ++ [(g, alpha, True) | g@(WNext alpha) <- clos])
       -- Back and WBack
       let propagateBack (back, arg) = do
             lhs <- mkApp gamma [fConstMap M.! back, xp1]
