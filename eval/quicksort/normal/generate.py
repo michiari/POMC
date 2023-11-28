@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+
 import fileinput
+import os
 
 Buggy_formulas =  [   "F (ret And main)",        #01
                 "XNu (ret And main)",            #02  
@@ -30,8 +32,16 @@ SemiSafe_formulas = [   "F (ret And main)",                                     
                         "(XNu (sorted)) Or (XNu (exc And hasParsed))",                                              #13   Q.9 - True
                         "(F (ret And main And (sorted))) Or (XNu (exc And hasParsed))"]                             #14   Q.10 - True 
 
+Unsafe_formulas = [ "XNu (ret And main)",                                                                       #02   Q.1 - False
+                    "XNu (sorted)",                                                                             #04   Q.2 - False
+                    "(call And main) --> ~ (PNu exc Or XNu exc)",                                           #05   Q.3 - False
+                    "G ((call And qs) --> ~ (PNu exc Or XNu exc))",                                             #06   Q.4 - False
+                    "G ((call And qs) --> (XNu sorted))",
+                    "G ((call And qs) --> (XNu (exc Or sorted)))",
+                    "((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)))"]          #08   Q.6 - False
 
-Benchmark = [(Buggy_formulas,"Buggy") , (Correct_formulas,"Correct"), (SemiSafe_formulas,"SemiSafe")]
+
+Benchmark = [(Buggy_formulas,"Buggy") , (Correct_formulas,"Correct"), (SemiSafe_formulas,"SemiSafe"), (Unsafe_formulas, "Unsafe")]
 
 # experiments of the benchmark (the formulae above against variants Buggy, Correct, and SemiSafe)
 # all the experiments are instantiated in folder "/benchmark".
@@ -42,6 +52,7 @@ for u_size in range(1,5):
         for arr_size in range(2,8):
             filein = name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
             fileout = 'benchmark/u' + str(u_size) + '/' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc';
+            os.makedirs(os.path.dirname(fileout), exist_ok=True)
             f1 = open(filein, 'r')
             f2 = open(fileout, 'w')
             for line in f1:
@@ -49,7 +60,9 @@ for u_size in range(1,5):
             f1.close()
             f2.close()
             for index,form in enumerate(exp, start=1):
-                with open('benchmark/u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(index).zfill(2) +'.pomc', 'w') as f:
+                fname = 'benchmark/u' + str(u_size) + '/' + name + '/' + name. lower() + '-' + str(u_size) + '.' + str(arr_size) + '.' + str(index).zfill(2) +'.pomc'
+                os.makedirs(os.path.dirname(fname), exist_ok=True)
+                with open(fname, 'w') as f:
                     f.write('formulas = ' + form + ';\n')
                     f.write('include = "../' + name + '_Programs/' + name +'Quicksort_' + str(arr_size) + '.inc";')
 
