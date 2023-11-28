@@ -566,6 +566,50 @@ assertPhiEncoding encData from to = do
 
       mkForallNodes [1..x] allXnextSat
 
+    {- Iff version of mkWxnext
+    mkWxnext2 :: Word64 -> Z3 AST
+    mkWxnext2 x = do
+      let nodeSort = zNodeSort encData
+          struct = zStruct encData
+          stack = zStack encData
+          yield = zYield encData
+          equal = zEqual encData
+          take = zTake encData
+      xLit <- mkUnsignedInt64 x nodeSort
+      stackx <- mkApp1 stack xLit
+      let allXnextSat y = do
+            yLit <- mkUnsignedInt64 y nodeSort
+            yPush <- mkEq stackx yLit -- y is the PUSH of stackx
+            yShift <- mkEq stackx =<< mkApp1 stack yLit -- y is a SHIFT on stackx
+            ySuppClosed <- mkOr [yPush, yShift]
+
+            structy <- mkApp1 struct yLit
+            let xnextSat g@(WXNext dir arg) = do
+                  gammagy <- mkApp (zGamma encData) [zFConstMap encData M.! g, yLit]
+                  let satisfied z = do
+                        zLit <- mkUnsignedInt64 z nodeSort
+                        checkPopz <- mkCheckPrec encData (zTake encData) zLit
+                        ctxz <- mkApp1 (zCtx encData) zLit
+                        ctxzEqy <- mkEq ctxz yLit
+                        xnfArgz <- groundxnf encData arg zLit
+                        structz <- mkApp1 struct zLit
+                        precYT <- case dir of
+                          Down -> mkApp yield [structy, structz]
+                          Up   -> mkApp take [structy, structz]
+                        precEq <- mkApp equal [structy, structz]
+                        orPrec <- mkOr [precYT, precEq]
+                        lhs <- mkAnd [checkPopz, ctxzEqy, orPrec]
+                        mkImplies lhs xnfArgz
+                  exists <- mkForallNodes [y..x] satisfied
+                  mkEq gammagy exists
+                xnextSat _ = error "XNext formula expected."
+
+            allSat <- mkAndWith xnextSat [g | g@(WXNext _ _) <- zClos encData]
+            mkImplies ySuppClosed allSat
+
+      mkForallNodes [1..x] allXnextSat
+    -}
+
     mkWxnext :: Word64 -> Z3 AST
     mkWxnext x = do
       let struct = zStruct encData
@@ -1030,7 +1074,7 @@ assertPrune fastPrune encData maybeProgData x
             sameFsStack <- mkSameFs stackx =<< mkApp1 stack yLit
             sameFsCtx <- mkSameFs ctxx =<< mkApp1 ctx yLit
             sameProgStatus <- mkSameProgStatus xLit yLit
-            mkAnd [pending, sameFsxy, smbxy, sameFsStack, sameFsCtx, sameProgStatus]
+            mkAnd [pending, sameFsxy, smbxy, sameFsStack, {-sameFsCtx,-} sameProgStatus]
         )
 
     mkSameFs u v = mkAndWith
