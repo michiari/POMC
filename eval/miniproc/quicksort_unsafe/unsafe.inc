@@ -1,4 +1,3 @@
-program:
 bool sorted;
 u{width:d}[{size:d}] a;
 
