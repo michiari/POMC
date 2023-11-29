@@ -78,11 +78,8 @@ terminationQuery graph precFun query =
             qLabel = getLabel q
             precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
             cases
-              -- semiconfigurations with empty stack but not the initial one (terminating semiconfigs -> probability 1)
-              | isNothing g && (gnId_ /= 0) = do
-                  assert =<< mkEq var =<< mkRealNum (1 :: Prob)
-                  addFixpEq eqMap varKey EndEq
-                  return []
+
+              | isNothing g && (gnId_ /= 0) = debug ("Stuttering semiconf: " ++ show gn) $ encodeStutteringPush graph varMap eqMap gn varKey var
 
               -- this case includes the initial push
               | isNothing g || precRel == Just Yield =
@@ -112,6 +109,31 @@ terminationQuery graph precFun query =
 
 
 -- encoding helpers --
+encodeStutteringPush  :: (Eq state, Hashable state, Show state)
+                      => SupportGraph RealWorld state
+                      -> VarMap
+                      -> EqMap
+                      -> GraphNode state
+                      -> VarKey
+                      -> AST
+                      -> Z3 [(Int, Int)]
+encodeStutteringPush graph varMap eqMap gn varKey@(_, rightContext) var =
+  let closeSummaries pushGn unencoded_vars  e = do
+        supportGn <- liftIO $ MV.unsafeRead graph (to e)
+        let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
+        vars <- mapM (lookupVar varMap) varsIds
+        return $ [(gnId_, rightContext_) | ((_,alrEncoded), (gnId_, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars
+      pushEnc new_vars e = do
+        toGn <- liftIO $ MV.unsafeRead graph (to e)
+        unencoded_vars <- foldM (closeSummaries toGn) [] (supportEdges gn)
+        return $ unencoded_vars ++ new_vars
+  in do
+    unencoded_vars <- foldM pushEnc [] (internalEdges gn)
+    -- semiconfigurations with empty stack but not the initial one (terminating semiconfigs -> probability 1)
+    assert =<< mkEq var =<< mkRealNum (1 :: Prob)
+    addFixpEq eqMap varKey EndEq
+    return unencoded_vars
+
 encodePush :: (Eq state, Hashable state, Show state)
            => SupportGraph RealWorld state
            -> VarMap
