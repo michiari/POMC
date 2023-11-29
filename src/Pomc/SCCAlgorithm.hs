@@ -359,6 +359,10 @@ sccAlgorithm graph gn =
     -- if it might influence acceptance, push the edge on the stack
     maybePush e@(Internal _ ) = return (Just e)
     maybePush e@Support{} = GS.push (sStack graph) e >> return Nothing
+    -- creating an edge to push on the stack
+    encodeEdge ident sss
+      | OE.null sss = Internal ident
+      | otherwise = Support ident sss
     -- different cases of the Gabow SCC algorithm
     cases e nextGn
       | (iValue nextGn == 0) = addtoPath graph nextGn e >>= sccAlgorithm graph
@@ -366,9 +370,9 @@ sccAlgorithm graph gn =
       | (iValue nextGn > 0)  = maybePush e >>= merge graph nextGn
       | otherwise = error "unreachable error"
   in do
-  success <-  foldM (\acc (ident, supportEdge) -> if acc
+  success <-  foldM (\acc (ident, sss) -> if acc
                                                    then return True
-                                                   else CM.lookup (semiconfsGraph graph) ident >>= cases (Support ident supportEdge)
+                                                   else CM.lookup (semiconfsGraph graph) ident >>= cases (encodeEdge ident sss)
                     )
                     False
                     (Map.toList $ edges gn)

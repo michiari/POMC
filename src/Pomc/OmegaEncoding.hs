@@ -9,6 +9,7 @@ module Pomc.OmegaEncoding( OmegaBitencoding
                          , OmegaEncodedSet
                          , makeOmegaBitEncoding
                          , empty
+                         , null
                          , union
                          , unions
                          , encodeSatState
@@ -16,7 +17,8 @@ module Pomc.OmegaEncoding( OmegaBitencoding
                          , isSatisfying
                          , showOmegaEncoding
                          ) where
-
+                           
+import Prelude hiding (null)
 import Pomc.Check(makeBitEncoding, isNotTrivialOmega)
 import Pomc.Potl (Formula)
 import Pomc.Encoding (BitEncoding, EncodedSet)
@@ -50,6 +52,11 @@ makeOmegaBitEncoding cl isModelFinal_ isPhiFinal_ =
 empty :: OmegaBitencoding state -> OmegaEncodedSet
 empty omegabitenc = UnsatModel (E.empty (bitenc omegabitenc))
 
+-- an empty EncodedSet
+null :: OmegaEncodedSet -> Bool
+null (SatModel _) = False 
+null (UnsatModel e) = E.null e
+
 -- bitwise OR between two BitVectors
 union ::  OmegaEncodedSet -> OmegaEncodedSet -> OmegaEncodedSet
 union (UnsatModel ea1) (UnsatModel ea2) = UnsatModel (E.union ea1 ea2)
@@ -59,8 +66,9 @@ union oset1 oset2 = SatModel (E.union (eset oset1) (eset oset2))
 -- a helper for bitwise OR between multiple BitVectors
 -- requires: the input list must be non empty
 unions :: [OmegaEncodedSet] -> OmegaEncodedSet
+unions [] = error "union of empty list"
+unions [x] = x
 unions l = foldl' union (head l) (tail l)
-
 
 -- encode a satState into the formulae for which this state is final
 encodeSatState :: (SatState state) => OmegaBitencoding state -> state -> OmegaEncodedSet
