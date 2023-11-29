@@ -18,7 +18,7 @@ import Pomc.Prob.SupportGraph
 import Pomc.Prob.FixPoint
 
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad (foldM, unless)
+import Control.Monad (foldM, unless, when)
 import Control.Monad.ST (RealWorld)
 
 import Data.Hashable (Hashable)
@@ -48,7 +48,7 @@ encodeTransition e toAST = do
   mkMul [probReal, toAST]
 
 -- (Z3 Var, was it already present?)
-lookupVar :: VarMap -> (Int, Int) -> Z3 (AST, Bool)
+lookupVar :: VarMap -> VarKey -> Z3 (AST, Bool)
 lookupVar varMap key = do
   maybeVar <- liftIO $ HT.lookup varMap key
   if isJust maybeVar
@@ -253,7 +253,7 @@ solveQuery q
 groupASTs :: VarMap -> Int -> IO (Vector [AST])
 groupASTs varMap l = do
   new_mv <- MV.replicate l []
-  HT.mapM_ (\(key, ast) -> MV.unsafeModify new_mv (ast :) (fst key)) varMap
+  HT.mapM_ (\(key, ast) -> when (snd key /= -1) $ MV.unsafeModify new_mv (ast :) (fst key)) varMap
   V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support graph
 
 -- for estimating exact termination probabilities
@@ -266,11 +266,10 @@ checkPending graph i asts = do
   isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph i
   -- if no variable has been encoded for this semiconf, it means it cannot reach any pop (and hence it has zero prob to terminate)
   -- so all the checks down here would be useless (we would be asserting 0 <= 1)
-  let noVars = null asts
-  -- if a semiconf has bottom stack, then it terminates almost surely
+  -- this includes also the case of semiconfs with bottom stack and stuttering semiconfs, that terminate almost surely
   -- apart from the initial one, but leaving it out from the encoding does not break uniqueness of solutions
-  isBottomStack <- liftIO $ isNothing . snd . semiconf <$> MV.unsafeRead graph i
-  unless (isPop || noVars || isBottomStack) $ do
+  let noVars = null asts
+  unless (isPop || noVars) $ do
     less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
     r <- checkAssumptions [less1]
     let cases
@@ -289,12 +288,11 @@ isPending graph i asts = do
   -- if a semiconf is a pop, then of course it terminates almost surely (and hence it is not pending)
   isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph i
   -- if no variable has been encoded for this semiconf, it means it ha zero prob to reach a pop (and hence it is pending)
+  -- this includes also the case of semiconfs with bottom stack and stuttering semiconfs, that belong necessarily to the support graph
   let noVars = null asts
-  -- if a semiconf has bottom stack, then it belongs necessarily to the support graph
-  isBottomStack <- liftIO $ isNothing . snd . semiconf <$> MV.unsafeRead graph i
   if isPop
     then return False
-    else if noVars || isBottomStack
+    else if noVars
       then return True
       else do
         less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
