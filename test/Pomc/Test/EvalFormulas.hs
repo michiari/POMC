@@ -31,9 +31,66 @@ excludeIndices l is = fst $
 
 probFormulas :: [TestCase]
 probFormulas = 
-  [ ( "0 - First Call"
-   , Eventually (ap "perr")
-  )
+  [ ( "0 - Eventually X"
+    , Eventually (ap "X")
+    ) 
+    ,
+    ( "1 - Eventually ret X"
+    , Eventually (ap "ret" `And` ap "X")
+    ) 
+    ,
+    ( "2 - X matches calls and return"
+    , Always $ (ap "call" `And` ap "X") `Implies` (XNext Up $ (ap "ret" `And` ap "X"))
+    ) 
+    , 
+    ( "3 - Termination with Chain operator"
+    , XNext Up (ap "ret")
+    ) 
+    ,
+    ( "4 - Termination with Chain operator and label"
+    , XNext Up (ap "ret" `And` ap "Y")
+    ) 
+    ,
+    ( "5 - Termination or keeping calling X"
+    , (XNext Up (ap "ret")) `Or` (Always $ Eventually $ ap "call" `And` ap "X")
+    ) 
+    ,
+    ( "6 - First call"
+    , ap "call"
+    ) 
+    , 
+    ( "7 - Second statement"
+    , PNext Down $ ap "stm"
+    ) 
+    , 
+    ( "8 - Second return"
+    , PNext Up $ ap "ret"
+    ) 
+    ,
+    ( "9 - All calls reach a ret"
+    , Always $ ap "call" `Implies` ((XNext Up ((ap "ret") `Or` (ap "exc"))) `Or` (PNext Up ((ap "ret") `Or` (ap "exc"))))
+    ) 
+    , 
+    --
+    ( "10 - Not Eventually X"
+    , Not $ Eventually $ ap "X"
+    ) 
+    , 
+    ( "11 - if sample stm, then reach Y almost surely"
+    , PNext Down $ ap "ret" `Or` (Eventually $ ap "Y")
+    )
+    ,
+    ( "12 - if sample stm, then reach X almost surely"
+    , PNext Down $ ap "ret" `Or` (Eventually $ ap "X")
+    )
+    ,
+    ( "13 - if sample stm, then always eventually Y almost surely"
+    , PNext Down $ ap "ret" `Or` (Always $ Eventually $ ap "Y")
+    )
+    ,
+    ( "14 - if sample stm, then always eventually X almost surely"
+    , PNext Down $ ap "ret" `Or` (Always $ Eventually $ ap "X")
+    )
   ]
 
 formulas :: [TestCase]
