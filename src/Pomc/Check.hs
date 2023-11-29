@@ -35,8 +35,6 @@ import Control.Monad (guard)
 import qualified Data.Sequence as SQ
 import Data.Foldable (toList)
 
--- import qualified Debug.Trace as DBG
-
 -- Function that, given two atoms or input symbols,
 -- returns the precedence relation between them
 type EncPrecFunc = EncodedSet -> EncodedSet -> Maybe Prec
@@ -375,10 +373,6 @@ stackCombs bitenc clos =
 
 data InitialsComputation = IsOmega | IsProb | IsFinite
 
-detInitials :: Bool -> BitEncoding -> Formula APType -> [Formula APType] -> [Atom] -> [State]
-detInitials True = initials IsOmega
-detInitials False = initials IsFinite
-
 -- given phi, its closure, and the set of all consistent atoms, generate all initial states
 initials :: InitialsComputation -> BitEncoding -> Formula APType -> [Formula APType] -> [Atom] -> [State]
 initials query bitenc phi clos atoms =
@@ -387,21 +381,20 @@ initials query bitenc phi clos atoms =
       checkNotComp (XBack _ _) = True
       checkNotComp _ = False
       maskNotComp = E.suchThat bitenc checkNotComp
-      compatible atom = E.member bitenc phi atom && E.null (E.intersect atom maskNotComp)
+      -- for probabilistic model checking, we want to inspect also initial states where phi does not hold
+      compatible isProb atom = (isProb || E.member bitenc phi atom) && E.null (E.intersect atom maskNotComp)
       -- phi must be satisfied in the initial state and it must contain no incompatible formulas
-      compatibleProb atom = E.null (E.intersect atom maskNotComp)
-      compProbAtoms = filter compatibleProb atoms
-      compAtoms = filter compatible atoms
+      compAtoms isProb = filter (compatible isProb) atoms
       xndfSets = E.powerSet bitenc [f | f@(XNext Down _) <- clos]
   -- list of all compatible states and the powerset of all possible future obligations
   -- for the Omega case, there are no stack obligations in the initial states
   in case query of
       IsOmega ->  [WState phia phip (E.empty bitenc) True False False
-                  | phia <- compAtoms, phip <- xndfSets]
+                  | phia <- compAtoms False, phip <- xndfSets]
       IsFinite -> [FState phia phip True False False
-                  | phia <- compAtoms, phip <- xndfSets]
+                  | phia <- compAtoms False, phip <- xndfSets]
       IsProb ->   [WState phia phip (E.empty bitenc) True False False
-                  | phia <- compProbAtoms, phip <- xndfSets]
+                  | phia <- compAtoms True, phip <- xndfSets]
 
 -- return all deltaRules b satisfying condition (i -> Bool) on i (a closure)
 resolve :: i -> [(i -> Bool, b)] -> [b]
@@ -1552,7 +1545,7 @@ fastcheck phi sprs ts =
         as = genAtoms bitenc cl inputSet
         -- generate all possible pending obligations
         pcs = pendCombs bitenc cl
-        is = filter compInitial (detInitials False bitenc nphi cl as)
+        is = filter compInitial (initials IsFinite bitenc nphi cl as)
         (shiftRules, pushRules, popRules) = augDeltaRules bitenc cl prec
 
         compInitial s = fromMaybe True
