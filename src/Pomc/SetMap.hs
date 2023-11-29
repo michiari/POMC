@@ -10,6 +10,7 @@ module Pomc.SetMap ( SetMap
                    , lookup
                    , member
                    , empty
+                   , showSetMap
                    ) where
 
 import Prelude hiding (lookup)
@@ -58,3 +59,9 @@ empty :: ST.ST s (STRef s (SetMap s v))
 empty = do
   sm <- MV.replicate 4 Set.empty
   newSTRef sm
+
+-- for debugging purposes
+showSetMap :: (Show  v) => SetMap s v -> ST.ST s String
+showSetMap = MV.ifoldl'
+    (\acc idx el -> acc ++ "Set at position " ++ show idx ++ " : " ++ show el ++ "\n\n")
+    ""

@@ -23,7 +23,7 @@ import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef, modifySTRef')
 import Data.Maybe (listToMaybe)
 
 -- an implementation for a stack 
--- needed in the Gabow algorithm
+-- needed in the Gabow algorithm both in deterministic and probabilistic model checking
 type GStack s v = (STRef s [v], STRef s Int)
 
 new :: ST s (GStack s v)

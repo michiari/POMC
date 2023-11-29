@@ -11,6 +11,7 @@ module Pomc.MapMap ( MapMap
                    , lookup
                    , member
                    , empty
+                   , showMapMap
                    ) where
 
 import Prelude hiding (lookup)
@@ -79,3 +80,10 @@ empty :: ST.ST s (STRef s (MapMap s k v))
 empty = do
   sm <- MV.replicate 4 Map.empty
   newSTRef sm
+
+-- for debugging purposes
+showMapMap :: (Show  k, Show v) => MapMap s k v -> ST.ST s String
+showMapMap = MV.ifoldl'
+    (\acc idx el -> acc ++ "Map at position " ++ show idx ++ " : " ++ show el ++ "\n\n")
+    ""
+
