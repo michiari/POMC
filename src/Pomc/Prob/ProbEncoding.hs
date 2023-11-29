@@ -9,6 +9,7 @@ module Pomc.Prob.ProbEncoding( ProBitencoding
                          , ProbEncodedSet
                          , makeProBitEncoding
                          , empty
+                         , null
                          , union
                          , unions
                          , encodeSatState
@@ -17,6 +18,7 @@ module Pomc.Prob.ProbEncoding( ProBitencoding
                          , showProbEncoding
                          ) where
 
+import Prelude hiding (null)
 import Pomc.Check(makeBitEncoding, isNotTrivialOmega)
 import Pomc.Potl (Formula)
 import Pomc.Encoding (BitEncoding, EncodedSet)
@@ -45,6 +47,10 @@ makeProBitEncoding cl isPhiFinal_ =
 empty :: ProBitencoding -> ProbEncodedSet
 empty omegabitenc = E.empty (bitenc omegabitenc)
 
+-- an empty EncodedSet
+null :: ProbEncodedSet -> Bool
+null = E.null
+
 -- bitwise OR between two BitVectors
 union ::  ProbEncodedSet -> ProbEncodedSet -> ProbEncodedSet
 union = E.union
@@ -52,6 +58,8 @@ union = E.union
 -- a helper for bitwise OR between multiple BitVectors
 -- requires: the input list must be non empty
 unions ::  [ProbEncodedSet] -> ProbEncodedSet
+unions [] = error "unions of empty list"
+unions [x] = x
 unions l = foldl' union (head l) (tail l)
 
 -- encode a satState into the formulae for which this state is final
