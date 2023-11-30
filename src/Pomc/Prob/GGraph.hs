@@ -8,11 +8,10 @@
 
 module Pomc.Prob.GGraph (GGraph
                         , GNode(..)
-                        , DeltaWrapper(..)
                         , qualitativeModelCheck
                         ) where
 
-import Pomc.Prob.ProbUtils hiding (ProbDelta(..))
+import Pomc.Prob.ProbUtils
 import Pomc.State(State(..), Input)
 import Pomc.SatUtil(SatState(..))
 import Pomc.Check (EncPrecFunc)
@@ -104,19 +103,6 @@ data GGlobals s pstate = GGlobals
   , grGlobals   :: GRobals s (AugState pstate)
   }
 
--- a type for the probabilistic delta relation of the popa and the delta relation of the phiAutomaton
-data DeltaWrapper pState = Delta
-  { bitenc :: E.BitEncoding
-  , proBitenc :: PE.ProBitencoding
-  , prec :: EncPrecFunc
-  , deltaPush :: pState -> RichDistr pState Label
-  , deltaShift :: pState -> RichDistr pState Label
-  , deltaPop :: pState -> pState -> RichDistr pState Label
-  , phiDeltaPush :: State -> [State]
-  , phiDeltaShift :: State -> [State]
-  , phiDeltaPop :: State -> State -> [State]
-  }
-
 
 -- the G Graph computed by this function
 type GGraph s = CM.CustoMap s GNode
@@ -188,8 +174,8 @@ decomposePush :: (Ord pstate, Hashable pstate, Show pstate)
               -> (GraphNode pstate, State) -- current gnode
               -> ST s ()
 decomposePush gglobals delta getGn isPending (gn, p) =
-  let fPendingPushSemiconfs = Set.toList . Set.filter isPending . Set.map to $(internalEdges gn)
-      fPendingSuppSemiconfs = Set.toList . Set.filter isPending . Set.map to $(supportEdges gn)
+  let fPendingPushSemiconfs = Set.toList . Set.filter isPending . Set.map to $ (internalEdges gn)
+      fPendingSuppSemiconfs = Set.toList . Set.filter isPending . Set.map to $ (supportEdges gn)
       fPushPhiStates = (phiDeltaPush delta) p
   in do
     -- handling the push edges

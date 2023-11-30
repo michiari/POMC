@@ -174,33 +174,25 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
 
     initial = bInitials bitenc
 
-    pDelta = Delta
-      { bitenc = bitenc
-      , prec = precFunc
-      , deltaPush = deltaPush
-      , deltaShift = deltaShift
-      , deltaPop = deltaPop
-      }
-
     proEnc = PE.makeProBitEncoding cl phiIsFinal
 
     phiPush p = (phiDeltaPush p Nothing)
     phiShift p = (phiDeltaShift p Nothing)
 
-    wrapper = GG.Delta
-      { GG.bitenc = bitenc
-      , GG.proBitenc = proEnc
-      , GG.prec = precFunc
-      , GG.deltaPush = deltaPush
-      , GG.deltaShift = deltaShift
-      , GG.deltaPop = deltaPop
-      , GG.phiDeltaPush = phiPush
-      , GG.phiDeltaShift = phiShift
-      , GG.phiDeltaPop = phiDeltaPop
+    wrapper = Delta
+      { bitenc = bitenc
+      , proBitenc = proEnc
+      , prec = precFunc
+      , deltaPush = deltaPush
+      , deltaShift = deltaShift
+      , deltaPop = deltaPop
+      , phiDeltaPush = phiPush
+      , phiDeltaShift = phiShift
+      , phiDeltaPop = phiDeltaPop
       }
 
   in do 
-    sc <- stToIO $ decomposeGraph pDelta (fst initial) (snd initial)
+    sc <- stToIO $ decomposeGraph wrapper (fst initial) (snd initial)
     scString <- stToIO $ CM.showMap sc
     pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc $ PendingQuery PureSMT
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc (toBoolVec pendVector)

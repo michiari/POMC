@@ -34,9 +34,12 @@ module Pomc.Prob.ProbUtils ( Prob
                            , debug
                            ) where
 
-import Pomc.State(Input)
+import Pomc.State(Input, State)
 import Pomc.Encoding (nat, BitEncoding)
 import Pomc.Check (EncPrecFunc)
+
+import qualified Pomc.Encoding as E
+import qualified Pomc.Prob.ProbEncoding as PE
 
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
@@ -111,13 +114,17 @@ wrapState sig q l = do
 -- Stack symbol: (input token, state) || Bottom if empty stack
 type Stack state = Maybe (Input, StateId state)
 
--- a type for the probabilistic delta relation, parametric with respect to the type of the state
-data ProbDelta state = Delta
-  { bitenc :: BitEncoding
-  , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
-  , deltaPush :: state -> RichDistr state Label-- deltaPush relation
-  , deltaShift :: state -> RichDistr state Label  -- deltaShift relation
-  , deltaPop :: state -> state -> RichDistr state Label -- deltapop relation
+-- a type for the probabilistic delta relation of the popa and the delta relation of the phiAutomaton
+data DeltaWrapper pState = Delta
+  { bitenc :: E.BitEncoding
+  , proBitenc :: PE.ProBitencoding
+  , prec :: EncPrecFunc
+  , deltaPush :: pState -> RichDistr pState Label
+  , deltaShift :: pState -> RichDistr pState Label
+  , deltaPop :: pState -> pState -> RichDistr pState Label
+  , phiDeltaPush :: State -> [State]
+  , phiDeltaShift :: State -> [State]
+  , phiDeltaPop :: State -> State -> [State]
   }
 
 freshPosId :: STRef s Int -> ST.ST s Int
@@ -125,7 +132,6 @@ freshPosId idSeq = do
   curr <- readSTRef idSeq
   modifySTRef' idSeq (+1);
   return curr
-
 
 freshNegId :: STRef s Int -> ST.ST s Int
 freshNegId idSeq = do

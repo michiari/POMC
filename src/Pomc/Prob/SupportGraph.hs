@@ -77,7 +77,7 @@ data Globals s state = Globals
   }
 
 decomposeGraph  :: (Eq state, Hashable state, Show state)
-        => ProbDelta state -- probabilistic delta relation of a popa
+        => DeltaWrapper state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
         -> Label -- label of the initial state
         -> ST s (SupportGraph s state) -- returning a graph
@@ -109,7 +109,7 @@ decomposeGraph probdelta i iLabel = do
 -- requires: the initial state of the OPA is mapped to StateId with getId 0
 decompose :: (Eq state, Hashable state, Show state)
       => Globals s state -- global variables of the algorithm
-      -> ProbDelta state -- delta relation of the popa
+      -> DeltaWrapper state -- delta relation of the popa
       -> (StateId state, Stack state) -- current semiconfiguration
       -> ST s ()
 decompose globals probdelta (q,g) = do
@@ -132,7 +132,7 @@ decompose globals probdelta (q,g) = do
 
 decomposePush :: (Eq state, Hashable state, Show state)
           => Globals s state
-          -> ProbDelta state
+          -> DeltaWrapper state
           -> StateId state
           -> Stack state
           -> state
@@ -152,7 +152,7 @@ decomposePush globals probdelta q g qState qLabel =
 
 decomposeShift :: (Eq state, Hashable state, Show state)
            => Globals s state
-           -> ProbDelta state
+           -> DeltaWrapper state
            -> StateId state
            -> Stack state
            -> state
@@ -166,7 +166,7 @@ decomposeShift globals probdelta q g qState qLabel =
 
 decomposePop :: (Eq state, Hashable state, Show state)
          => Globals s state
-         -> ProbDelta state
+         -> DeltaWrapper state
          -> StateId state
          -> Stack state
          -> state
@@ -203,7 +203,7 @@ addPopContext globals from prob_ rightContext =
 -- decomposing a transition to a new semiconfiguration
 decomposeTransition :: (Eq state, Hashable state, Show state)
                  => Globals s state
-                 -> ProbDelta state
+                 -> DeltaWrapper state
                  -> (StateId state, Stack state) -- from semiconf 
                  -> Bool -- is Support
                  -> Prob
