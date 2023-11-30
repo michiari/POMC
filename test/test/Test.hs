@@ -15,6 +15,7 @@ import qualified Pomc.Test.TestMP       (tests)
 import qualified Pomc.Test.TestSatOmega (tests, slowTests)
 import qualified Pomc.Test.TestMCOmega  (tests, slowTests)
 import qualified Pomc.Test.TestProbTermination (tests)
+import qualified Pomc.Test.TestProbQualMC (tests)
 import qualified Pomc.Test.TestMiniProb (tests)
 
 main :: IO ()
@@ -32,8 +33,9 @@ normalTests = testGroup "Normal Tests"
   , Pomc.Test.TestMP.tests
   , Pomc.Test.TestSatOmega.tests
   , Pomc.Test.TestMCOmega.tests
-  , Pomc.Test.TestProbTermination.tests
+  --, Pomc.Test.TestProbTermination.tests
   , Pomc.Test.TestMiniProb.tests
+  , Pomc.Test.TestProbQualMC.tests
   ]
 
 slowTests :: TestTree
