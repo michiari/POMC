@@ -31,64 +31,63 @@ excludeIndices l is = fst $
 
 probFormulas :: [TestCase]
 probFormulas = 
-  [ ( "0 - Eventually X"
+  [ ( "0 - Eventually X:"
     , Eventually (ap "X")
     ) 
     ,
-    ( "1 - Eventually ret X"
+    ( "1 - Eventually ret X:"
     , Eventually (ap "ret" `And` ap "X")
     ) 
     ,
-    ( "2 - X matches calls and return"
+    ( "2 - X matches calls and return:"
     , Always $ (ap "call" `And` ap "X") `Implies` (XNext Up $ (ap "ret" `And` ap "X"))
     ) 
     , 
-    ( "3 - Termination with Chain operator"
+    ( "3 - Termination with Chain operator:"
     , XNext Up (ap "ret")
     ) 
     ,
-    ( "4 - Termination with Chain operator and label"
+    ( "4 - Termination with Chain operator and label:"
     , XNext Up (ap "ret" `And` ap "Y")
     ) 
     ,
-    ( "5 - Termination or keeping calling X"
+    ( "5 - Termination or keeping calling X:"
     , (XNext Up (ap "ret")) `Or` (Always $ Eventually $ ap "call" `And` ap "X")
     ) 
     ,
-    ( "6 - First call"
+    ( "6 - First call:"
     , ap "call"
     ) 
     , 
-    ( "7 - Second statement"
+    ( "7 - Second statement:"
     , PNext Down $ ap "stm"
     ) 
     , 
-    ( "8 - Second return"
+    ( "8 - Second return:"
     , PNext Up $ ap "ret"
     ) 
     ,
-    ( "9 - All calls reach a ret"
+    ( "9 - All calls terminate properly or improperly:"
     , Always $ ap "call" `Implies` ((XNext Up ((ap "ret") `Or` (ap "exc"))) `Or` (PNext Up ((ap "ret") `Or` (ap "exc"))))
     ) 
     , 
-    --
-    ( "10 - Not Eventually X"
+    ( "10 - Not Eventually X:"
     , Not $ Eventually $ ap "X"
     ) 
     , 
-    ( "11 - if sample stm, then reach Y almost surely"
+    ( "11 - if sample stm, then reach Y almost surely:"
     , PNext Down $ ap "ret" `Or` (Eventually $ ap "Y")
     )
     ,
-    ( "12 - if sample stm, then reach X almost surely"
+    ( "12 - if sample stm, then reach X almost surely:"
     , PNext Down $ ap "ret" `Or` (Eventually $ ap "X")
     )
     ,
-    ( "13 - if sample stm, then always eventually Y almost surely"
+    ( "13 - if sample stm, then always eventually Y almost surely:"
     , PNext Down $ ap "ret" `Or` (Always $ Eventually $ ap "Y")
     )
     ,
-    ( "14 - if sample stm, then always eventually X almost surely"
+    ( "14 - if sample stm, then always eventually X almost surely:"
     , PNext Down $ ap "ret" `Or` (Always $ Eventually $ ap "X")
     )
   ]
