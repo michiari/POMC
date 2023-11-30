@@ -21,6 +21,7 @@ tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Qualitative Tests" [symmetricRandomWalkTests, 
   symmetricRandomWalk2Tests
   , biasedRandomWalkTests, nonTerminatingTests, maybeTerminatingTests
+  , loopySamplingTests
   ]
 
 type Prob = Rational
@@ -205,5 +206,39 @@ expectedMaybeTerminating :: [Bool]
 expectedMaybeTerminating = [ False, False, False, False, False, False, True, False, False, False,
                              False, True, False, True, False
                             ]
+
+
+-- a POPA that keeps sampling between X and Y
+loopySamplingTests :: TestTree
+loopySamplingTests = testGroup "Loopy Sampling POPA Tests" $
+  map (makeTestCase loopySampling) (zipExpected probFormulas expectedLoopySampling)
+
+-- termination probability = 0
+loopySampling :: (ExplicitPopa Word String)
+loopySampling = ExplicitPopa
+                        { epAlphabet = stlV3Alphabet
+                        , epInitial = (0, makeInputSet ["call"])
+                        , epopaDeltaPush =
+                            [ (0, [(1, makeInputSet ["call", "S"],   1 :: Prob)])
+                            , (1, [(2, makeInputSet ["stm", "X"],   0.5 :: Prob)])
+                            , (1, [(3, makeInputSet ["stm", "Y"],   0.5 :: Prob)])
+                            , (2, [(4, makeInputSet ["ret", "X"],   1 :: Prob)])
+                            , (3, [(5, makeInputSet ["ret", "Y"],   1 :: Prob)])
+
+                            ]
+                        , epopaDeltaShift =
+                            [ (6, [(8, makeInputSet ["call", "S"],   1 :: Prob)])
+                            , (7, [(8, makeInputSet ["call", "S"],   1 :: Prob)])
+                            ]
+                        , epopaDeltaPop =
+                            [ (4, 2, [(6, makeInputSet ["ret", "X"],   1 :: Prob)])
+                            , (5, 3, [(7, makeInputSet ["ret", "Y"],   1 :: Prob)])
+                            , (8, 1, [(1, makeInputSet ["call", "S"],   1 :: Prob)])
+                            ]
+                        }
+
+expectedLoopySampling :: [Bool]
+expectedLoopySampling = [ True, True, True, False, False, False, True, False, False, False, False, True, True, True, True 
+                         ]
 
 
