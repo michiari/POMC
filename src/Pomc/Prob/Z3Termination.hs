@@ -79,7 +79,7 @@ terminationQuery graph precFun query =
             precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
             cases
 
-              | isNothing g && (gnId_ /= 0) = debug ("Stuttering semiconf: " ++ show gn) $ encodeStutteringPush graph varMap eqMap gn varKey var
+              | isNothing g && (gnId_ /= 0) = encodeStutteringPush graph varMap eqMap gn varKey var
 
               -- this case includes the initial push
               | isNothing g || precRel == Just Yield =
