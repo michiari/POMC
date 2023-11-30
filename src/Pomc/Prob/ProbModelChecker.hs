@@ -14,6 +14,7 @@ module Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   , terminationGEExplicit
                                   , terminationApproxExplicit
                                   , programTermination
+                                  , qualitativeModelCheckProgram
                                   , qualitativeModelCheckExplicit
                                   , qualitativeModelCheckExplicitGen
                                   ) where
@@ -22,7 +23,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
 import Pomc.Potl (Formula(..), getProps, normalize)
 import Pomc.Check(makeOpa, InitialsComputation(..))
-import Pomc.PropConv (APType, convProps, PropConv(encodeProp) )
+import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula )
 
 import qualified Pomc.Encoding as E
 
@@ -32,14 +33,11 @@ import qualified Pomc.CustoMap as CM
 
 import Pomc.Prob.Z3Termination (terminationQuery)
 import Pomc.Prob.ProbUtils
-import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..))
+import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..), ExprProp)
 
 import qualified Pomc.Prob.GGraph as GG
 
 import qualified Pomc.Prob.ProbEncoding as PE
-
-import qualified Data.Vector.Mutable as MV
-import qualified Data.Vector as V
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -157,6 +155,66 @@ programTermination prog query =
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
+qualitativeModelCheck :: (Ord s, Hashable s, Show s)
+                            => Formula APType -- input formula to check
+                            -> Alphabet APType -- structural OP alphabet
+                            -> (E.BitEncoding -> (s, Label)) -- POPA initial states
+                            -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
+                            -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
+                            -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
+                            -> IO (Bool, String)
+qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
+  let
+    (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
+      makeOpa phi IsProb alphabet (\_ _ -> True)
+
+    deltaPush  = bDeltaPush bitenc
+    deltaShift = bDeltaShift bitenc
+    deltaPop  = bDeltaPop bitenc
+
+    initial = bInitials bitenc
+
+    pDelta = Delta
+      { bitenc = bitenc
+      , prec = precFunc
+      , deltaPush = deltaPush
+      , deltaShift = deltaShift
+      , deltaPop = deltaPop
+      }
+
+    proEnc = PE.makeProBitEncoding cl phiIsFinal
+
+    phiPush p = (phiDeltaPush p Nothing)
+    phiShift p = (phiDeltaShift p Nothing)
+
+    wrapper = GG.Delta
+      { GG.bitenc = bitenc
+      , GG.proBitenc = proEnc
+      , GG.prec = precFunc
+      , GG.deltaPush = deltaPush
+      , GG.deltaShift = deltaShift
+      , GG.deltaPop = deltaPop
+      , GG.phiDeltaPush = phiPush
+      , GG.phiDeltaShift = phiShift
+      , GG.phiDeltaPop = phiDeltaPop
+      }
+
+  in do 
+    sc <- stToIO $ decomposeGraph pDelta (fst initial) (snd initial)
+    scString <- stToIO $ CM.showMap sc
+    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc $ PendingQuery PureSMT
+    almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc (toBoolVec pendVector)
+    return (almostSurely, scString ++ show pendVector) 
+
+qualitativeModelCheckProgram :: Formula ExprProp -- phi: input formula to check
+                              -> Program -- input POPA
+                              -> IO (Bool, String)
+qualitativeModelCheckProgram phi prog =
+  let
+    (pconv, popa) = programToPopa True prog (Set.fromList $ getProps phi)
+    transPhi = encodeFormula pconv phi
+  in qualitativeModelCheck transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
+
 qualitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
                     => Formula APType -- phi: input formula to check
                     -> ExplicitPopa s APType -- input OPA
@@ -166,58 +224,28 @@ qualitativeModelCheckExplicit phi popa =
     -- all the structural labels + all the labels which appear in phi
     essentialAP = Set.fromList $ End : (fst $ epAlphabet popa) ++ (getProps phi)
 
-    (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
-      makeOpa phi IsProb (epAlphabet popa) (\_ _ -> True)
-
     maybeList Nothing = []
     maybeList (Just l) = l
 
     -- generate the delta relation of the input opa
-    encodeDistr = map (\(s, b, p) -> (s, E.encodeInput bitenc (Set.intersection essentialAP b), p))
-    makeDeltaMapI delta = Map.fromListWith (++) $
-      map (\(q, distr) -> (q, encodeDistr  distr))
+    encodeDistr bitenc = map (\(s, b, p) -> (s, E.encodeInput bitenc (Set.intersection essentialAP b), p))
+    makeDeltaMapI delta bitenc = Map.fromListWith (++) $
+      map (\(q, distr) -> (q, encodeDistr bitenc distr))
           delta
     deltaPush  = makeDeltaMapI  (epopaDeltaPush popa)
     deltaShift  = makeDeltaMapI  (epopaDeltaShift popa)
-    popaDeltaPush  q = maybeList $ Map.lookup q deltaPush
-    popaDeltaShift  q = maybeList $ Map.lookup q deltaShift
+    popaDeltaPush bitenc q = maybeList $ Map.lookup q (deltaPush bitenc)
+    popaDeltaShift bitenc q = maybeList $ Map.lookup q (deltaShift bitenc)
 
-    makeDeltaMapS  delta = Map.fromListWith (++) $
-      map (\(q, q', distr) -> ((q, q'), encodeDistr  distr))
+    makeDeltaMapS delta bitenc = Map.fromListWith (++) $
+      map (\(q, q', distr) -> ((q, q'), encodeDistr bitenc distr))
           delta
-    deltaPop = makeDeltaMapS   (epopaDeltaPop popa)
-    popaDeltaPop  q q' = maybeList $ Map.lookup (q, q') deltaPop
+    deltaPop = makeDeltaMapS (epopaDeltaPop popa)
+    popaDeltaPop bitenc q q' = maybeList $ Map.lookup (q, q') (deltaPop bitenc)
 
-    pDelta = Delta
-            { bitenc = bitenc
-            , prec = precFunc
-            , deltaPush = popaDeltaPush
-            , deltaShift = popaDeltaShift
-            , deltaPop = popaDeltaPop
-            }
+    initial bitenc = (fst . epInitial $ popa, E.encodeInput bitenc . Set.intersection essentialAP . snd .  epInitial $ popa)
+  in qualitativeModelCheck phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
 
-    proEnc = PE.makeProBitEncoding cl phiIsFinal
-
-    phiPush p = (phiDeltaPush p Nothing)
-    phiShift p = (phiDeltaShift p Nothing)
-
-    wrapper = GG.Delta
-              { GG.bitenc = bitenc
-              , GG.proBitenc = proEnc
-              , GG.prec = precFunc
-              , GG.deltaPush = popaDeltaPush
-              , GG.deltaShift = popaDeltaShift
-              , GG.deltaPop = popaDeltaPop
-              , GG.phiDeltaPush = phiPush
-              , GG.phiDeltaShift = phiShift
-              , GG.phiDeltaPop = phiDeltaPop
-              }
-  in do
-    sc <- stToIO $ decomposeGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.intersection essentialAP . snd .  epInitial $ popa)
-    scString <- stToIO $ CM.showMap sc
-    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc $ PendingQuery PureSMT
-    almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc (toBoolVec pendVector)
-    return (almostSurely, scString ++ show pendVector)
 
 qualitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
                               => Formula a -- phi: input formula to check
