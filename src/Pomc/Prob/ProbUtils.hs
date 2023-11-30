@@ -13,7 +13,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , Label
                            , StateId(..)
                            , Stack
-                           , ProbDelta(..)
+                           , DeltaWrapper(..)
                            , SIdGen
                            , Solver(..)
                            , Comp(..)
