@@ -22,6 +22,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , initSIdGen
                            , wrapState
                            , freshPosId
+                           , freshNegId
                            , decode
                            , defaultTolerance
                            , isApprox
@@ -48,7 +49,7 @@ import qualified Data.HashTable.Class as H
 
 import Data.Vector(Vector)
 
--- import qualified Debug.Trace as DBG
+import qualified Debug.Trace as DBG
 
 type Prob = Rational
 newtype Distr a = Distr [(a, Prob)] deriving Show
@@ -125,6 +126,13 @@ freshPosId idSeq = do
   modifySTRef' idSeq (+1);
   return curr
 
+
+freshNegId :: STRef s Int -> ST.ST s Int
+freshNegId idSeq = do
+  curr <- readSTRef idSeq
+  modifySTRef' idSeq (\i -> i - 1);
+  return curr
+
 decode :: (StateId state, Stack state) -> (Int,Int,Int)
 decode (s1, Nothing) = (getId s1, 0, 0)
 decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
@@ -191,5 +199,5 @@ toBoolVec (PendingResult v) = v
 toBoolVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
 debug :: String -> a -> a 
---debug = trace
+--debug = DBG.trace
 debug _ x = x

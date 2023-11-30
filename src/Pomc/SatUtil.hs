@@ -30,6 +30,8 @@ import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
+import Debug.Trace(trace)
+
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
@@ -98,8 +100,8 @@ wrapStates sig states = V.mapM (wrapState sig) (V.fromList states)
 type Stack state = Maybe (Input, StateId state)
 
 debug :: String -> a -> a
+--debug = trace
 debug _ x = x
---debug msg r = trace msg r
 
 freshPosId :: STRef s Int -> ST.ST s Int
 freshPosId idSeq = do
