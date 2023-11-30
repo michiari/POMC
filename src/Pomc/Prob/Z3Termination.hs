@@ -153,20 +153,32 @@ encodePush graph varMap eqMap mkComp gn varKey@(_, rightContext) var =
                , [(gnId_, rightContext_) | ((_,alrEncoded), (gnId_, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars
                , varsIds:terms
                )
-      pushEnc (currs, new_vars, terms) e = do
+      pushEnc (currs, vars, terms) e = do
         toGn <- liftIO $ MV.unsafeRead graph (to e)
         (equations, unencoded_vars, varTerms) <- foldM (closeSummaries toGn) ([], [], []) (supportEdges gn)
         transition <- encodeTransition e =<< mkAdd equations
+        newVars <- if null unencoded_vars 
+                      then do 
+                        (_, alreadyEncoded) <- lookupVar varMap (gnId toGn, -2 :: Int)
+                        if alreadyEncoded 
+                          then return []
+                          else return [(gnId toGn, -2 :: Int)]
+                      else return unencoded_vars
         return ( transition:currs
-               , unencoded_vars ++ new_vars
+               , newVars ++ vars
                , (map (\[v1, v2] -> (prob e, v1, v2)) varTerms):terms
                )
   in do
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
-    assert =<< mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
-    assert =<< mkGe var =<< mkRational 0
-    -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
-    addFixpEq eqMap varKey $ PushEq $ concat terms
+    if rightContext /= -2 
+      then do  
+        assert =<< mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
+        assert =<< mkGe var =<< mkRational 0
+        -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
+        addFixpEq eqMap varKey $ PushEq $ concat terms
+      else do 
+        -- -2 means non terminating semiconfs
+        assert =<< mkEq var =<< mkRational 0
     return unencoded_vars
 
 encodeShift :: (Eq state, Hashable state, Show state)
@@ -188,10 +200,15 @@ encodeShift varMap eqMap mkComp gn varKey@(_, rightContext) var =
                )
   in do
     (transitions, unencoded_vars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
-    assert =<< mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
-    assert =<< mkGe var =<< mkRational 0
-    -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
-    addFixpEq eqMap varKey $ ShiftEq terms
+    if rightContext /= -2 
+      then do  
+        assert =<< mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
+        assert =<< mkGe var =<< mkRational 0
+        -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
+        addFixpEq eqMap varKey $ ShiftEq terms
+      else do 
+          -- -2 means non terminating semiconfs
+          assert =<< mkEq var =<< mkRational 0
     return unencoded_vars
 -- end
 
@@ -275,7 +292,7 @@ solveQuery q
 groupASTs :: VarMap -> Int -> IO (Vector [AST])
 groupASTs varMap l = do
   new_mv <- MV.replicate l []
-  HT.mapM_ (\(key, ast) -> when (snd key /= -1) $ MV.unsafeModify new_mv (ast :) (fst key)) varMap
+  HT.mapM_ (\(key, ast) -> when (snd key >= 0) $ MV.unsafeModify new_mv (ast :) (fst key)) varMap
   V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support graph
 
 -- for estimating exact termination probabilities
@@ -315,12 +332,12 @@ isPending graph i asts = do
   if isPop
     then return False
     else if noVars
-      then return True
-      else do
-        less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
-        r <- checkAssumptions [less1]
-        let cases
-              | Sat <- r = return True -- semiconf i is pending
-              | Unsat <- r = return False -- semiconf i is not pending
-              | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show i
-        cases
+            then return True
+            else do
+              less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
+              r <- checkAssumptions [less1]
+              let cases
+                    | Sat <- r = return True
+                    | Unsat <- r = return False -- semiconf i is not pending
+                    | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show i
+              cases
