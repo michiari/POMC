@@ -20,7 +20,7 @@ module Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
-import Pomc.Potl (Formula(..), getProps)
+import Pomc.Potl (Formula(..), getProps, normalize)
 import Pomc.Check(makeOpa, InitialsComputation(..))
 import Pomc.PropConv (APType, convProps, PropConv(encodeProp) )
 
@@ -130,7 +130,6 @@ terminationExplicit popa query =
   in do
     sc <- stToIO $ decomposeGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
     scString <- stToIO $ CM.showMap sc
-    debug scString $ return ()
     p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc query
     return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
 
@@ -153,7 +152,6 @@ programTermination prog query =
   in do
     sc <- stToIO $ decomposeGraph pDelta initVs initLbl
     scString <- stToIO $ CM.showMap sc
-    debug scString $ return ()
     p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc query
     return (p, scString ++ "\n" ++ show query)
 
@@ -166,7 +164,7 @@ qualitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
 qualitativeModelCheckExplicit phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
-    essentialAP = Set.fromList $ (fst $ epAlphabet popa) ++ (getProps phi)
+    essentialAP = Set.fromList $ End : (fst $ epAlphabet popa) ++ (getProps phi)
 
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
       makeOpa phi IsProb (epAlphabet popa) (\_ _ -> True)
@@ -217,12 +215,9 @@ qualitativeModelCheckExplicit phi popa =
   in do
     sc <- stToIO $ decomposeGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.intersection essentialAP . snd .  epInitial $ popa)
     scString <- stToIO $ CM.showMap sc
-    debug scString $ return ()
     pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc $ PendingQuery PureSMT
-    debug (show pendVector) $ return ()
-    (g, i) <- stToIO $ GG.decomposeGGraph wrapper phiInitials (MV.unsafeRead sc) (toBoolVec pendVector V.!)
-    gString <- stToIO $ CM.showMap g
-    debug gString $ return (True, scString ++ show pendVector ++ gString)
+    almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc (toBoolVec pendVector)
+    return (almostSurely, scString ++ show pendVector)
 
 qualitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
                               => Formula a -- phi: input formula to check
@@ -231,7 +226,7 @@ qualitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
 qualitativeModelCheckExplicitGen phi popa =
   let
     (sls, prec) = epAlphabet popa
-    essentialAP = Set.fromList $ sls ++ getProps phi
+    essentialAP = Set.fromList $ End : sls ++ getProps phi
     (tphi, tprec, [tsls], pconv) = convProps phi prec [sls]
     transDelta = map (second
                         (map (\(a, b, p) -> 
