@@ -170,15 +170,11 @@ encodePush graph varMap eqMap mkComp gn varKey@(_, rightContext) var =
                )
   in do
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
-    if rightContext /= -2 
-      then do  
+    when (rightContext /= -2) $ do 
         assert =<< mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
         assert =<< mkGe var =<< mkRational 0
         -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
         addFixpEq eqMap varKey $ PushEq $ concat terms
-      else do 
-        -- -2 means non terminating semiconfs
-        assert =<< mkEq var =<< mkRational 0
     return unencoded_vars
 
 encodeShift :: (Eq state, Hashable state, Show state)
@@ -200,15 +196,11 @@ encodeShift varMap eqMap mkComp gn varKey@(_, rightContext) var =
                )
   in do
     (transitions, unencoded_vars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
-    if rightContext /= -2 
-      then do  
+    when (rightContext /= -2) $ do 
         assert =<< mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
         assert =<< mkGe var =<< mkRational 0
         -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
         addFixpEq eqMap varKey $ ShiftEq terms
-      else do 
-          -- -2 means non terminating semiconfs
-          assert =<< mkEq var =<< mkRational 0
     return unencoded_vars
 -- end
 
