@@ -1,0 +1,2 @@
+formulas = ((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)));
+include = "../Unsafe_Programs/UnsafeQuicksort_2.inc";

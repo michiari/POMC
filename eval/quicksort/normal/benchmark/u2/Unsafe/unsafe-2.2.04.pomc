@@ -1,0 +1,2 @@
+formulas = G ((call And qs) --> ~ (PNu exc Or XNu exc));
+include = "../Unsafe_Programs/UnsafeQuicksort_2.inc";
