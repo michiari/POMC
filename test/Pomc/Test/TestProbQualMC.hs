@@ -9,10 +9,9 @@ module Pomc.Test.TestProbQualMC(tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Pomc.Test.EvalFormulas (TestCase, ap, zipExpected, excludeIndices, probFormulas)
+import Pomc.Test.EvalFormulas (TestCase, zipExpected, excludeIndices, probFormulas)
 import Pomc.Test.OPMs (stlV3Alphabet, makeInputSet)
 import Data.Maybe(fromJust, isJust)
-import Pomc.Potl (Formula(..), Dir(..))
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), qualitativeModelCheckExplicitGen)
 
 import Data.Ratio((%))
@@ -69,8 +68,11 @@ symmetricRandomWalk = ExplicitPopa
                         }
 
 expectedSymmetricRandomWalk :: [Bool]
-expectedSymmetricRandomWalk = [ True, True, True, True, True , True, True, False, False, True,
-                                False, True, True, False, False
+expectedSymmetricRandomWalk = [ True, True, True, True, 
+                                True , True, True, False, 
+                                False, True, False, True, 
+                                True, False, False, True,
+                                False, True, True
                               ]
 
 -- secondo version of Symmetric Random Walk                         
@@ -103,10 +105,12 @@ symmetricRandomWalk2 = ExplicitPopa
                       } 
 
 expectedsymmetricRandomWalk2 :: [Bool]
-expectedsymmetricRandomWalk2 = [True, True, True, True, 
-                                True, True, True, True, False, True,
-                                False, True, True, False, False
-                           ]
+expectedsymmetricRandomWalk2 = [ True, True, True, True, 
+                                 True, True, True, True, 
+                                 False, True, False, True, 
+                                 True, False, False, True,
+                                 False, True, True
+                               ]
 
 -- biased Random Walk (same as symmetric, but with an unfair coin flip)                          
 biasedRandomWalkTests :: TestTree
@@ -138,8 +142,11 @@ biasedRandomWalk = ExplicitPopa
                   } 
 
 expectedBiasedRandomWalk :: [Bool]
-expectedBiasedRandomWalk = [True, True, False, False, False, True, True, True, False, False,
-                            False, True, True, False, False
+expectedBiasedRandomWalk = [ True, True, False, False, 
+                             False, True, True, True, 
+                             False, False, False, True, 
+                             True, False, False, False,
+                             False, True, True
                            ]
 
 -- a non terminating POPA
@@ -166,8 +173,11 @@ nonTerminating = ExplicitPopa
                         }
 
 expectedNonTerminating :: [Bool]
-expectedNonTerminating = [ True, False, False, False, False, True, True, False, False, False,
-                           False, False, True, False, True
+expectedNonTerminating = [ True, False, False, False, 
+                           False, True, True, False, 
+                           False, False, False, False, 
+                           True, False, True, False,
+                           True, False, True
                          ]
 
 -- termination probability = 0.5
@@ -203,9 +213,12 @@ maybeTerminating = ExplicitPopa
                         }
 
 expectedMaybeTerminating :: [Bool]
-expectedMaybeTerminating = [ False, False, False, False, False, False, True, False, False, False,
-                             False, True, False, True, False
-                            ]
+expectedMaybeTerminating = [ False, False, False, False, 
+                             False, False, True, False, 
+                             False, False, False, True, 
+                             False, True, False, False,
+                             False, True, False
+                           ]
 
 
 -- a POPA that keeps sampling between X and Y
@@ -238,7 +251,11 @@ loopySampling = ExplicitPopa
                         }
 
 expectedLoopySampling :: [Bool]
-expectedLoopySampling = [ True, True, True, False, False, False, True, False, False, False, False, True, True, True, True 
-                         ]
+expectedLoopySampling = [ True, True, True, False, 
+                          False, False, True, False, 
+                          False, False, False, True, 
+                          True, True, True, True, 
+                          False, True, True
+                        ]
 
 
