@@ -9,6 +9,7 @@ module Pomc.Prob.MiniProb ( Popa(..)
                           , Program
                           , ExprProp
                           , programToPopa
+                          , miniProbAlphabet
                           -- TODO: remove the following eventually
                           , sksToExtendedOpa
                           , LowerState(..)
@@ -18,7 +19,7 @@ import Pomc.MiniIR
 import Pomc.MiniProcUtils
 import Pomc.Prop (Prop(..), unprop)
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
-import Pomc.Prec (Alphabet)
+import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import qualified Pomc.Encoding as E
 import Pomc.Prob.ProbUtils (Label, RichDistr)
 
@@ -33,6 +34,7 @@ import qualified Data.Set as S
 import Data.Maybe (isNothing, fromJust)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
+import Control.Monad.State.Lazy (State, runState, get, gets, modify, when)
 
 -- import qualified Debug.Trace as DBG
 
@@ -51,9 +53,9 @@ data Action = Assign LValue Expr
   | Cat LValue [Expr] [(Expr, Expr)] -- lhs [rhs] [(num, den)]
   | CallOp FunctionName [FormalParam] [ActualParam]
   | Return
-  | Handle
-  | ExcThrow
-  | Flush
+  | StartQuery
+  | ThrowObs
+  | Stutter
   deriving (Eq, Ord, Show)
 data PState = PState { psId :: Word
                      , psLabels :: (FunctionName, [FunctionName])
@@ -76,188 +78,213 @@ data LowerState = LowerState { lsDPush :: Map Word (PState, DeltaTarget) -- TODO
                              , lsSid :: Word
                              } deriving Show
 
-sksToExtendedOpa :: Bool -> [FunctionSkeleton] -> (LowerState, PState)
-sksToExtendedOpa False sks = buildExtendedOpa sks -- Finite case
-sksToExtendedOpa True _sks = error "Omega case not implemented for probabilistic programs."
+insertPush :: Word -> (PState, DeltaTarget) -> State LowerState ()
+insertPush key val =
+  modify (\ls -> ls { lsDPush = M.insert key val $ lsDPush ls })
 
-buildExtendedOpa :: [FunctionSkeleton] -> (LowerState, PState)
-buildExtendedOpa sks =
-  let lowerState = lowerFunction sksMap (LowerState M.empty M.empty M.empty M.empty 3) (head sks)
-      sksMap = M.fromList $ map (\sk -> (skName sk, sk)) sks
-      firstFname = skName $ head sks
-      firstFinfo = lsFinfo lowerState M.! firstFname
-      firstCall = PState 0 (firstFname, skModules $ head sks) (CallOp firstFname [] [])
-      dPush' = M.insert 0 (firstCall, EntryStates firstFname) (lsDPush lowerState)
-      popLast = PState 1 (T.empty, []) Flush
-      dPop' = M.insert (psId $ fiRetPad firstFinfo, 0) (RetInfo [] [], Det popLast)
-              (lsDPop lowerState)
-      uncaughtExc = PState 2 (T.empty, []) ExcThrow
-      dPop'' = M.insert (psId $ fiThrow firstFinfo, 0) (NoRet, Det uncaughtExc) dPop'
-      dPush'' = M.insert 2 (uncaughtExc, Det popLast) dPush'
-      dPop''' = M.insert (1, 2) (NoRet, Det popLast) dPop''
+insertShift :: Word -> (PState, DeltaTarget) -> State LowerState ()
+insertShift key val =
+  modify (\ls -> ls { lsDShift = M.insert key val $ lsDShift ls })
 
-      resolveTarget (l, EntryStates fname) = (l, fromJust . fiEntry $ lsFinfo lowerState M.! fname)
+insertPop :: (Word, Word) -> (RetInfo, DeltaTarget) -> State LowerState ()
+insertPop key val =
+  modify (\ls -> ls { lsDPop = M.insert key val $ lsDPop ls })
+
+getSid :: State LowerState Word
+getSid = lsSid <$> get
+
+getSidInc :: State LowerState Word
+getSidInc = do
+  oldSid <- gets lsSid
+  modify (\ls -> ls { lsSid = oldSid + 1 })
+  return oldSid
+
+sksToExtendedOpa :: [FunctionSkeleton] -> (PState, LowerState)
+sksToExtendedOpa sks = flip runState (LowerState M.empty M.empty M.empty M.empty 3) $ do
+  let sksMap = M.fromList $ map (\sk -> (skName sk, sk)) sks
+  lowerFunction sksMap (head sks)
+
+  let firstFname = skName $ head sks
+  firstFinfo <- (M.! firstFname) . lsFinfo <$> get
+  let firstCall = PState 0 (firstFname, skModules $ head sks) (CallOp firstFname [] [])
+  insertPush 0 (firstCall, EntryStates firstFname)
+
+  let stutter = PState 1 (T.empty, []) Stutter
+  insertPop (psId $ fiRetPad firstFinfo, 0) (RetInfo [] [], Det stutter)
+
+  -- Add stuttering transitions
+  insertPush 1 (stutter, Det stutter)
+  insertPop (1, 1) (NoRet, Det stutter)
+
+  let uncaughtObs = PState 2 (T.empty, []) ThrowObs
+  insertPop (psId $ fiThrow firstFinfo, 0) (NoRet, Det uncaughtObs)
+  insertPush 2 (uncaughtObs, Det stutter)
+  insertPop (1, 2) (NoRet, Det stutter)
+
+  finfo <- lsFinfo <$> get
+  let resolveTarget (l, EntryStates fname) =
+        (l, fromJust . fiEntry $ finfo M.! fname)
       resolveTarget x = x
       resolveAll deltaMap = M.map resolveTarget deltaMap
-  in ( lowerState { lsDPush = resolveAll dPush''
-                  , lsDShift = resolveAll $ lsDShift lowerState
-                  , lsDPop = resolveAll dPop'''
-                  }
-     , firstCall
-     )
+  modify (\ls -> ls { lsDPush  = resolveAll $ lsDPush ls
+                    , lsDShift = resolveAll $ lsDShift ls
+                    , lsDPop   = resolveAll $ lsDPop ls
+                    })
+  return firstCall
 
 -- Thunk that links a list of states as the successors of the previous statement(s)
-type PredLinker = LowerState -> DeltaTarget -> LowerState
+type PredLinker = DeltaTarget -> State LowerState ()
 
 mergeDts :: DeltaTarget -> Maybe DeltaTarget -> Maybe DeltaTarget
 mergeDts dt Nothing = Just dt
 mergeDts (Guard news) (Just (Guard olds)) = Just . Guard $ olds ++ news
 mergeDts _ _ = error "DeltaTarget mismatch."
 
-dInsert :: (Ord k) => k -> l -> DeltaTarget -> Map k (l, DeltaTarget) -> Map k (l, DeltaTarget)
+dInsert :: (Ord k) => k -> l -> DeltaTarget
+        -> Map k (l, DeltaTarget) -> Map k (l, DeltaTarget)
 dInsert key label dt delta =
   M.alter (fmap (\ndt -> (label, ndt)) . mergeDts dt . fmap snd) key delta
+
+addPops :: (Word, Word) -> RetInfo -> DeltaTarget -> State LowerState ()
+addPops key label dt =
+  modify (\ls -> ls { lsDPop = dInsert key label dt $ lsDPop ls })
+
+addPushes :: Word -> PState -> DeltaTarget -> State LowerState ()
+addPushes key label dt =
+  modify (\ls -> ls { lsDPush = dInsert key label dt $ lsDPush ls })
 
 mkPSLabels :: FunctionSkeleton -> (FunctionName, [FunctionName])
 mkPSLabels fsk = (skName fsk, skModules fsk)
 
 lowerFunction :: Map Text FunctionSkeleton
-              -> LowerState
               -> FunctionSkeleton
-              -> LowerState
-lowerFunction sks lowerState0 fsk =
-  let retSid = lsSid lowerState0
-      retState = PState retSid (mkPSLabels fsk) Return
+              -> State LowerState ()
+lowerFunction sks fsk = do
+  retSid <- getSid
+  let retState = PState retSid (mkPSLabels fsk) Return
       thisFinfo = FunctionInfo
         { fiEntry = Nothing
         , fiRetPad = PState (retSid + 1) (mkPSLabels fsk) Return
-        , fiThrow = PState (retSid + 2) (mkPSLabels fsk) ExcThrow
-        , fiExcPad = PState (retSid + 3) (mkPSLabels fsk) ExcThrow
+        , fiThrow = PState (retSid + 2) (mkPSLabels fsk) ThrowObs
+        , fiExcPad = PState (retSid + 3) (mkPSLabels fsk) ThrowObs
         , fiSkeleton = fsk
         }
-      lowerState1 = lowerState0
-        { lsFinfo = M.insert (skName fsk) thisFinfo (lsFinfo lowerState0)
-        , lsSid = retSid + 4
-        }
-      addEntry ls es = ls
-        { lsFinfo = M.adjust (\tfinfo -> tfinfo { fiEntry = mergeDts es (fiEntry tfinfo) })
-                    (skName fsk) (lsFinfo ls)
-        }
+  modify (\ls -> ls { lsFinfo = M.insert (skName fsk) thisFinfo (lsFinfo ls)
+                    , lsSid = retSid + 4
+                    })
 
-      (lowerState2, linkPred) = lowerBlock sks lowerState1 thisFinfo addEntry (skStmts fsk)
+  let addEntry :: PredLinker
+      addEntry es = modify
+        (\ls -> ls { lsFinfo = M.adjust
+                     (\tfinfo -> tfinfo { fiEntry = mergeDts es (fiEntry tfinfo) })
+                     (skName fsk) (lsFinfo ls)
+                   })
 
-      dShift' = M.insert retSid (retState, Det $ fiRetPad thisFinfo) (lsDShift lowerState2)
-      dShift'' = M.insert (psId $ fiThrow thisFinfo)
-                 (fiThrow thisFinfo, Det $ fiExcPad thisFinfo) dShift'
-  in linkPred (lowerState2 { lsDShift = dShift'' }) (Det retState)
+  (linkPred, _) <- lowerBlock sks thisFinfo addEntry (skStmts fsk)
+
+  insertShift retSid (retState, Det $ fiRetPad thisFinfo)
+  insertShift (psId $ fiThrow thisFinfo) (fiThrow thisFinfo, Det $ fiExcPad thisFinfo)
+  linkPred $ Det retState
 
 lowerStatement :: Map Text FunctionSkeleton
-               -> LowerState
                -> FunctionInfo
                -> PredLinker
                -> Statement
-               -> (LowerState, PredLinker)
-lowerStatement _ lowerState0 thisFinfo linkPred (Assignment lhs rhs) =
-  let assSid = lsSid lowerState0
-      assState = PState assSid (mkPSLabels $ fiSkeleton thisFinfo) (Assign lhs rhs)
-      lowerState1 = linkPred (lowerState0 { lsSid = assSid + 1 }) (Det assState)
-      dPush' = M.insert assSid (assState, Det assState) (lsDPush lowerState1)
+               -> State LowerState (PredLinker, DeltaTarget)
+lowerStatement _ thisFinfo linkPred (Assignment lhs rhs) = do
+  assSid <- getSidInc
+  let assState = PState assSid (mkPSLabels $ fiSkeleton thisFinfo) (Assign lhs rhs)
+      thisTarget = Det assState
+  linkPred thisTarget
+  insertPush assSid (assState, thisTarget)
+  return (\succStates -> addPops (assSid, assSid) NoRet succStates, thisTarget)
 
-      linkAss ls succStates = ls { lsDPop = dInsert (assSid, assSid) NoRet succStates (lsDPop ls) }
-
-  in (lowerState1 { lsDPush = dPush' }, linkAss)
-
-lowerStatement _ _ _ _ (Nondeterministic _) =
+lowerStatement _ _ _ (Nondeterministic _) =
   error "Nondeterministic assignments not allowed in probabilistic programs."
 
-lowerStatement _ ls0 thisFinfo linkPred (Categorical lhs exprs probs) =
-  let catSid = lsSid ls0
-      catState = PState catSid (mkPSLabels $ fiSkeleton thisFinfo) (Cat lhs exprs probs)
-      lowerState1 = linkPred (ls0 { lsSid = catSid + 1 }) (Det catState)
-      dPush' = M.insert catSid (catState, Det catState) (lsDPush lowerState1)
+lowerStatement _ thisFinfo linkPred (Categorical lhs exprs probs) = do
+  catSid <- getSidInc
+  let catState = PState catSid (mkPSLabels $ fiSkeleton thisFinfo) (Cat lhs exprs probs)
+      thisTarget = Det catState
+  linkPred thisTarget
+  insertPush catSid (catState, thisTarget)
+  return (\succStates -> addPops (catSid, catSid) NoRet succStates, thisTarget)
 
-      linkCat ls succStates = ls { lsDPop = dInsert (catSid, catSid) NoRet succStates (lsDPop ls) }
-
-  in (lowerState1 { lsDPush = dPush' }, linkCat)
-
-lowerStatement sks lowerState0 thisFinfo linkPred (Call fname args) =
+lowerStatement sks thisFinfo linkPred (Call fname args) = do
+  callSid <- getSidInc
   let calleeSk = sks M.! fname
-      callSid = lsSid lowerState0
       callState = PState callSid (mkPSLabels calleeSk) (CallOp fname (skParams calleeSk) args)
-      calleeFinfo0 = M.lookup fname $ lsFinfo lowerState0
-      lowerState1 = lowerState0 { lsSid = callSid + 1 }
-      lowerState2 = if isNothing calleeFinfo0
-                    then lowerFunction sks lowerState1 calleeSk
-                    else lowerState1
-      calleeFinfo1 = lsFinfo lowerState2 M.! fname
-      dPush'' = M.insert callSid (callState, EntryStates fname) (lsDPush lowerState2)
-      dPop'' = M.insert (psId $ fiThrow calleeFinfo1, callSid)
-               (NoRet, Det $ fiThrow thisFinfo) (lsDPop lowerState2)
+  notLowered <- M.notMember fname . lsFinfo <$> get
+  when notLowered $ lowerFunction sks calleeSk
 
-      linkCall lowerState successorStates = lowerState
-        { lsDPop = dInsert (psId $ fiRetPad calleeFinfo1, callSid)
-                   (RetInfo (skParams calleeSk) args)
-                   successorStates (lsDPop lowerState)
-        }
+  calleeFinfo <- (M.! fname) . lsFinfo <$> get
+  insertPush callSid (callState, EntryStates fname)
+  insertPop (psId $ fiThrow calleeFinfo, callSid) (NoRet, Det $ fiThrow thisFinfo)
 
-      lowerState3 = lowerState2 { lsDPush = dPush'', lsDPop = dPop'', lsSid = lsSid lowerState2 + 1 }
-  in (linkPred lowerState3 (Det callState), linkCall)
+  let thisTarget = Det callState
+  linkPred thisTarget
 
-lowerStatement sks ls0 thisFinfo linkPred0 (TryCatch try catch) =
+  return ( \succStates -> addPops (psId $ fiRetPad calleeFinfo, callSid)
+                          (RetInfo (skParams calleeSk) args)
+                          succStates
+         , thisTarget
+         )
+
+lowerStatement sks thisFinfo linkPred0 (TryCatch body []) = do
   let fsk = fiSkeleton thisFinfo
-      hanSid = lsSid ls0
-      hanState = PState hanSid (mkPSLabels fsk) Handle
-      dummySid0 = hanSid + 1
-      dummyState0 = PState dummySid0 (mkPSLabels fsk) ExcThrow
-      dummySid1 = dummySid0 + 1
-      dummyState1 = PState dummySid1 (mkPSLabels fsk) ExcThrow -- TODO should not be an exc (maybe #?)
-      ls1 = linkPred0 (ls0 { lsSid = dummySid1 + 1 }) (Det hanState)
+  qrySid <- getSidInc
+  let qryState = PState qrySid (mkPSLabels fsk) StartQuery
+      thisTarget = Det qryState
+  linkPred0 thisTarget
 
-      linkHandler lowerState successorStates =
-        lowerState { lsDPush = dInsert hanSid hanState successorStates (lsDPush lowerState) }
+  let linkQuery successorStates = addPushes qrySid qryState successorStates
+  (linkBody, bodyTarget) <- lowerBlock sks thisFinfo linkQuery body
 
-      (ls2, linkPredTry) = lowerBlock sks ls1 thisFinfo linkHandler try
-      -- add dummy exc to exit try block
-      ls3 = linkPredTry ls2 (Det dummyState0)
-      ls4 = ls3 { lsDShift = M.insert dummySid0 (dummyState0, Det dummyState1) (lsDShift ls3) }
+  -- add dummy return to exit query block
+  retSid <- getSidInc
+  let retState = PState retSid (mkPSLabels fsk) Return
 
-      linkTry lowerState successorStates = lowerState
-        { lsDPop = dInsert (dummySid1, hanSid) NoRet successorStates (lsDPop lowerState) }
+  linkBody (Det retState)
+  insertShift retSid (retState, Det retState)
+  let linkNormalExit succStates = addPops (retSid, qrySid) NoRet succStates
 
-      linkCatch lowerState succDt = lowerState
-        { lsDPop = dInsert (psId $ fiExcPad thisFinfo, hanSid) NoRet succDt (lsDPop lowerState) }
+  -- if an obs is thrown, we restart the body
+  insertPop (psId $ fiExcPad thisFinfo, qrySid) (NoRet, bodyTarget)
 
-      (ls5, linkPredCatch) = lowerBlock sks ls4 thisFinfo linkCatch catch
+  return (linkNormalExit, thisTarget)
+lowerStatement _ _ _ (TryCatch _ _) =
+  error "Try-catch not allowed in probabilistic programs."
 
-      linkTryCatch ls succStates = linkPredCatch (linkTry ls succStates) succStates
-  in (ls5, linkTryCatch)
-
-lowerStatement sks ls0 thisFinfo linkPred0 (IfThenElse (Just bexp) thenBlock elseBlock) =
-  let linkPred0Then lowerState succStates = linkPred0 lowerState (combGuards bexp succStates)
-      linkPred0Else lowerState succStates = linkPred0 lowerState (combGuards (Not bexp) succStates)
-
-      (ls1, linkPred1) = lowerBlock sks ls0 thisFinfo linkPred0Then thenBlock
-      (ls2, linkPred2) = lowerBlock sks ls1 thisFinfo linkPred0Else elseBlock
-      linkPredITE lowerState succStates = linkPred2 (linkPred1 lowerState succStates) succStates
-  in (ls2, linkPredITE)
-lowerStatement _ _ _ _ (IfThenElse Nothing _ _) =
+lowerStatement sks thisFinfo linkPred0 (IfThenElse (Just bexp) thenBlock elseBlock) = do
+  let linkPred0Then succStates = linkPred0 (combGuards bexp succStates)
+      linkPred0Else succStates = linkPred0 (combGuards (Not bexp) succStates)
+  (linkPred1, thenTarget) <- lowerBlock sks thisFinfo linkPred0Then thenBlock
+  (linkPred2, elseTarget) <- lowerBlock sks thisFinfo linkPred0Else elseBlock
+  return ( \succStates -> linkPred1 succStates >> linkPred2 succStates
+         , fromJust $ mergeDts (combGuards bexp thenTarget)
+           (Just $ combGuards (Not bexp) elseTarget)
+         )
+lowerStatement _ _ _ (IfThenElse Nothing _ _) =
   error "Nondeterministic guards not allowed in probabilistic programs."
 
-lowerStatement sks ls0 thisFinfo linkPred0 (While (Just bexp) body) =
-  let linkPred1 lowerState0 succStates =
-        let enterEdges = combGuards bexp succStates
-        in linkPred0 (linkBody lowerState0 enterEdges) enterEdges
-
-      (ls1, linkBody) = lowerBlock sks ls0 thisFinfo linkPred1 body
-      linkPredWhile lowerState succStates =
-        let exitEdges = combGuards (Not bexp) succStates
-        in linkBody (linkPred0 lowerState exitEdges) exitEdges
-  in (ls1, linkPredWhile)
-lowerStatement _ _ _ _ (While Nothing _) =
+lowerStatement sks thisFinfo linkPred0 (While (Just bexp) body) = do
+  let linkPred1 succStates = linkPred0 $ combGuards bexp succStates
+  (linkBody, bodyTarget) <- lowerBlock sks thisFinfo linkPred1 body
+  linkBody $ combGuards bexp bodyTarget
+  return ( \succStates ->
+             let exitEdges = combGuards (Not bexp) succStates
+             in linkPred0 exitEdges >> linkBody exitEdges
+         , bodyTarget
+         )
+lowerStatement _ _ _ (While Nothing _) =
   error "Nondeterministic guards not allowed in probabilistic programs."
 
-lowerStatement _ lowerState thisFinfo linkPred Throw =
-  (linkPred lowerState (Det $ fiThrow thisFinfo), (\ls _ -> ls))
+lowerStatement _ thisFinfo linkPred (Throw (Just guard)) =
+  let thisTarget = Guard [(Not $ guard, fiThrow thisFinfo)]
+  in linkPred thisTarget >>
+     return (\succStates -> linkPred $ combGuards guard succStates, thisTarget)
+lowerStatement _ _ _ (Throw Nothing) =
+  error "Exceptions not allowed in probabilistic programs."
 
 combGuards :: Expr -> DeltaTarget -> DeltaTarget
 combGuards bexp1 (Det ps) = Guard [(bexp1, ps)]
@@ -266,25 +293,20 @@ combGuards bexp1 (Guard targets) =
 combGuards _ _ = error "DeltaTarget mismatch."
 
 lowerBlock :: Map Text FunctionSkeleton
-           -> LowerState
            -> FunctionInfo
            -> PredLinker
            -> [Statement]
-           -> (LowerState, PredLinker)
-lowerBlock _ lowerState _ linkPred [] = (lowerState, linkPred)
-lowerBlock sks lowerState thisFinfo linkPred block =
-  foldBlock lowerState linkPred block
-  where foldBlock lowerState1 linkPred1 [] = (lowerState1, linkPred1)
+           -> State LowerState (PredLinker, DeltaTarget)
+lowerBlock _ _ linkPred [] = return (linkPred, Guard [])
+lowerBlock sks thisFinfo linkPred0 (first : rest) = do
+  (linkPred1, initStates) <- lowerStatement sks thisFinfo linkPred0 first -- TODO: fix for when this can return empty initStates
+  linkPred2 <- foldBlock linkPred1 rest
+  return (linkPred2, initStates)
+  where foldBlock linkPred1 [] = return linkPred1
+        foldBlock linkPred1 (stmt : stmts) = do
+          (linkPred2, _) <- lowerStatement sks thisFinfo linkPred1 stmt
+          foldBlock linkPred2 stmts
 
-        foldBlock lowerState1 linkPred1 (Throw : _) =
-          let (lowerState2, linkPred2) =
-                lowerStatement sks lowerState1 thisFinfo linkPred1 Throw
-          in (lowerState2, linkPred2)
-
-        foldBlock lowerState1 linkPred1 (stmt : stmts) =
-          let (lowerState2, linkPred2) =
-                lowerStatement sks lowerState1 thisFinfo linkPred1 stmt
-          in foldBlock lowerState2 linkPred2 stmts
 
 -- Conversion of the Extended pOPA to a plain pOPA
 programToPopa :: Bool -> Program -> Set (Prop ExprProp)
@@ -292,7 +314,7 @@ programToPopa :: Bool -> Program -> Set (Prop ExprProp)
                  , Popa VarState APType
                  )
 programToPopa isOmega prog additionalProps =
-  let (lowerState, ini) = sksToExtendedOpa isOmega (pSks prog)
+  let (ini, lowerState) = sksToExtendedOpa (pSks prog)
 
       allProps = foldr S.insert additionalProps miniProcSls
       pconv = makePropConv $ S.toList allProps
@@ -454,11 +476,51 @@ pStateToLabel bitenc pconv allProps gvii localsInfo ps svval =
   in E.encodeInput bitenc $ lsProps `S.union` trueExprProps
 
 actionStruct :: Action -> Prop ExprProp
-actionStruct Flush = End
 actionStruct ac = Prop . TextProp . T.pack $ case ac of
-  Assign {} -> "stm"
-  Cat {}    -> "stm"
-  CallOp {} -> "call"
-  Return    -> "ret"
-  Handle    -> "han"
-  ExcThrow  -> "exc"
+  Assign {}  -> "stm"
+  Cat {}     -> "stm"
+  CallOp {}  -> "call"
+  Return     -> "ret"
+  StartQuery -> "qry"
+  ThrowObs   -> "obs"
+  Stutter    -> "stm"
+
+
+-- OPM
+miniProbSls :: [Prop ExprProp]
+miniProbSls = map (Prop . TextProp . T.pack) ["call", "ret", "qry", "obs", "stm"]
+
+miniProbPrecRel :: [StructPrecRel ExprProp]
+miniProbPrecRel =
+  map (\(sl1, sl2, pr) ->
+         (Prop . TextProp . T.pack $ sl1, Prop . TextProp . T.pack $ sl2, pr)) precs
+  ++ map (\p -> (p, End, Take)) miniProbSls
+  where precs = [ ("call", "call", Yield)
+                , ("call", "ret",  Equal)
+                , ("call", "qry",  Yield)
+                , ("call", "obs",  Take)
+                , ("call", "stm",  Yield)
+                , ("ret",  "call", Take)
+                , ("ret",  "ret",  Take)
+                , ("ret",  "qry",  Take)
+                , ("ret",  "obs",  Take)
+                , ("ret",  "stm",  Take)
+                , ("qry",  "call", Yield)
+                , ("qry",  "ret",  Equal)
+                , ("qry",  "qry",  Yield)
+                , ("qry",  "obs",  Yield)
+                , ("qry",  "stm",  Yield)
+                , ("obs",  "call", Take)
+                , ("obs",  "ret",  Take)
+                , ("obs",  "qry",  Take)
+                , ("obs",  "obs",  Take)
+                , ("obs",  "stm",  Take)
+                , ("stm",  "call", Take)
+                , ("stm",  "ret",  Take)
+                , ("stm",  "qry",  Take)
+                , ("stm",  "obs",  Take)
+                , ("stm",  "stm",  Take)
+                ]
+
+miniProbAlphabet :: Alphabet ExprProp
+miniProbAlphabet = (miniProbSls, miniProbPrecRel)

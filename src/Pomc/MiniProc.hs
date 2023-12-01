@@ -216,6 +216,7 @@ lowerStatement sks lowerState0 thisFinfo linkPred (Call fname args) =
                 successorStates (lsDPop lowerState)
           in lowerState { lsDPop = dPop' }
 
+      -- TODO: do we really need to increment lsSid here?
       lowerState3 = lowerState2 { lsDPush = dPush'', lsDPop = dPop'', lsSid = lsSid lowerState2 + 1 }
   in (linkPred lowerState3 [(NoGuard, callSid)], linkCall)
 
@@ -282,8 +283,10 @@ lowerStatement sks ls0 thisFinfo linkPred0 (While guard body) =
         in linkBody (linkPred0 lowerState exitEdges) exitEdges
   in (ls1, linkPredWhile)
 
-lowerStatement _ lowerState thisFinfo linkPred Throw =
+lowerStatement _ lowerState thisFinfo linkPred (Throw Nothing) =
   (linkPred lowerState [(NoGuard, fiThrow thisFinfo)], (\ls _ -> ls))
+lowerStatement _ _ _ _ (Throw _) =
+  error "Observe statements not allowed in MiniProc."
 
 lowerStatement _ _ _ _ (Categorical _ _ _) =
   error "Categorical assignments not allowed in MiniProc."
@@ -303,9 +306,9 @@ lowerBlock sks lowerState thisFinfo linkPred block =
   foldBlock lowerState linkPred block
   where foldBlock lowerState1 linkPred1 [] = (lowerState1, linkPred1)
 
-        foldBlock lowerState1 linkPred1 (Throw : _) =
+        foldBlock lowerState1 linkPred1 ((Throw Nothing) : _) =
           let (lowerState2, linkPred2) =
-                lowerStatement sks lowerState1 thisFinfo linkPred1 Throw
+                lowerStatement sks lowerState1 thisFinfo linkPred1 $ Throw Nothing
           in (lowerState2, linkPred2)
 
         foldBlock lowerState1 linkPred1 (stmt : stmts) =

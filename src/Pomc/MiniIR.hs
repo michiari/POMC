@@ -100,7 +100,7 @@ data Statement = Assignment LValue Expr
                | TryCatch [Statement] [Statement]
                | IfThenElse (Maybe Expr) [Statement] [Statement]
                | While (Maybe Expr) [Statement]
-               | Throw deriving Show
+               | Throw (Maybe Expr) deriving Show
 data FormalParam = Value Variable | ValueResult Variable deriving (Eq, Ord, Show)
 data FunctionSkeleton = FunctionSkeleton { skName    :: FunctionName
                                          , skModules :: [FunctionName]

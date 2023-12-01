@@ -301,6 +301,12 @@ tryCatchP varmap = do
   (catchBlock, catchAparams) <- blockP varmap
   return (TryCatch tryBlock catchBlock, tryAparams ++ catchAparams)
 
+queryP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
+queryP varmap = do
+  _ <- symbolP "query"
+  (bodyBlock, bodyAparams) <- blockP varmap
+  return (TryCatch bodyBlock [], bodyAparams)
+
 iteP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 iteP varmap = do
   _ <- symbolP "if"
@@ -322,16 +328,25 @@ whileP varmap = do
   return (While guard body, aparams)
 
 throwP :: Parser Statement
-throwP = symbolP "throw" >> symbolP ";" >> return Throw
+throwP = symbolP "throw" >> symbolP ";" >> return (Throw Nothing)
+
+observeP :: Map Text Variable -> Parser Statement
+observeP varmap = do
+  _ <- symbolP "observe"
+  guard <- exprP varmap
+  _ <- symbolP ";"
+  return $ Throw $ Just guard
 
 stmtP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 stmtP varmap = choice [ noParams $ nondetP varmap
                       , noParams $ assOrCatP varmap
                       , callP varmap
                       , tryCatchP varmap
+                      , queryP varmap
                       , iteP varmap
                       , whileP varmap
                       , noParams $ throwP
+                      , noParams $ observeP varmap
                       ] <?> "statement"
   where noParams = fmap (\stmt -> (stmt, [[]]))
 

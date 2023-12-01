@@ -76,7 +76,7 @@ genIfThenElse gen fs maxCalls maxDepth =
   in (IfThenElse Nothing thenBlock elseBlock, gen'')
 
 genThrow :: RandomGen g => g -> [FunctionName] -> Int -> Int -> (Statement, g)
-genThrow gen _ _ _ = (Throw, gen)
+genThrow gen _ _ _ = (Throw Nothing, gen)
 
 genSkeletons :: RandomGen g => g -> Int -> Int -> Int -> ([FunctionSkeleton], g)
 genSkeletons gen nf maxCalls maxDepth = foldl foldSkeletons ([], gen) fs
