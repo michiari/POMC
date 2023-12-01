@@ -157,6 +157,7 @@ checkQuery smtopts phi query = evalZ3 $ do
             Z3.Sat -> do
               when (smtVerbose smtopts) . liftIO . print
                 =<< queryTableau encData to Nothing =<< solverGetModel
+              -- DBG.traceM =<< showModel =<< solverGetModel
 
               t1 <- startTimer
               phiAssumptions <- mkPhiAssumptions (smtFastEmpty smtopts) encData to
@@ -1060,11 +1061,10 @@ assertPrune fastPrune encData maybeProgData x
       let nodeSort = zNodeSort encData
           smb = zSmb encData
           stack = zStack encData
-          ctx = zCtx encData
       xLit <- mkUnsignedInt64 x nodeSort
       smbx <- mkApp1 smb xLit
       stackx <- mkApp1 stack xLit
-      ctxx <- mkApp1 ctx xLit
+      -- ctxx <- mkApp1 (zCtx encData) xLit
       assert =<< mkNot =<< mkExistsNodes [0..(x-1)]
         (\y -> do
             yLit <- mkUnsignedInt64 y nodeSort
@@ -1072,7 +1072,7 @@ assertPrune fastPrune encData maybeProgData x
             sameFsxy <- mkSameFs xLit yLit
             smbxy <- mkEq smbx =<< mkApp1 smb yLit
             sameFsStack <- mkSameFs stackx =<< mkApp1 stack yLit
-            sameFsCtx <- mkSameFs ctxx =<< mkApp1 ctx yLit
+            -- sameFsCtx <- mkSameFs ctxx =<< mkApp1 ctx yLit
             sameProgStatus <- mkSameProgStatus xLit yLit
             mkAnd [pending, sameFsxy, smbxy, sameFsStack, {-sameFsCtx,-} sameProgStatus]
         )
