@@ -14,7 +14,6 @@ module Pomc.Prob.GGraph (GGraph
 import Pomc.Prob.ProbUtils
 import Pomc.State(State(..), Input)
 import Pomc.SatUtil(SatState(..))
-import Pomc.Check (EncPrecFunc)
 import Pomc.Prec (Prec(..))
 import Pomc.Potl(Formula(..))
 import Pomc.PropConv(APType)
@@ -126,7 +125,7 @@ decomposeGGraph gglobals delta phiInitials getGn isPending = do
                           -- create a new GNode 
                           newId <- freshPosId (idSeq gglobals)
                           BH.insert (ggraphMap gglobals) (gnId iniGn, s) newId
-                          CM.insert (gGraph gglobals) newId 
+                          CM.insert (gGraph gglobals) newId
                             $ GNode {gId= newId, graphNode = gnId iniGn, phiNode = s, edges = Map.empty, iValue = 0, descSccs = IntSet.empty}
                           return (s:acc)
                         else return acc
@@ -174,8 +173,8 @@ decomposePush :: (Ord pstate, Hashable pstate, Show pstate)
               -> (GraphNode pstate, State) -- current gnode
               -> ST s ()
 decomposePush gglobals delta getGn isPending (gn, p) =
-  let fPendingPushSemiconfs = Set.toList . Set.filter isPending . Set.map to $ (internalEdges gn)
-      fPendingSuppSemiconfs = Set.toList . Set.filter isPending . Set.map to $ (supportEdges gn)
+  let fPendingPushSemiconfs = Set.toList . Set.filter isPending . Set.map to $ internalEdges gn
+      fPendingSuppSemiconfs = Set.toList . Set.filter isPending . Set.map to $ supportEdges gn
       fPushPhiStates = (phiDeltaPush delta) p
   in do
     -- handling the push edges
@@ -185,17 +184,17 @@ decomposePush gglobals delta getGn isPending (gn, p) =
     -- handling the support edges
     fSuppGns <- mapM getGn fPendingSuppSemiconfs
     let leftContext = AugState (getState . fst . semiconf $ gn) (E.extractInput (bitenc delta) (current p)) p
-        cDeltaPush (AugState q0 _ p0)  =  [AugState q1 lab p1 |
-                                           (q1, lab, _) <- (deltaPush delta) q0
+        cDeltaPush (AugState q0 _ p0)  =  [ AugState q1 lab p1 |
+                                            (q1, lab, _) <- (deltaPush delta) q0
                                           , p1 <- (phiDeltaPush delta) p0
                                           ]
-        cDeltaShift (AugState q0 _ p0) =  [(AugState q1 lab p1 ) |
-                                           (q1, lab, _) <- (deltaShift delta) q0
+        cDeltaShift (AugState q0 _ p0) =  [ AugState q1 lab p1 |
+                                            (q1, lab, _) <- (deltaShift delta) q0
                                           , p1 <- (phiDeltaShift delta) p0
                                           ]
-        cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [(AugState q2 lab p2) |
-                                                            (q2, lab, _) <- (deltaPop delta) q0 q1
-                                                            , p2 <- (phiDeltaPop delta) p0 p1
+        cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ AugState q2 lab p2 |
+                                                             (q2, lab, _) <- (deltaPop delta) q0 q1
+                                                           , p2 <- (phiDeltaPop delta) p0 p1
                                                            ]
 
         consistentFilter (AugState _ lab p0) = lab == E.extractInput (bitenc delta) (current p0)
@@ -375,7 +374,7 @@ addtoPath hglobals node edge  = do
 
 merge :: HGlobals s pstate -> GNode -> ST s ()
 merge hGlobals g = do
-  -- contract the B stack, that represents the boundaries between SCCs on the current path (the S stack)
+  -- contract the B stack, that represents the boundaries between SCCs on the current path
   GS.popWhile_ (bStack hGlobals) (\x -> iValue g < x)
 
 deleteDescendants :: HGlobals s pstate -> GraphNodesSCC -> IntSet -> ST s IntSet
@@ -413,12 +412,12 @@ createComponent hGlobals delta isPending g descendantSCCs = do
         else do
           -- discard all descendants that share a semiconf with the current one
           let sccEdges = init poppedEdges
-          sccSemiconfs <- IntSet.fromList <$> (forM sccEdges $ \e -> graphNode <$> MV.unsafeRead (graph hGlobals) (toG e))
+          sccSemiconfs <- IntSet.fromList <$> forM sccEdges (\e -> graphNode <$> MV.unsafeRead (graph hGlobals) (toG e))
           filteredDescendants <- deleteDescendants hGlobals sccSemiconfs descendantSCCs
           -- check if current SCC is a candidate bottom SCC of H
           isBott <- isBottom hGlobals sccSemiconfs isPending
           isAccept <- isAccepting hGlobals delta sccEdges
-          if (isBott && isAccept)
+          if isBott && isAccept
             then do
               newSCCid <- freshNegId (cGabow hGlobals)
               modifySTRef' (bottomHSCCs hGlobals) $ Map.insert newSCCid sccSemiconfs
@@ -438,13 +437,13 @@ createComponentPhi hGlobals g descendantSCCs = do
       GS.pop_ (bStack hGlobals)
       sSize <- GS.size $ sStack hGlobals
       sccEdges <- GS.multPop (sStack hGlobals) (sSize - (iValue g) + 1) -- the last one is to gn
-      if (length sccEdges == 1)
+      if length sccEdges == 1
         then do
           MV.modify (graph hGlobals) (\g -> g{iValue = -1, descSccs = descendantSCCs}) (gId g)
           return descendantSCCs
         else do
           -- discard all descendants that share a semiconf with the current one
-          sccSemiconfs <- IntSet.fromList <$> (forM sccEdges $ \e -> graphNode <$> MV.unsafeRead (graph hGlobals) (toG e))
+          sccSemiconfs <- IntSet.fromList <$> forM sccEdges (\e -> graphNode <$> MV.unsafeRead (graph hGlobals) (toG e))
           filteredDescendants <- deleteDescendants hGlobals sccSemiconfs descendantSCCs
           forM_ sccEdges $ \e -> MV.modify (graph hGlobals) (\g -> g{iValue = -1, descSccs = filteredDescendants}) (toG e)
           return filteredDescendants

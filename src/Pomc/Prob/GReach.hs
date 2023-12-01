@@ -212,6 +212,6 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
       let recordedSatSet = fromJust maybeSatSet
       let augmentedPathSatSet = PE.unions (recordedSatSet : catMaybes [pathSatSet, mSuppSatSet])
       unless (recordedSatSet `PE.subsumes` augmentedPathSatSet) $ do
-        -- dest semiconf has been visited, but with a set of sat formulae that does not subsumes the current ones
+        -- dest semiconf has been visited, but with a set of sat formulae that does not subsume the current ones
         BH.insert (visited globals) (decode dest) augmentedPathSatSet
         reach globals delta dest augmentedPathSatSet
