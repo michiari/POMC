@@ -51,13 +51,15 @@ basicTests = testGroup "Basic Tests"
   $ [ makeParseTestCase linRecSrc ("Linearly Recursive Function Termination", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
     , makeParseTestCase randomWalkSrc ("1D Random Walk Termination", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult (2 % 3))
     , makeParseTestCase mutualRecSrc ("Mutual Recursion Termination", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
+    , makeParseTestCase infiniteLoopSrc ("Infinite Loop", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
+    , makeParseTestCase observeLoopSrc ("Observe Loop", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
     ]
 
 linRecSrc :: T.Text
 linRecSrc = T.pack [r|
 f() {
   bool x;
-  x = 0u1 {0.5} 1u1;
+  x = 0u1 {1u3:2u3} 1u1;
   if (x) {
     f();
   } else { }
@@ -68,7 +70,7 @@ randomWalkSrc :: T.Text
 randomWalkSrc = T.pack [r|
 f() {
   bool x;
-  x = 0u1 {0.4} 1u1;
+  x = 0u1 {2u3:5u3} 1u1;
   if (x) {
     f();
     f();
@@ -80,7 +82,7 @@ mutualRecSrc :: T.Text
 mutualRecSrc = T.pack [r|
 f() {
   u2 x;
-  x = 0u2 {0.3} 1u2 {0.3} 2u2;
+  x = 0u2 {1u3:3u3} 1u2 {1u3:3u3} 2u2;
   if (x == 0u2) {
     f();
   } else {
@@ -92,11 +94,37 @@ f() {
 
 g() {
   bool x;
-  x = true {0.5} false;
+  x = true {1u3:2u3} false;
   if (x) {
     f();
   } else {
     g();
   }
+}
+|]
+
+infiniteLoopSrc :: T.Text
+infiniteLoopSrc = T.pack [r|
+f() {
+  bool x;
+  x = true;
+  while (x) {
+    x = true {1u3:2u3} false;
+  }
+}
+|]
+
+observeLoopSrc :: T.Text
+observeLoopSrc = T.pack [r|
+f() {
+  query {
+    g();
+  }
+}
+
+g() {
+  bool x;
+  x = true {1u3:2u3} false;
+  observe x;
 }
 |]

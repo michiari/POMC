@@ -9,7 +9,6 @@ module Pomc.Prob.MiniProb ( Popa(..)
                           , Program
                           , ExprProp
                           , programToPopa
-                          , miniProbAlphabet
                           -- TODO: remove the following eventually
                           , sksToExtendedOpa
                           , LowerState(..)
@@ -31,10 +30,10 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Maybe (isNothing, fromJust)
+import Data.Maybe (fromJust)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-import Control.Monad.State.Lazy (State, runState, get, gets, modify, when)
+import Control.Monad.State.Lazy (State, runState, get, gets, modify, when, foldM)
 
 -- import qualified Debug.Trace as DBG
 
@@ -64,6 +63,7 @@ data PState = PState { psId :: Word
 data DeltaTarget = EntryStates FunctionName
   | Det PState
   | Guard [(Expr, PState)] deriving Show
+data EntryTarget = Known DeltaTarget | Thunk (DeltaTarget -> DeltaTarget)
 data RetInfo = NoRet | RetInfo [FormalParam] [ActualParam] deriving Show
 data FunctionInfo = FunctionInfo { fiEntry :: Maybe DeltaTarget
                                  , fiRetPad :: PState
@@ -135,15 +135,15 @@ sksToExtendedOpa sks = flip runState (LowerState M.empty M.empty M.empty M.empty
 -- Thunk that links a list of states as the successors of the previous statement(s)
 type PredLinker = DeltaTarget -> State LowerState ()
 
-mergeDts :: DeltaTarget -> Maybe DeltaTarget -> Maybe DeltaTarget
-mergeDts dt Nothing = Just dt
-mergeDts (Guard news) (Just (Guard olds)) = Just . Guard $ olds ++ news
+mergeDts :: DeltaTarget -> Maybe DeltaTarget -> DeltaTarget
+mergeDts dt Nothing = dt
+mergeDts (Guard news) (Just (Guard olds)) = Guard $ olds ++ news
 mergeDts _ _ = error "DeltaTarget mismatch."
 
 dInsert :: (Ord k) => k -> l -> DeltaTarget
         -> Map k (l, DeltaTarget) -> Map k (l, DeltaTarget)
 dInsert key label dt delta =
-  M.alter (fmap (\ndt -> (label, ndt)) . mergeDts dt . fmap snd) key delta
+  M.alter (Just . (\dts -> (label, dts)) . mergeDts dt . fmap snd) key delta
 
 addPops :: (Word, Word) -> RetInfo -> DeltaTarget -> State LowerState ()
 addPops key label dt =
@@ -176,28 +176,28 @@ lowerFunction sks fsk = do
   let addEntry :: PredLinker
       addEntry es = modify
         (\ls -> ls { lsFinfo = M.adjust
-                     (\tfinfo -> tfinfo { fiEntry = mergeDts es (fiEntry tfinfo) })
+                     (\tfinfo -> tfinfo { fiEntry = Just $ mergeDts es (fiEntry tfinfo) })
                      (skName fsk) (lsFinfo ls)
                    })
 
   (linkPred, _) <- lowerBlock sks thisFinfo addEntry (skStmts fsk)
 
   insertShift retSid (retState, Det $ fiRetPad thisFinfo)
-  insertShift (psId $ fiThrow thisFinfo) (fiThrow thisFinfo, Det $ fiExcPad thisFinfo)
+  insertPush (psId $ fiThrow thisFinfo) (fiThrow thisFinfo, Det $ fiExcPad thisFinfo)
   linkPred $ Det retState
 
 lowerStatement :: Map Text FunctionSkeleton
                -> FunctionInfo
                -> PredLinker
                -> Statement
-               -> State LowerState (PredLinker, DeltaTarget)
+               -> State LowerState (PredLinker, EntryTarget)
 lowerStatement _ thisFinfo linkPred (Assignment lhs rhs) = do
   assSid <- getSidInc
   let assState = PState assSid (mkPSLabels $ fiSkeleton thisFinfo) (Assign lhs rhs)
       thisTarget = Det assState
   linkPred thisTarget
   insertPush assSid (assState, thisTarget)
-  return (\succStates -> addPops (assSid, assSid) NoRet succStates, thisTarget)
+  return (\succStates -> addPops (assSid, assSid) NoRet succStates, Known thisTarget)
 
 lowerStatement _ _ _ (Nondeterministic _) =
   error "Nondeterministic assignments not allowed in probabilistic programs."
@@ -208,7 +208,7 @@ lowerStatement _ thisFinfo linkPred (Categorical lhs exprs probs) = do
       thisTarget = Det catState
   linkPred thisTarget
   insertPush catSid (catState, thisTarget)
-  return (\succStates -> addPops (catSid, catSid) NoRet succStates, thisTarget)
+  return (\succStates -> addPops (catSid, catSid) NoRet succStates, Known thisTarget)
 
 lowerStatement sks thisFinfo linkPred (Call fname args) = do
   callSid <- getSidInc
@@ -227,7 +227,7 @@ lowerStatement sks thisFinfo linkPred (Call fname args) = do
   return ( \succStates -> addPops (psId $ fiRetPad calleeFinfo, callSid)
                           (RetInfo (skParams calleeSk) args)
                           succStates
-         , thisTarget
+         , Known thisTarget
          )
 
 lowerStatement sks thisFinfo linkPred0 (TryCatch body []) = do
@@ -249,9 +249,11 @@ lowerStatement sks thisFinfo linkPred0 (TryCatch body []) = do
   let linkNormalExit succStates = addPops (retSid, qrySid) NoRet succStates
 
   -- if an obs is thrown, we restart the body
-  insertPop (psId $ fiExcPad thisFinfo, qrySid) (NoRet, bodyTarget)
+  case bodyTarget of
+    Known bt -> insertPop (psId $ fiExcPad thisFinfo, psId $ fiThrow thisFinfo) (NoRet, bt)
+    _ -> return ()
 
-  return (linkNormalExit, thisTarget)
+  return (linkNormalExit, Known thisTarget)
 lowerStatement _ _ _ (TryCatch _ _) =
   error "Try-catch not allowed in probabilistic programs."
 
@@ -260,21 +262,30 @@ lowerStatement sks thisFinfo linkPred0 (IfThenElse (Just bexp) thenBlock elseBlo
       linkPred0Else succStates = linkPred0 (combGuards (Not bexp) succStates)
   (linkPred1, thenTarget) <- lowerBlock sks thisFinfo linkPred0Then thenBlock
   (linkPred2, elseTarget) <- lowerBlock sks thisFinfo linkPred0Else elseBlock
+  let compTargets tt te = mergeDts (combGuards bexp tt) (Just $ combGuards (Not bexp) te)
   return ( \succStates -> linkPred1 succStates >> linkPred2 succStates
-         , fromJust $ mergeDts (combGuards bexp thenTarget)
-           (Just $ combGuards (Not bexp) elseTarget)
+         , case thenTarget of
+             Known tt -> case elseTarget of
+               Known te -> Known $ compTargets tt te
+               Thunk te -> Thunk $ \st -> compTargets tt (te st)
+             Thunk tt -> case elseTarget of
+               Known te -> Thunk $ \st -> compTargets (tt st) te
+               Thunk te -> Thunk $ \st -> compTargets (tt st) (te st)
          )
 lowerStatement _ _ _ (IfThenElse Nothing _ _) =
   error "Nondeterministic guards not allowed in probabilistic programs."
 
 lowerStatement sks thisFinfo linkPred0 (While (Just bexp) body) = do
   let linkPred1 succStates = linkPred0 $ combGuards bexp succStates
-  (linkBody, bodyTarget) <- lowerBlock sks thisFinfo linkPred1 body
-  linkBody $ combGuards bexp bodyTarget
+  (linkBody, bodyEntry) <- lowerBlock sks thisFinfo linkPred1 body
+  let bodyTarget = case bodyEntry of
+        Known t -> combGuards bexp t
+        Thunk _ -> error "Loops with empty body execution paths are not allowed."
+  linkBody bodyTarget
   return ( \succStates ->
              let exitEdges = combGuards (Not bexp) succStates
              in linkPred0 exitEdges >> linkBody exitEdges
-         , bodyTarget
+         , Thunk $ \st -> mergeDts bodyTarget (Just $ combGuards (Not bexp) st)
          )
 lowerStatement _ _ _ (While Nothing _) =
   error "Nondeterministic guards not allowed in probabilistic programs."
@@ -282,41 +293,42 @@ lowerStatement _ _ _ (While Nothing _) =
 lowerStatement _ thisFinfo linkPred (Throw (Just guard)) =
   let thisTarget = Guard [(Not $ guard, fiThrow thisFinfo)]
   in linkPred thisTarget >>
-     return (\succStates -> linkPred $ combGuards guard succStates, thisTarget)
+     return (\succStates -> linkPred $ combGuards guard succStates, Known thisTarget)
 lowerStatement _ _ _ (Throw Nothing) =
   error "Exceptions not allowed in probabilistic programs."
 
 combGuards :: Expr -> DeltaTarget -> DeltaTarget
 combGuards bexp1 (Det ps) = Guard [(bexp1, ps)]
 combGuards bexp1 (Guard targets) =
-  Guard $ map (\(bexp2, ps) -> ((bexp1 `And` bexp2), ps)) targets
+  Guard $ map (\(bexp2, ps) -> (bexp1 `And` bexp2, ps)) targets
 combGuards _ _ = error "DeltaTarget mismatch."
 
 lowerBlock :: Map Text FunctionSkeleton
            -> FunctionInfo
            -> PredLinker
            -> [Statement]
-           -> State LowerState (PredLinker, DeltaTarget)
-lowerBlock _ _ linkPred [] = return (linkPred, Guard [])
-lowerBlock sks thisFinfo linkPred0 (first : rest) = do
-  (linkPred1, initStates) <- lowerStatement sks thisFinfo linkPred0 first -- TODO: fix for when this can return empty initStates
-  linkPred2 <- foldBlock linkPred1 rest
-  return (linkPred2, initStates)
-  where foldBlock linkPred1 [] = return linkPred1
-        foldBlock linkPred1 (stmt : stmts) = do
-          (linkPred2, _) <- lowerStatement sks thisFinfo linkPred1 stmt
-          foldBlock linkPred2 stmts
+           -> State LowerState (PredLinker, EntryTarget)
+lowerBlock _ _ linkPred [] = return (linkPred, Thunk id)
+lowerBlock sks thisFinfo linkPred0 block = foldM foldBlock (linkPred0, Thunk id) block
+  where foldBlock (linkPred1, entryTarget) stmt = do
+          (linkPred2, newEt) <- lowerStatement sks thisFinfo linkPred1 stmt
+          let resEt = case entryTarget of
+                Known _ -> entryTarget
+                Thunk et -> case newEt of
+                  Known rt -> Known $ et rt
+                  Thunk rt -> Thunk $ et . rt
+          return (linkPred2, resEt)
 
 
 -- Conversion of the Extended pOPA to a plain pOPA
-programToPopa :: Bool -> Program -> Set (Prop ExprProp)
+programToPopa :: Program -> Set (Prop ExprProp)
               -> ( PropConv ExprProp
                  , Popa VarState APType
                  )
-programToPopa isOmega prog additionalProps =
+programToPopa prog additionalProps =
   let (ini, lowerState) = sksToExtendedOpa (pSks prog)
 
-      allProps = foldr S.insert additionalProps miniProcSls
+      allProps = foldr S.insert additionalProps miniProbSls
       pconv = makePropConv $ S.toList allProps
       gvii = VarIdInfo { scalarOffset = sids, arrayOffset = aids, varIds = sids + aids }
         where sids = S.size . pGlobalScalars $ prog
@@ -347,7 +359,7 @@ programToPopa isOmega prog additionalProps =
                                      }
 
   in ( pconv
-     , Popa { popaAlphabet = encodeAlphabet pconv miniProcAlphabet
+     , Popa { popaAlphabet = encodeAlphabet pconv miniProbAlphabet
             , popaInitial = (\bitenc -> (eInitial, pStateToLabel bitenc pconv allProps gvii localsInfo ini $ snd eInitial))
             , popaDeltaPush = applyDeltaInput pconv allProps gvii localsInfo
                               $ lsDPush lowerState
@@ -370,7 +382,7 @@ applyDeltaInput :: PropConv ExprProp
                 -> RichDistr VarState Label
 applyDeltaInput pconv allProps gvii localsInfo delta bitenc (sid, svval) =
   case M.lookup sid delta of
-    Nothing -> error "Unexpected dead state"
+    Nothing -> error $ "Unexpected dead state " ++ show sid
     Just (ps, dt) -> computeDsts bitenc pconv allProps gvii localsInfo svval (psAction ps) dt
 
 applyDeltaPop :: PropConv ExprProp

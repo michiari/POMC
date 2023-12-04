@@ -133,7 +133,7 @@ terminationExplicit popa query =
 
 programTermination :: Program -> TermQuery -> IO (TermResult, String)
 programTermination prog query =
-  let (_, popa) = programToPopa False prog Set.empty
+  let (_, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
       (bitenc, precFunc, _, _, _, _, _, _) =
         makeOpa T IsProb (tsls, tprec) (\_ _ -> True)
@@ -203,7 +203,7 @@ qualitativeModelCheckProgram :: Formula ExprProp -- phi: input formula to check
                               -> IO (Bool, String)
 qualitativeModelCheckProgram phi prog =
   let
-    (pconv, popa) = programToPopa True prog (Set.fromList $ getProps phi)
+    (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
   in qualitativeModelCheck transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 

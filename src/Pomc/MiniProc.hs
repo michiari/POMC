@@ -41,7 +41,7 @@ import Pomc.MiniIR
 import Pomc.MiniProcUtils
 import Pomc.Prop (Prop(..), unprop)
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
-import Pomc.Prec (Alphabet)
+import Pomc.Prec (Alphabet, Prec(..), StructPrecRel)
 import qualified Pomc.Encoding as E
 import Pomc.State (Input, State(..))
 
@@ -470,3 +470,43 @@ computeDsts gvii vval act dsts = concatMap composeDst dsts
             map (\val -> scalarAssign gvii vval var val) $ enumerateIntType (varType var)
           Nondet (LArray var idxExpr) ->
             map (\val -> arrayAssign gvii vval var idxExpr val) $ enumerateIntType (varType var)
+
+
+-- OPM
+miniProcSls :: [Prop ExprProp]
+miniProcSls = map (Prop . TextProp . T.pack) ["call", "ret", "han", "exc", "stm"]
+
+miniProcPrecRel :: [StructPrecRel ExprProp]
+miniProcPrecRel =
+  map (\(sl1, sl2, pr) ->
+         (Prop . TextProp . T.pack $ sl1, Prop . TextProp . T.pack $ sl2, pr)) precs
+  ++ map (\p -> (p, End, Take)) miniProcSls
+  where precs = [ ("call", "call", Yield)
+                , ("call", "ret",  Equal)
+                , ("call", "han",  Yield)
+                , ("call", "exc",  Take)
+                , ("call", "stm",  Yield)
+                , ("ret",  "call", Take)
+                , ("ret",  "ret",  Take)
+                , ("ret",  "han",  Take)
+                , ("ret",  "exc",  Take)
+                , ("ret",  "stm",  Take)
+                , ("han",  "call", Yield)
+                , ("han",  "ret",  Take)
+                , ("han",  "han",  Yield)
+                , ("han",  "exc",  Equal)
+                , ("han",  "stm",  Yield)
+                , ("exc",  "call", Take)
+                , ("exc",  "ret",  Take)
+                , ("exc",  "han",  Take)
+                , ("exc",  "exc",  Take)
+                , ("exc",  "stm",  Take)
+                , ("stm",  "call", Take)
+                , ("stm",  "ret",  Take)
+                , ("stm",  "han",  Take)
+                , ("stm",  "exc",  Take)
+                , ("stm",  "stm",  Take)
+                ]
+
+miniProcAlphabet :: Alphabet ExprProp
+miniProcAlphabet = (miniProcSls, miniProcPrecRel)
