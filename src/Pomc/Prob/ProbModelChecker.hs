@@ -27,7 +27,7 @@ import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula )
 
 import qualified Pomc.Encoding as E
 
-import Pomc.Prob.SupportGraph(decomposeGraph)
+import Pomc.Prob.SupportGraph(buildGraph)
 
 import qualified Pomc.CustoMap as CM
 
@@ -126,7 +126,7 @@ terminationExplicit popa query =
             , deltaPop = popaDeltaPop
             }
   in do
-    sc <- stToIO $ decomposeGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
+    sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
     scString <- stToIO $ CM.showMap sc
     p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc query
     return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
@@ -148,7 +148,7 @@ programTermination prog query =
                }
 
   in do
-    sc <- stToIO $ decomposeGraph pDelta initVs initLbl
+    sc <- stToIO $ buildGraph pDelta initVs initLbl
     scString <- stToIO $ CM.showMap sc
     p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc query
     return (p, scString ++ "\n" ++ show query)
@@ -192,7 +192,7 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
       }
 
   in do 
-    sc <- stToIO $ decomposeGraph wrapper (fst initial) (snd initial)
+    sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
     scString <- stToIO $ CM.showMap sc
     pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc $ PendingQuery PureSMT
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc (toBoolVec pendVector)

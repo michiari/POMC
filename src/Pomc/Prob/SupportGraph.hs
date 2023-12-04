@@ -6,7 +6,7 @@
 -}
 
 module Pomc.Prob.SupportGraph ( SupportGraph
-                              , decomposeGraph
+                              , buildGraph
                               , GraphNode(..)
                               , Edge(..)
                               ) where
@@ -76,12 +76,12 @@ data Globals s state = Globals
   , graph      :: STRef s (SupportGraph s state)
   }
 
-decomposeGraph  :: (Eq state, Hashable state, Show state)
+buildGraph  :: (Eq state, Hashable state, Show state)
         => DeltaWrapper state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
         -> Label -- label of the initial state
         -> ST s (SupportGraph s state) -- returning a graph
-decomposeGraph probdelta i iLabel = do
+buildGraph probdelta i iLabel = do
   -- initialize the global variables
   newSig <- initSIdGen
   emptySuppStarts <- SM.empty
@@ -102,35 +102,35 @@ decomposeGraph probdelta i iLabel = do
                         , graph = emptyGraph
                         }
   -- compute the support graph of the input popa
-  decompose globals probdelta initialNode
+  build globals probdelta initialNode
   idx <- readSTRef . idSeq $ globals
   fmap (CM.take idx) $ readSTRef . graph $ globals
 
 -- requires: the initial state of the OPA is mapped to StateId with getId 0
-decompose :: (Eq state, Hashable state, Show state)
+build :: (Eq state, Hashable state, Show state)
       => Globals s state -- global variables of the algorithm
       -> DeltaWrapper state -- delta relation of the popa
       -> (StateId state, Stack state) -- current semiconfiguration
       -> ST s ()
-decompose globals probdelta (q,g) = do
+build globals probdelta (q,g) = do
   let qLabel = getLabel q
       qState = getState q
       precRel = (prec probdelta) (fst . fromJust $ g) qLabel
       cases
         -- this case includes the initial push
         | (isNothing g) || precRel == Just Yield =
-          decomposePush globals probdelta q g qState qLabel
+          buildPush globals probdelta q g qState qLabel
 
         | precRel == Just Equal =
-          decomposeShift globals probdelta q g qState qLabel
+          buildShift globals probdelta q g qState qLabel
 
         | precRel == Just Take =
-          decomposePop globals probdelta q g qState
+          buildPop globals probdelta q g qState
 
         | otherwise = return ()
   cases
 
-decomposePush :: (Eq state, Hashable state, Show state)
+buildPush :: (Eq state, Hashable state, Show state)
           => Globals s state
           -> DeltaWrapper state
           -> StateId state
@@ -138,19 +138,19 @@ decomposePush :: (Eq state, Hashable state, Show state)
           -> state
           -> Label
           -> ST s ()
-decomposePush globals probdelta q g qState qLabel =
+buildPush globals probdelta q g qState qLabel =
   let doPush (p, pLabel, prob_) = do
         newState <- wrapState (sIdGen globals) p pLabel
-        decomposeTransition globals probdelta (q,g) False
+        buildTransition globals probdelta (q,g) False
           prob_ (newState, Just (qLabel, q))
   in do
     SM.insert (suppStarts globals) (getId q) g
     mapM_ doPush $ (deltaPush probdelta) qState
     currentSuppEnds <- SM.lookup (suppEnds globals) (getId q)
-    mapM_ (\s -> decomposeTransition globals probdelta (q,g) True 0 (s,g))  -- summaries are by default assigned probability zero
+    mapM_ (\s -> buildTransition globals probdelta (q,g) True 0 (s,g))  -- summaries are by default assigned probability zero
       currentSuppEnds
 
-decomposeShift :: (Eq state, Hashable state, Show state)
+buildShift :: (Eq state, Hashable state, Show state)
            => Globals s state
            -> DeltaWrapper state
            -> StateId state
@@ -158,23 +158,23 @@ decomposeShift :: (Eq state, Hashable state, Show state)
            -> state
            -> Label
            -> ST s ()
-decomposeShift globals probdelta q g qState qLabel =
+buildShift globals probdelta q g qState qLabel =
   let doShift (p, pLabel, prob_)= do
         newState <- wrapState (sIdGen globals) p pLabel
-        decomposeTransition globals probdelta (q,g) False prob_ (newState, Just (qLabel, snd . fromJust $ g))
+        buildTransition globals probdelta (q,g) False prob_ (newState, Just (qLabel, snd . fromJust $ g))
   in mapM_ doShift $ (deltaShift probdelta) qState
 
-decomposePop :: (Eq state, Hashable state, Show state)
+buildPop :: (Eq state, Hashable state, Show state)
          => Globals s state
          -> DeltaWrapper state
          -> StateId state
          -> Stack state
          -> state
          -> ST s ()
-decomposePop globals probdelta q g qState =
+buildPop globals probdelta q g qState =
   let doPop (p, pLabel, prob_) =
         let r = snd . fromJust $ g
-            closeSupports pwrapped g' = decomposeTransition globals probdelta (r,g') True prob_ (pwrapped, g')
+            closeSupports pwrapped g' = buildTransition globals probdelta (r,g') True prob_ (pwrapped, g')
         in do
           newState <- wrapState (sIdGen globals) p pLabel
           addPopContext globals (q,g) prob_ newState
@@ -201,7 +201,7 @@ addPopContext globals from prob_ rightContext =
   in BH.lookup (graphMap globals) (decode from) >>= CM.modify (graph globals) (insertContext) . fromJust
 
 -- decomposing a transition to a new semiconfiguration
-decomposeTransition :: (Eq state, Hashable state, Show state)
+buildTransition :: (Eq state, Hashable state, Show state)
                  => Globals s state
                  -> DeltaWrapper state
                  -> (StateId state, Stack state) -- from semiconf 
@@ -209,7 +209,7 @@ decomposeTransition :: (Eq state, Hashable state, Show state)
                  -> Prob
                  -> (StateId state, Stack state) -- to semiconf
                  -> ST s ()
-decomposeTransition globals probdelta from isSupport prob_ dest =
+buildTransition globals probdelta from isSupport prob_ dest =
   let
     -- we use sum here to handle non normalized probability distributions (i.e., multiple probabilities to go to the same state, that have to be summed)
     createInternal to_  stored_edges = Edge{to = to_, prob = sum $ prob_ : (Set.toList . Set.map prob . Set.filter (\e -> to e == to_) $ stored_edges)}
@@ -223,5 +223,5 @@ decomposeTransition globals probdelta from isSupport prob_ dest =
         BH.insert (graphMap globals) (decode dest) actualId
         CM.insert (graph globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
     lookupInsert actualId 
-    when (isNothing maybeId) $ decompose globals probdelta dest
+    when (isNothing maybeId) $ build globals probdelta dest
 
