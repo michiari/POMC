@@ -34,7 +34,9 @@ packages:
 # forks / in-progress versions pinned to a git hash. For example:
 #
 extra-deps:
-  - z3-408.2
+  - git: https://github.com/IagoAbal/haskell-z3.git
+    commit: 6368e451e45359563106da7e917f6594453c5161
+# - z3-408.2
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
