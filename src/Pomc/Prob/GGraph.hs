@@ -299,7 +299,7 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
                             , ggraphMap = emptyGGraphMap
                             , gGraph = emptyGGraph
                             , grGlobals = emptyGRGlobals
-                      }
+                          }
   (g, iniCount) <- decomposeGGraph gGlobals delta phiInitials (MV.unsafeRead suppGraph) (pendVector V.!)
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
@@ -308,11 +308,11 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
   newBS         <- GS.new
   newFoundSCCs <- newSTRef Map.empty
   let hGlobals = HGlobals { graph = g
-                            , supportGraph = suppGraph
-                            , sStack = newSS
-                            , bStack = newBS
-                            , cGabow = sccCounter
-                            , bottomHSCCs = newFoundSCCs
+                          , supportGraph = suppGraph
+                          , sStack = newSS
+                          , bStack = newBS
+                          , cGabow = sccCounter
+                          , bottomHSCCs = newFoundSCCs
                           }
   (phiNodes, notPhiNodes) <- foldM
     (\(pn, npn) i -> do
@@ -354,14 +354,15 @@ dfs hGlobals delta isPending fromPhi g =
     cases e nextNode
       | (iValue nextNode == 0) = addtoPath hGlobals nextNode e >>= dfs hGlobals delta isPending fromPhi
       | (iValue nextNode < 0)  = return (descSccs nextNode)
+      -- I need to push anyway because I want to keep track of cycles in createComponent
       | (iValue nextNode > 0)  = GS.push (sStack hGlobals) e >> merge hGlobals nextNode >> return IntSet.empty
       | otherwise = error "unreachable error"
   in do
-  descendantSCCs <-  forM (Map.toList $ edges g)
-                    $ \(ident, sss) ->  MV.unsafeRead (graph hGlobals) ident >>= cases (encodeEdge ident sss)
-  if fromPhi
-    then createComponentPhi hGlobals g (IntSet.unions descendantSCCs)
-    else createComponent hGlobals delta isPending g (IntSet.unions descendantSCCs)
+    descendantSCCs <-  forM (Map.toList $ edges g)
+                      $ \(ident, sss) ->  MV.unsafeRead (graph hGlobals) ident >>= cases (encodeEdge ident sss)
+    if fromPhi
+      then createComponentPhi hGlobals g (IntSet.unions descendantSCCs)
+      else createComponent hGlobals delta isPending g (IntSet.unions descendantSCCs)
 
 -- helpers
 addtoPath :: HGlobals s pstate -> GNode -> HEdge -> ST s GNode
