@@ -7,6 +7,7 @@
 
 module Pomc.Prob.SupportGraph ( SupportGraph
                               , buildGraph
+                              , asPendingSemiconfs
                               , GraphNode(..)
                               , Edge(..)
                               ) where
@@ -18,13 +19,21 @@ import qualified Pomc.CustoMap as CM
 import Pomc.SetMap(SetMap)
 import qualified Pomc.SetMap as SM
 
+import Pomc.GStack(GStack)
+import qualified Pomc.GStack as GS
+
 import Data.Set(Set)
 import qualified Data.Set as Set
+
+import Data.IntSet(IntSet)
+import qualified Data.IntSet as IntSet
+
+import qualified Data.Vector.Mutable as MV
 
 import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
 
-import Control.Monad(when)
+import Control.Monad(forM, forM_, when)
 import Control.Monad.ST (ST)
 
 import Data.STRef (STRef, newSTRef, readSTRef)
@@ -191,11 +200,11 @@ buildPop globals probdelta q g qState =
 addPopContext :: (Eq state, Hashable state, Show state)
                 => Globals s state
                 -> (StateId state, Stack state) -- from state 
-                -> Prob 
+                -> Prob
                 -> StateId state
                 -> ST s ()
-addPopContext globals from prob_ rightContext = 
-  let 
+addPopContext globals from prob_ rightContext =
+  let
     -- we use insertWith + because the input distribution might not be normalized - i.e., there might be duplicate pop transitions
     insertContext g@GraphNode{popContexts= cntxs} =g{popContexts = Map.insertWith (+) (getId rightContext) prob_ cntxs}
   in BH.lookup (graphMap globals) (decode from) >>= CM.modify (graph globals) (insertContext) . fromJust
@@ -222,6 +231,92 @@ buildTransition globals probdelta from isSupport prob_ dest =
     when (isNothing maybeId) $ do
         BH.insert (graphMap globals) (decode dest) actualId
         CM.insert (graph globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= Set.empty, supportEdges = Set.empty, popContexts = Map.empty}
-    lookupInsert actualId 
+    lookupInsert actualId
     when (isNothing maybeId) $ build globals probdelta dest
 
+-- some renaming to make the algorithm more understandable
+type CanReachPop = Bool
+type Arch = Int
+
+data DeficientGlobals s state = DeficientGlobals
+  { supportGraph :: SupportGraph s state
+  , sStack     :: GStack s Arch
+  , bStack     :: GStack s Int
+  , iVector    :: MV.MVector s Int
+  , canReachPop :: MV.MVector s CanReachPop
+  }
+
+-- TODO: maybe return something like a list... I don't know
+asPendingSemiconfs :: Show state => SupportGraph s state -> ST s IntSet
+asPendingSemiconfs suppGraph = do
+  newSS            <- GS.new
+  newBS            <- GS.new
+  newIVec          <- MV.replicate (MV.length suppGraph) 0
+  newCanReachPop <- MV.replicate (MV.length suppGraph) False
+  let globals = DeficientGlobals { supportGraph = suppGraph
+                                 , sStack = newSS
+                                 , bStack = newBS
+                                 , iVector = newIVec
+                                 , canReachPop = newCanReachPop
+                                 }
+  -- perform the Gabow algorithm to determine semiconfs that cannot reach a pop
+  gn <- MV.unsafeRead suppGraph 0
+  addtoPath globals gn
+  _ <- dfs globals gn
+  let f acc _ True = acc
+      f acc idx False = IntSet.insert idx acc
+  MV.ifoldl' f IntSet.empty (canReachPop globals)
+
+dfs :: Show state => DeficientGlobals s state
+    -> GraphNode state
+    -> ST s CanReachPop
+dfs globals gn =
+  let cases nextNode iVal
+        | (iVal == 0) = addtoPath globals nextNode >> dfs globals nextNode
+        | (iVal < 0)  = MV.unsafeRead (canReachPop globals) (gnId nextNode)
+        -- here we don't need the additional push of the closing edge
+        | (iVal > 0)  = merge globals nextNode >> return False
+        | otherwise = error "unreachable error"
+      follow e = do
+        node <- MV.unsafeRead (supportGraph globals) (to e)
+        iVal <- MV.unsafeRead (iVector globals) (to e)
+        cases node iVal
+  in do
+    descendantsCanReachPop <- or <$> forM (Set.toList $ internalEdges gn) follow
+    let computeActualCanReach
+          | not . Set.null $ supportEdges gn =  or <$> forM (Set.toList $ supportEdges gn) follow
+          | not . Map.null $ popContexts gn = return True
+          | otherwise = return descendantsCanReachPop
+    canReach <- computeActualCanReach
+    createComponent globals gn canReach
+
+-- helpers
+addtoPath :: DeficientGlobals s state -> GraphNode state -> ST s ()
+addtoPath globals gn = do
+  GS.push (sStack globals) (gnId gn)
+  sSize <- GS.size $ sStack globals
+  MV.unsafeWrite (iVector globals) (gnId gn) sSize
+  GS.push (bStack globals) sSize
+
+merge ::  DeficientGlobals s state -> GraphNode state -> ST s ()
+merge globals gn = do
+  iVal <- MV.unsafeRead (iVector globals) (gnId gn)
+  -- contract the B stack, that represents the boundaries between SCCs on the current path
+  GS.popWhile_ (bStack globals) (iVal <)
+
+
+createComponent :: DeficientGlobals s state -> GraphNode state -> CanReachPop -> ST s CanReachPop
+createComponent globals gn canReachP = do
+  topB <- GS.peek $ bStack globals
+  iVal <- MV.unsafeRead (iVector globals) (gnId gn)
+  if iVal == topB
+    then do
+      GS.pop_ (bStack globals)
+      sSize <- GS.size $ sStack globals
+      poppedEdges <- GS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
+      forM_ poppedEdges $ \e -> do
+        MV.unsafeWrite (iVector globals) e (-1)
+        MV.unsafeWrite (canReachPop globals) e canReachP
+      return canReachP
+    else do
+      return canReachP

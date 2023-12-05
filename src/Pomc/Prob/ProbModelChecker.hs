@@ -27,7 +27,7 @@ import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula )
 
 import qualified Pomc.Encoding as E
 
-import Pomc.Prob.SupportGraph(buildGraph)
+import Pomc.Prob.SupportGraph(buildGraph, asPendingSemiconfs)
 
 import qualified Pomc.CustoMap as CM
 
@@ -127,8 +127,9 @@ terminationExplicit popa query =
             }
   in do
     sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
+    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
-    p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc query
+    p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
     return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
 
 programTermination :: Program -> TermQuery -> IO (TermResult, String)
@@ -149,8 +150,9 @@ programTermination prog query =
 
   in do
     sc <- stToIO $ buildGraph pDelta initVs initLbl
+    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
-    p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc query
+    p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
     return (p, scString ++ "\n" ++ show query)
 
 -- QUALITATIVE MODEL CHECKING 
@@ -194,7 +196,8 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   in do 
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
     scString <- stToIO $ CM.showMap sc
-    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc $ PendingQuery PureSMT
+    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
+    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs $ PendingQuery PureSMT
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc (toBoolVec pendVector)
     return (almostSurely, scString ++ show pendVector) 
 

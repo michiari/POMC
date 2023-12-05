@@ -26,6 +26,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , decode
                            , defaultTolerance
                            , isApprox
+                           , isApproxSingleQuery
                            , isCert
                            , toBool
                            , toBoolVec
@@ -173,6 +174,10 @@ isApprox :: TermQuery -> Bool
 isApprox (ApproxAllQuery _) = True
 isApprox (ApproxSingleQuery _) = True
 isApprox _ = False
+
+isApproxSingleQuery :: TermQuery -> Bool 
+isApproxSingleQuery (ApproxSingleQuery _) = True
+isApproxSingleQuery _ = False
 
 isCert :: TermQuery -> Bool
 isCert (ApproxAllQuery (SMTCert _)) = True

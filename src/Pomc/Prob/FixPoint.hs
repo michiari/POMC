@@ -35,7 +35,7 @@ type VarKey = (Int, Int)
 data FixpEq = PushEq [(Prob, VarKey, VarKey)]
             | ShiftEq [(Prob, VarKey)]
             | PopEq Prob
-            | EndEq
+            | EndEq Bool
             deriving Show
 
 type EqMap = HT.BasicHashTable VarKey FixpEq
@@ -59,7 +59,8 @@ evalEqSys eqSys probVec = HM.map evalEq eqSys
             $ map (\(p, v1, v2) -> fromRational p * (probVec HM.! v1) * (probVec HM.! v2)) terms
           ShiftEq terms -> sum $ map (\(p, v) -> fromRational p * (probVec HM.! v)) terms
           PopEq p -> fromRational p
-          EndEq -> 1
+          EndEq True -> 1
+          EndEq False -> 0
 
 approxFixpFrom :: (Ord n, Fractional n, Show n)
                => EqSys -> n -> Int -> Int -> ProbVec n -> ProbVec n
