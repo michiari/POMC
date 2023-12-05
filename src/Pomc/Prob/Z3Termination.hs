@@ -21,6 +21,7 @@ import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad (foldM, unless, when)
 import Control.Monad.ST (RealWorld)
 
+import qualified Data.Set as Set
 import Data.Hashable (Hashable)
 import qualified Data.IntMap.Strict as Map
 import qualified Data.HashTable.IO as HT
@@ -157,7 +158,7 @@ encodePush graph varMap eqMap mkComp gn varKey@(_, rightContext) var =
         toGn <- liftIO $ MV.unsafeRead graph (to e)
         (equations, unencoded_vars, varTerms) <- foldM (closeSummaries toGn) ([], [], []) (supportEdges gn)
         transition <- encodeTransition e =<< mkAdd equations
-        newVars <- if null unencoded_vars 
+        newVars <- if Set.null (supportEdges gn)
                       then do 
                         (_, alreadyEncoded) <- lookupVar varMap (gnId toGn, -2 :: Int)
                         if alreadyEncoded 
@@ -219,7 +220,7 @@ solveQuery q
   where
     encodeApproxAllQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
-      vec <- liftIO $ groupASTs varMap (MV.length graph)
+      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= 0)
       sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
       fmap (ApproxAllResult . fromJust . snd) . withModel $ \m ->
@@ -228,14 +229,14 @@ solveQuery q
           return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
     encodeApproxSingleQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
-      vec <- liftIO $ groupASTs varMap (MV.length graph)
+      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= -1)
       sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
       fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> do
         s <- astToString . fromJust =<< eval m (sumAstVec ! 0)
         return (toRational (read (takeWhile (/= '?') s) :: Scientific))
     encodePendingQuery _ graph varMap _ = do
-      vec <- liftIO $ groupASTs varMap (MV.length graph)
+      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= 0)
       PendingResult <$> V.imapM (isPending graph) vec
 
     assertHints varMap eqMap solver = case solver of
@@ -281,10 +282,10 @@ solveQuery q
 
 
 -- Query solving helpers
-groupASTs :: VarMap -> Int -> IO (Vector [AST])
-groupASTs varMap l = do
-  new_mv <- MV.replicate l []
-  HT.mapM_ (\(key, ast) -> when (snd key >= 0) $ MV.unsafeModify new_mv (ast :) (fst key)) varMap
+groupASTs :: VarMap -> Int -> ((Int, Int) -> Bool) -> IO (Vector [AST])
+groupASTs varMap len cond = do
+  new_mv <- MV.replicate len []
+  HT.mapM_ (\(key, ast) -> when (cond key) $ MV.unsafeModify new_mv (ast :) (fst key)) varMap
   V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support graph
 
 -- for estimating exact termination probabilities
@@ -297,8 +298,6 @@ checkPending graph i asts = do
   isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph i
   -- if no variable has been encoded for this semiconf, it means it cannot reach any pop (and hence it has zero prob to terminate)
   -- so all the checks down here would be useless (we would be asserting 0 <= 1)
-  -- this includes also the case of semiconfs with bottom stack and stuttering semiconfs, that terminate almost surely
-  -- apart from the initial one, but leaving it out from the encoding does not break uniqueness of solutions
   let noVars = null asts
   unless (isPop || noVars) $ do
     less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
@@ -319,7 +318,6 @@ isPending graph i asts = do
   -- if a semiconf is a pop, then of course it terminates almost surely (and hence it is not pending)
   isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph i
   -- if no variable has been encoded for this semiconf, it means it ha zero prob to reach a pop (and hence it is pending)
-  -- this includes also the case of semiconfs with bottom stack and stuttering semiconfs, that belong necessarily to the support graph
   let noVars = null asts
   if isPop
     then return False
