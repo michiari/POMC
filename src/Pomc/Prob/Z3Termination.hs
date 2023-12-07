@@ -181,7 +181,7 @@ encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightConte
   in do
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
     when (rightContext /= -2) $ 
-        if IntSet.member (gnId gn) asPendingSemiconfs 
+        if (gnId gn /= 0) && IntSet.member (gnId gn) asPendingSemiconfs 
           then do 
             assert =<< mkEq var =<< mkRational 0
             addFixpEq eqMap varKey (EndEq False)
