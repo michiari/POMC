@@ -1,0 +1,58 @@
+probabilistic query: approximate;
+
+program:
+
+main() {
+    query {
+        young();
+    }
+}
+
+young() {
+  bool get_vaccine;
+  u2 y, e;
+  u4 sum;
+  get_vaccine = 1u2 {3u3:5u3} 0u2;
+  y = 0u2 {1u3 : 4u3} 1u2 {1u3 : 4u3} 2u2 {1u3 : 4u3} 3u2;
+  sum = y;
+  
+  while (y > 0u2) {
+    query {
+        young();
+    }
+    y = y - 1u2;
+  }
+  e = 0u2 {1u3 : 3u3} 1u2 {1u3 : 3u3} 2u2;
+  sum = sum + e;
+  while (e > 0u2) {
+    query {
+        elder();
+    }
+    e = e - 1u2;
+  }
+  observe !get_vaccine || sum < 3u4;
+}
+
+elder() {
+  bool get_vaccine;
+  u3 y, e;
+  u4 sum;
+  get_vaccine = 1u2 {4u3:5u3} 0u2;
+  y = 0u3 {1u2 : 2u2} 1u3;
+  sum = y;
+  while (y > 0u3) {
+    query {
+        elder();
+    }
+    y = y - 1u3;
+  }
+  e = 0u2 {1u3 : 5u3} 1u2 {1u3 : 5u3} 2u2 {1u3 : 5u3} 3u2 {1u3 : 5u3} 4u2;
+  sum = sum + e;
+  while (e > 0u3) {
+    query {
+        elder();
+    }
+    e = e - 1u3;
+  }
+  observe !get_vaccine || sum < 2u4;
+}
