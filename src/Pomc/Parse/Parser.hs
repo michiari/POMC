@@ -48,8 +48,11 @@ data CheckRequest =
   ProgCheckRequest { pcreqFormulas :: [P.Formula ExprProp]
                    , pcreqMiniProc :: Program
                    } |
-  ProbCheckRequest { bcreqTermQuery :: TermQuery
-                   , bcreqMiniProb  :: Program
+  ProbTermRequest  { ptreqTermQuery :: TermQuery
+                   , ptreqMiniProb  :: Program
+                   } |
+  ProbCheckRequest { pcreqFormula  :: P.Formula ExprProp
+                   , pcreqMiniProb :: Program
                    }
 
 spaceP :: Parser ()
@@ -261,8 +264,6 @@ opaSectionP = do
 
 termQueryP :: Parser TermQuery
 termQueryP = do
-  _ <- symbolP "probabilistic query"
-  _ <- symbolP ":"
   tquery <- boundQueryP <|> (ApproxSingleQuery SMTWithHints <$ symbolP "approximate")
   _ <- symbolP ";"
   return tquery
@@ -309,13 +310,25 @@ checkRequestP = nonProbModeP <|> probModeP where
                             }
 
   probModeP = do
-    tquery <- termQueryP
-    _ <- symbolP "program"
-    _ <- symbolP ":"
-    prog <- programP
-    return ProbCheckRequest { bcreqTermQuery = tquery
-                            , bcreqMiniProb  = prog
-                            }
+    _ <- symbolP "probabilistic query" >> symbolP ":"
+    termModeP <|> mcModeP
+    where termModeP = do
+            tquery <- termQueryP
+            _ <- symbolP "program" >> symbolP ":"
+            prog <- programP
+            return ProbTermRequest { ptreqTermQuery = tquery
+                                   , ptreqMiniProb  = prog
+                                   }
+          mcModeP = do
+            _ <- symbolP "qualitative" >> symbolP ";"
+            _ <- symbolP "formula" >> symbolP "="
+            formula <- potlP
+            _ <- symbolP ";"
+            _ <- symbolP "program" >> symbolP ":"
+            prog <- programP
+            return ProbCheckRequest { pcreqFormula = untypeExprFormula prog formula
+                                    , pcreqMiniProb  = prog
+                                    }
 
   untypePropFormula = fmap $ \p -> case p of
     TextTProp t -> t

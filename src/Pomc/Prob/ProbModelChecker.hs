@@ -202,8 +202,8 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     return (almostSurely, scString ++ show pendVector) 
 
 qualitativeModelCheckProgram :: Formula ExprProp -- phi: input formula to check
-                              -> Program -- input POPA
-                              -> IO (Bool, String)
+                             -> Program -- input program
+                             -> IO (Bool, String)
 qualitativeModelCheckProgram phi prog =
   let
     (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
