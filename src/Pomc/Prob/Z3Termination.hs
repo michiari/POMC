@@ -87,14 +87,13 @@ terminationQuery graph precFun asPendingSemiconfs query =
 
               -- this case includes the initial push
               | isNothing g || precRel == Just Yield =
-                  encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey var
+                  encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey var (isApproxSingleQuery query)
 
               | precRel == Just Equal =
                   encodeShift varMap eqMap mkComp asPendingSemiconfs gn varKey var
 
               | precRel == Just Take = do
                   when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: " ++ show (gnId_, rightContext)
-
                   let e = Map.findWithDefault 0 rightContext (popContexts gn)
                   assert =<< mkEq var =<< mkRealNum e
                   addFixpEq eqMap varKey $ PopEq e
@@ -125,7 +124,7 @@ encodeStutteringPush  :: (Eq state, Hashable state, Show state)
                       -> AST
                       -> Bool
                       -> Z3 [(Int, Int)]
-encodeStutteringPush graph varMap eqMap gn varKey@(_, rightContext) var setOne =
+encodeStutteringPush graph varMap eqMap gn varKey@(_, rightContext) var approxSingleQuery =
   let closeSummaries pushGn unencoded_vars  e = do
         supportGn <- liftIO $ MV.unsafeRead graph (to e)
         let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
@@ -139,8 +138,8 @@ encodeStutteringPush graph varMap eqMap gn varKey@(_, rightContext) var setOne =
       termProb False = mkRealNum (0 :: Prob)
   in do
     unencoded_vars <- foldM pushEnc [] (internalEdges gn)
-    assert =<< mkEq var =<< termProb setOne
-    addFixpEq eqMap varKey (EndEq setOne)
+    assert =<< mkEq var =<< termProb approxSingleQuery
+    addFixpEq eqMap varKey (EndEq approxSingleQuery)
     return unencoded_vars
 
 encodePush :: (Eq state, Hashable state, Show state)
@@ -152,8 +151,9 @@ encodePush :: (Eq state, Hashable state, Show state)
            -> GraphNode state
            -> VarKey
            -> AST
+           -> Bool
            -> Z3 [(Int, Int)]
-encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightContext) var =
+encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightContext) var approxSingleQuery =
   let closeSummaries pushGn (currs, unencoded_vars, terms) e = do
         supportGn <- liftIO $ MV.unsafeRead graph (to e)
         let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
@@ -181,7 +181,7 @@ encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightConte
   in do
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
     when (rightContext /= -2) $ 
-        if (gnId gn /= 0) && IntSet.member (gnId gn) asPendingSemiconfs 
+        if (gnId gn == 0 && not approxSingleQuery) ||  (gnId gn /= 0 && IntSet.member (gnId gn) asPendingSemiconfs) 
           then do 
             assert =<< mkEq var =<< mkRational 0
             addFixpEq eqMap varKey (EndEq False)
