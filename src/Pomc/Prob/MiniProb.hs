@@ -326,7 +326,7 @@ programToPopa :: Program -> Set (Prop ExprProp)
                  , Popa VarState APType
                  )
 programToPopa prog additionalProps =
-  let (ini, lowerState) = sksToExtendedOpa (pSks prog)
+  let (ini, lowerState) = {-DBG.traceShowId $-} sksToExtendedOpa (pSks prog)
 
       allProps = foldr S.insert additionalProps miniProbSls
       pconv = makePropConv $ S.toList allProps
@@ -396,7 +396,7 @@ applyDeltaPop :: PropConv ExprProp
               -> RichDistr VarState Label
 applyDeltaPop pconv allProps gvii localsInfo delta bitenc (sid, svval) (stackSid, stackVval) =
   case M.lookup (sid, stackSid) delta of
-    Nothing -> error "Unexpected dead state"
+    Nothing -> error $ "Unexpected dead state" ++ (show (sid, stackSid))
     Just (RetInfo fargs aargs, dt) ->
       let newVval = svval { vLocalScalars = vLocalScalars stackVval
                           , vLocalArrays = vLocalArrays stackVval
@@ -419,41 +419,46 @@ computeDsts :: E.BitEncoding
             -> Action
             -> DeltaTarget
             -> RichDistr VarState Label
-computeDsts bitenc pconv allProps gvii localsInfo vval act dt =
+computeDsts bitenc pconv allProps gvii localsInfo oldVval act dt =
   let newDsts = case dt of
-        Det ps -> map (\(newVval, prob) -> ((ps, newVval), prob)) newVvals
-        Guard dsts -> concatMap composeDst dsts
+        Det ps -> map (\(newVval, prob) -> ((ps, newVval), prob)) $ newVvals cvval
+        Guard dsts -> concatMap (composeDst cvval) dsts
         EntryStates _ -> error "Unexpected EntryStates"
   in map (\((ps, vval0), prob) ->
-            let vval1 = prepareForCall (psAction ps) (fst $ psLabels ps) vval0
-            in ( (psId ps, vval1)
+            let vval1 = prepareForCall (psAction ps) vval0
+            in ( (psId ps, vval0)
                , pStateToLabel bitenc pconv allProps gvii localsInfo ps vval1
                , prob
                )
-         ) -- Calls must be evaluated immediately, other actions will be in the next state
+         ) -- Calls must be evaluated immediately in the label,
+           -- but we leave the rest of the state unchanged so it gets pushed.
+           -- Other actions are evaluated in the next state
      newDsts
-  where composeDst (g, dst)
+  where cvval = case act of
+          CallOp _ _ _ -> prepareForCall act oldVval
+          _ -> oldVval
+        composeDst vval (g, dst)
           | toBool $ evalExpr gvii vval g =
-              map (\(newVval, prob) -> ((dst, newVval), prob)) newVvals
+              map (\(newVval, prob) -> ((dst, newVval), prob)) $ newVvals vval
           | otherwise = []
-        newVvals = case act of
+        newVvals vval = case act of
           Assign (LScalar lhs) rhs -> [(scalarAssign gvii vval lhs $ evalExpr gvii vval rhs, 1)]
           Assign (LArray var idxExpr) rhs ->
             [(arrayAssign gvii vval var idxExpr $ evalExpr gvii vval rhs, 1)]
-          Cat (LScalar lhs) exprs probs -> evalCat (scalarAssign gvii vval lhs) exprs probs
+          Cat (LScalar lhs) exprs probs -> evalCat vval (scalarAssign gvii vval lhs) exprs probs
           Cat (LArray var idxExpr) exprs probs ->
-            evalCat (arrayAssign gvii vval var idxExpr) exprs probs
+            evalCat vval (arrayAssign gvii vval var idxExpr) exprs probs
           _ -> [(vval, 1)]
 
-        evalCat assThunk exprs probs =
+        evalCat vval assThunk exprs probs =
           let assVvals = map (assThunk . evalExpr gvii vval) exprs
               probVals = map (\(n, d) -> B.nat (evalExpr gvii vval n)
                                          % B.nat (evalExpr gvii vval d)) probs
               allProbVals = probVals ++ [1 - sum probVals]
           in zip assVvals allProbVals
 
-        prepareForCall :: Action -> FunctionName -> VarValuation -> VarValuation
-        prepareForCall (CallOp _ fargs aargs) fname svval =
+        prepareForCall :: Action -> VarValuation -> VarValuation
+        prepareForCall (CallOp fname fargs aargs) svval =
           let (_, initScalars, initArrays) = localsInfo M.! fname
               newVval = svval { vLocalScalars = initScalars
                               , vLocalArrays = initArrays
@@ -469,7 +474,7 @@ computeDsts bitenc pconv allProps gvii localsInfo vval act dt =
                 | otherwise = wholeArrayAssign gvii avval fvar svval avar
               evalArg _ _ = error "Argument passing mode mismatch."
           in foldl evalArg newVval $ zip fargs aargs
-        prepareForCall _ _ svval = svval
+        prepareForCall _ svval = svval
 
 pStateToLabel :: E.BitEncoding
               -> PropConv ExprProp
