@@ -70,18 +70,18 @@ data FunctionInfo = FunctionInfo { fiEntry :: Maybe DeltaTarget
                                  , fiThrow :: PState
                                  , fiSkeleton :: FunctionSkeleton
                                  } deriving Show
-data LowerState = LowerState { lsDPush :: Map Word (PState, DeltaTarget) -- TODO maybe we just need the Action here
-                             , lsDShift :: Map Word (PState, DeltaTarget)
+data LowerState = LowerState { lsDPush :: Map Word (Action, DeltaTarget)
+                             , lsDShift :: Map Word (Action, DeltaTarget)
                              , lsDPop :: Map (Word, Word) (RetInfo, DeltaTarget)
                              , lsFinfo :: Map Text FunctionInfo
                              , lsSid :: Word
                              } deriving Show
 
-insertPush :: Word -> (PState, DeltaTarget) -> State LowerState ()
+insertPush :: Word -> (Action, DeltaTarget) -> State LowerState ()
 insertPush key val =
   modify (\ls -> ls { lsDPush = M.insert key val $ lsDPush ls })
 
-insertShift :: Word -> (PState, DeltaTarget) -> State LowerState ()
+insertShift :: Word -> (Action, DeltaTarget) -> State LowerState ()
 insertShift key val =
   modify (\ls -> ls { lsDShift = M.insert key val $ lsDShift ls })
 
@@ -106,18 +106,18 @@ sksToExtendedOpa sks = flip runState (LowerState M.empty M.empty M.empty M.empty
   let firstFname = skName $ head sks
   firstFinfo <- (M.! firstFname) . lsFinfo <$> get
   let firstCall = PState 0 (firstFname, skModules $ head sks) (CallOp firstFname [] [])
-  insertPush 0 (firstCall, EntryStates firstFname)
+  insertPush 0 (psAction firstCall, EntryStates firstFname)
 
   let stutter = PState 1 (T.empty, []) Stutter
   insertPop (psId $ fiRetPad firstFinfo, 0) (RetInfo [] [], Det stutter)
 
   -- Add stuttering transitions
-  insertPush 1 (stutter, Det stutter)
+  insertPush 1 (psAction stutter, Det stutter)
   insertPop (1, 1) (NoRet, Det stutter)
 
   let uncaughtObs = PState 2 (T.empty, []) ThrowObs
   insertPop (psId $ fiThrow firstFinfo, 0) (NoRet, Det uncaughtObs)
-  insertPush 2 (uncaughtObs, Det stutter)
+  insertPush 2 (psAction uncaughtObs, Det stutter)
   insertPop (1, 2) (NoRet, Det stutter)
 
   finfo <- lsFinfo <$> get
@@ -148,7 +148,7 @@ addPops :: (Word, Word) -> RetInfo -> DeltaTarget -> State LowerState ()
 addPops key label dt =
   modify (\ls -> ls { lsDPop = dInsert key label dt $ lsDPop ls })
 
-addPushes :: Word -> PState -> DeltaTarget -> State LowerState ()
+addPushes :: Word -> Action -> DeltaTarget -> State LowerState ()
 addPushes key label dt =
   modify (\ls -> ls { lsDPush = dInsert key label dt $ lsDPush ls })
 
@@ -180,7 +180,7 @@ lowerFunction sks fsk = do
 
   (linkPred, _) <- lowerBlock sks thisFinfo addEntry (skStmts fsk)
 
-  insertShift retSid (retState, Det $ fiRetPad thisFinfo)
+  insertShift retSid (psAction retState, Det $ fiRetPad thisFinfo)
   linkPred $ Det retState
 
 lowerStatement :: Map Text FunctionSkeleton
@@ -193,7 +193,7 @@ lowerStatement _ thisFinfo linkPred (Assignment lhs rhs) = do
   let assState = PState assSid (mkPSLabels $ fiSkeleton thisFinfo) (Assign lhs rhs)
       thisTarget = Det assState
   linkPred thisTarget
-  insertPush assSid (assState, thisTarget)
+  insertPush assSid (psAction assState, thisTarget)
   return (\succStates -> addPops (assSid, assSid) NoRet succStates, Known thisTarget)
 
 lowerStatement _ _ _ (Nondeterministic _) =
@@ -204,7 +204,7 @@ lowerStatement _ thisFinfo linkPred (Categorical lhs exprs probs) = do
   let catState = PState catSid (mkPSLabels $ fiSkeleton thisFinfo) (Cat lhs exprs probs)
       thisTarget = Det catState
   linkPred thisTarget
-  insertPush catSid (catState, thisTarget)
+  insertPush catSid (psAction catState, thisTarget)
   return (\succStates -> addPops (catSid, catSid) NoRet succStates, Known thisTarget)
 
 lowerStatement sks thisFinfo linkPred (Call fname args) = do
@@ -215,7 +215,7 @@ lowerStatement sks thisFinfo linkPred (Call fname args) = do
   when notLowered $ lowerFunction sks calleeSk
 
   calleeFinfo <- (M.! fname) . lsFinfo <$> get
-  insertPush callSid (callState, EntryStates fname)
+  insertPush callSid (psAction callState, EntryStates fname)
   -- Since this is not a query call, we unwind it and propagate the observation
   insertPop (psId $ fiThrow calleeFinfo, callSid) (NoRet, Det $ fiThrow thisFinfo)
 
@@ -240,20 +240,20 @@ lowerStatement sks thisFinfo linkPred0 (Query fname args) = do
   let calleeSk = sks M.! fname
       callState = PState callSid (mkPSLabels calleeSk) (CallOp fname (skParams calleeSk) args)
   -- Link query to call
-  insertPush qrySid (qryState, Det callState)
+  insertPush qrySid (psAction qryState, Det callState)
 
   -- Link call to callee
   notLowered <- M.notMember fname . lsFinfo <$> get
   when notLowered $ lowerFunction sks calleeSk
   calleeFinfo <- (M.! fname) . lsFinfo <$> get
-  insertPush callSid (callState, EntryStates fname)
+  insertPush callSid (psAction callState, EntryStates fname)
 
   -- An observation was raised
   obsSid <- getSidInc
   let obsState = PState obsSid (mkPSLabels fsk) ThrowObs
   insertPop (psId $ fiThrow calleeFinfo, callSid) (NoRet, Det obsState)
   -- We need to restart the query
-  insertPush obsSid (obsState, Det obsState)
+  insertPush obsSid (psAction obsState, Det obsState)
   -- Here we don't respect the condition on pops to save one state
   insertPop (obsSid, obsSid) (RetObs, Det callState)
 
@@ -263,7 +263,7 @@ lowerStatement sks thisFinfo linkPred0 (Query fname args) = do
   -- If the query returns normally, link it to the dummy ret
   insertPop (psId $ fiRetPad calleeFinfo, callSid) (RetInfo (skParams calleeSk) args, Det retState)
   -- Shift the qry
-  insertShift retSid (retState, Det retState)
+  insertShift retSid (psAction retState, Det retState)
 
   return ( \succStates -> addPops (retSid, qrySid) NoRet succStates
          , Known thisTarget
@@ -391,14 +391,14 @@ applyDeltaInput :: PropConv ExprProp
                 -> Set (Prop ExprProp)
                 -> VarIdInfo
                 -> Map FunctionName (Map (Prop APType) Expr, Vector IntValue, Vector ArrayValue)
-                -> Map Word (PState, DeltaTarget)
+                -> Map Word (Action, DeltaTarget)
                 -> E.BitEncoding
                 -> VarState
                 -> RichDistr VarState Label
 applyDeltaInput pconv allProps gvii localsInfo delta bitenc (sid, svval) =
   case M.lookup sid delta of
     Nothing -> error $ "Unexpected dead state " ++ show sid
-    Just (ps, dt) -> computeDsts bitenc pconv allProps gvii localsInfo svval (psAction ps) dt
+    Just (act, dt) -> computeDsts bitenc pconv allProps gvii localsInfo svval act dt
 
 applyDeltaPop :: PropConv ExprProp
               -> Set (Prop ExprProp)
