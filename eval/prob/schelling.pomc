@@ -3,23 +3,17 @@ probabilistic query: approximate;
 
 program:
 u4 fairness;
-main() { 
+main() {
   bool res;
   fairness = 0u4 {1u4 : 10u4} 1u4 {1u4 : 10u4} 2u4 {1u4 : 10u4} 3u4 {1u4 : 10u4} 4u4 {1u4 : 10u4} 5u4 {1u4 : 10u4} 6u4 {1u4 : 10u4} 7u4 {1u4 : 10u4} 8u4 {1u4 : 10u4} 9u4;
-  query {
-    fun(res);
-  }
+  query fun(res);
   // res is which cafè they have gone to
 }
 
 fun(bool &res) {
     bool x,y;
-    query {
-        alice(x);
-    }
-    query {
-        bob(y);
-    }
+    query alice(x);
+    query bob(y);
     observe x == y;
     res = x;
 }
@@ -30,9 +24,7 @@ alice(bool &x) {
     prior = 1u1 {6u4 : 10u4} 0u1;
     fair = 1u1 {fairness : 10u4} 0u1;
     if (fair) {
-        query {
-            bob(bob_choice);
-        }
+        query bob(bob_choice);
         observe prior == bob_choice;
     } else {}
     x = prior;
@@ -44,9 +36,7 @@ bob(bool &y) {
     prior = 1u1 {5u4 : 10u4} 0u1;
     fair = 1u1 {fairness : 10u4} 0u1;
     if (fair) {
-        query {
-            alice(alice_choice);
-        }
+        query alice(alice_choice);
         observe prior == alice_choice;
     } else {}
     y = prior;

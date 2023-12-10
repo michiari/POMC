@@ -43,7 +43,8 @@ makeParseTest progSource (name, phi, tquery, expected) =
       pcreq <- case parse (checkRequestP <* eof) name $ filecont f of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                  Right pcreq     -> return pcreq
-      (tres, _) <- programTermination (pcreqMiniProc pcreq) tquery
+      (tres, log) <- programTermination (pcreqMiniProc pcreq) tquery
+      -- DBG.traceM log
       tres @?= expected
 
 basicTests :: TestTree
@@ -53,6 +54,7 @@ basicTests = testGroup "Basic Tests"
     , makeParseTestCase mutualRecSrc ("Mutual Recursion Termination", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
     , makeParseTestCase infiniteLoopSrc ("Infinite Loop", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
     , makeParseTestCase observeLoopSrc ("Observe Loop", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
+    , makeParseTestCase queryBugSrc ("Query Bug", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 0)
     ]
 
 linRecSrc :: T.Text
@@ -117,9 +119,7 @@ f() {
 observeLoopSrc :: T.Text
 observeLoopSrc = T.pack [r|
 f() {
-  query {
-    g();
-  }
+  query g();
 }
 
 g() {
@@ -127,4 +127,22 @@ g() {
   x = true {1u3:2u3} false;
   observe x;
 }
+|]
+
+queryBugSrc :: T.Text
+queryBugSrc = T.pack [r|
+fun() {
+  bool asd,x,y;
+  query alice(x);
+  query bob(y);
+}
+
+alice(bool &x) {
+  bool bob_choice;
+  x = true;
+  query bob(bob_choice);
+  observe false;
+}
+
+bob(bool &y1) { }
 |]

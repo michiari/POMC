@@ -3,9 +3,7 @@ probabilistic query: approximate;
 program:
 
 main() {
-    query {
-        young();
-    }
+    query young();
 }
 
 young() {
@@ -17,17 +15,13 @@ young() {
   sum = y;
   
   while (y > 0u2) {
-    query {
-        young();
-    }
+    query young();
     y = y - 1u2;
   }
   e = 0u2 {1u3 : 3u3} 1u2 {1u3 : 3u3} 2u2;
   sum = sum + e;
   while (e > 0u2) {
-    query {
-        elder();
-    }
+    query elder();
     e = e - 1u2;
   }
   observe !get_vaccine || sum < 3u4;
@@ -41,17 +35,13 @@ elder() {
   y = 0u3 {1u2 : 2u2} 1u3;
   sum = y;
   while (y > 0u3) {
-    query {
-        elder();
-    }
+    query elder();
     y = y - 1u3;
   }
   e = 0u2 {1u3 : 5u3} 1u2 {1u3 : 5u3} 2u2 {1u3 : 5u3} 3u2 {1u3 : 5u3} 4u2;
   sum = sum + e;
   while (e > 0u3) {
-    query {
-        elder();
-    }
+    query elder();
     e = e - 1u3;
   }
   observe !get_vaccine || sum < 2u4;

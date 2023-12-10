@@ -64,11 +64,10 @@ data DeltaTarget = EntryStates FunctionName
   | Det PState
   | Guard [(Expr, PState)] deriving Show
 data EntryTarget = Known DeltaTarget | Thunk (DeltaTarget -> DeltaTarget)
-data RetInfo = NoRet | RetInfo [FormalParam] [ActualParam] deriving Show
+data RetInfo = NoRet | RetInfo [FormalParam] [ActualParam] | RetObs deriving Show
 data FunctionInfo = FunctionInfo { fiEntry :: Maybe DeltaTarget
                                  , fiRetPad :: PState
                                  , fiThrow :: PState
-                                 , fiExcPad :: PState
                                  , fiSkeleton :: FunctionSkeleton
                                  } deriving Show
 data LowerState = LowerState { lsDPush :: Map Word (PState, DeltaTarget) -- TODO maybe we just need the Action here
@@ -166,11 +165,10 @@ lowerFunction sks fsk = do
         { fiEntry = Nothing
         , fiRetPad = PState (retSid + 1) (mkPSLabels fsk) Return
         , fiThrow = PState (retSid + 2) (mkPSLabels fsk) ThrowObs
-        , fiExcPad = PState (retSid + 3) (mkPSLabels fsk) ThrowObs
         , fiSkeleton = fsk
         }
   modify (\ls -> ls { lsFinfo = M.insert (skName fsk) thisFinfo (lsFinfo ls)
-                    , lsSid = retSid + 4
+                    , lsSid = retSid + 3
                     })
 
   let addEntry :: PredLinker
@@ -183,7 +181,6 @@ lowerFunction sks fsk = do
   (linkPred, _) <- lowerBlock sks thisFinfo addEntry (skStmts fsk)
 
   insertShift retSid (retState, Det $ fiRetPad thisFinfo)
-  insertPush (psId $ fiThrow thisFinfo) (fiThrow thisFinfo, Det $ fiExcPad thisFinfo)
   linkPred $ Det retState
 
 lowerStatement :: Map Text FunctionSkeleton
@@ -219,6 +216,7 @@ lowerStatement sks thisFinfo linkPred (Call fname args) = do
 
   calleeFinfo <- (M.! fname) . lsFinfo <$> get
   insertPush callSid (callState, EntryStates fname)
+  -- Since this is not a query call, we unwind it and propagate the observation
   insertPop (psId $ fiThrow calleeFinfo, callSid) (NoRet, Det $ fiThrow thisFinfo)
 
   let thisTarget = Det callState
@@ -230,30 +228,47 @@ lowerStatement sks thisFinfo linkPred (Call fname args) = do
          , Known thisTarget
          )
 
-lowerStatement sks thisFinfo linkPred0 (TryCatch body []) = do
+lowerStatement sks thisFinfo linkPred0 (Query fname args) = do
   let fsk = fiSkeleton thisFinfo
   qrySid <- getSidInc
   let qryState = PState qrySid (mkPSLabels fsk) StartQuery
       thisTarget = Det qryState
   linkPred0 thisTarget
 
-  let linkQuery successorStates = addPushes qrySid qryState successorStates
-  (linkBody, bodyTarget) <- lowerBlock sks thisFinfo linkQuery body
+  -- Prepare call
+  callSid <- getSidInc
+  let calleeSk = sks M.! fname
+      callState = PState callSid (mkPSLabels calleeSk) (CallOp fname (skParams calleeSk) args)
+  -- Link query to call
+  insertPush qrySid (qryState, Det callState)
 
-  -- add dummy return to exit query block
+  -- Link call to callee
+  notLowered <- M.notMember fname . lsFinfo <$> get
+  when notLowered $ lowerFunction sks calleeSk
+  calleeFinfo <- (M.! fname) . lsFinfo <$> get
+  insertPush callSid (callState, EntryStates fname)
+
+  -- An observation was raised
+  obsSid <- getSidInc
+  let obsState = PState obsSid (mkPSLabels fsk) ThrowObs
+  insertPop (psId $ fiThrow calleeFinfo, callSid) (NoRet, Det obsState)
+  -- We need to restart the query
+  insertPush obsSid (obsState, Det obsState)
+  -- Here we don't respect the condition on pops to save one state
+  insertPop (obsSid, obsSid) (RetObs, Det callState)
+
+  -- Add dummy return to exit query block
   retSid <- getSidInc
   let retState = PState retSid (mkPSLabels fsk) Return
-
-  linkBody (Det retState)
+  -- If the query returns normally, link it to the dummy ret
+  insertPop (psId $ fiRetPad calleeFinfo, callSid) (RetInfo (skParams calleeSk) args, Det retState)
+  -- Shift the qry
   insertShift retSid (retState, Det retState)
-  let linkNormalExit succStates = addPops (retSid, qrySid) NoRet succStates
 
-  -- if an obs is thrown, we restart the body
-  case bodyTarget of
-    Known bt -> insertPop (psId $ fiExcPad thisFinfo, psId $ fiThrow thisFinfo) (NoRet, bt)
-    _ -> return ()
+  return ( \succStates -> addPops (retSid, qrySid) NoRet succStates
+         , Known thisTarget
+         )
 
-  return (linkNormalExit, Known thisTarget)
 lowerStatement _ _ _ (TryCatch _ _) =
   error "Try-catch not allowed in probabilistic programs."
 
@@ -408,6 +423,7 @@ applyDeltaPop pconv allProps gvii localsInfo delta bitenc (sid, svval) (stackSid
           retArg vval _ = vval
           retVval = foldl retArg newVval $ zip fargs aargs
       in computeDsts bitenc pconv allProps gvii localsInfo retVval Return dt
+    Just (RetObs, dt) -> computeDsts bitenc pconv allProps gvii localsInfo stackVval Return dt
     Just (NoRet, dt) -> computeDsts bitenc pconv allProps gvii localsInfo svval Return dt
 
 computeDsts :: E.BitEncoding
@@ -435,7 +451,7 @@ computeDsts bitenc pconv allProps gvii localsInfo oldVval act dt =
            -- Other actions are evaluated in the next state
      newDsts
   where cvval = case act of
-          CallOp _ _ _ -> prepareForCall act oldVval
+          CallOp _ _ _ -> {-DBG.traceShow (oldVval, act) $-} prepareForCall act oldVval
           _ -> oldVval
         composeDst vval (g, dst)
           | toBool $ evalExpr gvii vval g =

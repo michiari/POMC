@@ -220,6 +220,9 @@ lowerStatement sks lowerState0 thisFinfo linkPred (Call fname args) =
       lowerState3 = lowerState2 { lsDPush = dPush'', lsDPop = dPop'', lsSid = lsSid lowerState2 + 1 }
   in (linkPred lowerState3 [(NoGuard, callSid)], linkCall)
 
+lowerStatement _ _ _ _ (Query _ _) =
+  error "Query statements not allowed in MiniProc."
+
 lowerStatement sks ls0 thisFinfo linkPred0 (TryCatch try catch) =
   let hanSid = lsSid ls0
       dummySid0 = hanSid + 1

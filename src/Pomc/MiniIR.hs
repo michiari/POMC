@@ -37,8 +37,6 @@ module Pomc.MiniIR ( Program(..)
                    , getLocalIdx
                    ) where
 
-import Pomc.Prob.ProbUtils (Prob)
-
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Set (Set)
@@ -97,6 +95,7 @@ data Statement = Assignment LValue Expr
                | Nondeterministic LValue
                | Categorical LValue [Expr] [(Expr, Expr)]
                | Call FunctionName [ActualParam]
+               | Query FunctionName [ActualParam]
                | TryCatch [Statement] [Statement]
                | IfThenElse (Maybe Expr) [Statement] [Statement]
                | While (Maybe Expr) [Statement]

@@ -304,8 +304,8 @@ tryCatchP varmap = do
 queryP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 queryP varmap = do
   _ <- symbolP "query"
-  (bodyBlock, bodyAparams) <- blockP varmap
-  return (TryCatch bodyBlock [], bodyAparams)
+  (Call fname _, aparams) <- callP varmap
+  return (Query fname [], aparams)
 
 iteP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 iteP varmap = do
@@ -443,10 +443,26 @@ matchParams sksAparams = mapM skMatchParams sksAparams
         stmtMatchParams (acc, aparams) stmt =
           (\(newStmt, newParams) -> (newStmt : acc, newParams)) <$> doMatchParam stmt aparams
 
-        doMatchParam (Call fname _) (aparam:aparams) = case skMap M.!? fname of
+        doMatchParam (Call fname _) aparams = matchCall Call fname aparams
+        doMatchParam (Query fname _) aparams = matchCall Query fname aparams
+        doMatchParam (TryCatch tryb catchb) aparams = do
+          (tryStmts, tryParams) <- blockMatchParams tryb aparams
+          (catchStmts, catchParams) <- blockMatchParams catchb tryParams
+          return (TryCatch tryStmts catchStmts, catchParams)
+        doMatchParam (IfThenElse g thenb elseb) aparams = do
+          (thenStmts, thenParams) <- blockMatchParams thenb aparams
+          (elseStmts, elseParams) <- blockMatchParams elseb thenParams
+          return (IfThenElse g thenStmts elseStmts, elseParams)
+        doMatchParam (While g body) aparams = do
+          (bodyStmts, bodyParams) <- blockMatchParams body aparams
+          return (While g bodyStmts, bodyParams)
+        doMatchParam stmt (_:aparams) = Right (stmt, aparams)
+        doMatchParam _ _ = error "Statement list and params list are not isomorphic."
+
+        matchCall dataConstr fname (aparam:aparams) = case skMap M.!? fname of
           Just calleeSk
             | length aparam == length calleeParams ->
-                (\newParams -> (Call fname newParams, aparams)) <$>
+                (\newParams -> (dataConstr fname newParams, aparams)) <$>
                 mapM matchParam (zip aparam calleeParams)
             | otherwise -> Left ("Function " ++ show (skName calleeSk) ++ " requires "
                                   ++ show (length calleeParams) ++ " parameters, given: "
@@ -463,19 +479,8 @@ matchParams sksAparams = mapM skMatchParams sksAparams
                     | otherwise = Left "Type mismatch on array parameter."
                   matchParam _ = Left "Value-result actual parameter must be variable names."
           Nothing -> Left $ "Undeclared function identifier: " ++ T.unpack fname
-        doMatchParam (TryCatch tryb catchb) aparams = do
-          (tryStmts, tryParams) <- blockMatchParams tryb aparams
-          (catchStmts, catchParams) <- blockMatchParams catchb tryParams
-          return (TryCatch tryStmts catchStmts, catchParams)
-        doMatchParam (IfThenElse g thenb elseb) aparams = do
-          (thenStmts, thenParams) <- blockMatchParams thenb aparams
-          (elseStmts, elseParams) <- blockMatchParams elseb thenParams
-          return (IfThenElse g thenStmts elseStmts, elseParams)
-        doMatchParam (While g body) aparams = do
-          (bodyStmts, bodyParams) <- blockMatchParams body aparams
-          return (While g bodyStmts, bodyParams)
-        doMatchParam stmt (_:aparams) = Right (stmt, aparams)
-        doMatchParam _ _ = error "Statement list and params list are not isomorphic."
+        matchCall _ _ [] = error "Unexpected lacking params."
+
 
 parseModules :: Text -> [Text]
 parseModules fname = joinModules (head splitModules) (tail splitModules) []
