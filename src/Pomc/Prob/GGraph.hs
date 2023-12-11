@@ -6,7 +6,7 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Prob.GGraph (GGraph
+module Pomc.Prob.GGraph ( GGraph
                         , GNode(..)
                         , qualitativeModelCheck
                         ) where
@@ -91,7 +91,7 @@ instance SatState (AugState s) where
   {-# INLINABLE getSatState #-}
 
   -- always promote the phi state
-  getStateProps b (AugState _ _ p) = getStateProps b p
+  getStateProps _ (AugState _ lab _) = lab
   {-# INLINABLE getStateProps #-}
 
 -- the global variables in the algorithm
@@ -207,8 +207,10 @@ decomposePush gglobals delta getGn isPending (gn, p) =
           , GR.deltaPop = cDeltaPop
           , GR.consistentFilter = consistentFilter
           }
-
-    fSuppAugStates <- GR.reachableStates (grGlobals gglobals) cDelta leftContext
+    fSuppAugStates <- if not . null $ fSuppGns
+                        then do 
+                          debug "calling inner reachability query" $ GR.reachableStates (grGlobals gglobals) cDelta leftContext
+                        else return []
     let fSuppGnodes = [(gn1, p1, suppSatSet) |
                         gn1 <- fSuppGns
                       , (AugState q lab p1, suppSatSet) <- fSuppAugStates

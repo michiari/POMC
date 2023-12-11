@@ -113,7 +113,8 @@ reach :: (SatState state, Eq state, Hashable state, Show state)
       -> ST s ()
 reach globals delta (q,g) pathSatSet = do
   let qState = getState q
-      precRel = (prec delta) (fst . fromJust $ g) (current . getSatState $ qState)
+      qProps = getStateProps (bitenc delta) qState
+      precRel = (prec delta) (fst . fromJust $ g) qProps
       cases i
         -- semiconfigurations with empty stack but not the initial one
         | (isNothing g) && (getId q /= i) = return ()
