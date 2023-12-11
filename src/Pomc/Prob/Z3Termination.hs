@@ -42,7 +42,7 @@ import Z3.Monad
 -- each Z3 variable represents [[q,b | p ]]
 -- where q,b is the semiconfiguration associated with the graphNode of the key
 -- and p is the state associated with the StateId of the key
-type VarMap = HT.BasicHashTable VarKey AST
+type VarMap = (HT.BasicHashTable VarKey AST, IntSet)
 
 --helpers
 encodeTransition :: Edge -> AST -> Z3 AST
@@ -52,14 +52,19 @@ encodeTransition e toAST = do
 
 -- (Z3 Var, was it already present?)
 lookupVar :: VarMap -> VarKey -> Z3 (AST, Bool)
-lookupVar varMap key = do
-  maybeVar <- liftIO $ HT.lookup varMap key
-  if isJust maybeVar
-    then return (fromJust maybeVar, True)
+lookupVar (varMap, asPendingIdxs) key = do
+  if IntSet.member (fst key) asPendingIdxs
+    then do 
+      zeroAST <- mkRealNum (0 :: Prob)
+      return (zeroAST, True)
     else do
-      new_var <- mkFreshRealVar $ show key
-      liftIO $ HT.insert varMap key new_var
-      return (new_var, False)
+      maybeVar <- liftIO $ HT.lookup varMap key
+      if isJust maybeVar
+        then return (fromJust maybeVar, True)
+        else do
+          new_var <- mkFreshRealVar $ show key
+          liftIO $ HT.insert varMap key new_var
+          return (new_var, False)
 -- end helpers
 
 -- compute the probabilities that a graph will terminate
@@ -76,7 +81,7 @@ terminationQuery graph precFun asPendingSemiconfs query =
       encode [] _ _ = return ()
       encode ((gnId_, rightContext):unencoded) varMap eqMap = do
         let varKey = (gnId_, rightContext)
-        var <- liftIO $ fromJust <$> HT.lookup varMap varKey
+        var <- liftIO $ fromJust <$> HT.lookup (fst varMap) varKey
         gn <- liftIO $ MV.unsafeRead graph gnId_
         let (q,g) = semiconf gn
             qLabel = getLabel q
@@ -87,10 +92,10 @@ terminationQuery graph precFun asPendingSemiconfs query =
 
               -- this case includes the initial push
               | isNothing g || precRel == Just Yield =
-                  encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey var (isApproxSingleQuery query)
+                  encodePush graph varMap eqMap mkComp gn varKey var (isApproxSingleQuery query)
 
               | precRel == Just Equal =
-                  encodeShift varMap eqMap mkComp asPendingSemiconfs gn varKey var
+                  encodeShift varMap eqMap mkComp gn varKey var
 
               | precRel == Just Take = do
                   when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: " ++ show (gnId_, rightContext)
@@ -109,8 +114,10 @@ terminationQuery graph precFun asPendingSemiconfs query =
     liftIO $ HT.insert newVarMap (0 :: Int, -1 :: Int) new_var
     eqMap <- liftIO HT.new
     -- encode the probability transition relation by asserting a set of Z3 formulas
-    encode [(0 ::Int , -1 :: Int)] newVarMap eqMap
-    solveQuery query new_var graph newVarMap eqMap asPendingSemiconfs
+    setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
+    encode [(0 ::Int , -1 :: Int)] (newVarMap, asPendingSemiconfs) eqMap
+    --DBG.traceM "Encoding done"
+    solveQuery query new_var graph (newVarMap, asPendingSemiconfs) eqMap
 
 
 -- encoding helpers --
@@ -147,13 +154,12 @@ encodePush :: (Eq state, Hashable state, Show state)
            -> VarMap
            -> EqMap
            -> (AST -> AST -> Z3 AST)
-           -> IntSet
            -> GraphNode state
            -> VarKey
            -> AST
            -> Bool
            -> Z3 [(Int, Int)]
-encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightContext) var approxSingleQuery =
+encodePush graph varMap eqMap mkComp gn varKey@(_, rightContext) var approxSingleQuery =
   let closeSummaries pushGn (currs, unencoded_vars, terms) e = do
         supportGn <- liftIO $ MV.unsafeRead graph (to e)
         let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
@@ -181,7 +187,7 @@ encodePush graph varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightConte
   in do
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
     when (rightContext /= -2) $ 
-        if (gnId gn == 0 && not approxSingleQuery) ||  (gnId gn /= 0 && IntSet.member (gnId gn) asPendingSemiconfs) 
+        if (gnId gn == 0 && not approxSingleQuery)
           then do 
             assert =<< mkEq var =<< mkRational 0
             addFixpEq eqMap varKey (EndEq False)
@@ -195,12 +201,11 @@ encodeShift :: (Eq state, Hashable state, Show state)
             => VarMap
             -> EqMap
             -> (AST -> AST -> Z3 AST)
-            -> IntSet
             -> GraphNode state
             -> VarKey
             -> AST
             -> Z3 [(Int, Int)]
-encodeShift varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightContext) var =
+encodeShift varMap eqMap mkComp gn varKey@(_, rightContext) var =
   let shiftEnc (currs, new_vars, terms) e = do
         let target = (to e, rightContext)
         (toVar, alreadyEncoded) <- lookupVar varMap target
@@ -211,16 +216,17 @@ encodeShift varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightContext) v
                )
   in do
     (transitions, unencoded_vars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
-    when (rightContext /= -2) $ 
-      if IntSet.member (gnId gn) asPendingSemiconfs 
-          then do 
-            assert =<< mkEq var =<< mkRational 0
-            addFixpEq eqMap varKey (EndEq False)
-          else do 
-            assert =<< mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
-            assert =<< mkGe var =<< mkRational 0
-            -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
-            addFixpEq eqMap varKey $ ShiftEq terms
+    when (rightContext /= -2) $ do
+      eq <- mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
+      eqString <- astToString eq 
+      --DBG.traceM eqString
+      assert eq
+      eq <- mkGe var =<< mkRational 0
+      eqString <- astToString eq
+      --DBG.traceM eqString
+      assert eq
+      -- we don't need to assert that var <= 1 because Yannakakis and Etessami didn't report it
+      addFixpEq eqMap varKey $ ShiftEq terms
     return unencoded_vars
 -- end
 
@@ -230,31 +236,31 @@ encodeShift varMap eqMap mkComp asPendingSemiconfs gn varKey@(_, rightContext) v
 -- (graph :: SupportGraph RealWorld state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
 solveQuery :: TermQuery -> AST -> SupportGraph RealWorld state
-           -> VarMap -> EqMap -> IntSet -> Z3 TermResult
+           -> VarMap -> EqMap -> Z3 TermResult
 solveQuery q
   | ApproxAllQuery solv <- q = encodeApproxAllQuery solv
   | ApproxSingleQuery solv <- q = encodeApproxSingleQuery solv
   | PendingQuery solv <- q = encodePendingQuery solv -- TODO: enable hints here and see if it's any better
   | CompQuery comp bound solv <- q = encodeComparison comp bound solv 
   where
-    encodeApproxAllQuery solv _ graph varMap eqMap asPendingSemiconfs = do
+    encodeApproxAllQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
       vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= 0)
-      sumAstVec <- V.imapM (checkPending graph asPendingSemiconfs) vec
+      sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
       fmap (ApproxAllResult . fromJust . snd) . withModel $ \m ->
         V.forM sumAstVec $ \a -> do
           s <- astToString . fromJust =<< eval m a
           return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
-    encodeApproxSingleQuery solv _ graph varMap eqMap asPendingSemiconfs = do
+    encodeApproxSingleQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
       vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= -1)
-      sumAstVec <- V.imapM (checkPending graph asPendingSemiconfs) vec
+      sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
       fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> do
         s <- astToString . fromJust =<< eval m (sumAstVec ! 0)
         return (toRational (read (takeWhile (/= '?') s) :: Scientific))
-    encodePendingQuery solv _ graph varMap eqMap asPendingSemiconfs = do
+    encodePendingQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
       vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= 0)
       PendingResult <$> V.imapM (isPending graph asPendingSemiconfs) vec
@@ -281,7 +287,7 @@ solveQuery q
       _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
       return ()
 
-    encodeComparison comp bound solver var _ varMap eqMap _ = do
+    encodeComparison comp bound solver var _ varMap eqMap = do
       assertHints varMap eqMap solver
       let mkComp = case comp of
             Lt -> mkLt
@@ -305,12 +311,13 @@ solveQuery q
 groupASTs :: VarMap -> Int -> ((Int, Int) -> Bool) -> IO (Vector [AST])
 groupASTs varMap len cond = do
   new_mv <- MV.replicate len []
-  HT.mapM_ (\(key, ast) -> when (cond key) $ MV.unsafeModify new_mv (ast :) (fst key)) varMap
+  HT.mapM_ (\(key, ast) -> when (cond key) $ MV.unsafeModify new_mv (ast :) (fst key)) (fst varMap)
   V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support graph
 
 -- for estimating exact termination probabilities
-checkPending :: SupportGraph RealWorld state -> IntSet -> Int -> [AST] -> Z3 AST
-checkPending graph asPendingSemiconfs idx asts = do
+checkPending :: SupportGraph RealWorld state -> Int -> [AST] -> Z3 AST
+checkPending graph idx asts = do
+  --DBG.traceM $ "Checking pending (with accumulation) of semiconf..." ++ show idx
   sumAst <- mkAdd asts
   -- some optimizations for cases where the encoding already contains actual termination probabilities
   -- so there is no need for additional checks
@@ -319,8 +326,7 @@ checkPending graph asPendingSemiconfs idx asts = do
   -- if no variable has been encoded for this semiconf, it means it cannot reach any pop (and hence it has zero prob to terminate)
   -- so all the checks down here would be useless (we would be asserting 0 <= 1)
   let noVars = null asts
-      cannotReachPop = IntSet.member idx asPendingSemiconfs
-  unless (isPop || noVars || cannotReachPop) $ do
+  unless (isPop || noVars) $ do
     less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
     r <- checkAssumptions [less1]
     let cases
@@ -331,8 +337,9 @@ checkPending graph asPendingSemiconfs idx asts = do
   return sumAst
 
 -- is a semiconf pending?
-isPending :: SupportGraph RealWorld state -> IntSet -> Int -> [AST] -> Z3 Bool
-isPending graph asPendingSemiconfs idx asts = do
+isPending :: SupportGraph RealWorld state -> Int -> [AST] -> Z3 Bool
+isPending graph idx asts = do
+  --DBG.traceM $ "Checking ISpending (now with accumulation) of semiconf..." ++ show idx
   sumAst <- mkAdd asts
   -- some optimizations for cases where we already know if the semiconf is pending
   -- so there is no need for additional checks
@@ -340,10 +347,9 @@ isPending graph asPendingSemiconfs idx asts = do
   isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph idx
   -- if no variable has been encoded for this semiconf, it means it ha zero prob to reach a pop (and hence it is pending)
   let noVars = null asts
-      cannotReachPop = IntSet.member idx asPendingSemiconfs
   if isPop
     then return False
-    else if noVars || cannotReachPop
+    else if noVars
             then return True
             else do
               less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
