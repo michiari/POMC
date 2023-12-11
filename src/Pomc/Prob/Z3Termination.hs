@@ -347,6 +347,7 @@ isPending graph asPendingSemiconfs idx asts = do
             then return True
             else do
               less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
+              eq <- mkEq sumAst =<< mkRealNum (1 :: Prob)
               r <- checkAssumptions [less1]
               let cases
                     | Sat <- r = assert less1 >> return True
