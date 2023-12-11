@@ -197,7 +197,7 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
     scString <- stToIO $ CM.showMap sc
     asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
-    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs $ PendingQuery PureSMT
+    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc (toBoolVec pendVector)
     return (almostSurely, scString ++ show pendVector) 
 

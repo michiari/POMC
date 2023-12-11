@@ -71,8 +71,8 @@ terminationQuery :: (Eq state, Hashable state, Show state)
                  -> TermQuery
                  -> Z3 TermResult
 terminationQuery graph precFun asPendingSemiconfs query =
-  let mkComp | isCert query = mkGe
-             | otherwise = mkEq
+  let mkComp | needEquality query = mkEq
+             | otherwise = mkGe
       encode [] _ _ = return ()
       encode ((gnId_, rightContext):unencoded) varMap eqMap = do
         let varKey = (gnId_, rightContext)
@@ -234,7 +234,7 @@ solveQuery :: TermQuery -> AST -> SupportGraph RealWorld state
 solveQuery q
   | ApproxAllQuery solv <- q = encodeApproxAllQuery solv
   | ApproxSingleQuery solv <- q = encodeApproxSingleQuery solv
-  | PendingQuery _ <- q = encodePendingQuery -- TODO: enable hints here and see if it's any better
+  | PendingQuery solv <- q = encodePendingQuery solv -- TODO: enable hints here and see if it's any better
   | CompQuery comp bound solv <- q = encodeComparison comp bound solv 
   where
     encodeApproxAllQuery solv _ graph varMap eqMap asPendingSemiconfs = do
@@ -254,7 +254,8 @@ solveQuery q
       fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> do
         s <- astToString . fromJust =<< eval m (sumAstVec ! 0)
         return (toRational (read (takeWhile (/= '?') s) :: Scientific))
-    encodePendingQuery _ graph varMap _ asPendingSemiconfs = do
+    encodePendingQuery solv _ graph varMap eqMap asPendingSemiconfs = do
+      assertHints varMap eqMap solv
       vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= 0)
       PendingResult <$> V.imapM (isPending graph asPendingSemiconfs) vec
 
@@ -348,7 +349,7 @@ isPending graph asPendingSemiconfs idx asts = do
               less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
               r <- checkAssumptions [less1]
               let cases
-                    | Sat <- r = return True
-                    | Unsat <- r = return False -- semiconf i is not pending
+                    | Sat <- r = assert less1 >> return True
+                    | Unsat <- r = assert eq >> return False -- semiconf i is not pending
                     | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show idx
               cases

@@ -27,7 +27,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , defaultTolerance
                            , isApprox
                            , isApproxSingleQuery
-                           , isCert
+                           , needEquality
                            , toBool
                            , toBoolVec
                            , toProb
@@ -170,20 +170,21 @@ data TermQuery = CompQuery Comp Prob Solver
 data Comp = Lt | Le | Gt | Ge deriving (Show, Eq)
 
 -- does the query require to compute some numbers?
-isApprox :: TermQuery -> Bool 
+isApprox :: TermQuery -> Bool
 isApprox (ApproxAllQuery _) = True
 isApprox (ApproxSingleQuery _) = True
 isApprox _ = False
 
-isApproxSingleQuery :: TermQuery -> Bool 
+isApproxSingleQuery :: TermQuery -> Bool
 isApproxSingleQuery (ApproxSingleQuery _) = True
 isApproxSingleQuery _ = False
 
-isCert :: TermQuery -> Bool
-isCert (ApproxAllQuery (SMTCert _)) = True
-isCert (ApproxSingleQuery (SMTCert _)) = True
-isCert (PendingQuery (SMTCert _)) = True
-isCert _ = False
+-- comparisons never need equality, even with pure SMT encodings
+needEquality :: TermQuery -> Bool
+needEquality (ApproxAllQuery PureSMT) = True
+needEquality (ApproxSingleQuery PureSMT) = True
+needEquality (PendingQuery PureSMT) = True
+needEquality _ = False
 
 -- different possible results of a termination query
 -- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 
@@ -192,23 +193,23 @@ isCert _ = False
 data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob) | ApproxSingleResult Prob | PendingResult (Vector Bool)
   deriving (Show, Eq, Generic, NFData)
 
-toBool :: TermResult -> Bool 
-toBool TermSat = True 
-toBool TermUnsat = False 
+toBool :: TermResult -> Bool
+toBool TermSat = True
+toBool TermUnsat = False
 toBool r = error $ "cannot convert a non boolean result. Got instead: " ++ show r
 
-toProb :: TermResult -> Prob 
+toProb :: TermResult -> Prob
 toProb (ApproxSingleResult p) = p
 toProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
 
 toProbVec :: TermResult -> Vector Prob
-toProbVec (ApproxAllResult v) = v 
+toProbVec (ApproxAllResult v) = v
 toProbVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
 toBoolVec :: TermResult -> Vector Bool
-toBoolVec (PendingResult v) = v 
+toBoolVec (PendingResult v) = v
 toBoolVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
-debug :: String -> a -> a 
+debug :: String -> a -> a
 --debug = DBG.trace
 debug _ x = x
