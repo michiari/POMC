@@ -19,7 +19,7 @@ import Data.Ratio((%))
 tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Termination Tests" $ 
             [ testGroup "Boolean Termination Tests" [dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests,
-                                                     biasedRandomWalkTests, nestedRandomWalkTests, nonTerminatingTests]
+                                                     biasedRandomWalkTests, nestedRandomWalkTests, nonTerminatingTests, callRetExTests]
              , testGroup "Estimating Termination Probabilities" 
                 $ map (\(popa, expected, s) -> makeTestCase popa ((s, terminationApproxExplicit), expected)) exactTerminationProbabilities
             ]
@@ -38,8 +38,9 @@ exactTerminationProbabilities = [(dummyModel, 1, "Dummy Model"),
                                  (symmetricRandomWalk, 1, "Symmetric Random Walk"),
                                  (biasedRandomWalk, 2%3, "Biased Random Walk"), 
                                  (nestedRandomWalk, 1, "Nested Random Walk"),
-                                 (nonTerminating, 0, "Non terminating POPA")
-                                 ]
+                                 (nonTerminating, 0, "Non terminating POPA"),
+                                 (callRetEx, 1 % 4, "Call-ret example")
+                                ]
 
 makeTestCase :: (Eq a, Show a)
              => (ExplicitPopa Word String)
@@ -250,3 +251,30 @@ expectedNonTerminating = [ False, True, True,
                              False, False, False,
                              True, False, False
                             ]
+
+callRetExTests :: TestTree
+callRetExTests = testGroup "Call-ret example Tests" $
+  map (makeTestCase callRetEx) (zip termQueries expectedcallRetEx)
+
+callRetEx :: ExplicitPopa Word String
+callRetEx = ExplicitPopa
+  { epAlphabet = stlV3Alphabet
+  , epInitial = (0, makeInputSet ["call"])
+  , epopaDeltaPush =
+      [ (0, [(0, makeInputSet ["call"], 2 % 3), (1, makeInputSet ["ret"], 1 % 3)])
+      , (1, [(1, makeInputSet ["ret"], 1 :: Prob)])
+      ]
+  , epopaDeltaShift =
+      [ (1, [(0, makeInputSet ["call"], 1 :: Prob)]) ]
+  , epopaDeltaPop =
+      [ (0, 0, [(0, makeInputSet ["call"], 2 % 3), (1, makeInputSet ["ret"], 1 % 3)])
+      , (1, 1, [(1, makeInputSet ["ret"], 1 :: Prob)])
+      ]
+  }
+
+expectedcallRetEx :: [Bool]
+expectedcallRetEx = [ False, True, True,
+                      False, True, True,
+                      True, False, False,
+                      True, False, False
+                    ]

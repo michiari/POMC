@@ -33,7 +33,7 @@ normalTests = testGroup "Normal Tests"
   , Pomc.Test.TestMP.tests
   , Pomc.Test.TestSatOmega.tests
   , Pomc.Test.TestMCOmega.tests
-  --, Pomc.Test.TestProbTermination.tests
+  , Pomc.Test.TestProbTermination.tests
   , Pomc.Test.TestMiniProb.tests
   , Pomc.Test.TestProbQualMC.tests
   ]
