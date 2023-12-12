@@ -200,9 +200,9 @@ solveQuery q
   | PendingQuery solv <- q = encodePendingQuery solv -- TODO: enable hints here and see if it's any better
   | CompQuery comp bound solv <- q = encodeComparison comp bound solv
   where
-    encodeApproxAllQuery solv _ graph varMap eqMap = do
+    encodeApproxAllQuery solv _ graph varMap@(_, asPendingIdxs, _) eqMap = do
       assertHints varMap eqMap solv
-      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= 0)
+      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs) || (fst key == 0))
       sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
       fmap (ApproxAllResult . fromJust . snd) . withModel $ \m ->
