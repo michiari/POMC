@@ -9,8 +9,6 @@ module Pomc.Prob.FixPoint ( VarKey
                           , FixpEq(..)
                           , EqMap
                           , addFixpEq
-                          , toEqSys
-                          , evalEqSys
                           , approxFixp
                           , defaultEps
                           , defaultMaxIters
@@ -44,51 +42,70 @@ data FixpEq = PushEq [(Prob, VarKey, VarKey)]
 
 type EqMap = HT.BasicHashTable VarKey FixpEq
 
-type EqSys = HashMap VarKey FixpEq
+-- EqMap containing only preprocessed live equations
+data LiveEq n = PushLEq [(n, VarKey, VarKey)]
+              | ShiftLEq [(n, VarKey)]
+              deriving Show
+type LEqMap n = HT.BasicHashTable VarKey (LiveEq n)
+
 type ProbVec n = HT.BasicHashTable VarKey n
 
 addFixpEq :: MonadIO m => EqMap -> VarKey -> FixpEq -> m ()
 addFixpEq eqMap varKey eq = liftIO $ HT.insert eqMap varKey eq
 
-toEqSys :: MonadIO m => EqMap -> m EqSys
-toEqSys = liftIO . fmap HM.fromList . HT.toList
+toLiveEqMap :: (MonadIO m, Fractional n) => EqMap -> m (LEqMap n)
+toLiveEqMap eqMap = liftIO $ do
+  s <- stToIO $ BHT.size eqMap
+  leqMap <- HT.newSized s
+  HT.mapM_ (\(k, eq) -> case eq of
+               PushEq terms -> HT.insert leqMap k
+                 $ PushLEq $ map (\(p, k1, k2) -> (fromRational p, k1, k2)) terms
+               ShiftEq terms -> HT.insert leqMap k
+                 $ ShiftLEq $ map (\(p, k1) -> (fromRational p, k1)) terms
+               _ -> return ()
+           ) eqMap
+  return leqMap
 
-zeroVec :: (MonadIO m, Num n) => EqMap -> m (ProbVec n)
+zeroVec :: (MonadIO m, Fractional n) => EqMap -> m (ProbVec n)
 zeroVec eqMap = liftIO $ do
   s <- stToIO $ BHT.size eqMap
   probVec <- HT.newSized s
-  HT.mapM_ (\(k, _) -> HT.insert probVec k 0) eqMap
+  HT.mapM_ (\(k, eq) -> case eq of
+               PopEq p -> HT.insert probVec k $ fromRational p
+               _ -> HT.insert probVec k 0
+           ) eqMap
   return probVec
 
-evalEqSys :: (MonadIO m, Ord n, Fractional n) => EqMap -> n -> ProbVec n -> m Bool
-evalEqSys eqMap eps probVec = liftIO $ HT.foldM evalEq True eqMap where
+evalEqSys :: (MonadIO m, Ord n, Fractional n)
+          => LEqMap n -> n -> ProbVec n -> m Bool
+evalEqSys leqMap eps probVec = liftIO $ HT.foldM evalEq True leqMap where
   evalEq leqEps (key, eq) = do
     oldV <- fromJust <$> HT.lookup probVec key
     newV <- case eq of
-      PushEq terms -> sum <$> mapM
+      PushLEq terms -> sum <$> mapM
         (\(p, k1, k2) -> do
             v1 <- fromJust <$> HT.lookup probVec k1
             v2 <- fromJust <$> HT.lookup probVec k2
-            return $ fromRational p * v1 * v2 -- TODO: preprocess eqMap so that p is already double
+            return $ p * v1 * v2
         ) terms
-      ShiftEq terms -> sum <$> mapM (\(p, k) -> (fromRational p *) . fromJust <$> (HT.lookup probVec k)) terms
-      PopEq p -> return $ fromRational p
+      ShiftLEq terms -> sum <$> mapM (\(p, k) -> (p *) . fromJust <$> (HT.lookup probVec k)) terms
     HT.insert probVec key newV
     return $ leqEps && newV - oldV <= eps -- should be newV >= prevV -- TODO: use relative error
 
 approxFixpFrom :: (MonadIO m, Ord n, Fractional n, Show n)
-               => EqMap -> n -> Int -> ProbVec n -> m ()
-approxFixpFrom eqMap eps maxIters probVec
+               => LEqMap n -> n -> Int -> ProbVec n -> m ()
+approxFixpFrom leqMap eps maxIters probVec
   | maxIters <= 0 = return ()
   | otherwise = do
-      lessThanEps <- evalEqSys eqMap eps probVec
-      unless lessThanEps $ approxFixpFrom eqMap eps (maxIters - 1) probVec
+      lessThanEps <- evalEqSys leqMap eps probVec
+      unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 
 approxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
            => EqMap -> n -> Int -> m (ProbVec n)
 approxFixp eqMap eps maxIters = do
   probVec <- zeroVec eqMap
-  approxFixpFrom eqMap eps maxIters probVec
+  leqMap <- toLiveEqMap eqMap
+  approxFixpFrom leqMap eps maxIters probVec
   return probVec
 
 defaultEps :: Double
