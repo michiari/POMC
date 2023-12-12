@@ -25,11 +25,8 @@ import Control.Monad.ST (stToIO)
 import qualified Data.HashTable.IO as HT
 import qualified Data.HashTable.ST.Basic as BHT
 
-import Data.Vector.Mutable (MVector)
+import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
-
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HM
 
 import qualified Debug.Trace as DBG
 
@@ -46,25 +43,29 @@ type EqMap = HT.BasicHashTable VarKey FixpEq
 data LiveEq n = PushLEq [(n, VarKey, VarKey)]
               | ShiftLEq [(n, VarKey)]
               deriving Show
-type LEqMap n = HT.BasicHashTable VarKey (LiveEq n)
+type LEqSys n = IOVector (VarKey, LiveEq n)
 
 type ProbVec n = HT.BasicHashTable VarKey n
 
 addFixpEq :: MonadIO m => EqMap -> VarKey -> FixpEq -> m ()
 addFixpEq eqMap varKey eq = liftIO $ HT.insert eqMap varKey eq
 
-toLiveEqMap :: (MonadIO m, Fractional n) => EqMap -> m (LEqMap n)
+toLiveEqMap :: (MonadIO m, Fractional n) => EqMap -> m (LEqSys n)
 toLiveEqMap eqMap = liftIO $ do
   s <- stToIO $ BHT.size eqMap
-  leqMap <- HT.newSized s
-  HT.mapM_ (\(k, eq) -> case eq of
-               PushEq terms -> HT.insert leqMap k
-                 $ PushLEq $ map (\(p, k1, k2) -> (fromRational p, k1, k2)) terms
-               ShiftEq terms -> HT.insert leqMap k
-                 $ ShiftLEq $ map (\(p, k1) -> (fromRational p, k1)) terms
-               _ -> return ()
-           ) eqMap
-  return leqMap
+  leqMap <- MV.unsafeNew s
+  n <- HT.foldM
+    (\i (k, eq) -> do
+        case eq of
+          PushEq terms -> MV.unsafeWrite leqMap i
+                          (k, PushLEq $ map (\(p, k1, k2) -> (fromRational p, k1, k2)) terms)
+                          >> return (i + 1)
+          ShiftEq terms -> MV.unsafeWrite leqMap i
+                           (k, ShiftLEq $ map (\(p, k1) -> (fromRational p, k1)) terms)
+                           >> return (i + 1)
+          _ -> return i
+    ) 0 eqMap
+  return $ MV.unsafeTake n leqMap
 
 zeroVec :: (MonadIO m, Fractional n) => EqMap -> m (ProbVec n)
 zeroVec eqMap = liftIO $ do
@@ -77,8 +78,8 @@ zeroVec eqMap = liftIO $ do
   return probVec
 
 evalEqSys :: (MonadIO m, Ord n, Fractional n)
-          => LEqMap n -> n -> ProbVec n -> m Bool
-evalEqSys leqMap eps probVec = liftIO $ HT.foldM evalEq True leqMap where
+          => LEqSys n -> n -> ProbVec n -> m Bool
+evalEqSys leqMap eps probVec = liftIO $ MV.foldM' evalEq True leqMap where
   evalEq leqEps (key, eq) = do
     oldV <- fromJust <$> HT.lookup probVec key
     newV <- case eq of
@@ -93,7 +94,7 @@ evalEqSys leqMap eps probVec = liftIO $ HT.foldM evalEq True leqMap where
     return $ leqEps && newV - oldV <= eps -- should be newV >= prevV -- TODO: use relative error
 
 approxFixpFrom :: (MonadIO m, Ord n, Fractional n, Show n)
-               => LEqMap n -> n -> Int -> ProbVec n -> m ()
+               => LEqSys n -> n -> Int -> ProbVec n -> m ()
 approxFixpFrom leqMap eps maxIters probVec
   | maxIters <= 0 = return ()
   | otherwise = do
