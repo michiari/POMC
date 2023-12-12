@@ -202,7 +202,7 @@ solveQuery q
   where
     encodeApproxAllQuery solv _ graph varMap@(_, asPendingIdxs, _) eqMap = do
       assertHints varMap eqMap solv
-      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs) || (fst key == 0))
+      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
       sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
       fmap (ApproxAllResult . fromJust . snd) . withModel $ \m ->
