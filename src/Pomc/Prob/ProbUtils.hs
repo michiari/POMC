@@ -152,7 +152,6 @@ decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
 --          for a certificate within the given tolerance
 data Solver = PureSMT | SMTWithHints | SMTCert Double deriving (Eq, Show)
 
--- Default tolerance to be used with SMTCert
 defaultTolerance :: Double
 defaultTolerance = 1e-3
 

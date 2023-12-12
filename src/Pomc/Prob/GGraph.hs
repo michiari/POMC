@@ -208,8 +208,7 @@ decomposePush gglobals delta getGn isPending (gn, p) =
           , GR.consistentFilter = consistentFilter
           }
     fSuppAugStates <- if not . null $ fSuppGns
-                        then do 
-                          debug "calling inner reachability query" $ GR.reachableStates (grGlobals gglobals) cDelta leftContext
+                        then  GR.reachableStates (grGlobals gglobals) cDelta leftContext
                         else return []
     let fSuppGnodes = [(gn1, p1, suppSatSet) |
                         gn1 <- fSuppGns

@@ -263,7 +263,7 @@ solveQuery q
     encodePendingQuery solv _ graph varMap eqMap = do
       assertHints varMap eqMap solv
       vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> snd key >= 0)
-      PendingResult <$> V.imapM (isPending graph asPendingSemiconfs) vec
+      PendingResult <$> V.imapM (isPending graph) vec
 
     assertHints varMap eqMap solver = case solver of
       SMTWithHints -> doAssert defaultTolerance
