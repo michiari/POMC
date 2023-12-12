@@ -51,16 +51,16 @@ encodeTransition e toAST = do
   mkMul [probReal, toAST]
 
 -- (Z3 Var, was it already present?)
-lookupVar :: VarMap -> VarKey -> Z3 (AST, Bool)
-lookupVar (varMap, asPendingIdxs, isASQ) key = do
+lookupVar :: VarMap -> EqMap -> VarKey -> Z3 (AST, Bool)
+lookupVar (varMap, asPendingIdxs, isASQ) eqMap key = do
   maybeVar <- liftIO $ HT.lookup varMap key
   if isJust maybeVar
     then return (fromJust maybeVar, True)
     else do
       new_var <- if IntSet.member (fst key) asPendingIdxs
                       then if snd key == -1 && isASQ
-                              then mkRealNum (1 :: Prob)
-                              else mkRealNum (0 :: Prob)
+                              then addFixpEq eqMap key (PopEq 1) >> mkRealNum (1 :: Prob)
+                              else addFixpEq eqMap key (PopEq 0) >> mkRealNum (0 :: Prob)
                       else mkFreshRealVar $ show key
       liftIO $ HT.insert varMap key new_var
       return (new_var, False)
@@ -132,7 +132,7 @@ encodePush graph varMap@(_, asPendingSemiconfs, approxSingleQuery) eqMap mkComp 
   let closeSummaries pushGn (currs, unencoded_vars, terms) e = do
         supportGn <- liftIO $ MV.unsafeRead graph (to e)
         let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
-        vars <- mapM (lookupVar varMap) varsIds
+        vars <- mapM (lookupVar varMap eqMap) varsIds
         eq <- mkMul (map fst vars)
         return ( eq:currs
                , [(gnId__, rightContext_) | ((_,alrEncoded), (gnId__, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars
@@ -144,7 +144,7 @@ encodePush graph varMap@(_, asPendingSemiconfs, approxSingleQuery) eqMap mkComp 
         transition <- encodeTransition e =<< mkAdd equations
         newVars <- if Set.null (supportEdges gn)
                       then do
-                        (_, alreadyEncoded) <- lookupVar varMap (gnId toGn, -2 :: Int)
+                        (_, alreadyEncoded) <- lookupVar varMap eqMap (gnId toGn, -2 :: Int)
                         if alreadyEncoded
                           then return []
                           else return [(gnId toGn, -2 :: Int)]
@@ -172,7 +172,7 @@ encodeShift :: (Eq state, Hashable state, Show state)
 encodeShift varMap@(_, asPendingSemiconfs, _) eqMap mkComp gn varKey@(gnId_, rightContext) var =
   let shiftEnc (currs, new_vars, terms) e = do
         let target = (to e, rightContext)
-        (toVar, alreadyEncoded) <- lookupVar varMap target
+        (toVar, alreadyEncoded) <- lookupVar varMap eqMap target
         trans <- encodeTransition e toVar
         return ( trans:currs
                , if alreadyEncoded then new_vars else target:new_vars
@@ -227,17 +227,16 @@ solveQuery q
       SMTCert eps -> doAssert eps
       _ -> return ()
       where doAssert eps = do
-              eqSys <- toEqSys eqMap
               let iterEps = min defaultEps $ eps * eps
-                  approxVec = approxFixp eqSys iterEps defaultBatch defaultMaxIters
-                  approxFracVec = toRationalProbVec iterEps approxVec
+              approxVec <- approxFixp eqMap iterEps defaultMaxIters
+              approxFracVec <- toRationalProbVec iterEps approxVec
               epsReal <- mkRealNum eps
               mapM_ (\(varKey, p) -> do
-                        (var, True) <- lookupVar varMap varKey
+                        (var, True) <- lookupVar varMap eqMap varKey
                         pReal <- mkRealNum p
                         assert =<< mkGe var pReal
                         assert =<< mkLe var =<< mkAdd [pReal, epsReal]
-                    ) (HM.toList approxFracVec)
+                    ) approxFracVec
 
     setZ3PPOpts = do
       _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
