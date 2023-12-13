@@ -6,7 +6,8 @@
 -}
 
 module Pomc.Prob.Z3Termination ( terminationQuery
-                                ) where
+                               , terminationQuerySCC
+                               ) where
 
 import Prelude hiding (LT, GT)
 
@@ -17,8 +18,11 @@ import Pomc.Prob.ProbUtils
 import Pomc.Prob.SupportGraph
 import Pomc.Prob.FixPoint
 
+import Pomc.ZStack(ZStack)
+import qualified Pomc.ZStack as ZS
+
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad (foldM, unless, when)
+import Control.Monad (foldM, unless, when, forM_, forM)
 import Control.Monad.ST (RealWorld)
 
 import Data.IntSet(IntSet)
@@ -35,6 +39,9 @@ import qualified Data.Vector as V
 import Data.Scientific (Scientific)
 
 import Z3.Monad
+import Data.IORef (IORef, newIORef, modifyIORef, readIORef)
+
+import Data.List(groupBy)
 
 -- import qualified Debug.Trace as DBG
 
@@ -74,49 +81,57 @@ terminationQuery :: (Eq state, Hashable state, Show state)
                  -> IntSet -- semiconfs that cannot reach a pop
                  -> TermQuery
                  -> Z3 TermResult
-terminationQuery graph precFun asPendingSemiconfs query =
-  let mkComp | needEquality query = mkEq
-             | otherwise = mkGe
-      encode [] _ _ = return ()
-      encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) eqMap = do
-        let varKey = (gnId_, rightContext)
-        var <- liftIO $ fromJust <$> HT.lookup m varKey
-        gn <- liftIO $ MV.unsafeRead graph gnId_
-        let (q,g) = semiconf gn
-            qLabel = getLabel q
-            precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
-            cases
-              | isNothing g && not (IntSet.member gnId_ asPendingSemiconfs) = 
-                  error $ "you model is wrong! A semiconf with bottom stack must always reach a SCC: " ++ show (gnId_, rightContext)
-
-              -- this case includes the initial push
-              | isNothing g || precRel == Just Yield =
-                  encodePush graph varMap eqMap mkComp gn varKey var
-
-              | precRel == Just Equal =
-                  encodeShift varMap eqMap mkComp gn varKey var
-
-              | precRel == Just Take = do
-                  when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: " ++ show (gnId_, rightContext)
-                  let e = Map.findWithDefault 0 rightContext (popContexts gn)
-                  assert =<< mkEq var =<< mkRealNum e
-                  addFixpEq eqMap varKey $ PopEq e
-                  return [] -- pop transitions do not generate new variables
-
-              | otherwise = fail "unexpected prec rel"
-
-        new_unencoded <- cases
-        encode (new_unencoded ++ unencoded) varMap eqMap
-  in do
+terminationQuery graph precFun asPendingSemiconfs query = do
     newMap <- liftIO HT.new
     new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
     liftIO $ HT.insert newMap (0 :: Int, -1 :: Int) new_var
     eqMap <- liftIO HT.new
     -- encode the probability transition relation by asserting a set of Z3 formulas
     setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
-    encode [(0 ::Int , -1 :: Int)] (newMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap
+    encode [(0 ::Int , -1 :: Int)] (newMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap graph precFun query
     solveQuery query new_var graph (newMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap
 
+
+encode :: (Eq state, Hashable state, Show state)
+      => [(Int, Int)]
+      -> VarMap
+      -> EqMap
+      -> SupportGraph RealWorld state
+      -> EncPrecFunc
+      -> TermQuery
+      -> Z3 ()
+encode [] _ _ _ _ _ = return ()
+encode ((gnId_, rightContext):unencoded) varMap@(m, asPendingSemiconfs, _) eqMap graph precFun query = do
+  let mkComp | needEquality query = mkEq
+             | otherwise = mkGe
+      varKey = (gnId_, rightContext)
+  var <- liftIO $ fromJust <$> HT.lookup m varKey
+  gn <- liftIO $ MV.unsafeRead graph gnId_
+  let (q,g) = semiconf gn
+      qLabel = getLabel q
+      precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
+      cases
+        | isNothing g && not (IntSet.member gnId_ asPendingSemiconfs) =
+            error $ "you model is wrong! A semiconf with bottom stack must almost surely reach a SCC: " ++ show (gnId_, rightContext)
+
+        -- this case includes the initial push
+        | isNothing g || precRel == Just Yield =
+            encodePush graph varMap eqMap mkComp gn varKey var
+
+        | precRel == Just Equal =
+            encodeShift varMap eqMap mkComp gn varKey var
+
+        | precRel == Just Take = do
+            when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: " ++ show (gnId_, rightContext)
+            let e = Map.findWithDefault 0 rightContext (popContexts gn)
+            assert =<< mkEq var =<< mkRealNum e
+            addFixpEq eqMap varKey $ PopEq e
+            return [] -- pop transitions do not generate new variables
+
+        | otherwise = fail "unexpected prec rel"
+
+  new_unencoded <- cases
+  encode (new_unencoded ++ unencoded) varMap eqMap graph precFun query
 
 -- encoding helpers --
 encodePush :: (Eq state, Hashable state, Show state)
@@ -314,3 +329,190 @@ isPending graph idx asts = do
                     | Unsat <- r = assert eq >> return False -- semiconf i is not pending
                     | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show idx
               cases
+
+-- compute the exact termination probabilities, but do it with a backward analysis for every SCC
+type SuccessorsPopContexts = IntSet
+type Arch = Int
+
+type PartialVarMap = (HT.BasicHashTable VarKey AST, Bool)
+
+data DeficientGlobals state = DeficientGlobals
+  { supportGraph :: SupportGraph RealWorld state
+  , sStack     :: ZStack Arch
+  , bStack     :: ZStack Int
+  , iVector    :: MV.IOVector Int
+  , successorsCntxs :: MV.IOVector SuccessorsPopContexts
+  , asPSs :: IORef IntSet
+  , partialVarMap :: PartialVarMap
+  }
+
+-- requires: the initial semiconfiguration is at position 0 in the Support graph
+terminationQuerySCC :: (Eq state, Hashable state, Show state)
+                 => SupportGraph RealWorld state
+                 -> EncPrecFunc
+                 -> TermQuery
+                 -> Z3 TermResult
+terminationQuerySCC suppGraph precFun query = do
+  newSS              <- liftIO $ ZS.new
+  newBS              <- liftIO $ ZS.new
+  newIVec            <- liftIO $ MV.replicate (MV.length suppGraph) 0
+  newSuccessorsCntxs <- liftIO $ MV.replicate (MV.length suppGraph) IntSet.empty
+  emptyASPS <- liftIO $ newIORef $ IntSet.empty
+  newMap <- liftIO HT.new
+  let globals = DeficientGlobals { supportGraph = suppGraph
+                                , sStack = newSS
+                                , bStack = newBS
+                                , iVector = newIVec
+                                , successorsCntxs = newSuccessorsCntxs
+                                , asPSs = emptyASPS
+                                , partialVarMap = (newMap, isApproxSingleQuery query)
+                                }
+  -- perform the Gabow algorithm to determine semiconfs that cannot reach a pop
+  gn <- liftIO $ MV.unsafeRead suppGraph 0
+  addtoPath globals gn
+  successorsPopContexts <- dfs globals precFun query gn
+  unless (IntSet.null successorsPopContexts) $ error "the initial configuration should not be able to reach a pop"
+  -- returning the computed values
+  asPendingIdxs <- liftIO $ readIORef (asPSs globals)
+  let readResults
+        | ApproxAllQuery _ <- query = readApproxAllQuery
+        | ApproxSingleQuery _ <- query = readApproxSingleQuery
+        | otherwise = error "cannot use SCC decomposition for queries that do not estimate the actual probabilities"
+        where
+          readApproxAllQuery = do
+            vec <- liftIO $ groupASTs (newMap, asPendingIdxs, isApproxSingleQuery query)  (MV.length suppGraph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
+            sumAstVec <- V.mapM mkAdd vec
+            fmap ApproxAllResult $
+              V.forM sumAstVec $ \a -> do
+                s <- astToString a
+                return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
+          readApproxSingleQuery = fmap ApproxSingleResult $ do
+              s <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
+              return (toRational (read (takeWhile (/= '?') s) :: Scientific))
+  readResults
+
+dfs :: (Eq state, Hashable state, Show state)
+    => DeficientGlobals state
+    -> EncPrecFunc
+    -> TermQuery
+    -> GraphNode state
+    -> Z3 SuccessorsPopContexts
+dfs globals precFun query gn =
+  let cases nextNode iVal
+        | (iVal == 0) = addtoPath globals nextNode >> dfs globals precFun query nextNode
+        | (iVal < 0)  = liftIO $ MV.unsafeRead (successorsCntxs globals) (gnId nextNode)
+        -- here we don't need the additional push of the closing edge
+        | (iVal > 0)  = merge globals nextNode >> return IntSet.empty
+        | otherwise = error "unreachable error"
+      follow e = do
+        node <- liftIO $ MV.unsafeRead (supportGraph globals) (to e)
+        iVal <- liftIO $ MV.unsafeRead (iVector globals) (to e)
+        cases node iVal
+  in do
+    descendantsCanReachPop <- IntSet.unions <$> forM (Set.toList $ internalEdges gn) follow
+    let computeActualCanReach
+          | not . Set.null $ supportEdges gn =  IntSet.unions <$> forM (Set.toList $ supportEdges gn) follow
+          | not . Map.null $ popContexts gn = return $ IntSet.fromList . Map.keys $ popContexts gn
+          | otherwise = return descendantsCanReachPop
+    spcs <- computeActualCanReach
+    createComponent globals gn spcs precFun query
+
+-- helpers
+addtoPath :: DeficientGlobals state -> GraphNode state -> Z3 ()
+addtoPath globals gn = liftIO $ do
+  ZS.push (sStack globals) (gnId gn)
+  sSize <- ZS.size $ sStack globals
+  MV.unsafeWrite (iVector globals) (gnId gn) sSize
+  ZS.push (bStack globals) sSize
+
+merge ::  DeficientGlobals state -> GraphNode state -> Z3 ()
+merge globals gn = liftIO $ do
+  iVal <- MV.unsafeRead (iVector globals) (gnId gn)
+  -- contract the B stack, that represents the boundaries between SCCs on the current path
+  ZS.popWhile_ (bStack globals) (iVal <)
+
+createComponent :: (Eq state, Hashable state, Show state)
+                => DeficientGlobals state
+                -> GraphNode state
+                -> SuccessorsPopContexts
+                -> EncPrecFunc
+                -> TermQuery
+                -> Z3 SuccessorsPopContexts
+createComponent globals gn popContxs precFun query = do
+  topB <- liftIO $ ZS.peek $ bStack globals
+  iVal <- liftIO $ MV.unsafeRead (iVector globals) (gnId gn)
+  if iVal == topB
+    then do
+      liftIO $ ZS.pop_ (bStack globals)
+      sSize <- liftIO $ ZS.size $ sStack globals
+      sccIdxs <- liftIO $ ZS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
+      forM_ sccIdxs $ \e -> do
+        liftIO $ MV.unsafeWrite (iVector globals) e (-1)
+        liftIO $ MV.unsafeWrite (successorsCntxs globals) e popContxs
+      let (varMap, isASQ) = partialVarMap globals
+      if not (IntSet.null popContxs) || (gnId gn == 0 && isASQ)
+        then do
+          eqMap <- liftIO HT.new
+          currentASPSs <- liftIO $ readIORef (asPSs globals)
+          let to_be_encoded = [(gnId_, rc) | gnId_ <- sccIdxs, rc <- IntSet.toList popContxs]
+          insertedVars <- forM to_be_encoded (fmap snd . lookupVar (varMap, currentASPSs, isASQ) eqMap)
+          when (or insertedVars) $ error "inserting a variable that has already been encoded"
+          -- delete previous assertions
+          reset 
+          encode to_be_encoded (varMap, currentASPSs, isASQ) eqMap (supportGraph globals) precFun query
+          solveSCCQuery (solver query) to_be_encoded (varMap, currentASPSs, isASQ) eqMap
+          return popContxs
+        else do
+          liftIO $ modifyIORef (asPSs globals) $ IntSet.union (IntSet.fromList sccIdxs)
+          return IntSet.empty
+    else do
+      return popContxs
+
+-- params:
+-- (var:: AST) = Z3 var associated with the initial semiconf
+-- (graph :: SupportGraph RealWorld state :: ) = the graph
+-- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
+solveSCCQuery :: Pomc.Prob.ProbUtils.Solver -> [(Int,Int)] ->
+           VarMap -> EqMap -> Z3 ()
+solveSCCQuery solv to_be_solved varMap@(m, _, _) eqMap = do
+      assertHints varMap eqMap solv
+        -- passing some parameters to the solver
+      setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
+      _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
+      _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
+      grouped <- mapM (mapM (\k -> liftIO $ fromJust <$> HT.lookup m k)) $ groupBy (\a b -> fst a == fst b) to_be_solved
+      mapM_ checkPendingSCC grouped
+      model <- fromJust . snd <$> getModel
+      -- update the variables from the computed model 
+      forM_ to_be_solved $ \k -> do 
+        var <- liftIO $ fromJust <$> HT.lookup m k 
+        evaluated <- fromJust <$> eval model var
+        liftIO $ HT.insert m k evaluated
+  where
+    assertHints varMap eqMap solver = case solver of
+      SMTWithHints -> doAssert defaultTolerance
+      SMTCert eps -> doAssert eps
+      _ -> return ()
+      where doAssert eps = do
+              let iterEps = min defaultEps $ eps * eps
+              approxVec <- approxFixp eqMap iterEps defaultMaxIters
+              approxFracVec <- toRationalProbVec iterEps approxVec
+              epsReal <- mkRealNum eps
+              mapM_ (\(varKey, p) -> do
+                        (var, True) <- lookupVar varMap eqMap varKey
+                        pReal <- mkRealNum p
+                        assert =<< mkGe var pReal
+                        assert =<< mkLe var =<< mkAdd [pReal, epsReal]
+                    ) approxFracVec
+
+checkPendingSCC :: [AST] -> Z3 ()
+checkPendingSCC asts = do
+  sumAst <- mkAdd asts
+  less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
+  r <- checkAssumptions [less1]
+  strings <- mapM astToString asts
+  let cases
+          | Sat <- r = assert less1 -- semiconf i is pending
+          | Unsat <- r = assert =<< mkEq sumAst =<< mkRealNum (1 :: Prob) -- semiconf i is not pending
+          | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show strings
+  cases

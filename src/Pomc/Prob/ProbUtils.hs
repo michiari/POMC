@@ -28,6 +28,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , isApprox
                            , isApproxSingleQuery
                            , needEquality
+                           , solver
                            , toBool
                            , toBoolVec
                            , toProb
@@ -184,6 +185,12 @@ needEquality (ApproxAllQuery PureSMT) = True
 needEquality (ApproxSingleQuery PureSMT) = True
 needEquality (PendingQuery PureSMT) = True
 needEquality _ = False
+
+solver :: TermQuery -> Solver 
+solver (CompQuery _ _ s) = s 
+solver (ApproxAllQuery s) = s
+solver (ApproxSingleQuery s) = s
+solver (PendingQuery s) = s
 
 -- different possible results of a termination query
 -- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 

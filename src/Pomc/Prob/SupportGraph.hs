@@ -246,7 +246,6 @@ data DeficientGlobals s state = DeficientGlobals
   , canReachPop :: MV.MVector s CanReachPop
   }
 
--- TODO: maybe return something like a list... I don't know
 asPendingSemiconfs :: Show state => SupportGraph s state -> ST s IntSet
 asPendingSemiconfs suppGraph = do
   newSS            <- GS.new
