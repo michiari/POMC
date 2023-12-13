@@ -3,13 +3,12 @@
 import os.path as path
 from os import makedirs
 
-all_formulas = zip(map(str, range(7)), [
+all_formulas = zip(map(str, range(6)), [
     "XNu (ret And main)",
     "(call And main) --> ~ (PNu exc Or XNu exc)",
     "G ((call And qs) --> ~ (PNu exc Or XNu exc))",
-    "XNu (sorted)",
+    "XNu sorted",
     "G ((call And qs) --> (XNu sorted))",
-    "G ((call And qs) --> (XNu (exc Or sorted)))",
     "XNd (han And PNd (call And qs And XNu (exc Or sorted)))"
 ])
 
