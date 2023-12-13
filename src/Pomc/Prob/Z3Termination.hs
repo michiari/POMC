@@ -41,7 +41,7 @@ import Data.Scientific (Scientific)
 import Z3.Monad
 import Data.IORef (IORef, newIORef, modifyIORef, readIORef)
 
-import Data.List(groupBy)
+import Data.List(groupBy, nub)
 
 import qualified Debug.Trace as DBG
 
@@ -464,7 +464,7 @@ createComponent globals gn popContxs precFun query = do
           insertedVars <- forM to_be_encoded (fmap snd . lookupVar (varMap, currentASPSs, isASQ) eqMap)
           when (or insertedVars) $ error "inserting a variable that has already been encoded"
           -- delete previous assertions
-          reset 
+          reset
           encode to_be_encoded (varMap, currentASPSs, isASQ) eqMap (supportGraph globals) precFun query
           solveSCCQuery (solver query) to_be_encoded (varMap, currentASPSs, isASQ) eqMap
           return popContxs
@@ -481,7 +481,9 @@ createComponent globals gn popContxs precFun query = do
 solveSCCQuery :: Pomc.Prob.ProbUtils.Solver -> [(Int,Int)] ->
            VarMap -> EqMap -> Z3 ()
 solveSCCQuery solv to_be_solved varMap@(m, _, _) eqMap = do
+      DBG.traceM "Assert hints"
       assertHints varMap eqMap solv
+      DBG.traceM  $ "Start z3 for semiconfs: " ++ show (nub . map fst $ to_be_solved)
         -- passing some parameters to the solver
       setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
       _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
@@ -490,8 +492,8 @@ solveSCCQuery solv to_be_solved varMap@(m, _, _) eqMap = do
       mapM_ checkPendingSCC grouped
       model <- fromJust . snd <$> getModel
       -- update the variables from the computed model 
-      forM_ to_be_solved $ \k -> do 
-        var <- liftIO $ fromJust <$> HT.lookup m k 
+      forM_ to_be_solved $ \k -> do
+        var <- liftIO $ fromJust <$> HT.lookup m k
         evaluated <- fromJust <$> eval model var
         liftIO $ HT.insert m k evaluated
   where
@@ -505,10 +507,14 @@ solveSCCQuery solv to_be_solved varMap@(m, _, _) eqMap = do
               approxFracVec <- toRationalProbVec iterEps approxVec
               epsReal <- mkRealNum eps
               mapM_ (\(varKey, p) -> do
-                        (var, True) <- lookupVar varMap eqMap varKey
-                        pReal <- mkRealNum p
-                        assert =<< mkGe var pReal
-                        assert =<< mkLe var =<< mkAdd [pReal, epsReal]
+                        veq <- liftIO $ HT.lookup eqMap varKey
+                        case veq of
+                          Just (PopEq _) -> return () -- An eq constraint has already been asserted
+                          _ -> do
+                            (var, True) <- lookupVar varMap eqMap varKey
+                            pReal <- mkRealNum p
+                            assert =<< mkGe var pReal
+                            assert =<< mkLe var =<< mkAdd [pReal, epsReal]
                     ) approxFracVec
 
 checkPendingSCC :: [AST] -> Z3 ()
