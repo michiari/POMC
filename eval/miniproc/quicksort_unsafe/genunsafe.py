@@ -5,12 +5,12 @@ from os import makedirs
 
 all_formulas = zip(map(str, range(7)), [
     "XNu (ret And main)",
-    "XNu (sorted)",
     "(call And main) --> ~ (PNu exc Or XNu exc)",
     "G ((call And qs) --> ~ (PNu exc Or XNu exc))",
+    "XNu (sorted)",
     "G ((call And qs) --> (XNu sorted))",
     "G ((call And qs) --> (XNu (exc Or sorted)))",
-    "((PNu exc) Or (XNu exc)) --> ((PNu (exc And sorted)) Or (XNu (exc And sorted)))"
+    "XNd (han And PNd (call And qs And XNu (exc Or sorted)))"
 ])
 
 bench_template = \
