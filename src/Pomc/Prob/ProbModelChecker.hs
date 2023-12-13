@@ -31,7 +31,7 @@ import Pomc.Prob.SupportGraph(buildGraph, asPendingSemiconfs)
 
 import qualified Pomc.CustoMap as CM
 
-import Pomc.Prob.Z3Termination (terminationQuery)
+import Pomc.Prob.Z3Termination (terminationQuery, terminationQuerySCC)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..), ExprProp)
 
@@ -51,6 +51,10 @@ import Control.Monad.ST (stToIO)
 
 import Z3.Monad (evalZ3With, Logic(..))
 import Z3.Opts
+
+import qualified Debug.Trace as DBG
+import qualified Data.Vector as V
+import qualified Data.Vector.Mutable as MV
 
 -- TODO: add normalize RichDistr to optimize the encoding
 -- note that non normalized encodings are at the moment (16.11.23) correctly handled by the termination algorithms
@@ -150,10 +154,14 @@ programTermination prog query =
 
   in do
     sc <- stToIO $ buildGraph pDelta initVs initLbl
-    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
+    --asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
-    p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    return (p, scString ++ "\n" ++ show query)
+    DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
+    --p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
+    termVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc query
+    --DBG.traceM $ "Termination probabilities: " ++ show termVector
+    --let pendVector = V.map (\k -> k < (1 :: Prob)) $ toProbVec termVector
+    return (termVector, scString ++ "\n" ++ show query)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
@@ -193,7 +201,7 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
       , phiDeltaPop = phiDeltaPop
       }
 
-  in do 
+  in do
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
     scString <- stToIO $ CM.showMap sc
     asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
@@ -252,12 +260,11 @@ qualitativeModelCheckExplicitGen phi popa =
     essentialAP = Set.fromList $ End : sls ++ getProps phi
     (tphi, tprec, [tsls], pconv) = convProps phi prec [sls]
     transDelta = map (second
-                        (map (\(a, b, p) -> 
+                        (map (\(a, b, p) ->
                             (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
                         )
                      )
     transDeltaPop = map ( \(q,q0, distr) -> (q,q0,
-                                                  map (\(a, b, p) -> 
                                                     (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
                                                   distr
                                             )
