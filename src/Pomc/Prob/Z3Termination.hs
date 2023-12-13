@@ -43,7 +43,7 @@ import Data.IORef (IORef, newIORef, modifyIORef, readIORef)
 
 import Data.List(groupBy)
 
--- import qualified Debug.Trace as DBG
+import qualified Debug.Trace as DBG
 
 -- a map Key: (gnId GraphNode, getId StateId) - value : Z3 variables (represented as ASTs)
 -- each Z3 variable represents [[q,b | p ]]
@@ -225,7 +225,9 @@ solveQuery q
           s <- astToString . fromJust =<< eval m a
           return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
     encodeApproxSingleQuery solv _ graph varMap@(_, asPendingIdxs, _) eqMap = do
+      DBG.traceM "Assert hints"
       assertHints varMap eqMap solv
+      DBG.traceM "Start Z3"
       vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs) || (fst key == 0))
       sumAstVec <- V.imapM (checkPending graph) vec
       setZ3PPOpts
@@ -247,10 +249,14 @@ solveQuery q
               approxFracVec <- toRationalProbVec iterEps approxVec
               epsReal <- mkRealNum eps
               mapM_ (\(varKey, p) -> do
-                        (var, True) <- lookupVar varMap eqMap varKey
-                        pReal <- mkRealNum p
-                        assert =<< mkGe var pReal
-                        assert =<< mkLe var =<< mkAdd [pReal, epsReal]
+                        veq <- liftIO $ HT.lookup eqMap varKey
+                        case veq of
+                          Just (PopEq _) -> return () -- An eq constraint has already been asserted
+                          _ -> do
+                            (var, True) <- lookupVar varMap eqMap varKey
+                            pReal <- mkRealNum p
+                            assert =<< mkGe var pReal
+                            assert =<< mkLe var =<< mkAdd [pReal, epsReal]
                     ) approxFracVec
 
     setZ3PPOpts = do
