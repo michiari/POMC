@@ -62,7 +62,7 @@ lookupVar :: VarMap -> EqMap -> VarKey -> Z3 (AST, Bool)
 lookupVar (varMap, asPendingIdxs, isASQ) eqMap key = do
   maybeVar <- liftIO $ HT.lookup varMap key
   if isJust maybeVar
-    then do 
+    then do
       s <- astToString (fromJust maybeVar)
       --DBG.traceM $ "returning already present var: " ++ s
       return (fromJust maybeVar, True)
@@ -72,7 +72,7 @@ lookupVar (varMap, asPendingIdxs, isASQ) eqMap key = do
                               then addFixpEq eqMap key (PopEq 1) >> mkRealNum (1 :: Prob)
                               else addFixpEq eqMap key (PopEq 0) >> mkRealNum (0 :: Prob)
                       else mkFreshRealVar $ show key
-          
+
       --DBG.traceM $ "Inserting var: " ++ show key
       liftIO $ HT.insert varMap key new_var
       return (new_var, False)
@@ -481,16 +481,17 @@ createComponent globals gn popContxs precFun query = do
         liftIO $ MV.unsafeWrite (iVector globals) e (-1)
         liftIO $ MV.unsafeWrite (successorsCntxs globals) e popContxs
       let (varMap, isASQ) = partialVarMap globals
+      when (IntSet.null popContxs || (gnId gn == 0 && isASQ)) $ liftIO $ modifyIORef (asPSs globals) $ IntSet.insert 0
       if not (IntSet.null popContxs) || (gnId gn == 0 && isASQ)
         then do
           eqMap <- liftIO HT.new
           variables <- liftIO $ HT.toList varMap
-          forM_ variables $ \(key, ast) -> do 
+          forM_ variables $ \(key, ast) -> do
             s <- astToString ast
             addFixpEq eqMap key (PopEq (toRational (read (takeWhile (/= '?') s) :: Scientific)))
           currentASPSs <- liftIO $ readIORef (asPSs globals)
-          let to_be_encoded 
-                | (gnId gn == 0 && isASQ) = [(0,-1)]
+          let to_be_encoded
+                | gnId gn == 0 && isASQ = [(0,-1)]
                 | otherwise = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
           insertedVars <- forM to_be_encoded (fmap snd . lookupVar (varMap, currentASPSs, isASQ) eqMap)
           when (or insertedVars) $ error "inserting a variable that has already been encoded"
