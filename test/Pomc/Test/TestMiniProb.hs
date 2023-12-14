@@ -55,6 +55,11 @@ basicTests = testGroup "Basic Tests"
     , makeParseTestCase infiniteLoopSrc ("Infinite Loop", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
     , makeParseTestCase observeLoopSrc ("Observe Loop", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 1)
     , makeParseTestCase queryBugSrc ("Query Bug", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult 0)
+    , makeParseTestCase callRetLoopSrc ("Call-ret Loop", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult $ 1 % 2)
+    , makeParseTestCase callRet1LoopSrc ("Call-ret One Loop", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult $ 6669651943 % 10000000000)
+    , makeParseTestCase doubleRndWalkSrc ("Double random walk example", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult $ 1 % 2)
+    , makeParseTestCase rndWalkFunSrc ("Random walk with function call", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult $ 1 % 2)
+    , makeParseTestCase loopFunSrc ("Recursive loop with function call", "F T", ApproxSingleQuery SMTWithHints, ApproxSingleResult $ 3333333333 % 10000000000)
     ]
 
 linRecSrc :: T.Text
@@ -145,4 +150,146 @@ alice(bool &x) {
 }
 
 bob(bool &y1) { }
+|]
+
+callRetLoopSrc :: T.Text
+callRetLoopSrc = T.pack [r|
+pA() {
+  bool x, y;
+  x = true {2u4 : 3u4} false;
+  while (x) {
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pA();
+    } else {
+      pB();
+    }
+    x = true {2u4 : 3u4} false;
+  }
+}
+
+pB() {
+  bool x, y;
+  x = true {2u4 : 3u4} false;
+  while (x) {
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pA();
+    } else {
+      pB();
+    }
+    x = true {2u4 : 3u4} false;
+  }
+}
+|]
+
+callRet1LoopSrc :: T.Text
+callRet1LoopSrc = T.pack [r|
+pA() {
+  bool x, y;
+  x = true {2u4 : 3u4} false;
+  while (x) {
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pA();
+    } else {
+      pB();
+    }
+  x = true {2u4 : 3u4} false;
+  }
+}
+
+pB() {
+  bool x, y;
+  x = true {2u4 : 3u4} false;
+  if (x) {
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pA();
+    } else {
+      pB();
+    }
+  } else {}
+}
+|]
+
+doubleRndWalkSrc :: T.Text
+doubleRndWalkSrc = T.pack [r|
+pA() {
+  bool x, y;
+  x = true {2u4 : 3u4} false;
+  if (x) {
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pA();
+    } else {
+      pB();
+    }
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pA();
+    } else {
+      pB();
+    }
+  } else {}
+}
+
+pB() {
+  bool x, y;
+  x = true {2u4 : 3u4} false;
+  if (x) {
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pA();
+    } else {
+      pB();
+    }
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pA();
+    } else {
+      pB();
+    }
+  } else {}
+}
+|]
+
+
+rndWalkFunSrc :: T.Text
+rndWalkFunSrc = T.pack [r|
+pA() {
+  bool x, y;
+  x = true {2u4 : 3u4} false;
+  if (x) {
+    pA();
+
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pB();
+    } else { }
+
+    pA();
+  } else {}
+}
+
+pB() { }
+|]
+
+
+loopFunSrc :: T.Text
+loopFunSrc = T.pack [r|
+pA() {
+  bool x, y;
+  x = true {2u4 : 3u4} false;
+  while (x) {
+    pA();
+
+    y = true {1u4 : 2u4} false;
+    if (y) {
+      pB();
+    } else { }
+  }
+}
+
+pB() { }
 |]
