@@ -41,7 +41,7 @@ import Data.Scientific (Scientific)
 import Z3.Monad
 import Data.IORef (IORef, newIORef, modifyIORef, readIORef)
 
-import Data.List(groupBy, nub)
+import Data.List(groupBy)
 
 import qualified Debug.Trace as DBG
 
@@ -393,8 +393,7 @@ terminationQuerySCC suppGraph precFun query = do
   -- perform the Gabow algorithm to determine semiconfs that cannot reach a pop
   gn <- liftIO $ MV.unsafeRead suppGraph 0
   addtoPath globals gn
-  successorsPopContexts <- dfs globals precFun query gn
-  unless (IntSet.null successorsPopContexts) $ error "the initial configuration should not be able to reach a pop"
+  _ <- dfs globals precFun query gn
   -- returning the computed values
   asPendingIdxs <- liftIO $ readIORef (asPSs globals)
   let readResults
@@ -404,7 +403,6 @@ terminationQuerySCC suppGraph precFun query = do
         where
           readApproxAllQuery = do
             vec <- liftIO $ groupASTs (newMap, asPendingIdxs, isApproxSingleQuery query)  (MV.length suppGraph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
-            --DBG.traceM $ "Is approx single query: " ++ show (isApproxSingleQuery query)
             sumAstVec <- V.mapM mkAdd vec
             fmap ApproxAllResult $
               V.forM sumAstVec $ \a -> do
@@ -413,7 +411,6 @@ terminationQuerySCC suppGraph precFun query = do
                 assert =<< mkEq dummy a
                 m <- fromJust . snd <$> getModel
                 s <- astToString . fromJust =<< eval m dummy
-                --DBG.traceM $ "Trying to read " ++ s
                 return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
           readApproxSingleQuery = fmap ApproxSingleResult $ do
               s <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
@@ -481,8 +478,7 @@ createComponent globals gn popContxs precFun query = do
         liftIO $ MV.unsafeWrite (iVector globals) e (-1)
         liftIO $ MV.unsafeWrite (successorsCntxs globals) e popContxs
       let (varMap, isASQ) = partialVarMap globals
-      when (IntSet.null popContxs || (gnId gn == 0 && isASQ)) $ liftIO $ modifyIORef (asPSs globals) $ IntSet.insert 0
-      if not (IntSet.null popContxs) || (gnId gn == 0 && isASQ)
+      if not (IntSet.null popContxs)
         then do
           eqMap <- liftIO HT.new
           variables <- liftIO $ HT.toList varMap
@@ -503,7 +499,21 @@ createComponent globals gn popContxs precFun query = do
           return popContxs
         else do
           --DBG.traceM "zero pop contexts means zero encodings"
+          --DBG.traceM $ "Adding to the set of almost surely pending semiconfs: " ++ show poppedEdges
           liftIO $ modifyIORef (asPSs globals) $ IntSet.union (IntSet.fromList poppedEdges)
+          when (gnId gn == 0 && isASQ) $ do 
+            eqMap <- liftIO HT.new
+            variables <- liftIO $ HT.toList varMap
+            forM_ variables $ \(key, ast) -> do
+              s <- astToString ast
+              addFixpEq eqMap key (PopEq (toRational (read (takeWhile (/= '?') s) :: Scientific)))
+            currentASPSs <- liftIO $ readIORef (asPSs globals)
+            new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
+            liftIO $ HT.insert varMap (0 :: Int, -1 :: Int) new_var
+            reset
+            setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
+            encode [(0 ::Int , -1 :: Int)] (varMap, currentASPSs, isASQ) eqMap (supportGraph globals) precFun query
+            solveSCCQuery (solver query) [(0 ::Int , -1 :: Int)] (varMap, currentASPSs, isASQ) eqMap
           return IntSet.empty
     else do
       --DBG.traceM $ "Postpone creating component to the SCC for node " ++ show (gnId gn)
@@ -516,17 +526,17 @@ createComponent globals gn popContxs precFun query = do
 solveSCCQuery :: Pomc.Prob.ProbUtils.Solver -> [(Int,Int)] ->
            VarMap -> EqMap -> Z3 ()
 solveSCCQuery solv to_be_solved varMap@(m, _, _) eqMap = do
-      DBG.traceM "Assert hints to solve the query"
+      --DBG.traceM "Assert hints to solve the query"
       assertHints varMap eqMap solv
-      DBG.traceM "start Z3 solving"
+      --DBG.traceM "start Z3 solving"
+      --DBG.traceM $ "variables to be solved for this SCC: " ++ show to_be_solved
       -- passing some parameters to the solver
       _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
       _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
       grouped <- mapM (mapM (\k -> liftIO $ fromJust <$> HT.lookup m k)) $ groupBy (\a b -> fst a == fst b) to_be_solved
-      mapM_ checkPendingSCC grouped
+      checkPendingSCC (head grouped)
       model <- fromJust . snd <$> getModel
       stri <- modelToString model
-      --DBG.traceM $ "variables to be solved for this SCC: " ++ show to_be_solved
       --DBG.traceM $ "Computed model: " ++ stri
       -- update the variables from the computed model 
       variables <- liftIO $ HT.toList m
