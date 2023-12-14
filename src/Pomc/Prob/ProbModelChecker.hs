@@ -265,6 +265,7 @@ qualitativeModelCheckExplicitGen phi popa =
                         )
                      )
     transDeltaPop = map ( \(q,q0, distr) -> (q,q0,
+                                                  map (\(a, b, p) ->
                                                     (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
                                                   distr
                                             )
