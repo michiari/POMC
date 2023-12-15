@@ -493,7 +493,7 @@ createComponent globals gn popContxs precFun query = do
         insertedVars <- forM to_be_encoded (fmap snd . lookupVar (varMap, newAdded, currentASPSs, isASQ) (eqMap globals))
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
-        reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkEq query
+        reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
         solveSCCQuery (solver query) to_be_solved (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
       doNotEncode poppedEdges = do
         --DBG.traceM "zero pop contexts means zero encodings"
@@ -504,7 +504,7 @@ createComponent globals gn popContxs precFun query = do
           currentASPSs <- liftIO $ readIORef (asPSs globals)
           new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
           liftIO $ HT.insert varMap (0, -1) new_var
-          reset >> encode [(0, -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkEq query
+          reset >> encode [(0, -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
           liftIO $ HT.insert newAdded (0 , -1) new_var
           solveSCCQuery (solver query) [(0 , -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
       cases 
