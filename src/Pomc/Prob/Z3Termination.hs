@@ -58,7 +58,7 @@ encodeTransition e toAST = do
   mkMul [probReal, toAST]
 
 -- (Z3 Var, was it already present?)
-lookupVar :: VarMap -> EqMap -> VarKey -> Z3 (AST, Bool)
+lookupVar :: VarMap -> EqMap EqMapNumbersType -> VarKey -> Z3 (AST, Bool)
 lookupVar (varMap, newAdded, asPendingIdxs, isASQ) eqMap key = do
   maybeVar <- liftIO $ HT.lookup varMap key
   if isJust maybeVar
@@ -69,8 +69,8 @@ lookupVar (varMap, newAdded, asPendingIdxs, isASQ) eqMap key = do
     else do
       new_var <- if IntSet.member (fst key) asPendingIdxs
                       then if snd key == -1 && isASQ
-                              then addFixpEq eqMap key (PopEq 1) >> mkRealNum (1 :: Prob)
-                              else addFixpEq eqMap key (PopEq 0) >> mkRealNum (0 :: Prob)
+                              then addFixpEq eqMap key (PopEq 1) >> mkRealNum (1 :: EqMapNumbersType)
+                              else addFixpEq eqMap key (PopEq 0) >> mkRealNum (0 :: EqMapNumbersType)
                       else mkFreshRealVar $ show key
 
       --DBG.traceM $ "Inserting var: " ++ show key
@@ -102,7 +102,7 @@ terminationQuery graph precFun asPendingSemiconfs query = do
 encode :: (Eq state, Hashable state, Show state)
       => [(Int, Int)]
       -> VarMap
-      -> EqMap
+      -> EqMap EqMapNumbersType
       -> SupportGraph RealWorld state
       -> EncPrecFunc
       -> (AST -> AST -> Z3 AST)
@@ -136,7 +136,7 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingSemiconfs, _) e
             eqString <- astToString eq
             --DBG.traceM $ "Asserting Pop equation: " ++ eqString
             assert eq
-            addFixpEq eqMap varKey $ PopEq e
+            addFixpEq eqMap varKey $ PopEq $ fromRational e
             return [] -- pop transitions do not generate new variables
 
         | otherwise = fail "unexpected prec rel"
@@ -148,7 +148,7 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingSemiconfs, _) e
 encodePush :: (Eq state, Hashable state, Show state)
            => SupportGraph RealWorld state
            -> VarMap
-           -> EqMap
+           -> EqMap EqMapNumbersType
            -> (AST -> AST -> Z3 AST)
            -> GraphNode state
            -> VarKey
@@ -193,7 +193,7 @@ encodePush graph varMap@(_, _, asPendingSemiconfs, approxSingleQuery) eqMap mkCo
 
 encodeShift :: (Eq state, Hashable state, Show state)
             => VarMap
-            -> EqMap
+            -> EqMap EqMapNumbersType
             -> (AST -> AST -> Z3 AST)
             -> GraphNode state
             -> VarKey
@@ -226,7 +226,7 @@ encodeShift varMap@(_, _, asPendingSemiconfs, _) eqMap mkComp gn varKey@(gnId_, 
 -- (graph :: SupportGraph RealWorld state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
 solveQuery :: TermQuery -> AST -> SupportGraph RealWorld state
-           -> VarMap -> EqMap -> Z3 TermResult
+           -> VarMap -> EqMap EqMapNumbersType -> Z3 TermResult
 solveQuery q
   | ApproxAllQuery solv <- q = encodeApproxAllQuery solv
   | ApproxSingleQuery solv <- q = encodeApproxSingleQuery solv
@@ -266,13 +266,13 @@ solveQuery q
               approxVec <- approxFixp eqMap iterEps defaultMaxIters
               approxFracVec <- toRationalProbVec iterEps approxVec
               epsReal <- mkRealNum eps
-              mapM_ (\(varKey, p) -> do
+              mapM_ (\(varKey, pRational, p) -> do
                         veq <- liftIO $ HT.lookup eqMap varKey
                         case veq of
                           Just (PopEq _) -> return () -- An eq constraint has already been asserted
                           _ -> do
                             (var, True) <- lookupVar varMap eqMap varKey
-                            pReal <- mkRealNum p
+                            pReal <- mkRealNum pRational
                             assert =<< mkGe var pReal
                             assert =<< mkLe var =<< mkAdd [pReal, epsReal]
                     ) approxFracVec
@@ -367,7 +367,7 @@ data DeficientGlobals state = DeficientGlobals
   , successorsCntxs :: MV.IOVector SuccessorsPopContexts
   , asPSs :: IORef IntSet
   , partialVarMap :: PartialVarMap
-  , eqMap :: EqMap
+  , eqMap :: EqMap EqMapNumbersType
   }
 
 
@@ -519,7 +519,7 @@ createComponent globals gn popContxs precFun query = do
 -- (graph :: SupportGraph RealWorld state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
 solveSCCQuery :: Pomc.Prob.ProbUtils.Solver -> [(Int,Int)] ->
-           VarMap -> EqMap -> Z3 ()
+           VarMap -> EqMap EqMapNumbersType -> Z3 ()
 solveSCCQuery solv to_be_solved varMap@(m, newAdded, _, _) eqMap = do
   --DBG.traceM "Assert hints to solve the query"
   assertHints solv
@@ -545,13 +545,13 @@ solveSCCQuery solv to_be_solved varMap@(m, newAdded, _, _) eqMap = do
       approxVec <- approxFixp eqMap iterEps defaultMaxIters
       approxFracVec <- toRationalProbVec iterEps approxVec
       epsReal <- mkRealNum eps
-      mapM_ (\(varKey, p) -> do
+      mapM_ (\(varKey, pRational, p) -> do
                 veq <- liftIO $ HT.lookup eqMap varKey
                 case veq of
                   Just (PopEq _) -> return () -- An eq constraint has already been asserted
                   _ -> do
                     (var, True) <- lookupVar varMap eqMap varKey
-                    pReal <- mkRealNum p
+                    pReal <- mkRealNum pRational
                     assert =<< mkGe var pReal
                     assert =<< mkLe var =<< mkAdd [pReal, epsReal]
                     addFixpEq eqMap varKey (PopEq p)

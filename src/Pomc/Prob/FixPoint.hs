@@ -15,7 +15,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , toRationalProbVec
                           ) where
 
-import Pomc.Prob.ProbUtils (Prob)
+import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
 
 import Data.Maybe (fromJust)
 import Data.Ratio (approxRational)
@@ -32,12 +32,12 @@ import qualified Debug.Trace as DBG
 
 type VarKey = (Int, Int)
 
-data FixpEq = PushEq [(Prob, VarKey, VarKey)]
-            | ShiftEq [(Prob, VarKey)]
-            | PopEq Prob
-            deriving Show
+data FixpEq n = PushEq [(Prob, VarKey, VarKey)]
+              | ShiftEq [(Prob, VarKey)]
+              | PopEq n
+              deriving Show
 
-type EqMap = HT.BasicHashTable VarKey FixpEq
+type EqMap n = HT.BasicHashTable VarKey (FixpEq n)
 
 -- EqMap containing only preprocessed live equations
 data LiveEq n = PushLEq [(n, VarKey, VarKey)]
@@ -47,10 +47,10 @@ type LEqSys n = IOVector (VarKey, LiveEq n)
 
 type ProbVec n = HT.BasicHashTable VarKey n
 
-addFixpEq :: MonadIO m => EqMap -> VarKey -> FixpEq -> m ()
+addFixpEq :: MonadIO m => EqMap n -> VarKey -> FixpEq n -> m ()
 addFixpEq eqMap varKey eq = liftIO $ HT.insert eqMap varKey eq
 
-toLiveEqMap :: (MonadIO m, Fractional n) => EqMap -> m (LEqSys n)
+toLiveEqMap :: (MonadIO m, Fractional n) => EqMap n -> m (LEqSys n)
 toLiveEqMap eqMap = liftIO $ do
   s <- stToIO $ BHT.size eqMap
   leqMap <- MV.unsafeNew s
@@ -67,12 +67,12 @@ toLiveEqMap eqMap = liftIO $ do
     ) 0 eqMap
   return $ MV.unsafeTake n leqMap
 
-zeroVec :: (MonadIO m, Fractional n) => EqMap -> m (ProbVec n)
+zeroVec :: (MonadIO m, Fractional n) => EqMap n -> m (ProbVec n)
 zeroVec eqMap = liftIO $ do
   s <- stToIO $ BHT.size eqMap
   probVec <- HT.newSized s
   HT.mapM_ (\(k, eq) -> case eq of
-               PopEq p -> HT.insert probVec k $ fromRational p
+               PopEq p -> HT.insert probVec k p
                _ -> HT.insert probVec k 0
            ) eqMap
   return probVec
@@ -102,7 +102,7 @@ approxFixpFrom leqMap eps maxIters probVec
       unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 
 approxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
-           => EqMap -> n -> Int -> m (ProbVec n)
+           => EqMap n -> n -> Int -> m (ProbVec n)
 approxFixp eqMap eps maxIters = do
   probVec <- zeroVec eqMap
   leqMap <- toLiveEqMap eqMap
@@ -115,7 +115,7 @@ defaultEps = 1e-8
 defaultMaxIters :: Int
 defaultMaxIters = 10000
 
-toRationalProbVec :: (MonadIO m, RealFrac n) => n -> ProbVec n -> m [(VarKey, Prob)]
+toRationalProbVec :: (MonadIO m, RealFrac n) => n -> ProbVec n -> m [(VarKey, Prob, n)]
 toRationalProbVec eps probVec =
-  liftIO $ map (\(k, p) -> (k, approxRational (p - eps) eps)) <$> HT.toList probVec
+  liftIO $ map (\(k, p) -> (k, approxRational (p - eps) eps, p)) <$> HT.toList probVec
 -- p - eps is to prevent approxRational from producing a result > p

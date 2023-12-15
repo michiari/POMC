@@ -8,6 +8,7 @@
 -}
 
 module Pomc.Prob.ProbUtils ( Prob
+                           , EqMapNumbersType
                            , Distr(..)
                            , RichDistr
                            , Label
@@ -57,6 +58,7 @@ import Data.Vector(Vector)
 import qualified Debug.Trace as DBG
 
 type Prob = Rational
+type EqMapNumbersType = Double
 newtype Distr a = Distr [(a, Prob)] deriving Show
 -- a distribution over elements of type a
 -- with some additional labels of type b
