@@ -264,7 +264,9 @@ solveQuery q
       _ -> return ()
       where doAssert eps = do
               let iterEps = min defaultEps $ eps * eps
+              -- DBG.traceShowM =<< (liftIO $ HT.toList eqMap)
               approxVec <- approxFixp eqMap iterEps defaultMaxIters
+              -- DBG.traceShowM =<< (liftIO $ HT.toList approxVec)
               approxFracVec <- toRationalProbVec iterEps approxVec
               epsReal <- mkRealNum eps
               mapM_ (\(varKey, pRational, p) -> do
@@ -313,6 +315,7 @@ groupASTs (varMap, _,  _, _) len cond = do
 -- for estimating exact termination probabilities
 checkPending :: SupportGraph RealWorld state -> Int -> [AST] -> Z3 AST
 checkPending graph idx asts = do
+  DBG.traceM $ "Check pending " ++ show idx
   sumAst <- mkAdd asts
   -- some optimizations for cases where the encoding already contains actual termination probabilities
   -- so there is no need for additional checks
