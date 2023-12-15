@@ -95,7 +95,7 @@ terminationQuery graph precFun asPendingSemiconfs query = do
     eqMap <- liftIO HT.new
     -- encode the probability transition relation by asserting a set of Z3 formulas
     setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
-    encode [(0 ::Int , -1 :: Int)] (newMap, unusedNewMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap graph precFun query
+    encode [(0 ::Int , -1 :: Int)] (newMap, unusedNewMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap graph precFun mkGe query
     solveQuery query new_var graph (newMap, unusedNewMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap
 
 
@@ -105,13 +105,12 @@ encode :: (Eq state, Hashable state, Show state)
       -> EqMap
       -> SupportGraph RealWorld state
       -> EncPrecFunc
+      -> (AST -> AST -> Z3 AST)
       -> TermQuery
       -> Z3 ()
-encode [] _ _ _ _ _ = return ()
-encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingSemiconfs, _) eqMap graph precFun query = do
-  let mkComp | needEquality query = mkEq
-             | otherwise = mkGe
-      varKey = (gnId_, rightContext)
+encode [] _ _ _ _ _ _ = return ()
+encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingSemiconfs, _) eqMap graph precFun mkComp query = do
+  let varKey = (gnId_, rightContext)
   --DBG.traceM $ "Encoding variable for: " ++ show (gnId_, rightContext)
   --DBG.traceM $ "Almost surely pending semiconfs: " ++ show asPendingSemiconfs
   var <- liftIO $ fromJust <$> HT.lookup m varKey
@@ -143,7 +142,7 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingSemiconfs, _) e
         | otherwise = fail "unexpected prec rel"
 
   new_unencoded <- cases
-  encode (new_unencoded ++ unencoded) varMap eqMap graph precFun query
+  encode (new_unencoded ++ unencoded) varMap eqMap graph precFun mkComp query
 
 -- encoding helpers --
 encodePush :: (Eq state, Hashable state, Show state)
@@ -357,13 +356,12 @@ isPending graph idx asts = do
 
 -- compute the exact termination probabilities, but do it with a backward analysis for every SCC
 type SuccessorsPopContexts = IntSet
-type Arch = Int
 
 type PartialVarMap = (HT.BasicHashTable VarKey AST, Bool)
 
 data DeficientGlobals state = DeficientGlobals
   { supportGraph :: SupportGraph RealWorld state
-  , sStack     :: ZStack Arch
+  , sStack     :: ZStack Int
   , bStack     :: ZStack Int
   , iVector    :: MV.IOVector Int
   , successorsCntxs :: MV.IOVector SuccessorsPopContexts
@@ -415,10 +413,15 @@ terminationQuerySCC suppGraph precFun query = do
             fmap ApproxAllResult $ V.forM sumAstVec $ \a -> do
                 sumVar <-  reset >> mkFreshRealVar "dummy"
                 m <-  mkEq sumVar a >>= assert >> fromJust . snd <$> getModel
+                _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
+                _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
                 s <- astToString . fromJust =<< eval m sumVar
                 return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
           readApproxSingleQuery = fmap ApproxSingleResult $ do
+              _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
+              _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
               s <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
+              DBG.traceM $ "COMPUTED VALUE: " ++ s
               return (toRational (read (takeWhile (/= '?') s) :: Scientific))
   readResults
 
@@ -486,23 +489,24 @@ createComponent globals gn popContxs precFun query = do
         currentASPSs <- liftIO $ readIORef (asPSs globals)
         newAdded <- liftIO HT.new
         let to_be_encoded = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
+            to_be_solved = [(gnId gn, rc) | rc <- IntSet.toList popContxs]
         insertedVars <- forM to_be_encoded (fmap snd . lookupVar (varMap, newAdded, currentASPSs, isASQ) (eqMap globals))
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
-        reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun query
-        solveSCCQuery (solver query) to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+        reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkEq query
+        solveSCCQuery (solver query) to_be_solved (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
       doNotEncode poppedEdges = do
         --DBG.traceM "zero pop contexts means zero encodings"
         --DBG.traceM $ "Adding to the set of almost surely pending semiconfs: " ++ show poppedEdges
         liftIO $ modifyIORef (asPSs globals) $ IntSet.union (IntSet.fromList poppedEdges)
-        when (gnId gn == 0 && isASQ) $ do 
-          -- for the initial semiconf, encode anyway
+        when (gnId gn == 0 && isASQ) $ do -- for the initial semiconf, encode anyway
           newAdded <- liftIO HT.new
           currentASPSs <- liftIO $ readIORef (asPSs globals)
           new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
-          liftIO $ HT.insert varMap (0 :: Int, -1 :: Int) new_var
-          reset >> encode [(0 ::Int , -1 :: Int)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun query
-          solveSCCQuery (solver query) [(0 ::Int , -1 :: Int)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+          liftIO $ HT.insert varMap (0, -1) new_var
+          reset >> encode [(0, -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkEq query
+          liftIO $ HT.insert newAdded (0 , -1) new_var
+          solveSCCQuery (solver query) [(0 , -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
       cases 
         | iVal /= topB = return ()
         | not (IntSet.null popContxs) = createC >>= doEncode
@@ -520,25 +524,19 @@ solveSCCQuery solv to_be_solved varMap@(m, newAdded, _, _) eqMap = do
   --DBG.traceM "Assert hints to solve the query"
   assertHints solv
   --DBG.traceM "start Z3 solving"
-  --DBG.traceM $ "variables to be solved for this SCC: " ++ show to_be_solved
   -- passing some parameters to the solver
   _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
   _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
-  grouped <- mapM (mapM (\k -> liftIO $ fromJust <$> HT.lookup m k)) $ groupBy (\a b -> fst a == fst b) to_be_solved
-  checkPendingSCC (head grouped)
-  DBG.traceM "Checked pending of this SCC"
+  DBG.traceM $ "Checking pending of this SCC... - variables to be checked: " ++ show to_be_solved
+  checkPendingSCC =<< mapM (\k -> liftIO $ fromJust <$> HT.lookup m k) to_be_solved
   model <- fromJust . snd <$> getModel
-  stri <- modelToString model
-  --DBG.traceM $ "Computed model: " ++ stri
   -- update the variables from the computed model 
   variables <- liftIO $ HT.toList newAdded
   forM_ variables $ \(key, var) -> do
     evaluated <- fromJust <$> eval model var
     s <- astToString evaluated
-    --DBG.traceM $ show k ++ " = " ++ s
     addFixpEq eqMap key (PopEq (toRational (read (takeWhile (/= '?') s) :: Scientific)))
     liftIO $ HT.insert m key evaluated
-  DBG.traceM "Inserted the computed termination probs into the"
   where
     assertHints solver = case solver of
       SMTWithHints -> doAssert defaultTolerance
