@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {- |
    Module      : Pomc.Prob.Z3Termination
    Copyright   : 2023 Francesco Pontiggia
@@ -39,7 +40,7 @@ import qualified Data.Vector as V
 import Data.Scientific (Scientific)
 
 import Z3.Monad
-import Data.IORef (IORef, newIORef, modifyIORef, readIORef)
+import Data.IORef (IORef, newIORef, modifyIORef, readIORef, writeIORef)
 
 import Data.List(groupBy)
 
@@ -368,6 +369,7 @@ data DeficientGlobals state = DeficientGlobals
   , asPSs :: IORef IntSet
   , partialVarMap :: PartialVarMap
   , eqMap :: EqMap EqMapNumbersType
+  , eps :: IORef EqMapNumbersType
   }
 
 
@@ -385,6 +387,10 @@ terminationQuerySCC suppGraph precFun query = do
   emptyASPS <- liftIO $ newIORef IntSet.empty
   newMap <- liftIO HT.new
   newEqMap <- liftIO HT.new
+  newEps <- case (solver query) of
+              SMTWithHints -> DBG.trace ("Deafult tolerance: " ++ show defaultTolerance) $ liftIO $ newIORef defaultTolerance
+              SMTCert givenEps -> DBG.trace ("custom tolerance: " ++ show givenEps) $ liftIO $ newIORef givenEps
+              _ -> error "you cannot use pure SMT when computing termination SCC-based"
   let globals = DeficientGlobals { supportGraph = suppGraph
                                 , sStack = newSS
                                 , bStack = newBS
@@ -393,6 +399,7 @@ terminationQuerySCC suppGraph precFun query = do
                                 , asPSs = emptyASPS
                                 , partialVarMap = (newMap, isApproxSingleQuery query)
                                 , eqMap = newEqMap
+                                , eps = newEps
                                 }
   -- passing some parameters
   setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
@@ -476,7 +483,7 @@ createComponent globals gn popContxs precFun query = do
   topB <- liftIO $ ZS.peek $ bStack globals
   iVal <- liftIO $ MV.unsafeRead (iVector globals) (gnId gn)
   let (varMap, isASQ) = partialVarMap globals
-      createC = do 
+      createC = do
         liftIO $ ZS.pop_ (bStack globals)
         sSize <- liftIO $ ZS.size $ sStack globals
         poppedEdges <- liftIO $ ZS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
@@ -489,12 +496,11 @@ createComponent globals gn popContxs precFun query = do
         currentASPSs <- liftIO $ readIORef (asPSs globals)
         newAdded <- liftIO HT.new
         let to_be_encoded = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
-            to_be_solved = [(gnId gn, rc) | rc <- IntSet.toList popContxs]
         insertedVars <- forM to_be_encoded (fmap snd . lookupVar (varMap, newAdded, currentASPSs, isASQ) (eqMap globals))
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
         reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
-        solveSCCQuery (solver query) to_be_solved (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+        solveSCCQuery (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
       doNotEncode poppedEdges = do
         --DBG.traceM "zero pop contexts means zero encodings"
         --DBG.traceM $ "Adding to the set of almost surely pending semiconfs: " ++ show poppedEdges
@@ -506,8 +512,8 @@ createComponent globals gn popContxs precFun query = do
           liftIO $ HT.insert varMap (0, -1) new_var
           reset >> encode [(0, -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
           liftIO $ HT.insert newAdded (0 , -1) new_var
-          solveSCCQuery (solver query) [(0 , -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
-      cases 
+          solveSCCQuery (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+      cases
         | iVal /= topB = return ()
         | not (IntSet.null popContxs) = createC >>= doEncode
         | otherwise = createC >>= doNotEncode
@@ -518,17 +524,15 @@ createComponent globals gn popContxs precFun query = do
 -- (var:: AST) = Z3 var associated with the initial semiconf
 -- (graph :: SupportGraph RealWorld state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
-solveSCCQuery :: Pomc.Prob.ProbUtils.Solver -> [(Int,Int)] ->
+solveSCCQuery :: IORef EqMapNumbersType ->
            VarMap -> EqMap EqMapNumbersType -> Z3 ()
-solveSCCQuery solv to_be_solved varMap@(m, newAdded, _, _) eqMap = do
+solveSCCQuery epsVar varMap@(m, newAdded, _, _) eqMap = do
   --DBG.traceM "Assert hints to solve the query"
-  assertHints solv
+  assertHints epsVar
   --DBG.traceM "start Z3 solving"
   -- passing some parameters to the solver
   _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
   _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
-  DBG.traceM $ "Checking pending of this SCC... - variables to be checked: " ++ show to_be_solved
-  checkPendingSCC =<< mapM (\k -> liftIO $ fromJust <$> HT.lookup m k) to_be_solved
   model <- fromJust . snd <$> getModel
   -- update the variables from the computed model 
   variables <- liftIO $ HT.toList newAdded
@@ -536,16 +540,13 @@ solveSCCQuery solv to_be_solved varMap@(m, newAdded, _, _) eqMap = do
     evaluated <- fromJust <$> eval model var
     liftIO $ HT.insert m key evaluated
   where
-    assertHints solver = case solver of
-      SMTWithHints -> doAssert defaultTolerance
-      SMTCert eps -> doAssert eps
-      _ -> return ()
-    doAssert eps = do
+    assertHints epsVar = do
+      eps <- liftIO $ readIORef epsVar
       let iterEps = min defaultEps $ eps * eps
       approxVec <- approxFixp eqMap iterEps defaultMaxIters
       approxFracVec <- toRationalProbVec iterEps approxVec
       epsReal <- mkRealNum eps
-      mapM_ (\(varKey, pRational, p) -> do
+      mapM_ (\(varKey, pRational, _) -> do
                 veq <- liftIO $ HT.lookup eqMap varKey
                 case veq of
                   Just (PopEq _) -> return () -- An eq constraint has already been asserted
@@ -554,17 +555,28 @@ solveSCCQuery solv to_be_solved varMap@(m, newAdded, _, _) eqMap = do
                     pReal <- mkRealNum pRational
                     assert =<< mkGe var pReal
                     assert =<< mkLe var =<< mkAdd [pReal, epsReal]
-                    addFixpEq eqMap varKey (PopEq p)
             ) approxFracVec
-
-checkPendingSCC :: [AST] -> Z3 ()
-checkPendingSCC asts = do
-  sumAst <- mkAdd asts
-  less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
-  r <- checkAssumptions [less1]
-  strings <- mapM astToString asts
-  let cases
-          | Sat <- r = assert less1 -- semiconf i is pending
-          | Unsat <- r = assert =<< mkEq sumAst =<< mkRealNum (1 :: Prob) -- semiconf i is not pending
-          | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show strings
-  cases
+      recurseAssert approxFracVec eps
+      -- updating with found
+      mapM_ (\(varKey, _, p) -> do
+              veq <- liftIO $ HT.lookup eqMap varKey
+              case veq of
+                Just (PopEq _) -> return () -- An eq constraint has already been asserted
+                _ -> addFixpEq eqMap varKey (PopEq p)
+          ) approxFracVec
+    recurseAssert approxFracVec eps = do
+      epsReal <- mkRealNum eps
+      bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> do
+        veq <- liftIO $ HT.lookup eqMap varKey
+        case veq of
+          Just (PopEq _) -> return [] -- An eq constraint has already been asserted
+          _ -> do
+            (var, True) <- lookupVar varMap eqMap varKey
+            pReal <- mkRealNum pRational
+            lb <- mkGe var pReal
+            ub <-  mkLe var =<< mkAdd [pReal, epsReal]
+            return [lb, ub])
+      checkAssumptions bounds >>= \case
+        Sat -> mapM_ assert bounds
+        Unsat -> liftIO (writeIORef epsVar (2 * eps)) >> recurseAssert approxFracVec (2 * eps)
+        Undef -> error "undefinite result when checking an SCC"
