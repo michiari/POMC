@@ -530,9 +530,6 @@ solveSCCQuery epsVar varMap@(m, newAdded, _, _) eqMap = do
   --DBG.traceM "Assert hints to solve the query"
   assertHints epsVar
   --DBG.traceM "start Z3 solving"
-  -- passing some parameters to the solver
-  _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
-  _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
   model <- fromJust . snd <$> getModel
   -- update the variables from the computed model 
   variables <- liftIO $ HT.toList newAdded
@@ -545,38 +542,25 @@ solveSCCQuery epsVar varMap@(m, newAdded, _, _) eqMap = do
       let iterEps = min defaultEps $ eps * eps
       approxVec <- approxFixp eqMap iterEps defaultMaxIters
       approxFracVec <- toRationalProbVec iterEps approxVec
-      epsReal <- mkRealNum eps
-      mapM_ (\(varKey, pRational, _) -> do
-                veq <- liftIO $ HT.lookup eqMap varKey
-                case veq of
-                  Just (PopEq _) -> return () -- An eq constraint has already been asserted
-                  _ -> do
-                    (var, True) <- lookupVar varMap eqMap varKey
-                    pReal <- mkRealNum pRational
-                    assert =<< mkGe var pReal
-                    assert =<< mkLe var =<< mkAdd [pReal, epsReal]
-            ) approxFracVec
-      recurseAssert approxFracVec eps
+      -- assert bounds computed by value iteration
+      doAssert approxFracVec eps
       -- updating with found
-      mapM_ (\(varKey, _, p) -> do
-              veq <- liftIO $ HT.lookup eqMap varKey
-              case veq of
-                Just (PopEq _) -> return () -- An eq constraint has already been asserted
-                _ -> addFixpEq eqMap varKey (PopEq p)
-          ) approxFracVec
-    recurseAssert approxFracVec eps = do
+      forM_  approxFracVec $ \(varKey, _, p) -> do
+          liftIO (HT.lookup eqMap varKey) >>= \case
+            Just (PopEq _) -> return () -- An eq constraint has already been asserted
+            _ -> addFixpEq eqMap varKey (PopEq p)
+
+    doAssert approxFracVec eps = do
       epsReal <- mkRealNum eps
-      bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> do
-        veq <- liftIO $ HT.lookup eqMap varKey
-        case veq of
-          Just (PopEq _) -> return [] -- An eq constraint has already been asserted
-          _ -> do
-            (var, True) <- lookupVar varMap eqMap varKey
-            pReal <- mkRealNum pRational
-            lb <- mkGe var pReal
-            ub <-  mkLe var =<< mkAdd [pReal, epsReal]
-            return [lb, ub])
+      bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case
+        Just (PopEq _) -> return [] -- An eq constraint has already been asserted
+        _ -> do
+          (var, True) <- lookupVar varMap eqMap varKey
+          pReal <- mkRealNum pRational
+          lb <- mkGe var pReal
+          ub <-  mkLe var =<< mkAdd [pReal, epsReal]
+          return [lb, ub])
       checkAssumptions bounds >>= \case
         Sat -> mapM_ assert bounds
-        Unsat -> liftIO (writeIORef epsVar (2 * eps)) >> recurseAssert approxFracVec (2 * eps)
+        Unsat -> liftIO (writeIORef epsVar (2 * eps)) >> doAssert approxFracVec (2 * eps)
         Undef -> error "undefinite result when checking an SCC"
