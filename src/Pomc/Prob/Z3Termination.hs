@@ -534,8 +534,6 @@ solveSCCQuery solv to_be_solved varMap@(m, newAdded, _, _) eqMap = do
   variables <- liftIO $ HT.toList newAdded
   forM_ variables $ \(key, var) -> do
     evaluated <- fromJust <$> eval model var
-    s <- astToString evaluated
-    addFixpEq eqMap key (PopEq (toRational (read (takeWhile (/= '?') s) :: Scientific)))
     liftIO $ HT.insert m key evaluated
   where
     assertHints solver = case solver of
@@ -556,6 +554,7 @@ solveSCCQuery solv to_be_solved varMap@(m, newAdded, _, _) eqMap = do
                     pReal <- mkRealNum p
                     assert =<< mkGe var pReal
                     assert =<< mkLe var =<< mkAdd [pReal, epsReal]
+                    addFixpEq eqMap varKey (PopEq p)
             ) approxFracVec
 
 checkPendingSCC :: [AST] -> Z3 ()
