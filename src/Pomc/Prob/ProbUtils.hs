@@ -156,7 +156,7 @@ decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
 data Solver = PureSMT | SMTWithHints | SMTCert Double deriving (Eq, Show)
 
 defaultTolerance :: Double
-defaultTolerance = 1e-3
+defaultTolerance = 1e-5
 
 -- different termination queries
 -- CompQuery asks whether the probability to terminate is <, <=, >, >= than the given probability depending on Comp

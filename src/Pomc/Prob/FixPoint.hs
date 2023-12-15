@@ -113,7 +113,7 @@ defaultEps :: Double
 defaultEps = 1e-8
 
 defaultMaxIters :: Int
-defaultMaxIters = 10000
+defaultMaxIters = 1000000
 
 toRationalProbVec :: (MonadIO m, RealFrac n) => n -> ProbVec n -> m [(VarKey, Prob, n)]
 toRationalProbVec eps probVec =
