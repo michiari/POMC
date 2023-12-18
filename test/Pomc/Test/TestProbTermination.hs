@@ -10,7 +10,6 @@ module Pomc.Test.TestProbTermination(tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import Pomc.Test.OPMs (stlV2Alphabet, stlV3Alphabet, makeInputSet)
-import Data.Maybe(fromJust, isJust)
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), terminationLTExplicit, terminationLEExplicit, terminationGTExplicit, terminationGEExplicit,
                                   terminationApproxExplicit)
 
@@ -39,8 +38,11 @@ exactTerminationProbabilities = [(dummyModel, 1, "Dummy Model"),
                                  (biasedRandomWalk, 2%3, "Biased Random Walk"), 
                                  (nestedRandomWalk, 1, "Nested Random Walk"),
                                  (nonTerminating, 0, "Non terminating POPA"),
-                                 (callRetEx, 1 % 4, "Call-ret example"),
-                                 (doubleCallRet2, 0, "Double call-ret example")
+                                 (callRetEx, 0, "Call-ret example"),
+                                 (callRetLoop1, 1, "Call-ret Loop 1"),
+                                 (callRetLoop2, 1, "Call-ret Loop 2"),
+                                 (loopFunShort, 1 % 2, "Recursive loop with function call short"),
+                                 (loopFunStm, 1 % 2, "Recursive loop with function call and stm")
                                 ]
 
 makeTestCase :: (Eq a, Show a)
@@ -56,7 +58,7 @@ makeTestCase popa ((name, query), expected) = testCase name $ do
 dummyModelTests :: TestTree
 dummyModelTests = testGroup "Dummy Model Tests" $
   map (makeTestCase dummyModel) (zip termQueries expectedDummyModel)
-  
+
 -- termination probability = 1
 dummyModel :: (ExplicitPopa Word String)
 dummyModel = ExplicitPopa
@@ -264,14 +266,12 @@ callRetEx = ExplicitPopa
   , epopaDeltaPush =
       [ (0, [(1, makeInputSet ["call"], 1)])
       , (1, [(1, makeInputSet ["call"], 2 % 3), (2, makeInputSet ["ret"], 1 % 3)])
-      --, (2, [(2, makeInputSet ["ret"], 1 :: Prob)])
       ]
   , epopaDeltaShift =
       [ (2, [(1, makeInputSet ["call"], 1 :: Prob)]) ]
   , epopaDeltaPop =
       [ (1, 1, [(1, makeInputSet ["call"], 2 % 3), (2, makeInputSet ["ret"], 1 % 3)])
       , (1, 0, [(0, makeInputSet ["call"], 0)])
-      --, (2, 2, [(2, makeInputSet ["ret"], 1 :: Prob)])
       ]
   }
 
@@ -282,67 +282,34 @@ expectedcallRetEx = [ False, True, True,
                       True, False, False
                     ]
 
-doubleCallRetTests :: TestTree
-doubleCallRetTests = testGroup "Double Call-ret example Tests" $
-  map (makeTestCase doubleCallRet) (zip termQueries expectedcallRetEx)
-
-doubleCallRet :: ExplicitPopa Word String
-doubleCallRet = ExplicitPopa
+callRetLoop1 :: ExplicitPopa Word String
+callRetLoop1 = ExplicitPopa
   { epAlphabet = stlV3Alphabet
   , epInitial = (0, makeInputSet ["call"])
   , epopaDeltaPush =
       [ (0, [(1, makeInputSet ["call"], 1)])
-      , (1, [(1, makeInputSet ["call"], 2 % 3), (3, makeInputSet ["ret"], 1 % 3)])
-      , (2, [(2, makeInputSet ["call"], 2 % 3), (3, makeInputSet ["ret"], 1 % 3)])
+      , (1, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
+      , (2, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
+      , (4, [(4, makeInputSet ["stm"], 1)])
       ]
   , epopaDeltaShift =
-      [ (3, [(1, makeInputSet ["call"], 1 % 2), (2, makeInputSet ["call"], 1 % 2)]) ]
+      [ (3, [(3, makeInputSet ["ret"], 1)]) ]
   , epopaDeltaPop =
-      [ (1, 1, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
-      , (1, 2, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
-      , (2, 1, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
-      , (2, 2, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
-      , (1, 0, [(0, makeInputSet ["call"], 0)])
-      --, (2, 2, [(2, makeInputSet ["ret"], 1 :: Prob)])
+      [ (3, 1, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
+      , (3, 2, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
+      , (3, 0, [(4, makeInputSet ["stm"], 1)])
+      , (4, 4, [(4, makeInputSet ["stm"], 1)])
       ]
   }
 
-expectedDoubleCallRet :: [Bool]
-expectedDoubleCallRet = [ False, True, True,
-                          False, True, True,
-                          True, False, False,
-                          True, False, False
-                        ]
-
-doubleCallRet1 :: ExplicitPopa Word String
-doubleCallRet1 = ExplicitPopa
+callRetLoop2 :: ExplicitPopa Word String
+callRetLoop2 = ExplicitPopa
   { epAlphabet = stlV3Alphabet
   , epInitial = (0, makeInputSet ["call"])
   , epopaDeltaPush =
       [ (0, [(1, makeInputSet ["call"], 1)])
-      , (1, [(1, makeInputSet ["call"], 1 % 2), (3, makeInputSet ["ret"], 1 % 2)])
-      , (2, [(2, makeInputSet ["call"], 1 % 2), (3, makeInputSet ["ret"], 1 % 2)])
-      ]
-  , epopaDeltaShift =
-      [ (3, [(1, makeInputSet ["call"], 1 % 2), (2, makeInputSet ["call"], 1 % 2)]) ]
-  , epopaDeltaPop =
-      [ (1, 1, [(1, makeInputSet ["call"], 1 % 4), (2, makeInputSet ["call"], 1 % 4), (3, makeInputSet ["ret"], 1 % 2)])
-      , (1, 2, [(1, makeInputSet ["call"], 1 % 4), (2, makeInputSet ["call"], 1 % 4), (3, makeInputSet ["ret"], 1 % 2)])
-      , (2, 1, [(1, makeInputSet ["call"], 1 % 4), (2, makeInputSet ["call"], 1 % 4), (3, makeInputSet ["ret"], 1 % 2)])
-      , (2, 2, [(1, makeInputSet ["call"], 1 % 4), (2, makeInputSet ["call"], 1 % 4), (3, makeInputSet ["ret"], 1 % 2)])
-      , (1, 0, [(0, makeInputSet ["call"], 0)])
-      --, (2, 2, [(2, makeInputSet ["ret"], 1 :: Prob)])
-      ]
-  }
-
-doubleCallRet2 :: ExplicitPopa Word String
-doubleCallRet2 = ExplicitPopa
-  { epAlphabet = stlV3Alphabet
-  , epInitial = (0, makeInputSet ["call"])
-  , epopaDeltaPush =
-      [ (0, [(1, makeInputSet ["call"], 1)])
-      , (1, [(1, makeInputSet ["call"], 2 % 3), (3, makeInputSet ["ret"], 1 % 3)])
-      , (2, [(2, makeInputSet ["call"], 2 % 3), (3, makeInputSet ["ret"], 1 % 3)])
+      , (1, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
+      , (2, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)])
       ]
   , epopaDeltaShift =
       [ (3, [(1, makeInputSet ["call"], 1 % 3), (2, makeInputSet ["call"], 1 % 3), (3, makeInputSet ["ret"], 1 % 3)]) ]
@@ -360,27 +327,31 @@ doubleCallRet2 = ExplicitPopa
       ]
   }
 
-doubleCallRet3 :: ExplicitPopa Word String
-doubleCallRet3 = ExplicitPopa
+loopFunShort :: ExplicitPopa Word String
+loopFunShort = ExplicitPopa
+  { epAlphabet = stlV3Alphabet
+  , epInitial = (1, makeInputSet ["call"])
+  , epopaDeltaPush =
+      [ (1, [(1, makeInputSet ["call"], 2 % 3), (2, makeInputSet ["ret"], 1 % 3)]) ]
+  , epopaDeltaShift =
+      [ (2, [(2, makeInputSet ["ret"], 1)]) ]
+  , epopaDeltaPop =
+      [ (2, 1, [(1, makeInputSet ["call"], 1 % 2), (2, makeInputSet ["ret"], 1 % 2)]) ]
+  }
+
+loopFunStm :: ExplicitPopa Word String
+loopFunStm = ExplicitPopa
   { epAlphabet = stlV3Alphabet
   , epInitial = (0, makeInputSet ["call"])
   , epopaDeltaPush =
-      [ (0, [(1, makeInputSet ["call"], 1)])
-      , (1, [(1, makeInputSet ["call"], 1 % 2), (3, makeInputSet ["ret"], 1 % 2)])
-      , (2, [(2, makeInputSet ["call"], 1 % 2), (3, makeInputSet ["ret"], 1 % 2)])
+      [ (0, [(1, makeInputSet ["stm"], 1)])
+      , (1, [(0, makeInputSet ["call"], 2 % 3), (2, makeInputSet ["ret"], 1 % 3)])
       ]
   , epopaDeltaShift =
-      [ (3, [(1, makeInputSet ["call"], 1 % 4), (2, makeInputSet ["call"], 1 % 4), (3, makeInputSet ["ret"], 1 % 2)]) ]
+      [ (2, [(2, makeInputSet ["ret"], 1)]) ]
   , epopaDeltaPop =
-      [ (1, 1, [(1, makeInputSet ["call"], 1)])
-      , (1, 2, [(1, makeInputSet ["call"], 1)])
-      , (2, 1, [(2, makeInputSet ["call"], 1)])
-      , (2, 2, [(2, makeInputSet ["call"], 1)])
-      , (3, 1, [(3, makeInputSet ["ret"], 1)])
-      , (3, 2, [(3, makeInputSet ["ret"], 1)])
-      , (1, 0, [(0, makeInputSet ["call"], 1)])
-      , (2, 0, [(0, makeInputSet ["call"], 1)])
-      , (3, 0, [(0, makeInputSet ["call"], 1)])
-      --, (2, 2, [(2, makeInputSet ["ret"], 1 :: Prob)])
+      [ (2, 0, [(1, makeInputSet ["stm"], 1)])
+      , (2, 1, [(2, makeInputSet ["ret"], 1)])
+      , (0, 1, [(0, makeInputSet ["call"], 1)])
       ]
   }

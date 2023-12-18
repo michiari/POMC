@@ -280,15 +280,11 @@ pB() { }
 loopFunSrc :: T.Text
 loopFunSrc = T.pack [r|
 pA() {
-  bool x, y;
+  bool x;
   x = true {2u4 : 3u4} false;
   while (x) {
     pA();
-
-    y = true {1u4 : 2u4} false;
-    if (y) {
-      pB();
-    } else { }
+    x = true {2u4 : 3u4} false;
   }
 }
 

@@ -132,9 +132,12 @@ terminationExplicit popa query =
             }
   in do
     sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
-    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
-    p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
+    p <- case query of
+           ApproxSingleQuery _ -> evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc query
+           _ -> do
+             asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
+             evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
     return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
 
 programTermination :: Program -> TermQuery -> IO (Prob, String)
@@ -155,7 +158,7 @@ programTermination prog query =
 
   in do
     sc <- stToIO $ buildGraph pDelta initVs initLbl
-    --asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
+    -- asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     --p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query

@@ -264,7 +264,9 @@ solveQuery q
 
     assertHints varMap eqMap  eps = do
               let iterEps = min defaultEps $ eps * eps
+              -- DBG.traceShowM =<< (liftIO $ HT.toList eqMap)
               approxVec <- approxFixp eqMap iterEps defaultMaxIters
+              -- DBG.traceShowM =<< (liftIO $ HT.toList approxVec)
               approxFracVec <- toRationalProbVec iterEps approxVec
               DBG.traceM "Computed a lower bound!"
               enlargeBounds approxFracVec eps
