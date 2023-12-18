@@ -81,10 +81,10 @@ lookupVar (varMap, newAdded, asPendingIdxs, isASQ) eqMap key = do
 terminationQuery :: (Eq state, Hashable state, Show state)
                  => SupportGraph RealWorld state
                  -> EncPrecFunc
-                 -> IntSet -- semiconfs that cannot reach a pop
+                 -> (IntSet, IntSet) -- semiconfs that cannot reach a pop, and a subset of those that do it almost surely
                  -> TermQuery
                  -> Z3 TermResult
-terminationQuery graph precFun asPendingSemiconfs query = do
+terminationQuery graph precFun (asPending, asNonPending) query = do
     newMap <- liftIO HT.new
     unusedMap <- liftIO HT.new
     new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
@@ -92,8 +92,8 @@ terminationQuery graph precFun asPendingSemiconfs query = do
     eqMap <- liftIO HT.new
     -- encode the probability transition relation by asserting a set of Z3 formulas
     setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
-    encode [(0 ::Int , -1 :: Int)] (newMap, unusedMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap graph precFun mkGe query
-    solveQuery query new_var graph (newMap, unusedMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap
+    encode [(0 ::Int , -1 :: Int)] (newMap, unusedMap, asPending, isApproxSingleQuery query) eqMap graph precFun mkGe query
+    solveQuery query new_var graph (newMap, unusedMap, asPending, isApproxSingleQuery query) asNonPending eqMap
 
 
 encode :: (Eq state, Hashable state, Show state)
@@ -223,26 +223,26 @@ encodeShift varMap@(_, _, asPendingSemiconfs, _) eqMap mkComp gn varKey@(gnId_, 
 -- (graph :: SupportGraph RealWorld state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
 solveQuery :: TermQuery -> AST -> SupportGraph RealWorld state
-           -> VarMap -> EqMap EqMapNumbersType -> Z3 TermResult
+           -> VarMap -> IntSet -> EqMap EqMapNumbersType -> Z3 TermResult
 solveQuery q
   | ApproxAllQuery solv <- q = encodeApproxAllQuery (getTolerance solv)
   | ApproxSingleQuery solv <- q = encodeApproxSingleQuery (getTolerance solv)
   | PendingQuery solv <- q = encodePendingQuery (getTolerance solv)-- TODO: enable hints here and see if it's any better
   | CompQuery comp bound solv <- q = encodeComparison comp bound (getTolerance solv)
   where
-    encodeApproxAllQuery eps _ graph varMap@(_, _, asPendingIdxs, _) eqMap = do
+    encodeApproxAllQuery eps _ graph varMap@(_, _, asPendingIdxs, _) _ eqMap = do
       assertHints varMap eqMap eps
       upperBoundModel <- fromJust . snd <$> getModel
       groupedVec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
       sumAstVec <- V.mapM mkAdd groupedVec
       setZ3PPOpts
-      ub <-  V.forM sumAstVec $ \a -> do 
+      ub <-  V.forM sumAstVec $ \a -> do
                 s <- astToString . fromJust =<< eval upperBoundModel a
                 return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
       lbMap <- Map.fromListWith (+) . map (\(k, PopEq d) -> (fst k, approxRational (d - eps) eps)) <$> liftIO (HT.toList eqMap)
       let lbVector = V.generate (MV.length graph) (\idx -> Map.findWithDefault 0 idx lbMap)
       return $ ApproxAllResult (lbVector, ub)
-    encodeApproxSingleQuery eps _ _ varMap@(m, _, _, _) eqMap = do
+    encodeApproxSingleQuery eps _ _ varMap@(m, _, _, _) _ eqMap = do
       assertHints varMap eqMap eps
       upperBoundModel <- fromJust . snd <$> getModel
       setZ3PPOpts
@@ -250,13 +250,13 @@ solveQuery q
       lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> liftIO (HT.lookup eqMap (0,-1))
       return $ ApproxSingleResult (lb, toRational (read (takeWhile (/= '?') ub) :: Scientific))
 
-    encodePendingQuery solv _ graph varMap@(_, _, asPendingIdxs, _) eqMap = do
+    encodePendingQuery solv _ graph varMap@(_, _, asPendingIdxs, _) asNonPendingIdxs eqMap = do
       DBG.traceM "Asserting hints"
       assertHints varMap eqMap solv
       DBG.traceM "Computing an overrapproximating model"
       m <- fromJust . snd <$> getModel
       vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
-      PendingResult <$> V.imapM (isPending graph m) vec
+      PendingResult <$> V.imapM (isPending graph m asNonPendingIdxs) vec
 
     getTolerance SMTWithHints = defaultTolerance
     getTolerance (SMTCert eps) = eps
@@ -285,7 +285,7 @@ solveQuery q
                   lb <- mkGe var pReal
                   ub <-  mkLe var =<< mkAdd [pReal, epsReal]
                   return [lb, ub])
-              DBG.traceM "Collected some requirements"
+              --DBG.traceM "Collected some requirements"
               checkAssumptions bounds >>= \case
                   Sat -> mapM_ assert bounds
                   Unsat -> enlargeBounds approxFracVec (2 * eps)
@@ -296,7 +296,7 @@ solveQuery q
       _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
       return ()
 
-    encodeComparison comp bound solver var _ varMap eqMap = do
+    encodeComparison comp bound solver var _ varMap _ eqMap = do
       assertHints varMap eqMap solver
       let mkComp = case comp of
             Lt -> mkLt
@@ -324,9 +324,8 @@ groupASTs (varMap, _,  _, _) len cond = do
   V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support graph
 
 -- is a semiconf pending?
-isPending :: SupportGraph RealWorld state -> Model -> Int -> [AST] -> Z3 Bool
-isPending graph m idx asts = do
-  DBG.traceM $ "isPending of semiconf: " ++ show idx
+isPending :: SupportGraph RealWorld state -> Model -> IntSet -> Int -> [AST] -> Z3 Bool
+isPending graph m asNonPendingIdxs idx asts = do
   sumAst <- mkAdd asts
   -- some optimizations for cases where we already know if the semiconf is pending
   -- so there is no need for additional checks
@@ -334,10 +333,11 @@ isPending graph m idx asts = do
   isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph idx
   -- if no variable has been encoded for this semiconf, it means it ha zero prob to reach a pop (and hence it is pending)
   let noVars = null asts
+      asNonPending = IntSet.member idx asNonPendingIdxs
   less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
   isUpperBounded <- fromJust <$> (evalBool m =<< mkLt sumAst =<< mkRealNum (1 :: Prob))
   eq <- mkEq sumAst =<< mkRealNum (1 :: Prob)
-  if isPop
+  if isPop || asNonPending
     then return False
     else if noVars || isUpperBounded
             then return True
@@ -360,6 +360,7 @@ data DeficientGlobals state = DeficientGlobals
   , bStack     :: ZStack Int
   , iVector    :: MV.IOVector Int
   , successorsCntxs :: MV.IOVector SuccessorsPopContexts
+  , cannotPend :: IORef IntSet
   , asPSs :: IORef IntSet
   , partialVarMap :: PartialVarMap
   , eqMap :: EqMap EqMapNumbersType
@@ -372,7 +373,7 @@ terminationQuerySCC :: (Eq state, Hashable state, Show state)
                  => SupportGraph RealWorld state
                  -> EncPrecFunc
                  -> TermQuery
-                 -> Z3 TermResult
+                 -> Z3 (TermResult, IntSet)
 terminationQuerySCC suppGraph precFun query = do
   newSS              <- liftIO ZS.new
   newBS              <- liftIO ZS.new
@@ -381,6 +382,7 @@ terminationQuerySCC suppGraph precFun query = do
   emptyASPS <- liftIO $ newIORef IntSet.empty
   newMap <- liftIO HT.new
   newEqMap <- liftIO HT.new
+  newCannotPend <- liftIO $ newIORef IntSet.empty
   newEps <- case (solver query) of
               SMTWithHints -> liftIO $ newIORef defaultTolerance
               SMTCert givenEps -> liftIO $ newIORef givenEps
@@ -390,6 +392,7 @@ terminationQuerySCC suppGraph precFun query = do
                                 , bStack = newBS
                                 , iVector = newIVec
                                 , successorsCntxs = newSuccessorsCntxs
+                                , cannotPend = newCannotPend
                                 , asPSs = emptyASPS
                                 , partialVarMap = (newMap, isApproxSingleQuery query)
                                 , eqMap = newEqMap
@@ -406,6 +409,7 @@ terminationQuerySCC suppGraph precFun query = do
   _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
   _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
   currentEps <- liftIO $ readIORef (eps globals)
+  cannotPendIdxs <- liftIO $ readIORef (cannotPend globals)
   let actualEps = min defaultEps $ currentEps * currentEps
       readResults
         | ApproxAllQuery _ <- query = readApproxAllQuery
@@ -422,11 +426,11 @@ terminationQuerySCC suppGraph precFun query = do
                 return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
             lbMap <- Map.fromListWith (+) . map (\(k, PopEq d) -> (fst k, approxRational (d - actualEps) actualEps)) <$> liftIO (HT.toList newEqMap)
             let lbVector = V.generate (MV.length suppGraph) (\idx -> Map.findWithDefault 0 idx lbMap)
-            return $ ApproxAllResult (lbVector, ub)
+            return  (ApproxAllResult (lbVector, ub), cannotPendIdxs)
           readApproxSingleQuery = do
               ub <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
               lb <- (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newEqMap (0,-1))
-              return $ ApproxSingleResult (lb, toRational (read (takeWhile (/= '?') ub) :: Scientific))
+              return (ApproxSingleResult (lb, toRational (read (takeWhile (/= '?') ub) :: Scientific)) , cannotPendIdxs)
   readResults
 
 dfs :: (Eq state, Hashable state, Show state)
@@ -434,24 +438,30 @@ dfs :: (Eq state, Hashable state, Show state)
     -> EncPrecFunc
     -> TermQuery
     -> GraphNode state
-    -> Z3 SuccessorsPopContexts
+    -> Z3 (SuccessorsPopContexts, Bool)
 dfs globals precFun query gn =
   let cases nextNode iVal
         | (iVal == 0) = addtoPath globals nextNode >> dfs globals precFun query nextNode
-        | (iVal < 0)  = liftIO $ MV.unsafeRead (successorsCntxs globals) (gnId nextNode)
-        -- here we don't need the additional push of the closing edge
-        | (iVal > 0)  = merge globals nextNode >> return IntSet.empty
+        | (iVal < 0)  = do
+            succCntx <- liftIO $ MV.unsafeRead (successorsCntxs globals) (gnId nextNode)
+            noPend <- liftIO $ IntSet.member (gnId nextNode) <$> readIORef (cannotPend globals)
+            return (succCntx, noPend)
+        | (iVal > 0)  = liftIO (ZS.push (sStack globals) (gnId nextNode)) >> merge globals nextNode >> return (IntSet.empty, False)
         | otherwise = error "unreachable error"
       follow e = do
         node <- liftIO $ MV.unsafeRead (supportGraph globals) (to e)
         iVal <- liftIO $ MV.unsafeRead (iVector globals) (to e)
         cases node iVal
   in do
-    descendantsPopCntxs <- IntSet.unions <$> forM (Set.toList $ internalEdges gn) follow
-    let computeActualPopCntxs
-          | not . Set.null $ supportEdges gn =  IntSet.unions <$> forM (Set.toList $ supportEdges gn) follow
-          | not . Map.null $ popContexts gn = return $ IntSet.fromList . Map.keys $ popContexts gn
-          | otherwise = return descendantsPopCntxs
+    res <- forM (Set.toList $ internalEdges gn) follow
+    let descendantsPopCntxs = IntSet.unions (map fst res)
+        noPend = all snd res
+        computeActualPopCntxs
+          | not . Set.null $ supportEdges gn = do
+              newRes <- forM (Set.toList $ supportEdges gn) follow
+              return (IntSet.unions (map fst newRes), noPend && all snd newRes)
+          | not . Map.null $ popContexts gn = return (IntSet.fromList . Map.keys $ popContexts gn, True)
+          | otherwise = return (descendantsPopCntxs, noPend)
     spcs <- computeActualPopCntxs
     createComponent globals gn spcs precFun query
 
@@ -472,11 +482,11 @@ merge globals gn = liftIO $ do
 createComponent :: (Eq state, Hashable state, Show state)
                 => DeficientGlobals state
                 -> GraphNode state
-                -> SuccessorsPopContexts
+                -> (SuccessorsPopContexts, Bool)
                 -> EncPrecFunc
                 -> TermQuery
-                -> Z3 SuccessorsPopContexts
-createComponent globals gn popContxs precFun query = do
+                -> Z3 (SuccessorsPopContexts, Bool)
+createComponent globals gn (popContxs, noPend) precFun query = do
   topB <- liftIO $ ZS.peek $ bStack globals
   iVal <- liftIO $ MV.unsafeRead (iVector globals) (gnId gn)
   let (varMap, isASQ) = partialVarMap globals
@@ -484,12 +494,14 @@ createComponent globals gn popContxs precFun query = do
         liftIO $ ZS.pop_ (bStack globals)
         sSize <- liftIO $ ZS.size $ sStack globals
         poppedEdges <- liftIO $ ZS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
-        --DBG.traceM  $ "Popped Semiconfigurations: " ++ show poppedEdges
+        DBG.traceM  $ "Popped Semiconfigurations: " ++ show poppedEdges
+        let actualNoPend = (length poppedEdges < 2) && noPend
         forM_ poppedEdges $ \e -> do
           liftIO $ MV.unsafeWrite (iVector globals) e (-1)
           liftIO $ MV.unsafeWrite (successorsCntxs globals) e popContxs
-        return poppedEdges
-      doEncode poppedEdges = do
+          when actualNoPend $ liftIO $ modifyIORef (cannotPend globals) $ IntSet.insert e
+        return (poppedEdges, actualNoPend)
+      doEncode (poppedEdges, actualNoPend) = do
         currentASPSs <- liftIO $ readIORef (asPSs globals)
         newAdded <- liftIO HT.new
         let to_be_encoded = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
@@ -498,7 +510,8 @@ createComponent globals gn popContxs precFun query = do
         -- delete previous assertions and encoding the new ones
         reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
         solveSCCQuery (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
-      doNotEncode poppedEdges = do
+        return actualNoPend
+      doNotEncode (poppedEdges, actualNoPend) = do
         liftIO $ modifyIORef (asPSs globals) $ IntSet.union (IntSet.fromList poppedEdges)
         when (gnId gn == 0 && isASQ) $ do -- for the initial semiconf, encode anyway
           newAdded <- liftIO HT.new
@@ -508,12 +521,12 @@ createComponent globals gn popContxs precFun query = do
           reset >> encode [(0, -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
           liftIO $ HT.insert newAdded (0 , -1) new_var
           solveSCCQuery (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+        return actualNoPend
       cases
-        | iVal /= topB = return ()
+        | iVal /= topB = return False
         | not (IntSet.null popContxs) = createC >>= doEncode
         | otherwise = createC >>= doNotEncode
-  cases >> return popContxs
-
+  cases >>= \val ->  return (popContxs, val)
 
 -- params:
 -- (var:: AST) = Z3 var associated with the initial semiconf
@@ -545,7 +558,7 @@ solveSCCQuery epsVar varMap@(m, newAdded, _, _) eqMap = do
     --(PopEq lb) <- liftIO $ fromJust <$> HT.lookup eqMap key
     --DBG.traceM $ "Computed lower bound for variable " ++ show key ++ ": " ++ show lb
     liftIO $ HT.insert m key evaluated
-  where 
+  where
     doAssert approxFracVec eps = do
       epsReal <- mkRealNum eps
       bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case

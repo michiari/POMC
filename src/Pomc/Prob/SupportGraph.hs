@@ -33,7 +33,7 @@ import qualified Data.Vector.Mutable as MV
 import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
 
-import Control.Monad(forM, forM_, when)
+import Control.Monad(forM, forM_, when, unless)
 import Control.Monad.ST (ST)
 
 import Data.STRef (STRef, newSTRef, readSTRef)
@@ -236,6 +236,7 @@ buildTransition globals probdelta from isSupport prob_ dest =
 
 -- some renaming to make the algorithm more understandable
 type CanReachPop = Bool
+type MustReachPop = Bool
 type Arch = Int
 
 data DeficientGlobals s state = DeficientGlobals
@@ -244,48 +245,63 @@ data DeficientGlobals s state = DeficientGlobals
   , bStack     :: GStack s Int
   , iVector    :: MV.MVector s Int
   , canReachPop :: MV.MVector s CanReachPop
+  , mustReachPop :: MV.MVector s MustReachPop
   }
 
-asPendingSemiconfs :: Show state => SupportGraph s state -> ST s IntSet
+asPendingSemiconfs :: Show state => SupportGraph s state -> ST s (IntSet, IntSet)
 asPendingSemiconfs suppGraph = do
   newSS            <- GS.new
   newBS            <- GS.new
   newIVec          <- MV.replicate (MV.length suppGraph) 0
   newCanReachPop <- MV.replicate (MV.length suppGraph) False
+  newMustReachPop <- MV.replicate (MV.length suppGraph) False
   let globals = DeficientGlobals { supportGraph = suppGraph
                                  , sStack = newSS
                                  , bStack = newBS
                                  , iVector = newIVec
                                  , canReachPop = newCanReachPop
+                                 , mustReachPop = newMustReachPop
                                  }
   -- perform the Gabow algorithm to determine semiconfs that cannot reach a pop
   gn <- MV.unsafeRead suppGraph 0
   addtoPath globals gn
   _ <- dfs globals gn
-  let f acc _ True = acc
-      f acc idx False = IntSet.insert idx acc
-  MV.ifoldl' f IntSet.empty (canReachPop globals)
+  let discardTrues acc _ True = acc
+      discardTrues acc idx False = IntSet.insert idx acc
+      discardFalses acc idx True = IntSet.insert idx acc
+      discardFalses acc _ False = acc
+  cannotReachPops <- MV.ifoldl' discardTrues IntSet.empty (canReachPop globals)
+  canReachPops <- MV.ifoldl' discardFalses IntSet.empty (canReachPop globals)
+  mustReachPops <- MV.ifoldl' discardFalses IntSet.empty (mustReachPop globals)
+  unless (IntSet.isSubsetOf mustReachPops canReachPops) $ error "there is a bug in the implementation"
+  return (cannotReachPops, mustReachPops)
 
 dfs :: Show state => DeficientGlobals s state
     -> GraphNode state
-    -> ST s CanReachPop
+    -> ST s (CanReachPop, MustReachPop)
 dfs globals gn =
   let cases nextNode iVal
         | (iVal == 0) = addtoPath globals nextNode >> dfs globals nextNode
-        | (iVal < 0)  = MV.unsafeRead (canReachPop globals) (gnId nextNode)
-        -- here we don't need the additional push of the closing edge
-        | (iVal > 0)  = merge globals nextNode >> return False
+        | (iVal < 0)  = do
+          crP <- MV.unsafeRead (canReachPop globals) (gnId nextNode)
+          mrP <- MV.unsafeRead (mustReachPop globals) (gnId nextNode)
+          return (crP, mrP)
+        | (iVal > 0)  = GS.push (sStack globals) (gnId nextNode) >> merge globals nextNode >> return (False, False)
         | otherwise = error "unreachable error"
       follow e = do
         node <- MV.unsafeRead (supportGraph globals) (to e)
         iVal <- MV.unsafeRead (iVector globals) (to e)
         cases node iVal
   in do
-    descendantsCanReachPop <- or <$> forM (Set.toList $ internalEdges gn) follow
-    let computeActualCanReach
-          | not . Set.null $ supportEdges gn =  or <$> forM (Set.toList $ supportEdges gn) follow
-          | not . Map.null $ popContexts gn = return True
-          | otherwise = return descendantsCanReachPop
+    res <- forM (Set.toList $ internalEdges gn) follow
+    let dCanReachPop = any fst res
+        dMustReachPop = all snd res
+        computeActualCanReach
+          | not . Set.null $ supportEdges gn =  do 
+            actualRes  <- forM (Set.toList $ supportEdges gn) follow
+            return (any fst actualRes, dMustReachPop && all snd actualRes)
+          | not . Map.null $ popContexts gn = return (True, True)
+          | otherwise = return (dCanReachPop, dMustReachPop)
     canReach <- computeActualCanReach
     createComponent globals gn canReach
 
@@ -304,8 +320,8 @@ merge globals gn = do
   GS.popWhile_ (bStack globals) (iVal <)
 
 
-createComponent :: DeficientGlobals s state -> GraphNode state -> CanReachPop -> ST s CanReachPop
-createComponent globals gn canReachP = do
+createComponent :: DeficientGlobals s state -> GraphNode state -> (CanReachPop, MustReachPop) -> ST s (CanReachPop, MustReachPop)
+createComponent globals gn (canReachP, mustReachP) = do
   topB <- GS.peek $ bStack globals
   iVal <- MV.unsafeRead (iVector globals) (gnId gn)
   if iVal == topB
@@ -313,9 +329,10 @@ createComponent globals gn canReachP = do
       GS.pop_ (bStack globals)
       sSize <- GS.size $ sStack globals
       poppedEdges <- GS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
+      let actualMustReach = mustReachP && length poppedEdges < 2
       forM_ poppedEdges $ \e -> do
         MV.unsafeWrite (iVector globals) e (-1)
         MV.unsafeWrite (canReachPop globals) e canReachP
-      return canReachP
-    else do
-      return canReachP
+        MV.unsafeWrite (mustReachPop globals) e actualMustReach
+      return (canReachP,actualMustReach)
+    else return (canReachP, mustReachP)
