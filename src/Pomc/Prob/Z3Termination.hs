@@ -38,11 +38,11 @@ import qualified Data.Vector.Mutable as MV
 import Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import Data.Scientific (Scientific)
+import Data.Ratio (approxRational)
+
 
 import Z3.Monad
 import Data.IORef (IORef, newIORef, modifyIORef, readIORef, writeIORef)
-
-import Data.List(groupBy)
 
 import qualified Debug.Trace as DBG
 
@@ -64,17 +64,13 @@ lookupVar (varMap, newAdded, asPendingIdxs, isASQ) eqMap key = do
   maybeVar <- liftIO $ HT.lookup varMap key
   if isJust maybeVar
     then do
-      s <- astToString (fromJust maybeVar)
-      --DBG.traceM $ "returning already present var: " ++ s
       return (fromJust maybeVar, True)
     else do
       new_var <- if IntSet.member (fst key) asPendingIdxs
-                      then if snd key == -1 && isASQ
-                              then addFixpEq eqMap key (PopEq 1) >> mkRealNum (1 :: EqMapNumbersType)
-                              else addFixpEq eqMap key (PopEq 0) >> mkRealNum (0 :: EqMapNumbersType)
-                      else mkFreshRealVar $ show key
-
-      --DBG.traceM $ "Inserting var: " ++ show key
+                  then if snd key == -1 && isASQ
+                    then addFixpEq eqMap key (PopEq 1) >> mkRealNum (1 :: EqMapNumbersType)
+                    else addFixpEq eqMap key (PopEq 0) >> mkRealNum (0 :: EqMapNumbersType)
+                  else mkFreshRealVar $ show key
       liftIO $ HT.insert varMap key new_var
       liftIO $ HT.insert newAdded key new_var
       return (new_var, False)
@@ -90,14 +86,14 @@ terminationQuery :: (Eq state, Hashable state, Show state)
                  -> Z3 TermResult
 terminationQuery graph precFun asPendingSemiconfs query = do
     newMap <- liftIO HT.new
-    unusedNewMap <- liftIO HT.new
+    unusedMap <- liftIO HT.new
     new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
     liftIO $ HT.insert newMap (0 :: Int, -1 :: Int) new_var
     eqMap <- liftIO HT.new
     -- encode the probability transition relation by asserting a set of Z3 formulas
     setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
-    encode [(0 ::Int , -1 :: Int)] (newMap, unusedNewMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap graph precFun mkGe query
-    solveQuery query new_var graph (newMap, unusedNewMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap
+    encode [(0 ::Int , -1 :: Int)] (newMap, unusedMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap graph precFun mkGe query
+    solveQuery query new_var graph (newMap, unusedMap, asPendingSemiconfs, isApproxSingleQuery query) eqMap
 
 
 encode :: (Eq state, Hashable state, Show state)
@@ -229,54 +225,69 @@ encodeShift varMap@(_, _, asPendingSemiconfs, _) eqMap mkComp gn varKey@(gnId_, 
 solveQuery :: TermQuery -> AST -> SupportGraph RealWorld state
            -> VarMap -> EqMap EqMapNumbersType -> Z3 TermResult
 solveQuery q
-  | ApproxAllQuery solv <- q = encodeApproxAllQuery solv
-  | ApproxSingleQuery solv <- q = encodeApproxSingleQuery solv
-  | PendingQuery solv <- q = encodePendingQuery solv -- TODO: enable hints here and see if it's any better
-  | CompQuery comp bound solv <- q = encodeComparison comp bound solv
+  | ApproxAllQuery solv <- q = encodeApproxAllQuery (getTolerance solv)
+  | ApproxSingleQuery solv <- q = encodeApproxSingleQuery (getTolerance solv)
+  | PendingQuery solv <- q = encodePendingQuery (getTolerance solv)-- TODO: enable hints here and see if it's any better
+  | CompQuery comp bound solv <- q = encodeComparison comp bound (getTolerance solv)
   where
-    encodeApproxAllQuery solv _ graph varMap@(_, _, asPendingIdxs, _) eqMap = do
-      assertHints varMap eqMap solv
-      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
-      sumAstVec <- V.imapM (checkPending graph) vec
+    encodeApproxAllQuery eps _ graph varMap@(_, _, asPendingIdxs, _) eqMap = do
+      assertHints varMap eqMap eps
+      upperBoundModel <- fromJust . snd <$> getModel
+      groupedVec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
+      sumAstVec <- V.mapM mkAdd groupedVec
       setZ3PPOpts
-      fmap (ApproxAllResult . fromJust . snd) . withModel $ \m ->
-        V.forM sumAstVec $ \a -> do
-          s <- astToString . fromJust =<< eval m a
-          return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
-    encodeApproxSingleQuery solv _ graph varMap@(_, _, asPendingIdxs, _) eqMap = do
-      --DBG.traceM "Assert hints"
-      assertHints varMap eqMap solv
-      --DBG.traceM "Start Z3"
-      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs) || (fst key == 0))
-      sumAstVec <- V.imapM (checkPending graph) vec
+      ub <-  V.forM sumAstVec $ \a -> do 
+                s <- astToString . fromJust =<< eval upperBoundModel a
+                return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
+      lbMap <- Map.fromListWith (+) . map (\(k, PopEq d) -> (fst k, approxRational (d - eps) eps)) <$> liftIO (HT.toList eqMap)
+      let lbVector = V.generate (MV.length graph) (\idx -> Map.findWithDefault 0 idx lbMap)
+      return $ ApproxAllResult (lbVector, ub)
+    encodeApproxSingleQuery eps _ _ varMap@(m, _, _, _) eqMap = do
+      assertHints varMap eqMap eps
+      upperBoundModel <- fromJust . snd <$> getModel
       setZ3PPOpts
-      fmap (ApproxSingleResult . fromJust . snd) . withModel $ \m -> do
-        s <- astToString . fromJust =<< eval m (sumAstVec ! 0)
-        return (toRational (read (takeWhile (/= '?') s) :: Scientific))
-    encodePendingQuery solv _ graph varMap@(_, _, asPendingIdxs, _) eqMap = do
-      assertHints varMap eqMap solv
-      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
-      PendingResult <$> V.imapM (isPending graph) vec
+      ub <- astToString . fromJust =<< eval upperBoundModel . fromJust =<< liftIO (HT.lookup m (0,-1))
+      lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> liftIO (HT.lookup eqMap (0,-1))
+      return $ ApproxSingleResult (lb, toRational (read (takeWhile (/= '?') ub) :: Scientific))
 
-    assertHints varMap eqMap solver = case solver of
-      SMTWithHints -> doAssert defaultTolerance
-      SMTCert eps -> doAssert eps
-      _ -> return ()
-      where doAssert eps = do
+    encodePendingQuery solv _ graph varMap@(_, _, asPendingIdxs, _) eqMap = do
+      DBG.traceM "Asserting hints"
+      assertHints varMap eqMap solv
+      DBG.traceM "Computing an overrapproximating model"
+      m <- fromJust . snd <$> getModel
+      vec <- liftIO $ groupASTs varMap (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
+      PendingResult <$> V.imapM (isPending graph m) vec
+
+    getTolerance SMTWithHints = defaultTolerance
+    getTolerance (SMTCert eps) = eps
+    getTolerance _ = error "You must use hints in the current version!!"
+
+    assertHints varMap eqMap  eps = do
               let iterEps = min defaultEps $ eps * eps
               approxVec <- approxFixp eqMap iterEps defaultMaxIters
               approxFracVec <- toRationalProbVec iterEps approxVec
+              DBG.traceM "Computed a lower bound!"
+              enlargeBounds approxFracVec eps
+                -- updating with found values
+              forM_  approxFracVec $ \(varKey, _, p) -> do
+                liftIO (HT.lookup eqMap varKey) >>= \case
+                  Just (PopEq _) -> return () -- An eq constraint has already been asserted
+                  _ -> addFixpEq eqMap varKey (PopEq p)
+      where enlargeBounds approxFracVec eps = do
               epsReal <- mkRealNum eps
-              mapM_ (\(varKey, pRational, p) -> do
-                        veq <- liftIO $ HT.lookup eqMap varKey
-                        case veq of
-                          Just (PopEq _) -> return () -- An eq constraint has already been asserted
-                          _ -> do
-                            (var, True) <- lookupVar varMap eqMap varKey
-                            pReal <- mkRealNum pRational
-                            assert =<< mkGe var pReal
-                            assert =<< mkLe var =<< mkAdd [pReal, epsReal]
-                    ) approxFracVec
+              bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case
+                Just (PopEq _) -> return [] -- An eq constraint has already been asserted
+                _ -> do
+                  (var, True) <- lookupVar varMap eqMap varKey
+                  pReal <- mkRealNum pRational
+                  lb <- mkGe var pReal
+                  ub <-  mkLe var =<< mkAdd [pReal, epsReal]
+                  return [lb, ub])
+              DBG.traceM "Collected some requirements"
+              checkAssumptions bounds >>= \case
+                  Sat -> mapM_ assert bounds
+                  Unsat -> enlargeBounds approxFracVec (2 * eps)
+                  Undef -> error "undefinite result when checking an SCC"
 
     setZ3PPOpts = do
       _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
@@ -310,30 +321,10 @@ groupASTs (varMap, _,  _, _) len cond = do
   HT.mapM_ (\(key, ast) -> when (cond key) $ MV.unsafeModify new_mv (ast :) (fst key)) varMap
   V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support graph
 
--- for estimating exact termination probabilities
-checkPending :: SupportGraph RealWorld state -> Int -> [AST] -> Z3 AST
-checkPending graph idx asts = do
-  sumAst <- mkAdd asts
-  -- some optimizations for cases where the encoding already contains actual termination probabilities
-  -- so there is no need for additional checks
-  -- if a semiconf is a pop, then of course it terminates almost surely
-  isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph idx
-  -- if no variable has been encoded for this semiconf, it means it cannot reach any pop (and hence it has zero prob to terminate)
-  -- so all the checks down here would be useless (we would be asserting 0 <= 1)
-  let noVars = null asts
-  unless (isPop || noVars) $ do
-    less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
-    r <- checkAssumptions [less1]
-    let cases
-          | Sat <- r = assert less1 -- semiconf i is pending
-          | Unsat <- r = assert =<< mkEq sumAst =<< mkRealNum (1 :: Prob) -- semiconf i is not pending
-          | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show idx
-    cases
-  return sumAst
-
 -- is a semiconf pending?
-isPending :: SupportGraph RealWorld state -> Int -> [AST] -> Z3 Bool
-isPending graph idx asts = do
+isPending :: SupportGraph RealWorld state -> Model -> Int -> [AST] -> Z3 Bool
+isPending graph m idx asts = do
+  DBG.traceM $ "isPending of semiconf: " ++ show idx
   sumAst <- mkAdd asts
   -- some optimizations for cases where we already know if the semiconf is pending
   -- so there is no need for additional checks
@@ -341,13 +332,14 @@ isPending graph idx asts = do
   isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph idx
   -- if no variable has been encoded for this semiconf, it means it ha zero prob to reach a pop (and hence it is pending)
   let noVars = null asts
+  less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
+  isUpperBounded <- fromJust <$> (evalBool m =<< mkLt sumAst =<< mkRealNum (1 :: Prob))
+  eq <- mkEq sumAst =<< mkRealNum (1 :: Prob)
   if isPop
     then return False
-    else if noVars
+    else if noVars || isUpperBounded
             then return True
             else do
-              less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
-              eq <- mkEq sumAst =<< mkRealNum (1 :: Prob)
               r <- checkAssumptions [less1]
               let cases
                     | Sat <- r = assert less1 >> return True
@@ -388,8 +380,8 @@ terminationQuerySCC suppGraph precFun query = do
   newMap <- liftIO HT.new
   newEqMap <- liftIO HT.new
   newEps <- case (solver query) of
-              SMTWithHints -> DBG.trace ("Deafult tolerance: " ++ show defaultTolerance) $ liftIO $ newIORef defaultTolerance
-              SMTCert givenEps -> DBG.trace ("custom tolerance: " ++ show givenEps) $ liftIO $ newIORef givenEps
+              SMTWithHints -> liftIO $ newIORef defaultTolerance
+              SMTCert givenEps -> liftIO $ newIORef givenEps
               _ -> error "you cannot use pure SMT when computing termination SCC-based"
   let globals = DeficientGlobals { supportGraph = suppGraph
                                 , sStack = newSS
@@ -409,27 +401,30 @@ terminationQuerySCC suppGraph precFun query = do
   _ <- dfs globals precFun query gn
   -- returning the computed values
   asPendingIdxs <- liftIO $ readIORef (asPSs globals)
-  let readResults
+  _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
+  _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
+  currentEps <- liftIO $ readIORef (eps globals)
+  let actualEps = min defaultEps $ currentEps * currentEps
+      readResults
         | ApproxAllQuery _ <- query = readApproxAllQuery
         | ApproxSingleQuery _ <- query = readApproxSingleQuery
         | otherwise = error "cannot use SCC decomposition for queries that do not estimate the actual probabilities"
         where
           readApproxAllQuery = do
-            groupedVec <- liftIO $ groupASTs (newMap, error "unused", asPendingIdxs, isApproxSingleQuery query)  (MV.length suppGraph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
+            groupedVec <- liftIO $ groupASTs (newMap, error "unused", asPendingIdxs, False)  (MV.length suppGraph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
             sumAstVec <- V.mapM mkAdd groupedVec
-            fmap ApproxAllResult $ V.forM sumAstVec $ \a -> do
+            ub <-  V.forM sumAstVec $ \a -> do
                 sumVar <-  reset >> mkFreshRealVar "dummy"
                 m <-  mkEq sumVar a >>= assert >> fromJust . snd <$> getModel
-                _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
-                _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
                 s <- astToString . fromJust =<< eval m sumVar
                 return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
-          readApproxSingleQuery = fmap ApproxSingleResult $ do
-              _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
-              _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
-              s <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
-              DBG.traceM $ "COMPUTED VALUE: " ++ s
-              return (toRational (read (takeWhile (/= '?') s) :: Scientific))
+            lbMap <- Map.fromListWith (+) . map (\(k, PopEq d) -> (fst k, approxRational (d - actualEps) actualEps)) <$> liftIO (HT.toList newEqMap)
+            let lbVector = V.generate (MV.length suppGraph) (\idx -> Map.findWithDefault 0 idx lbMap)
+            return $ ApproxAllResult (lbVector, ub)
+          readApproxSingleQuery = do
+              ub <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
+              lb <- (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newEqMap (0,-1))
+              return $ ApproxSingleResult (lb, toRational (read (takeWhile (/= '?') ub) :: Scientific))
   readResults
 
 dfs :: (Eq state, Hashable state, Show state)
@@ -487,7 +482,7 @@ createComponent globals gn popContxs precFun query = do
         liftIO $ ZS.pop_ (bStack globals)
         sSize <- liftIO $ ZS.size $ sStack globals
         poppedEdges <- liftIO $ ZS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
-        DBG.traceM  $ "Popped Semiconfigurations: " ++ show poppedEdges
+        --DBG.traceM  $ "Popped Semiconfigurations: " ++ show poppedEdges
         forM_ poppedEdges $ \e -> do
           liftIO $ MV.unsafeWrite (iVector globals) e (-1)
           liftIO $ MV.unsafeWrite (successorsCntxs globals) e popContxs
@@ -502,8 +497,6 @@ createComponent globals gn popContxs precFun query = do
         reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
         solveSCCQuery (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
       doNotEncode poppedEdges = do
-        --DBG.traceM "zero pop contexts means zero encodings"
-        --DBG.traceM $ "Adding to the set of almost surely pending semiconfs: " ++ show poppedEdges
         liftIO $ modifyIORef (asPSs globals) $ IntSet.union (IntSet.fromList poppedEdges)
         when (gnId gn == 0 && isASQ) $ do -- for the initial semiconf, encode anyway
           newAdded <- liftIO HT.new
@@ -528,28 +521,29 @@ solveSCCQuery :: IORef EqMapNumbersType ->
            VarMap -> EqMap EqMapNumbersType -> Z3 ()
 solveSCCQuery epsVar varMap@(m, newAdded, _, _) eqMap = do
   --DBG.traceM "Assert hints to solve the query"
-  assertHints epsVar
-  --DBG.traceM "start Z3 solving"
+  eps <- liftIO $ readIORef epsVar
+  let iterEps = min defaultEps $ eps * eps
+  approxVec <- approxFixp eqMap iterEps defaultMaxIters
+  approxFracVec <- toRationalProbVec iterEps approxVec
+  -- assert bounds computed by value iteration
+  doAssert approxFracVec eps
+  -- updating with found values
+  forM_  approxFracVec $ \(varKey, _, p) -> do
+      liftIO (HT.lookup eqMap varKey) >>= \case
+        Just (PopEq _) -> return () -- An eq constraint has already been asserted
+        _ -> addFixpEq eqMap varKey (PopEq p)
+
   model <- fromJust . snd <$> getModel
   -- update the variables from the computed model 
   variables <- liftIO $ HT.toList newAdded
   forM_ variables $ \(key, var) -> do
     evaluated <- fromJust <$> eval model var
+    --ub <- astToString evaluated
+    --DBG.traceM $ "Computed upper bound for variable " ++ show key ++ ": " ++ ub
+    --(PopEq lb) <- liftIO $ fromJust <$> HT.lookup eqMap key
+    --DBG.traceM $ "Computed lower bound for variable " ++ show key ++ ": " ++ show lb
     liftIO $ HT.insert m key evaluated
-  where
-    assertHints epsVar = do
-      eps <- liftIO $ readIORef epsVar
-      let iterEps = min defaultEps $ eps * eps
-      approxVec <- approxFixp eqMap iterEps defaultMaxIters
-      approxFracVec <- toRationalProbVec iterEps approxVec
-      -- assert bounds computed by value iteration
-      doAssert approxFracVec eps
-      -- updating with found
-      forM_  approxFracVec $ \(varKey, _, p) -> do
-          liftIO (HT.lookup eqMap varKey) >>= \case
-            Just (PopEq _) -> return () -- An eq constraint has already been asserted
-            _ -> addFixpEq eqMap varKey (PopEq p)
-
+  where 
     doAssert approxFracVec eps = do
       epsReal <- mkRealNum eps
       bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case

@@ -188,8 +188,8 @@ needEquality (ApproxSingleQuery PureSMT) = True
 needEquality (PendingQuery PureSMT) = True
 needEquality _ = False
 
-solver :: TermQuery -> Solver 
-solver (CompQuery _ _ s) = s 
+solver :: TermQuery -> Solver
+solver (CompQuery _ _ s) = s
 solver (ApproxAllQuery s) = s
 solver (ApproxSingleQuery s) = s
 solver (PendingQuery s) = s
@@ -198,7 +198,8 @@ solver (PendingQuery s) = s
 -- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 
 -- ApproxSingleResult represents the approximate probability to terminate of the popa 
 -- PendingResult represents whether a semiconf is pending (i.e. it has positive probability to non terminate) for all semiconfs of the popa
-data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob) | ApproxSingleResult Prob | PendingResult (Vector Bool)
+-- by convention, 
+data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob, Vector Prob) | ApproxSingleResult (Prob, Prob) | PendingResult (Vector Bool)
   deriving (Show, Eq, Generic, NFData)
 
 toBool :: TermResult -> Bool
@@ -206,12 +207,12 @@ toBool TermSat = True
 toBool TermUnsat = False
 toBool r = error $ "cannot convert a non boolean result. Got instead: " ++ show r
 
-toProb :: TermResult -> Prob
-toProb (ApproxSingleResult p) = p
+toProb :: TermResult -> (Prob, Prob)
+toProb (ApproxSingleResult (lb, ub)) = (lb, ub)
 toProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
 
-toProbVec :: TermResult -> Vector Prob
-toProbVec (ApproxAllResult v) = v
+toProbVec :: TermResult -> (Vector Prob, Vector Prob)
+toProbVec (ApproxAllResult (lb, ub)) = (lb, ub)
 toProbVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
 toBoolVec :: TermResult -> Vector Bool
