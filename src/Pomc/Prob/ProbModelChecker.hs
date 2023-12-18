@@ -55,6 +55,7 @@ import Z3.Opts
 import qualified Debug.Trace as DBG
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as MV
+import Control.Monad (when)
 
 -- TODO: add normalize RichDistr to optimize the encoding
 -- note that non normalized encodings are at the moment (16.11.23) correctly handled by the termination algorithms
@@ -87,7 +88,7 @@ terminationGEExplicit popa bound = first toBool <$> terminationExplicit popa (Co
 
 -- what is the probability that the input POPA terminates?
 terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> IO (Prob, String)
-terminationApproxExplicit popa = first toProb <$> terminationExplicit popa (ApproxSingleQuery SMTWithHints)
+terminationApproxExplicit popa = first (snd . toProb) <$> terminationExplicit popa (ApproxSingleQuery SMTWithHints)
 
 -- handling the termination query
 terminationExplicit :: (Ord s, Hashable s, Show s, Ord a)
@@ -136,7 +137,7 @@ terminationExplicit popa query =
     p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
     return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
 
-programTermination :: Program -> TermQuery -> IO (TermResult, String)
+programTermination :: Program -> TermQuery -> IO (Prob, String)
 programTermination prog query =
   let (_, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
@@ -158,10 +159,10 @@ programTermination prog query =
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     --p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    termVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc query
+    (ApproxSingleResult (lb,ub)) <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc query
     --DBG.traceM $ "Termination probabilities: " ++ show termVector
     --let pendVector = V.map (\k -> k < (1 :: Prob)) $ toProbVec termVector
-    return (termVector, scString ++ "\n" ++ show query)
+    return (ub, scString ++ "\n" ++ show query)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
@@ -205,9 +206,16 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
     scString <- stToIO $ CM.showMap sc
     asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
-    pendVector <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints
-    almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc (toBoolVec pendVector)
-    return (almostSurely, scString ++ show pendVector) 
+    pendVector <- toBoolVec <$> evalZ3With (Just QF_NRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
+    almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
+    --(ApproxAllResult (lb,ub)) <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
+    --DBG.traceM $ "Computed termination probabilities: " ++ show (ApproxAllResult (lb,ub))
+    --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
+    --let pendVectorUB = V.map (\k -> k < (1 :: Prob)) ub
+    --almostSurelyLB <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVectorLB
+    --almostSurelyUB <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVectorUB
+    --when (almostSurelyLB /= almostSurelyUB) $ DBG.traceM "lower and upper bound induce a different qualitative result!!!!"
+    return (almostSurely, scString ++ show pendVector)
 
 qualitativeModelCheckProgram :: Formula ExprProp -- phi: input formula to check
                              -> Program -- input program
