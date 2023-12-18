@@ -45,6 +45,7 @@ import Z3.Monad
 import Data.IORef (IORef, newIORef, modifyIORef, readIORef, writeIORef)
 
 import qualified Debug.Trace as DBG
+import Data.List (nub)
 
 -- a map Key: (gnId GraphNode, getId StateId) - value : Z3 variables (represented as ASTs)
 -- each Z3 variable represents [[q,b | p ]]
@@ -504,8 +505,8 @@ createComponent globals gn (popContxs, noPend) precFun query = do
       doEncode (poppedEdges, actualNoPend) = do
         currentASPSs <- liftIO $ readIORef (asPSs globals)
         newAdded <- liftIO HT.new
-        let to_be_encoded = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
-        insertedVars <- forM to_be_encoded (fmap snd . lookupVar (varMap, newAdded, currentASPSs, isASQ) (eqMap globals))
+        let to_be_encoded = [(gnId_, rc) | gnId_ <- nub poppedEdges, rc <- IntSet.toList popContxs]
+        insertedVars <- map snd <$> forM to_be_encoded (lookupVar (varMap, newAdded, currentASPSs, isASQ) (eqMap globals))
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
         reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
