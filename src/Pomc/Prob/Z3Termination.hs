@@ -509,8 +509,10 @@ createComponent globals gn (popContxs, noPend) precFun query = do
         insertedVars <- map snd <$> forM to_be_encoded (lookupVar (varMap, newAdded, currentASPSs, isASQ) (eqMap globals))
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
+        DBG.traceM "Encoding this SCC"
         reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
-        solveSCCQuery (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+        DBG.traceM "SOlving this SCC"
+        solveSCCQuery (length poppedEdges) (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
         return actualNoPend
       doNotEncode (poppedEdges, actualNoPend) = do
         liftIO $ modifyIORef (asPSs globals) $ IntSet.union (IntSet.fromList poppedEdges)
@@ -521,7 +523,7 @@ createComponent globals gn (popContxs, noPend) precFun query = do
           liftIO $ HT.insert varMap (0, -1) new_var
           reset >> encode [(0, -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
           liftIO $ HT.insert newAdded (0 , -1) new_var
-          solveSCCQuery (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+          solveSCCQuery 1 (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
         return actualNoPend
       cases
         | iVal /= topB = return False
@@ -533,29 +535,51 @@ createComponent globals gn (popContxs, noPend) precFun query = do
 -- (var:: AST) = Z3 var associated with the initial semiconf
 -- (graph :: SupportGraph RealWorld state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
-solveSCCQuery :: IORef EqMapNumbersType ->
+solveSCCQuery :: Int -> IORef EqMapNumbersType ->
            VarMap -> EqMap EqMapNumbersType -> Z3 ()
-solveSCCQuery epsVar varMap@(m, newAdded, _, _) eqMap = do
+solveSCCQuery scclen epsVar varMap@(m, newAdded, _, _) eqMap = do
   --DBG.traceM "Assert hints to solve the query"
   eps <- liftIO $ readIORef epsVar
   let iterEps = min defaultEps $ eps * eps
+  DBG.traceM "Eliminating zero variables"
+  zeroVars <- preprocessApproxFixp eqMap iterEps scclen
+  zeroValue <- mkRealNum 0
+  forM_ zeroVars $ \varKey -> do 
+    addFixpEq eqMap varKey (PopEq 0)
+    liftIO $ HT.insert m varKey zeroValue
+
+  DBG.traceM "Approximating via Value Iteration"
   approxVec <- approxFixp eqMap iterEps defaultMaxIters
   approxFracVec <- toRationalProbVec iterEps approxVec
+
+  forM_  approxFracVec $ \(varKey, _, p) -> do
+      liftIO (HT.lookup eqMap varKey) >>= \case
+        Just (PopEq _) -> return ()
+        Just x -> DBG.traceM ("Lower bound for " ++ show varKey ++ ": " ++ show p)
+        _ -> error "weird error"
+
   -- assert bounds computed by value iteration
+  DBG.traceM "Asserting bounds computed from value iteration!!"
   doAssert approxFracVec eps
   -- updating with found values
+  -- TODO: we could just query newAdded and avoid this costly operation
   forM_  approxFracVec $ \(varKey, _, p) -> do
       liftIO (HT.lookup eqMap varKey) >>= \case
         Just (PopEq _) -> return () -- An eq constraint has already been asserted
-        _ -> addFixpEq eqMap varKey (PopEq p)
+        _ -> do 
+          maybeVar <- liftIO $ HT.lookup newAdded varKey
+          when (isNothing maybeVar) $ error "updating value iteration for a variable that does not result to be added in this SCC decomposition"
+          addFixpEq eqMap varKey (PopEq p)
 
+  DBG.traceM "Computing an overapproximating model"
   model <- fromJust . snd <$> getModel
   -- update the variables from the computed model 
+  
   variables <- liftIO $ HT.toList newAdded
   forM_ variables $ \(key, var) -> do
     evaluated <- fromJust <$> eval model var
-    --ub <- astToString evaluated
-    --DBG.traceM $ "Computed upper bound for variable " ++ show key ++ ": " ++ ub
+    ub <- astToString evaluated
+    DBG.traceM $ "Computed upper bound for variable " ++ show key ++ ": " ++ ub
     --(PopEq lb) <- liftIO $ fromJust <$> HT.lookup eqMap key
     --DBG.traceM $ "Computed lower bound for variable " ++ show key ++ ": " ++ show lb
     liftIO $ HT.insert m key evaluated
@@ -567,10 +591,12 @@ solveSCCQuery epsVar varMap@(m, newAdded, _, _) eqMap = do
         _ -> do
           (var, True) <- lookupVar varMap eqMap varKey
           pReal <- mkRealNum pRational
+          DBG.traceM $ "Asserting " ++ show pRational ++ " <= " ++ show varKey ++ " <= " ++ show ((fromRational pRational) +  eps)
+          when ((fromRational pRational) +  eps > 1) $ DBG.traceM "UPPER BOUND is GREATER THAN ONE!"
           lb <- mkGe var pReal
           ub <-  mkLe var =<< mkAdd [pReal, epsReal]
           return [lb, ub])
       checkAssumptions bounds >>= \case
-        Sat -> mapM_ assert bounds
+        Sat -> DBG.trace ("Asserting with epsilon: " ++ show eps) $ mapM_ assert bounds
         Unsat -> liftIO (writeIORef epsVar (2 * eps)) >> doAssert approxFracVec (2 * eps)
         Undef -> error "undefinite result when checking an SCC"

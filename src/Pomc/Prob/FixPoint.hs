@@ -13,6 +13,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , defaultEps
                           , defaultMaxIters
                           , toRationalProbVec
+                          , preprocessApproxFixp
                           ) where
 
 import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
@@ -101,6 +102,16 @@ approxFixpFrom leqMap eps maxIters probVec
       lessThanEps <- evalEqSys leqMap eps probVec
       unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 
+-- determine variables for which zero is a fixpoint
+preprocessApproxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
+                      => EqMap n -> n -> Int -> m [VarKey]
+preprocessApproxFixp eqMap eps maxIters = do
+  probVec <- zeroVec eqMap
+  leqMap <- toLiveEqMap eqMap
+  -- iterate just one time and check if fixpoint remains zero
+  approxFixpFrom leqMap eps maxIters probVec
+  liftIO $ map fst . filter (\(_, p) -> p == 0) <$> HT.toList probVec
+
 approxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
            => EqMap n -> n -> Int -> m (ProbVec n)
 approxFixp eqMap eps maxIters = do
@@ -109,7 +120,7 @@ approxFixp eqMap eps maxIters = do
   approxFixpFrom leqMap eps maxIters probVec
   return probVec
 
-defaultEps :: Double
+defaultEps :: EqMapNumbersType
 defaultEps = 1e-8
 
 defaultMaxIters :: Int

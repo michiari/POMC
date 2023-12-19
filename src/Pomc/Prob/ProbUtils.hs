@@ -155,7 +155,7 @@ decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
 --          for a certificate within the given tolerance
 data Solver = PureSMT | SMTWithHints | SMTCert Double deriving (Eq, Show)
 
-defaultTolerance :: Double
+defaultTolerance :: EqMapNumbersType
 defaultTolerance = 1e-5
 
 -- different termination queries
