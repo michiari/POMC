@@ -133,7 +133,7 @@ terminationExplicit popa query =
   in do
     sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
     scString <- stToIO $ CM.showMap sc
-    (p, cannotPend) <- evalZ3With Nothing stdOpts $ terminationQuerySCC sc precFunc query
+    (p, cannotPend) <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc query
     DBG.traceM $ "Computed termination bounds: " ++ show p
     return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
 
@@ -158,8 +158,8 @@ programTermination prog query =
     -- asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
-    --p <- evalZ3With Nothing stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    (ApproxSingleResult (lb,ub), cannotPend) <- evalZ3With Nothing stdOpts $ terminationQuerySCC sc precFunc query
+    --p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
+    (ApproxSingleResult (lb,ub), cannotPend) <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc query
     --DBG.traceM $ "Termination probabilities: " ++ show termVector
     --let pendVector = V.map (\k -> k < (1 :: Prob)) $ toProbVec termVector
     return (ub, scString ++ "\n" ++ show query)
@@ -207,9 +207,9 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     scString <- stToIO $ CM.showMap sc
     asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
-    pendVector <- toBoolVec <$> evalZ3With Nothing stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
+    pendVector <- toBoolVec <$> evalZ3With (Just QF_NRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
-    --(ApproxAllResult (lb,ub)) <- evalZ3With Nothing stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
+    --(ApproxAllResult (lb,ub)) <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
     --DBG.traceM $ "Computed termination probabilities: " ++ show (ApproxAllResult (lb,ub))
     --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
     --let pendVectorUB = V.map (\k -> k < (1 :: Prob)) ub
