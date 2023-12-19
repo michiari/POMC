@@ -581,8 +581,8 @@ solveSCCQuery scclen asReachesPop epsVar varMap@(m, newAdded, _, _) eqMap = do
     assert =<< mkLe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
 
   -- assert bounds computed by value iteration
-  DBG.traceM "Asserting lower and upper bounds computed from value iteration"
-  doAssert approxFracVec eps
+  DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
+  model <- doAssert approxFracVec eps
 
   -- updating with found values
   -- TODO: we could just query newAdded and avoid this costly operation
@@ -594,10 +594,7 @@ solveSCCQuery scclen asReachesPop epsVar varMap@(m, newAdded, _, _) eqMap = do
           when (isNothing maybeVar) $ error "updating value iteration for a variable that does not result to be added in this SCC decomposition"
           addFixpEq eqMap varKey (PopEq p)
 
-  DBG.traceM "Computing an overapproximating model"
-  model <- fromJust . snd <$> getModel
   -- update the variables from the computed model 
-
   variables <- liftIO $ HT.toList newAdded
   forM_ variables $ \(key, var) -> do
     evaluated <- fromJust <$> eval model var
@@ -610,20 +607,20 @@ solveSCCQuery scclen asReachesPop epsVar varMap@(m, newAdded, _, _) eqMap = do
   return actualAsReachesPop
   where
     doAssert approxFracVec eps = do
+      push -- create a backtracking point
       epsReal <- mkRealNum eps
 
-      bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case
-        Just (PopEq _) -> return [] -- An eq constraint has already been asserted
+      forM_ approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case
+        Just (PopEq _) -> return () -- An eq constraint has already been asserted
         _ -> do
           (var, True) <- lookupVar varMap eqMap varKey
           pReal <- mkRealNum pRational
-          lb <- mkGe var pReal
-          ub <-  mkLe var =<< mkAdd [pReal, epsReal]
-          return [lb, ub])
-      checkAssumptions bounds >>= \case
-        Sat -> mapM_ assert bounds
-        Unsat -> liftIO (writeIORef epsVar (2 * eps)) >> doAssert approxFracVec (2 * eps)
-        Undef -> error "undefinite result when checking an SCC"
+          assert =<< mkGe var pReal
+          assert =<< mkLe var =<< mkAdd [pReal, epsReal])
+      solverCheckAndGetModel >>= \case
+        (Sat, Just model) -> return model
+        (Unsat, _) -> liftIO (writeIORef epsVar (2 * eps)) >> pop 1 >> doAssert approxFracVec (2 * eps) -- backtrack one point and restart
+        _ -> error "undefinite result when checking an SCC"
 
 
 --- REWARDS COMPUTATION for certificating past ---------------------------------
