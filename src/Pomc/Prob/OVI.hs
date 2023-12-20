@@ -12,17 +12,13 @@ module Pomc.Prob.OVI ( ovi
                      ) where
 
 import Pomc.Prob.FixPoint
-import Pomc.Prob.ProbUtils (Prob)
 
 import Data.Maybe (fromJust, isJust)
 import Control.Monad (forM, when)
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad.ST (stToIO)
 import qualified Data.HashTable.IO as HT
-import qualified Data.HashTable.ST.Basic as BHT
 import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
-import qualified Data.Vector as V
 
 import qualified Debug.Trace as DBG
 
@@ -49,6 +45,7 @@ defaultOVISettings = OVISettings { oviMaxIters = 10
 
 data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviIters :: Int
+                             , oviLowerBound :: ProbVec n
                              , oviUpperBound :: ProbVec n
                              }
 
@@ -154,19 +151,22 @@ computeEigen leqSys eps maxIters lowerApprox eigenVec = liftIO $ do
 
 
 ovi :: (MonadIO m, Fractional n, Ord n, Show n)
-    => OVISettings n -> LEqSys n -> ProbVec n -> m (OVIResult n)
-ovi settings leqSys lowerApprox = liftIO $ do -- TODO: maybe make copy of lowerApprox?
+    => OVISettings n -> EqMap n -> m (OVIResult n)
+ovi settings eqMap = liftIO $ do
   DBG.traceM "Starting OVI..."
+  lowerApprox <- zeroVec eqMap
   -- initialize upperApprox with lowerApprox, so we copy non-alive variable values
   upperApprox <- copyVec lowerApprox
+  -- create system containing only live equations
+  leqSys <- toLiveEqMap eqMap
   -- create eigenVec and initialize it to 1
+  -- we only use live equations for eigenVec to avoid too many 0 values
   eigenVec <- HT.newSized $ MV.length leqSys
   MV.forM_ leqSys (\(k, _) -> HT.insert eigenVec k 1)
-  -- we only use live equations for eigenVec to avoid too many 0 values
-  -- TODO: check if this is correct
   let
     go _ _ 0 = return OVIResult { oviSuccess  = False
                                 , oviIters = oviMaxIters settings
+                                , oviLowerBound = lowerApprox
                                 , oviUpperBound = upperApprox
                                 }
     go kleeneEps powerIterEps maxIters = do
@@ -207,6 +207,7 @@ ovi settings leqSys lowerApprox = liftIO $ do -- TODO: maybe make copy of lowerA
       if inductive
         then return OVIResult { oviSuccess  = True
                               , oviIters = oviMaxIters settings - maxIters
+                              , oviLowerBound = lowerApprox
                               , oviUpperBound = upperApprox
                               } -- This is the upperApprox iterated once: is this ok?
         else go
