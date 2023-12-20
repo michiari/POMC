@@ -295,7 +295,7 @@ dfs globals gn =
   in do
     res <- forM (Set.toList $ internalEdges gn) follow
     let dCanReachPop = any fst res
-        dMustReachPop = all snd res
+        dMustReachPop = dCanReachPop && all snd res
         computeActualCanReach
           | not . Set.null $ supportEdges gn =  do 
             actualRes  <- forM (Set.toList $ supportEdges gn) follow
