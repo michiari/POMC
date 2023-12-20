@@ -21,6 +21,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , defaultEps
                           , defaultMaxIters
                           , toRationalProbVec
+                          , toUpperRationalProbVec
                           , preprocessApproxFixp
                           ) where
 
@@ -150,3 +151,8 @@ toRationalProbVec :: (MonadIO m, RealFrac n) => n -> ProbVec n -> m [(VarKey, Pr
 toRationalProbVec eps probVec =
   liftIO $ map (\(k, p) -> (k, approxRational (p - eps) eps, p)) <$> HT.toList probVec
 -- p - eps is to prevent approxRational from producing a result > p
+
+toUpperRationalProbVec :: (MonadIO m, RealFrac n) => n -> ProbVec n -> m [(VarKey, Prob, n)]
+toUpperRationalProbVec eps probVec =
+  liftIO $ map (\(k, p) -> (k, approxRational (p + eps) eps, p)) <$> HT.toList probVec
+-- p + eps is to prevent approxRational from producing a result < p

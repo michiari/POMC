@@ -22,6 +22,8 @@ import Pomc.Prob.FixPoint
 import Pomc.ZStack(ZStack)
 import qualified Pomc.ZStack as ZS
 
+import Pomc.Prob.OVI(ovi, defaultOVISettings, OVIResult(..))
+
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad (foldM, unless, when, forM_, forM)
 import Control.Monad.ST (RealWorld)
@@ -276,7 +278,7 @@ solveQuery q
               approxVec <- approxFixp eqMap iterEps defaultMaxIters
               -- DBG.traceShowM =<< (liftIO $ HT.toList approxVec)
               approxFracVec <- toRationalProbVec iterEps approxVec
-              DBG.traceM "Computed a lower bound!"
+              --DBG.traceM "Computed a lower bound!"
               enlargeBounds approxFracVec eps
                 -- updating with found values
               forM_  approxFracVec $ \(varKey, _, p) -> do
@@ -305,7 +307,8 @@ solveQuery q
       return ()
 
     encodeComparison comp bound solver var _ varMap _ eqMap = do
-      when (isJust $ getMaybeTolerance solver) $ assertHints varMap eqMap (getTolerance solver)
+      --DBG.traceM $ "encoding comparison! " ++ show comp ++ " " ++ show bound
+      when (isJust $ getMaybeTolerance solver) $ DBG.trace "asserting Hints" $ assertHints varMap eqMap (getTolerance solver)
       let mkComp = case comp of
             Lt -> mkLt
             Le -> mkLe
@@ -517,10 +520,11 @@ createComponent globals gn (popContxs, asReachesPop) precFun query = do
         insertedVars <- map snd <$> forM to_be_encoded (lookupVar (varMap, newAdded, currentASPSs, isASQ) (eqMap globals))
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
-        DBG.traceM "Encoding this SCC"
         reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
         DBG.traceM "Solving this SCC"
-        actualNoPend <- solveSCCQuery (length poppedEdges) asReachesPop (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+        newAddedKeys <- liftIO $ map fst <$> HT.toList newAdded
+        unless (Set.fromList newAddedKeys == Set.fromList to_be_encoded ) $ DBG.traceM "added keys that were not supposed to do so"
+        actualNoPend <- solveSCCQuery (length poppedEdges) asReachesPop (varMap, newAdded, currentASPSs, isASQ) globals precFun
         when actualNoPend $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef (cannotPend globals) $ IntSet.insert e
         when (actualNoPend && IntSet.null popContxs) $ error "If there are no pop Contxs, how can the SCC reach a pop almost surely?"
         return (popContxs, actualNoPend)
@@ -546,19 +550,32 @@ createComponent globals gn (popContxs, asReachesPop) precFun query = do
 -- (var:: AST) = Z3 var associated with the initial semiconf
 -- (graph :: SupportGraph RealWorld state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
-solveSCCQuery :: Int -> Bool -> IORef EqMapNumbersType ->
-           VarMap -> EqMap EqMapNumbersType -> Z3 Bool
-solveSCCQuery scclen asReachesPop epsVar varMap@(m, newAdded, _, _) eqMap = do
+solveSCCQuery :: (Eq state, Hashable state, Show state) 
+              => Int -> Bool ->
+                 VarMap -> DeficientGlobals state -> EncPrecFunc
+                 -> Z3 Bool
+solveSCCQuery scclen asReachesPop varMap@(m, newAdded, _, _) globals precFun = do
   --DBG.traceM "Assert hints to solve the query"
+  let epsVar = eps globals
+      eMap = eqMap globals
+      rVarMap = rewVarMap globals
+      
   eps <- liftIO $ readIORef epsVar
   let iterEps = min defaultEps $ eps * eps
+
   DBG.traceM "Eliminating zero variables"
-  zeroVars <- preprocessApproxFixp eqMap iterEps scclen
-  zeroValue <- mkRealNum 0
+  zeroVars <- preprocessApproxFixp eMap iterEps scclen
+  zeroValue <- mkRational 0
   forM_ zeroVars $ \varKey -> do
-    addFixpEq eqMap varKey (PopEq 0)
+    addFixpEq eMap varKey (PopEq 0)
     liftIO $ HT.insert m varKey zeroValue
 
+  oviRes <- ovi defaultOVISettings eMap
+
+  unless (oviSuccess oviRes) $ error "OVI was not successful in computing an inductive upper bounds on the termination probabilities"
+  approxUpperFracVec <- toUpperRationalProbVec iterEps (oviUpperBound oviRes)
+
+  {-
   DBG.traceM "Approximating via Value Iteration"
   approxVec <- approxFixp eqMap iterEps defaultMaxIters
   approxFracVec <- toRationalProbVec iterEps approxVec
@@ -577,8 +594,6 @@ solveSCCQuery scclen asReachesPop epsVar varMap@(m, newAdded, _, _) eqMap = do
           _ -> error "weird error 2"
         ) approxFracVec
 
-  -- TODO HERE: use OVI and then throw the upper bounds to the PAST certificate - for the moment we are using this idea which is less powerful
-  -- current idea: if there is no cycle in between current single element SCC and pops semiconfs, then those pops are AS reachable
   let actualAsReachesPop = scclen < 2 && asReachesPop
 
   DBG.traceM "Asserting upper bounds 1 for value iteration"
@@ -590,42 +605,60 @@ solveSCCQuery scclen asReachesPop epsVar varMap@(m, newAdded, _, _) eqMap = do
   DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
   model <- doAssert approxFracVec eps
 
-  -- updating with found values
-  -- TODO: we could just query newAdded and avoid this costly operation
-  forM_  approxFracVec $ \(varKey, _, p) -> do
-      liftIO (HT.lookup eqMap varKey) >>= \case
+  -}
+  -- updating lower bounds (approxFracVec)
+  forM_  approxUpperFracVec $ \(varKey, _, p) -> do
+      liftIO (HT.lookup eMap varKey) >>= \case
         Just (PopEq _) -> return () -- An eq constraint has already been asserted
         _ -> do
           maybeVar <- liftIO $ HT.lookup newAdded varKey
           when (isNothing maybeVar) $ error "updating value iteration for a variable that does not result to be added in this SCC decomposition"
-          addFixpEq eqMap varKey (PopEq p)
+          addFixpEq eMap varKey (PopEq p)
 
-  -- update the variables from the computed model 
+  -- updating upper bounds (the model computed by the SMT query)
   variables <- liftIO $ HT.toList newAdded
-  forM_ variables $ \(key, var) -> do
-    evaluated <- fromJust <$> eval model var
-    ub <- astToString evaluated
-    DBG.traceM $ "Computed upper bound for variable " ++ show key ++ ": " ++ ub
+  forM_ variables $ \(key, _) -> do
+    ub <- liftIO $ fromJust <$> HT.lookup (oviUpperBound oviRes) key
+    ubAST <- mkRealNum ub
+    DBG.traceM $ "Computed upper bound for variable " ++ show key ++ ": " ++ show ub
     --(PopEq lb) <- liftIO $ fromJust <$> HT.lookup eqMap key
     --DBG.traceM $ "Computed lower bound for variable " ++ show key ++ ": " ++ show lb
-    liftIO $ HT.insert m key evaluated
+    liftIO $ HT.insert m key ubAST
 
-  return actualAsReachesPop
+  -- comoputing the PAST certificate
+  if not asReachesPop
+    then return False
+    else do
+      let semiconfs = map (\(varKey, _) -> fst varKey) variables
+      insertedRewVars <- forM semiconfs $ \k -> do
+          (_, b) <- lookupRewVar rVarMap k
+          return (k,b)
+      let to_be_encoded = map fst . filter (not . snd) $ insertedRewVars
+      reset >> encodeReward to_be_encoded varMap rVarMap (supportGraph globals) precFun mkGe
+      withModel (\m -> forM semiconfs $ \k -> do 
+          var <- liftIO $ fromJust <$> HT.lookup rVarMap k
+          evaluated <- fromJust <$> eval m var 
+          liftIO $ HT.insert rVarMap k evaluated
+        ) >>= \case
+          (Unsat, _) -> DBG.trace "PAST certification failed!" $ return False 
+          (Sat, _) -> DBG.trace "PAST certification succedeed!" $ return True
+          _ -> error "undefined result when running the past certificate"
+
   where
-    doAssert approxFracVec eps = do
+    doAssert approxFracVec currentEps = do
       push -- create a backtracking point
-      epsReal <- mkRealNum eps
+      epsReal <- mkRealNum currentEps
 
-      forM_ approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case
+      forM_ approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup (eqMap globals) varKey) >>= \case
         Just (PopEq _) -> return () -- An eq constraint has already been asserted
         _ -> do
-          (var, True) <- lookupVar varMap eqMap varKey
+          (var, True) <- lookupVar varMap (eqMap globals) varKey
           pReal <- mkRealNum pRational
           assert =<< mkGe var pReal
           assert =<< mkLe var =<< mkAdd [pReal, epsReal])
       solverCheckAndGetModel >>= \case
         (Sat, Just model) -> return model
-        (Unsat, _) -> liftIO (writeIORef epsVar (2 * eps)) >> pop 1 >> doAssert approxFracVec (2 * eps) -- backtrack one point and restart
+        (Unsat, _) -> liftIO (writeIORef (eps globals) (2 * currentEps)) >> pop 1 >> doAssert approxFracVec (2 * currentEps) -- backtrack one point and restart
         _ -> error "undefinite result when checking an SCC"
 
 
@@ -641,7 +674,7 @@ lookupRewVar rewVarMap key = do
     then do
       return (fromJust maybeVar, True)
     else do
-      new_var <- mkFreshIntVar $ show key
+      new_var <- mkFreshRealVar $ show key
       liftIO $ HT.insert rewVarMap key new_var
       return (new_var, False)
 -- end helpers
@@ -671,7 +704,7 @@ encodeReward (gnId_:unencoded) varMap rewVarMap graph precFun mkComp = do
             encodeRewShift rewVarMap mkComp gn rewVar
 
         | precRel == Just Take = do
-            assert =<< mkEq rewVar =<< mkIntNum (1 :: Integer)
+            assert =<< mkEq rewVar =<< mkRational 1
             return [] -- pop transitions do not generate new variables
 
         | otherwise = fail "unexpected prec rel"
@@ -710,7 +743,7 @@ encodeRewPush graph (m, _,_,_) rewVarMap mkComp gn var =
                )
   in do
     (transitions, unencoded_vars) <- foldM pushEnc ([], []) (internalEdges gn)
-    one <- mkIntNum (1 :: Integer)
+    one <- mkRational 1
     assert =<< mkComp var =<< mkAdd (one:transitions) -- generate the equation for this semiconf
     return unencoded_vars
 
@@ -730,6 +763,6 @@ encodeRewShift rewVarMap mkComp gn var =
             )
   in do
     (transitions, unencoded_vars) <- foldM shiftEnc ([], []) (internalEdges gn)
-    one <- mkIntNum (1 :: Integer)
+    one <- mkRational 1
     assert =<< mkComp var =<< mkAdd (one:transitions) -- generate the equation for this semiconf
     return unencoded_vars
