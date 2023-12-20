@@ -26,9 +26,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , freshNegId
                            , decode
                            , defaultTolerance
-                           , isApprox
-                           , isApproxSingleQuery
-                           , needEquality
+                           , encodeInitialSemiconf
                            , solver
                            , toBool
                            , toBoolVec
@@ -171,22 +169,10 @@ data TermQuery = CompQuery Comp Prob Solver
 
 data Comp = Lt | Le | Gt | Ge deriving (Show, Eq)
 
--- does the query require to compute some numbers?
-isApprox :: TermQuery -> Bool
-isApprox (ApproxAllQuery _) = True
-isApprox (ApproxSingleQuery _) = True
-isApprox _ = False
-
-isApproxSingleQuery :: TermQuery -> Bool
-isApproxSingleQuery (ApproxSingleQuery _) = True
-isApproxSingleQuery _ = False
-
--- comparisons never need equality, even with pure SMT encodings
-needEquality :: TermQuery -> Bool
-needEquality (ApproxAllQuery PureSMT) = True
-needEquality (ApproxSingleQuery PureSMT) = True
-needEquality (PendingQuery PureSMT) = True
-needEquality _ = False
+encodeInitialSemiconf :: TermQuery -> Bool
+encodeInitialSemiconf (ApproxSingleQuery _) = True
+encodeInitialSemiconf (CompQuery{}) = True
+encodeInitialSemiconf _ = False
 
 solver :: TermQuery -> Solver
 solver (CompQuery _ _ s) = s

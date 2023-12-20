@@ -62,19 +62,21 @@ encodeTransition e toAST = do
 
 -- (Z3 Var, was it already present?)
 lookupVar :: VarMap -> EqMap EqMapNumbersType -> VarKey -> Z3 (AST, Bool)
-lookupVar (varMap, newAdded, asPendingIdxs, isASQ) eqMap key = do
+lookupVar (varMap, newAdded, asPendingIdxs, encodeInitial) eqMap key = do
   maybeVar <- liftIO $ HT.lookup varMap key
   if isJust maybeVar
     then do
       return (fromJust maybeVar, True)
     else do
       new_var <- if IntSet.member (fst key) asPendingIdxs
-                  then if snd key == -1 && isASQ
+                  then if snd key == -1 && encodeInitial
                     then addFixpEq eqMap key (PopEq 1) >> mkRealNum (1 :: EqMapNumbersType)
                     else addFixpEq eqMap key (PopEq 0) >> mkRealNum (0 :: EqMapNumbersType)
-                  else mkFreshRealVar $ show key
+                  else do
+                    var <- mkFreshRealVar $ show key
+                    liftIO $ HT.insert newAdded key var
+                    return var
       liftIO $ HT.insert varMap key new_var
-      liftIO $ HT.insert newAdded key new_var
       return (new_var, False)
 -- end helpers
 
@@ -94,8 +96,8 @@ terminationQuery graph precFun (asPending, asNonPending) query = do
     eqMap <- liftIO HT.new
     -- encode the probability transition relation by asserting a set of Z3 formulas
     setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
-    encode [(0 ::Int , -1 :: Int)] (newMap, unusedMap, asPending, isApproxSingleQuery query) eqMap graph precFun mkGe query
-    solveQuery query new_var graph (newMap, unusedMap, asPending, isApproxSingleQuery query) asNonPending eqMap
+    encode [(0 ::Int , -1 :: Int)] (newMap, unusedMap, asPending, encodeInitialSemiconf query) eqMap graph precFun mkGe query
+    solveQuery query new_var graph (newMap, unusedMap, asPending, encodeInitialSemiconf query) asNonPending eqMap
 
 
 encode :: (Eq state, Hashable state, Show state)
@@ -402,7 +404,7 @@ terminationQuerySCC suppGraph precFun query = do
                                 , successorsCntxs = newSuccessorsCntxs
                                 , cannotPend = newCannotPend
                                 , asPSs = emptyASPS
-                                , partialVarMap = (newMap, isApproxSingleQuery query)
+                                , partialVarMap = (newMap, encodeInitialSemiconf query)
                                 , rewVarMap = newRewVarMap
                                 , eqMap = newEqMap
                                 , eps = newEps
@@ -531,7 +533,7 @@ createComponent globals gn (popContxs, asReachesPop) precFun query = do
           liftIO $ HT.insert varMap (0, -1) new_var
           reset >> encode [(0, -1)] (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
           liftIO $ HT.insert newAdded (0 , -1) new_var
-          _ <- solveSCCQuery 1 asReachesPop (eps globals) (varMap, newAdded, currentASPSs, isASQ) (eqMap globals)
+          False <- solveSCCQuery 1 asReachesPop (varMap, newAdded, currentASPSs, isASQ) globals precFun 
           return ()
         return (IntSet.empty, False)
       cases
