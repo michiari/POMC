@@ -39,6 +39,8 @@ import Control.Monad.ST (ST)
 import Data.STRef (STRef, newSTRef, readSTRef)
 import Data.Maybe (fromJust, isNothing)
 
+import qualified Debug.Trace as DBG
+
 import Data.Hashable (Hashable)
 import qualified Data.HashTable.ST.Basic as BH
 -- a basic open-addressing hashtable using linear probing
@@ -273,7 +275,7 @@ asPendingSemiconfs suppGraph = do
   cannotReachPops <- MV.ifoldl' discardTrues IntSet.empty (canReachPop globals)
   canReachPops <- MV.ifoldl' discardFalses IntSet.empty (canReachPop globals)
   mustReachPops <- MV.ifoldl' discardFalses IntSet.empty (mustReachPop globals)
-  unless (IntSet.isSubsetOf mustReachPops canReachPops) $ error "there is a bug in the implementation"
+  unless (IntSet.isSubsetOf mustReachPops canReachPops) $ error "the set of semiconfs that almost surely reach a pop must be a subset of those that may reach a pop"
   return (cannotReachPops, mustReachPops)
 
 dfs :: Show state => DeficientGlobals s state

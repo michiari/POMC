@@ -230,7 +230,7 @@ solveQuery q
   | ApproxAllQuery solv <- q = encodeApproxAllQuery (getTolerance solv)
   | ApproxSingleQuery solv <- q = encodeApproxSingleQuery (getTolerance solv)
   | PendingQuery solv <- q = encodePendingQuery (getTolerance solv)-- TODO: enable hints here and see if it's any better
-  | CompQuery comp bound solv <- q = encodeComparison comp bound (getTolerance solv)
+  | CompQuery comp bound solv <- q = encodeComparison comp bound solv
   where
     encodeApproxAllQuery eps _ graph varMap@(_, _, asPendingIdxs, _) _ eqMap = do
       assertHints varMap eqMap eps
@@ -263,6 +263,10 @@ solveQuery q
     getTolerance SMTWithHints = defaultTolerance
     getTolerance (SMTCert eps) = eps
     getTolerance _ = error "You must use hints in the current version!!"
+
+    getMaybeTolerance SMTWithHints = Just defaultTolerance
+    getMaybeTolerance (SMTCert eps) = Just eps
+    getMaybeTolerance _ = Nothing
 
     assertHints varMap eqMap  eps = do
               let iterEps = min defaultEps $ eps * eps
@@ -299,7 +303,7 @@ solveQuery q
       return ()
 
     encodeComparison comp bound solver var _ varMap _ eqMap = do
-      assertHints varMap eqMap solver
+      when (isJust $ getMaybeTolerance solver) $ assertHints varMap eqMap (getTolerance solver)
       let mkComp = case comp of
             Lt -> mkLt
             Le -> mkLe
