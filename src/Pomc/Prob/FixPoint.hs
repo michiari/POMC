@@ -11,8 +11,10 @@ module Pomc.Prob.FixPoint ( VarKey
                           , LiveEq(..)
                           , LEqSys
                           , ProbVec
+                          , mapEqMapPop
                           , addFixpEq
                           , toLiveEqMap
+                          , mapVec
                           , copyVec
                           , zeroVec
                           , evalEqSys
@@ -57,6 +59,14 @@ type LEqSys n = IOVector (VarKey, LiveEq n)
 
 type ProbVec n = HT.BasicHashTable VarKey n
 
+mapEqMapPop :: MonadIO m => (a -> b) -> EqMap a -> m (EqMap b)
+mapEqMapPop f eqMap = liftIO $ do
+  newMap <- HT.newSized =<< stToIO (BHT.size eqMap)
+  let go (k, PopEq p) = HT.insert newMap k $ PopEq (f p)
+      go _ = return ()
+  HT.mapM_ go eqMap
+  return newMap
+
 addFixpEq :: MonadIO m => EqMap n -> VarKey -> FixpEq n -> m ()
 addFixpEq eqMap varKey eq = liftIO $ HT.insert eqMap varKey eq
 
@@ -81,11 +91,14 @@ toLiveEqMap eqMap = liftIO $ do
     ) 0 eqMap
   return $ MV.unsafeTake n leqMap
 
-copyVec :: MonadIO m => ProbVec n -> m (ProbVec n)
-copyVec vec = liftIO $ do
+mapVec :: MonadIO m => (a -> b) -> ProbVec a -> m (ProbVec b)
+mapVec f vec = liftIO $ do
   newVec <- HT.newSized =<< stToIO (BHT.size vec)
-  HT.mapM_ (\(k, v) -> HT.insert newVec k v) vec
+  HT.mapM_ (\(k, v) -> HT.insert newVec k $ f v) vec
   return newVec
+
+copyVec :: MonadIO m => ProbVec n -> m (ProbVec n)
+copyVec = mapVec id
 
 zeroVec :: (MonadIO m, Fractional n) => EqMap n -> m (ProbVec n)
 zeroVec eqMap = liftIO $ do
@@ -98,19 +111,19 @@ zeroVec eqMap = liftIO $ do
   return probVec
 
 evalEqSys :: (MonadIO m, Ord n, Fractional n)
-          => LEqSys n -> (Bool -> n -> n -> Bool) -> ProbVec n -> m Bool
-evalEqSys leqMap checkRes probVec = liftIO $ MV.foldM' evalEq True leqMap where
+          => LEqSys n -> (Bool -> n -> n -> Bool) -> ProbVec n -> ProbVec n -> m Bool
+evalEqSys leqMap checkRes src dst = liftIO $ MV.foldM' evalEq True leqMap where
   evalEq prevCheck (key, eq) = do
-    oldV <- fromJust <$> HT.lookup probVec key
+    oldV <- fromJust <$> HT.lookup src key
     newV <- case eq of
       PushLEq terms -> sum <$> mapM
         (\(p, k1, k2) -> do
-            v1 <- fromJust <$> HT.lookup probVec k1
-            v2 <- fromJust <$> HT.lookup probVec k2
+            v1 <- fromJust <$> HT.lookup src k1
+            v2 <- fromJust <$> HT.lookup src k2
             return $ p * v1 * v2
         ) terms
-      ShiftLEq terms -> sum <$> mapM (\(p, k) -> (p *) . fromJust <$> (HT.lookup probVec k)) terms
-    HT.insert probVec key newV
+      ShiftLEq terms -> sum <$> mapM (\(p, k) -> (p *) . fromJust <$> (HT.lookup src k)) terms
+    HT.insert dst key newV
     return $ checkRes prevCheck newV oldV
 
 approxFixpFrom :: (MonadIO m, Ord n, Fractional n, Show n)
@@ -120,7 +133,7 @@ approxFixpFrom leqMap eps maxIters probVec
   | otherwise = do
       -- should be newV >= oldV -- TODO: use relative error
       let checkIter leqEps newV oldV = leqEps && newV - oldV <= eps
-      lessThanEps <- evalEqSys leqMap checkIter probVec
+      lessThanEps <- evalEqSys leqMap checkIter probVec probVec
       unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 
 -- determine variables for which zero is a fixpoint
