@@ -8,7 +8,13 @@
 module Pomc.Prob.FixPoint ( VarKey
                           , FixpEq(..)
                           , EqMap
+                          , LiveEq(..)
+                          , LEqSys
+                          , ProbVec
                           , addFixpEq
+                          , toLiveEqMap
+                          , evalEqSys
+                          , approxFixpFrom
                           , approxFixp
                           , defaultEps
                           , defaultMaxIters
@@ -51,6 +57,10 @@ type ProbVec n = HT.BasicHashTable VarKey n
 addFixpEq :: MonadIO m => EqMap n -> VarKey -> FixpEq n -> m ()
 addFixpEq eqMap varKey eq = liftIO $ HT.insert eqMap varKey eq
 
+substituteKnownVals :: MonadIO m => EqMap n -> ProbVec n -> m ()
+substituteKnownVals eqMap knownVals =
+  liftIO $ HT.mapM_ (\(k, v) -> HT.insert eqMap k $ PopEq v) knownVals
+
 toLiveEqMap :: (MonadIO m, Fractional n) => EqMap n -> m (LEqSys n)
 toLiveEqMap eqMap = liftIO $ do
   s <- stToIO $ BHT.size eqMap
@@ -79,9 +89,9 @@ zeroVec eqMap = liftIO $ do
   return probVec
 
 evalEqSys :: (MonadIO m, Ord n, Fractional n)
-          => LEqSys n -> n -> ProbVec n -> m Bool
-evalEqSys leqMap eps probVec = liftIO $ MV.foldM' evalEq True leqMap where
-  evalEq leqEps (key, eq) = do
+          => LEqSys n -> (Bool -> n -> n -> Bool) -> ProbVec n -> m Bool
+evalEqSys leqMap checkRes probVec = liftIO $ MV.foldM' evalEq True leqMap where
+  evalEq prevCheck (key, eq) = do
     oldV <- fromJust <$> HT.lookup probVec key
     newV <- case eq of
       PushLEq terms -> sum <$> mapM
@@ -92,14 +102,16 @@ evalEqSys leqMap eps probVec = liftIO $ MV.foldM' evalEq True leqMap where
         ) terms
       ShiftLEq terms -> sum <$> mapM (\(p, k) -> (p *) . fromJust <$> (HT.lookup probVec k)) terms
     HT.insert probVec key newV
-    return $ leqEps && newV - oldV <= eps -- should be newV >= prevV -- TODO: use relative error
+    return $ checkRes prevCheck newV oldV
 
 approxFixpFrom :: (MonadIO m, Ord n, Fractional n, Show n)
                => LEqSys n -> n -> Int -> ProbVec n -> m ()
 approxFixpFrom leqMap eps maxIters probVec
   | maxIters <= 0 = return ()
   | otherwise = do
-      lessThanEps <- evalEqSys leqMap eps probVec
+      -- should be newV >= oldV -- TODO: use relative error
+      let checkIter leqEps newV oldV = leqEps && newV - oldV <= eps
+      lessThanEps <- evalEqSys leqMap checkIter probVec
       unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 
 -- determine variables for which zero is a fixpoint
