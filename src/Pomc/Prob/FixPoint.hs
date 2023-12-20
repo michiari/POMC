@@ -13,6 +13,8 @@ module Pomc.Prob.FixPoint ( VarKey
                           , ProbVec
                           , addFixpEq
                           , toLiveEqMap
+                          , copyVec
+                          , zeroVec
                           , evalEqSys
                           , approxFixpFrom
                           , approxFixp
@@ -77,6 +79,12 @@ toLiveEqMap eqMap = liftIO $ do
           _ -> return i
     ) 0 eqMap
   return $ MV.unsafeTake n leqMap
+
+copyVec :: MonadIO m => ProbVec n -> m (ProbVec n)
+copyVec vec = liftIO $ do
+  newVec <- HT.newSized =<< stToIO (BHT.size vec)
+  HT.mapM_ (\(k, v) -> HT.insert newVec k v) vec
+  return newVec
 
 zeroVec :: (MonadIO m, Fractional n) => EqMap n -> m (ProbVec n)
 zeroVec eqMap = liftIO $ do
