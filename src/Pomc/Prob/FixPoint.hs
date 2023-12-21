@@ -31,7 +31,7 @@ import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
 
 import Data.Maybe (fromJust)
 import Data.Ratio (approxRational)
-import Control.Monad (unless)
+import Control.Monad (unless, filterM)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST (stToIO)
 import qualified Data.HashTable.IO as HT
@@ -144,7 +144,9 @@ preprocessApproxFixp eqMap eps maxIters = do
   leqMap <- toLiveEqMap eqMap
   -- iterate just one time and check if fixpoint remains zero
   approxFixpFrom leqMap eps maxIters probVec
-  liftIO $ map fst . filter (\(_, p) -> p == 0) <$> HT.toList probVec
+  let isPopEq (PopEq _) = True
+      isPopEq _ = False
+  liftIO $ map fst <$> (filterM (\(k, p) -> (\eq -> not (isPopEq eq) && (p == 0)) . fromJust <$> HT.lookup eqMap k) =<< HT.toList probVec)
 
 approxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
            => EqMap n -> n -> Int -> m (ProbVec n)
