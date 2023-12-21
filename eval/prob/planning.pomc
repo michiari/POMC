@@ -1,0 +1,127 @@
+probabilistic query: approximate;
+
+program:
+u2 last_action;
+
+main() {
+    query f();
+}
+
+f(){
+    up();
+    observe last_action < 2u2;
+}
+
+
+// 0
+up() {
+    bool stop;
+    u2 next_action;
+    stop = 0u1 {1u5 : 10u5} 1u1;
+    if (stop) {
+        last_action = 0u2;
+    } else {
+        next_action = 0u2 {1u3 : 4u3} 1u2 {1u3 : 4u3} 2u2 {1u3 : 4u3} 3u2;
+        observe next_action > 0u2;
+        if (next_action == 0u2) {
+            up();
+        } else {
+            if (next_action == 1u2) {
+                down();
+            } else {
+                if (next_action == 2u2) {
+                    right();
+                } else {
+                    if (next_action == 3u2) {
+                        left();
+                    }   else {} 
+                }
+            }
+        }
+    }
+}
+
+// 1
+down() {
+    bool stop;
+    u2 next_action;
+    stop = 0u1 {1u5 : 10u5} 1u1;
+    if (stop) {
+        last_action = 1u2;
+    } else {
+        next_action = 0u2 {1u3 : 4u3} 1u2 {1u3 : 4u3} 2u2 {1u3 : 4u3} 3u2;
+        if (next_action == 0u2) {
+            up();
+        } else {
+            if (next_action == 1u2) {
+                down();
+            } else {
+                if (next_action == 2u2) {
+                    right();
+                } else {
+                    if (next_action == 3u2) {
+                        left();
+                    }    else {}
+                }
+            }
+        }
+    }
+}
+
+// 2
+right() {
+    bool stop;
+    u2 next_action;
+    stop = 0u1 {1u5 : 10u5} 1u1;
+    if (stop) {
+        last_action = 2u2;
+    } else {
+        next_action = 0u2 {1u3 : 4u3} 1u2 {1u3 : 4u3} 2u2 {1u3 : 4u3} 3u2;
+        if (next_action == 0u2) {
+            up();
+        } else {
+            if (next_action == 1u2) {
+                down();
+            } else {
+                if (next_action == 2u2) {
+                    right();
+                } else {
+                    if (next_action == 3u2) {
+                        left();
+                    }   else {} 
+                }
+            }
+        }
+    }
+}
+
+// 3
+left() {
+    bool stop;
+    u2 next_action;
+    stop = 0u1 {1u5 : 10u5} 1u1;
+    if (stop) {
+        last_action = 3u2;
+    } else {
+        next_action = 0u2 {1u3 : 4u3} 1u2 {1u3 : 4u3} 2u2 {1u3 : 4u3} 3u2;
+        if (next_action == 0u2) {
+            up();
+        } else {
+            if (next_action == 1u2) {
+                down();
+            } else {
+                if (next_action == 2u2) {
+                    right();
+                } else {
+                    if (next_action == 3u2) {
+                        left();
+                    }   else {} 
+                }
+            }
+        }
+    }
+}
+
+
+
+

@@ -522,8 +522,6 @@ createComponent globals gn (popContxs, asReachesPop) precFun query = do
         -- delete previous assertions and encoding the new ones
         reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, isASQ) (eqMap globals) (supportGraph globals) precFun mkGe query
         DBG.traceM "Solving this SCC"
-        newAddedKeys <- liftIO $ map fst <$> HT.toList newAdded
-        unless (Set.fromList newAddedKeys == Set.fromList to_be_encoded ) $ DBG.traceM "added keys that were not supposed to do so"
         actualNoPend <- solveSCCQuery (length poppedEdges) asReachesPop (varMap, newAdded, currentASPSs, isASQ) globals precFun
         when actualNoPend $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef (cannotPend globals) $ IntSet.insert e
         when (actualNoPend && IntSet.null popContxs) $ error "If there are no pop Contxs, how can the SCC reach a pop almost surely?"
@@ -615,7 +613,7 @@ solveSCCQuery scclen asReachesPop varMap@(m, newAdded, _, _) globals precFun = d
           when (isNothing maybeVar) $ error "updating value iteration for a variable that does not result to be added in this SCC decomposition"
           addFixpEq eMap varKey (PopEq p)
 
-  -- updating upper bounds (the model computed by the SMT query)
+  -- updating upper bounds
   variables <- liftIO $ HT.toList newAdded
   forM_ variables $ \(key, _) -> do
     ub <- liftIO $ fromJust <$> HT.lookup (oviUpperBound oviRes) key
