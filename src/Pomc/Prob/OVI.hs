@@ -1,3 +1,4 @@
+-- {-# LANGUAGE DataKinds #-} -- For Rounded
 {- |
    Module      : Pomc.Prob.OVI
    Copyright   : 2023 Michele Chiari
@@ -9,6 +10,7 @@ module Pomc.Prob.OVI ( ovi
                      , OVISettings(..)
                      , defaultOVISettingsDouble
                      , defaultOVISettingsProb
+                     -- , defaultOVISettingsRounded
                      , OVIResult(..)
                      , oviToRational
                      ) where
@@ -25,6 +27,7 @@ import qualified Data.HashTable.IO as HT
 import qualified Data.HashTable.ST.Basic as BHT
 import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
+-- import qualified Numeric.Rounded as R
 
 import qualified Debug.Trace as DBG
 
@@ -67,6 +70,20 @@ defaultOVISettingsProb = OVISettings
   , oviRationalAprroxEps = 1 % 10^(8 :: Integer)
   , oviMaxKIndIters = 10
   }
+
+-- defaultOVISettingsRounded :: OVISettings (R.Rounded 'R.TowardNearest 128)
+-- defaultOVISettingsRounded = OVISettings
+--   { oviMaxIters = 10
+--   , oviMaxKleeneIters = 1000000
+--   , oviDampingFactor = 0.5
+--   , oviKleeneEps = 1e-3
+--   , oviKleeneDampingFactor = 1e-1
+--   , oviPowerIterEps = 1e-3
+--   , oviPowerIterDampingFactor = 1e-1
+--   , oviMaxPowerIters = 10000
+--   , oviRationalAprroxEps = 1e-8
+--   , oviMaxKIndIters = 10
+--   }
 
 
 data OVIResult n = OVIResult { oviSuccess :: Bool

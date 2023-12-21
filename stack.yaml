@@ -36,6 +36,9 @@ packages:
 extra-deps:
   - git: https://github.com/IagoAbal/haskell-z3.git
     commit: 6368e451e45359563106da7e917f6594453c5161
+  # - rounded-1.1.1
+  # - hgmp-0.1.2.1 # Needs CFLAGS=-Wno-error
+  # - long-double-0.1.1.1
 # - z3-408.2
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
