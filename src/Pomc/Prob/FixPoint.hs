@@ -63,7 +63,8 @@ mapEqMapPop :: MonadIO m => (a -> b) -> EqMap a -> m (EqMap b)
 mapEqMapPop f eqMap = liftIO $ do
   newMap <- HT.newSized =<< stToIO (BHT.size eqMap)
   let go (k, PopEq p) = HT.insert newMap k $ PopEq (f p)
-      go _ = return ()
+      go (k, PushEq terms) = HT.insert newMap k $ PushEq terms
+      go (k, ShiftEq terms) = HT.insert newMap k $ ShiftEq terms
   HT.mapM_ go eqMap
   return newMap
 

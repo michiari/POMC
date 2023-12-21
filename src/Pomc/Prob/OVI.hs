@@ -37,6 +37,7 @@ data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviPowerIterDampingFactor :: n
                                  , oviMaxPowerIters :: Int
                                  , oviRationalAprroxEps :: n
+                                 , oviMaxKIndIters :: Int
                                  }
 
 defaultOVISettingsDouble :: OVISettings Double
@@ -50,6 +51,7 @@ defaultOVISettingsDouble = OVISettings
   , oviPowerIterDampingFactor = 1e-1
   , oviMaxPowerIters = 10000
   , oviRationalAprroxEps = 1e-8
+  , oviMaxKIndIters = 10
   }
 
 defaultOVISettingsProb :: OVISettings Prob
@@ -63,7 +65,9 @@ defaultOVISettingsProb = OVISettings
   , oviPowerIterDampingFactor = 1 % 10
   , oviMaxPowerIters = 10000
   , oviRationalAprroxEps = 1 % 10^(8 :: Integer)
+  , oviMaxKIndIters = 10
   }
+
 
 data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviIters :: Int
@@ -165,7 +169,6 @@ powerIterate eps maxIters matrix eigenVec = do
 computeEigen :: (MonadIO m, Fractional n, Ord n, Show n)
              => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> m n
 computeEigen leqSys eps maxIters lowerApprox eigenVec = liftIO $ do
-  --DBG.traceShowM =<< HT.toList eigenVec
   matrix <- jacobiTimesX leqSys lowerApprox eigenVec
   --DBG.traceShowM =<< V.freeze matrix
   eigenVal <- powerIterate eps maxIters matrix eigenVec -- modifies eigenVec in-place
@@ -175,7 +178,8 @@ computeEigen leqSys eps maxIters lowerApprox eigenVec = liftIO $ do
 ovi :: (MonadIO m, Fractional n, Ord n, Show n)
     => OVISettings n -> EqMap n -> m (OVIResult n)
 ovi settings eqMap = liftIO $ do
-  DBG.traceM "Starting OVI..."
+  s <- stToIO $ BHT.size eqMap
+  DBG.traceM $ "Starting OVI on a system with " ++ show s ++ " variables..."
   lowerApprox <- zeroVec eqMap
   -- initialize upperApprox with lowerApprox, so we copy non-alive variable values
   upperApprox <- copyVec lowerApprox
@@ -215,9 +219,11 @@ ovi settings eqMap = liftIO $ do
               )
               lowerApprox
 
-            -- TODO: add k-induction with scaling factor
             -- check if upperApprox is inductive
-            inductive <- evalEqSys leqSys (\prev newV oldV -> prev && newV <= oldV) upperApprox upperApprox
+            let check prev newV oldV = prev && newV <= oldV
+                  -- prev && 1 / (newV - oldV) <= 0
+                  -- prev && (1-eps)*newV + eps <= oldV
+            inductive <- evalEqSys leqSys check upperApprox upperApprox
             DBG.traceM $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
             if inductive
               then return True
@@ -239,16 +245,29 @@ ovi settings eqMap = liftIO $ do
 
   go (oviKleeneEps settings) (oviPowerIterEps settings) (oviMaxIters settings)
 
-oviToRational :: (MonadIO m, Ord n, RealFrac n)
+oviToRational :: (MonadIO m, Ord n, RealFrac n, Show n)
               => OVISettings n -> EqMap n -> OVIResult n -> m Bool
 oviToRational settings eqMap oviRes = liftIO $ do
   let eps = oviRationalAprroxEps settings
+      fracEps = toRational eps
   reqMap <- mapEqMapPop (\p -> approxRational p eps) eqMap
   rleqSys <- toLiveEqMap reqMap
   -- Convert upper bound to rational
   rub <- mapVec (\p -> approxRational (p + eps) eps) $ oviUpperBound oviRes
-  -- Evaluate equation system
   srub <- HT.newSized =<< stToIO (BHT.size rub)
-  inductive <- evalEqSys rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
-  DBG.traceM $ "Is the rational approximation inductive? " ++ show inductive
-  return inductive
+  let checkWithKInd 0 = return False
+      checkWithKInd kIters = do
+        -- Evaluate equation system
+        inductive <- evalEqSys rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
+
+        DBG.traceM $ "Is the rational approximation inductive? " ++ show inductive
+        if inductive
+          then return inductive
+          else do
+          DBG.traceM $ "Trying with k-induction, remaining iterations: " ++ show kIters
+          HT.mapM_ (\(k, sv) -> do
+                       v <- fromJust <$> HT.lookup rub k
+                       HT.insert rub k $ approxRational (min v sv) fracEps
+                   ) srub
+          checkWithKInd $ kIters - 1
+  checkWithKInd $ oviMaxKIndIters settings
