@@ -239,7 +239,7 @@ ovi settings eqMap = liftIO $ do
 
             -- check if upperApprox is inductive
             let check prev newV oldV = prev && newV <= oldV
-                  -- prev && 1 / (newV - oldV) <= 0
+                  -- prev && 1 / (oldV - newV) >= 0
                   -- prev && (1-eps)*newV + eps <= oldV
             inductive <- evalEqSys leqSys check upperApprox upperApprox
             DBG.traceM $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
