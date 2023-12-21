@@ -7,16 +7,22 @@
 
 module Pomc.Prob.OVI ( ovi
                      , OVISettings(..)
-                     , defaultOVISettings
+                     , defaultOVISettingsDouble
+                     , defaultOVISettingsProb
                      , OVIResult(..)
+                     , oviToRational
                      ) where
 
+import Pomc.Prob.ProbUtils (Prob)
 import Pomc.Prob.FixPoint
 
+import Data.Ratio ((%), approxRational)
 import Data.Maybe (fromJust, isJust)
 import Control.Monad (forM, when)
 import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad.ST (stToIO)
 import qualified Data.HashTable.IO as HT
+import qualified Data.HashTable.ST.Basic as BHT
 import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
 
@@ -30,18 +36,34 @@ data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviPowerIterEps :: n
                                  , oviPowerIterDampingFactor :: n
                                  , oviMaxPowerIters :: Int
+                                 , oviRationalAprroxEps :: n
                                  }
 
-defaultOVISettings :: OVISettings Double
-defaultOVISettings = OVISettings { oviMaxIters = 10
-                                 , oviMaxKleeneIters = 1000000
-                                 , oviDampingFactor = 0.5
-                                 , oviKleeneEps = 1e-3
-                                 , oviKleeneDampingFactor = 1e-1
-                                 , oviPowerIterEps = 1e-3
-                                 , oviPowerIterDampingFactor = 1e-1
-                                 , oviMaxPowerIters = 10000
-                                 }
+defaultOVISettingsDouble :: OVISettings Double
+defaultOVISettingsDouble = OVISettings
+  { oviMaxIters = 10
+  , oviMaxKleeneIters = 1000000
+  , oviDampingFactor = 0.5
+  , oviKleeneEps = 1e-3
+  , oviKleeneDampingFactor = 1e-1
+  , oviPowerIterEps = 1e-3
+  , oviPowerIterDampingFactor = 1e-1
+  , oviMaxPowerIters = 10000
+  , oviRationalAprroxEps = 1e-8
+  }
+
+defaultOVISettingsProb :: OVISettings Prob
+defaultOVISettingsProb = OVISettings
+  { oviMaxIters = 10
+  , oviMaxKleeneIters = 1000000
+  , oviDampingFactor = 1 % 2
+  , oviKleeneEps = 1 % 1000
+  , oviKleeneDampingFactor = 1 % 10
+  , oviPowerIterEps = 1 % 1000
+  , oviPowerIterDampingFactor = 1 % 10
+  , oviMaxPowerIters = 10000
+  , oviRationalAprroxEps = 1 % 10^(8 :: Integer)
+  }
 
 data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviIters :: Int
@@ -195,7 +217,7 @@ ovi settings eqMap = liftIO $ do
 
             -- TODO: add k-induction with scaling factor
             -- check if upperApprox is inductive
-            inductive <- evalEqSys leqSys (\prev newV oldV -> prev && newV <= oldV) upperApprox
+            inductive <- evalEqSys leqSys (\prev newV oldV -> prev && newV <= oldV) upperApprox upperApprox
             DBG.traceM $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
             if inductive
               then return True
@@ -217,3 +239,16 @@ ovi settings eqMap = liftIO $ do
 
   go (oviKleeneEps settings) (oviPowerIterEps settings) (oviMaxIters settings)
 
+oviToRational :: (MonadIO m, Ord n, RealFrac n)
+              => OVISettings n -> EqMap n -> OVIResult n -> m Bool
+oviToRational settings eqMap oviRes = liftIO $ do
+  let eps = oviRationalAprroxEps settings
+  reqMap <- mapEqMapPop (\p -> approxRational p eps) eqMap
+  rleqSys <- toLiveEqMap reqMap
+  -- Convert upper bound to rational
+  rub <- mapVec (\p -> approxRational (p + eps) eps) $ oviUpperBound oviRes
+  -- Evaluate equation system
+  srub <- HT.newSized =<< stToIO (BHT.size rub)
+  inductive <- evalEqSys rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
+  DBG.traceM $ "Is the rational approximation inductive? " ++ show inductive
+  return inductive

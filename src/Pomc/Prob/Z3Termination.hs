@@ -18,11 +18,10 @@ import Pomc.Check (EncPrecFunc)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.SupportGraph
 import Pomc.Prob.FixPoint
+import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
 
 import Pomc.ZStack(ZStack)
 import qualified Pomc.ZStack as ZS
-
-import Pomc.Prob.OVI(ovi, defaultOVISettings, OVIResult(..))
 
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad (foldM, unless, when, forM_, forM)
@@ -273,18 +272,22 @@ solveQuery q
     getMaybeTolerance _ = Nothing
 
     assertHints varMap eqMap  eps = do
-              let iterEps = min defaultEps $ eps * eps
-              -- DBG.traceShowM =<< (liftIO $ HT.toList eqMap)
-              approxVec <- approxFixp eqMap iterEps defaultMaxIters
-              -- DBG.traceShowM =<< (liftIO $ HT.toList approxVec)
-              approxFracVec <- toRationalProbVec iterEps approxVec
-              --DBG.traceM "Computed a lower bound!"
-              enlargeBounds approxFracVec eps
-                -- updating with found values
-              forM_  approxFracVec $ \(varKey, _, p) -> do
-                liftIO (HT.lookup eqMap varKey) >>= \case
-                  Just (PopEq _) -> return () -- An eq constraint has already been asserted
-                  _ -> addFixpEq eqMap varKey (PopEq p)
+      -- oviRes <- ovi defaultOVISettingsDouble eqMap
+      -- oviToRational defaultOVISettingsDouble eqMap oviRes
+      -- oviveclist <- liftIO $ HT.toList $ oviUpperBound oviRes
+      -- DBG.traceM $ "OVI result: " ++ show (oviSuccess oviRes) ++ show oviveclist
+      let iterEps = min defaultEps $ eps * eps
+      -- DBG.traceShowM =<< (liftIO $ HT.toList eqMap)
+      approxVec <- approxFixp eqMap iterEps defaultMaxIters
+      -- DBG.traceShowM =<< (liftIO $ HT.toList approxVec)
+      approxFracVec <- toRationalProbVec iterEps approxVec
+      DBG.traceM "Computed a lower bound!"
+      enlargeBounds approxFracVec eps
+      -- updating with found values
+      forM_  approxFracVec $ \(varKey, _, p) -> do
+        liftIO (HT.lookup eqMap varKey) >>= \case
+          Just (PopEq _) -> return () -- An eq constraint has already been asserted
+          _ -> addFixpEq eqMap varKey (PopEq p)
       where enlargeBounds approxFracVec eps = do
               epsReal <- mkRealNum eps
               bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case
@@ -568,7 +571,7 @@ solveSCCQuery scclen asReachesPop varMap@(m, newAdded, _, _) globals precFun = d
     addFixpEq eMap varKey (PopEq 0)
     liftIO $ HT.insert m varKey zeroValue
 
-  oviRes <- ovi defaultOVISettings eMap
+  oviRes <- ovi defaultOVISettingsDouble eMap
 
   unless (oviSuccess oviRes) $ error "OVI was not successful in computing an inductive upper bounds on the termination probabilities"
   approxUpperFracVec <- toUpperRationalProbVec iterEps (oviUpperBound oviRes)
