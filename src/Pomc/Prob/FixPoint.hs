@@ -132,8 +132,10 @@ approxFixpFrom :: (MonadIO m, Ord n, Fractional n, Show n)
 approxFixpFrom leqMap eps maxIters probVec
   | maxIters <= 0 = return ()
   | otherwise = do
-      -- should be newV >= oldV -- TODO: use relative error
-      let checkIter leqEps newV oldV = leqEps && newV - oldV <= eps
+      -- should be newV >= oldV
+      let checkIter leqEps newV oldV =
+            leqEps && (oldV == 0 || (newV - oldV) / oldV <= eps)
+            -- leqEps && newV - oldV <= eps
       lessThanEps <- evalEqSys leqMap checkIter probVec probVec
       unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 

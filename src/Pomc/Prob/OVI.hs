@@ -149,7 +149,8 @@ powerIterate :: (MonadIO m, Fractional n, Ord n)
 powerIterate eps maxIters matrix eigenVec = do
   oldEigenVec <- copyVec eigenVec
   let checkRes prevCheck newV oldV =
-        prevCheck && abs (newV - oldV) <= eps
+        prevCheck && (oldV == 0 || (abs $ newV - oldV) / oldV <= eps)
+        -- prevCheck && abs (newV - oldV) <= eps
       go eigenVal 0 = return eigenVal
       go _ iters = do
         stop <- evalPolySys matrix checkRes oldEigenVec eigenVec
