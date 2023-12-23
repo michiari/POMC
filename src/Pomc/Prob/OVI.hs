@@ -166,9 +166,9 @@ powerIterate :: (MonadIO m, Fractional n, Ord n)
 powerIterate eps maxIters matrix eigenVec = do
   oldEigenVec <- copyVec eigenVec
   let checkRes prevCheck newV oldV =
-        prevCheck && (oldV == 0 || (abs $ newV - oldV) / oldV <= eps)
-        -- prevCheck && abs (newV - oldV) <= eps
-      go eigenVal 0 = return eigenVal
+        prevCheck && abs (newV - oldV) <= eps -- absolute error
+        -- prevCheck && (newV == 0 || (abs $ newV - oldV) / newV <= eps) -- relative error
+      go eigenVal 0 = DBG.traceM "Power iterations exhausted!" >> return eigenVal
       go _ iters = do
         stop <- evalPolySys matrix checkRes oldEigenVec eigenVec
         -- get approximate largest eigenvalue as the maxNorm

@@ -134,8 +134,8 @@ approxFixpFrom leqMap eps maxIters probVec
   | otherwise = do
       -- should be newV >= oldV
       let checkIter leqEps newV oldV =
-            leqEps && (oldV == 0 || (newV - oldV) / oldV <= eps)
-            -- leqEps && newV - oldV <= eps
+            -- leqEps && newV - oldV <= eps -- absolute error
+            leqEps && (newV == 0 || (newV - oldV) / newV <= eps) -- relative error
       lessThanEps <- evalEqSys leqMap checkIter probVec probVec
       unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 
