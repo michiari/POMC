@@ -161,23 +161,26 @@ jacobiTimesX leqSys v checkVec = liftIO $ MV.generateM (MV.length leqSys)
             return [Lin coeff key]
             else return []
 
-powerIterate :: (MonadIO m, Fractional n, Ord n)
+powerIterate :: (MonadIO m, Fractional n, Ord n, Show n)
              => n -> Int -> PolyVector n -> ProbVec n -> m n
 powerIterate eps maxIters matrix eigenVec = do
   oldEigenVec <- copyVec eigenVec
-  let checkRes prevCheck newV oldV =
-        prevCheck && abs (newV - oldV) <= eps -- absolute error
-        -- prevCheck && (newV == 0 || (abs $ newV - oldV) / newV <= eps) -- relative error
-      go eigenVal 0 = DBG.traceM "Power iterations exhausted!" >> return eigenVal
+  let go eigenVal 0 = DBG.traceM "Power iterations exhausted!" >> return eigenVal
       go _ iters = do
-        stop <- evalPolySys matrix checkRes oldEigenVec eigenVec
+        _ <- evalPolySys matrix (\p _ _ -> p) oldEigenVec eigenVec
         -- get approximate largest eigenvalue as the maxNorm
         eigenVal <- HT.foldM (\oldMax (_, v) -> return $ max oldMax v) 0 eigenVec
         -- normalize eigenVec on the largest eigenValue
         -- FIXME: iterate on matrix because I don't know if I can modify a HT while iterating on it
         MV.mapM_ (\(k, _) -> HT.mutate eigenVec k (\(Just v) -> (Just $ v / eigenVal, v))) matrix
+        -- check absolute error
+        stop <- HT.foldM (\chk (k, nv) -> do
+                             ov <- fromJust <$> HT.lookup oldEigenVec k
+                             return $ chk && abs (ov - nv) <= eps
+                         ) True eigenVec
         if stop
-          then return eigenVal
+          then DBG.traceM ("Power iteration converged after " ++ show (maxIters - iters) ++ " iterations. Eigenvalue: " ++ show eigenVal)
+               >> return eigenVal
           else do
           HT.mapM_ (\(k, v) -> HT.insert oldEigenVec k v) eigenVec
           go eigenVal (iters - 1)
