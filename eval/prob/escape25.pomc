@@ -2,7 +2,7 @@ probabilistic query: approximate;
 
 program:
 main() {
-  f(0u8, 5u8);
+  f(0u8, 25u8);
 }
 
 f(u8 n, u8 m) {
