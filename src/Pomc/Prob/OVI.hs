@@ -204,6 +204,7 @@ ovi settings eqMap = liftIO $ do
   lowerApprox <- zeroVec eqMap
   -- initialize upperApprox with lowerApprox, so we copy non-alive variable values
   upperApprox <- copyVec lowerApprox
+  evalUpperApprox <- newVecSameSize lowerApprox
   -- create system containing only live equations
   leqSys <- toLiveEqMap eqMap
   -- create eigenVec and initialize it to 1
@@ -244,7 +245,7 @@ ovi settings eqMap = liftIO $ do
             let check prev newV oldV = prev && newV <= oldV
                   -- prev && 1 / (oldV - newV) >= 0
                   -- prev && (1-eps)*newV + eps <= oldV
-            inductive <- evalEqSys leqSys check upperApprox upperApprox
+            inductive <- evalEqSys leqSys check upperApprox evalUpperApprox
             DBG.traceM $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
             if inductive
               then return True
@@ -254,11 +255,13 @@ ovi settings eqMap = liftIO $ do
       DBG.traceM $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
         ++ show inductive
       if inductive
-        then return OVIResult { oviSuccess  = True
-                              , oviIters = oviMaxIters settings - maxIters
-                              , oviLowerBound = lowerApprox
-                              , oviUpperBound = upperApprox
-                              } -- This is the upperApprox iterated once: is this ok?
+        then do
+        MV.forM_ leqSys (\(k, _) -> HT.mutate upperApprox k (\(Just v) -> (Just $ v * 1.0001, v)))
+        return OVIResult { oviSuccess  = True
+                         , oviIters = oviMaxIters settings - maxIters
+                         , oviLowerBound = lowerApprox
+                         , oviUpperBound = upperApprox
+                         }
         else go
              (kleeneEps * oviKleeneDampingFactor settings)
              (powerIterEps * oviPowerIterDampingFactor settings)

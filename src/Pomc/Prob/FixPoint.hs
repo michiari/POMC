@@ -14,6 +14,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , mapEqMapPop
                           , addFixpEq
                           , toLiveEqMap
+                          , newVecSameSize
                           , mapVec
                           , copyVec
                           , zeroVec
@@ -91,6 +92,9 @@ toLiveEqMap eqMap = liftIO $ do
           _ -> return i
     ) 0 eqMap
   return $ MV.unsafeTake n leqMap
+
+newVecSameSize :: MonadIO m => ProbVec a -> m (ProbVec b)
+newVecSameSize vec = liftIO $ HT.newSized =<< stToIO (BHT.size vec)
 
 mapVec :: MonadIO m => (a -> b) -> ProbVec a -> m (ProbVec b)
 mapVec f vec = liftIO $ do
