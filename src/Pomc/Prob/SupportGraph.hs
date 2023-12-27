@@ -288,7 +288,7 @@ dfs globals gn =
           crP <- MV.unsafeRead (canReachPop globals) (gnId nextNode)
           mrP <- MV.unsafeRead (mustReachPop globals) (gnId nextNode)
           return (crP, mrP)
-        | (iVal > 0)  = GS.push (sStack globals) (gnId nextNode) >> merge globals nextNode >> return (False, False)
+        | (iVal > 0)  = merge globals nextNode >> return (False, False)
         | otherwise = error "unreachable error"
       follow e = do
         node <- MV.unsafeRead (supportGraph globals) (to e)
@@ -331,10 +331,9 @@ createComponent globals gn (canReachP, mustReachP) = do
       GS.pop_ (bStack globals)
       sSize <- GS.size $ sStack globals
       poppedEdges <- GS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
-      let actualMustReach = mustReachP && length poppedEdges < 2
       forM_ poppedEdges $ \e -> do
         MV.unsafeWrite (iVector globals) e (-1)
         MV.unsafeWrite (canReachPop globals) e canReachP
-        MV.unsafeWrite (mustReachPop globals) e actualMustReach
-      return (canReachP,actualMustReach)
+        MV.unsafeWrite (mustReachPop globals) e mustReachP
+      return (canReachP,mustReachP)
     else return (canReachP, mustReachP)

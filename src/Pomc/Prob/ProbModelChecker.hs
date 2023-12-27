@@ -42,6 +42,8 @@ import qualified Pomc.Prob.ProbEncoding as PE
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import qualified Data.IntSet as IntSet
+
 import qualified Data.Map as Map
 
 import Data.Bifunctor(first, second)
@@ -55,7 +57,8 @@ import Z3.Opts
 import qualified Debug.Trace as DBG
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as MV
-import Control.Monad (when)
+import Control.Monad (when, unless)
+import Data.Maybe (isNothing, isJust)
 
 -- TODO: add normalize RichDistr to optimize the encoding
 -- note that non normalized encodings are at the moment (16.11.23) correctly handled by the termination algorithms
@@ -133,9 +136,13 @@ terminationExplicit popa query =
   in do
     sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
     scString <- stToIO $ CM.showMap sc
-    (p, cannotPend) <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc query
+    --DBG.traceM $ "Computed the following support graph: " ++ scString
+    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
+    --DBG.traceM $ "(cannotReachPops, mustReachPops)" ++ show asPendSemiconfs
+    p <- evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs query)
+
     DBG.traceM $ "Computed termination bounds: " ++ show p
-    return (p, scString ++ "\nDeltaPush: " ++ show deltaPush ++ "\nDeltaShift: " ++ show deltaShift ++ "\nDeltaPop: " ++ show deltaPop ++ "\n" ++ show query)
+    return (p, show query)
 
 programTermination :: Program -> TermQuery -> IO (Prob, String)
 programTermination prog query =
@@ -158,11 +165,19 @@ programTermination prog query =
     -- asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
-    --p <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    (ApproxSingleResult (lb,ub), cannotPend) <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc query
-    --DBG.traceM $ "Termination probabilities: " ++ show termVector
-    --let pendVector = V.map (\k -> k < (1 :: Prob)) $ toProbVec termVector
-    return (ub, scString ++ "\n" ++ show query)
+    --p <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
+    (ApproxAllResult (vec,_), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query
+    DBG.traceM $ "Computed termination probabilities: " ++ show vec
+    --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
+    let cases i k 
+          | k < (1 :: Prob) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability below" ++ show k -- inconclusive result
+          | k < (1 :: Prob) = Just True
+          | IntSet.member i mustReachPopIdxs = Just False
+          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST."
+        pendVector = V.imap cases vec
+    DBG.traceM $ "Pending Vector: " ++ show pendVector
+    DBG.traceM $ "Conclusive analysis?: " ++ show (all isJust pendVector)
+    return (vec V.! 0, scString ++ "\n" ++ show query)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
@@ -205,17 +220,24 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   in do
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
     scString <- stToIO $ CM.showMap sc
+    {-
     asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
-    pendVector <- toBoolVec <$> evalZ3With (Just QF_NRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
+    pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
-    --(ApproxAllResult (lb,ub)) <- evalZ3With (Just QF_NRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
-    --DBG.traceM $ "Computed termination probabilities: " ++ show (ApproxAllResult (lb,ub))
+    -}
+    (ApproxAllResult (vec, _), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
+    DBG.traceM $ "Computed termination probabilities: " ++ show vec
     --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
-    --let pendVectorUB = V.map (\k -> k < (1 :: Prob)) ub
-    --almostSurelyLB <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVectorLB
-    --almostSurelyUB <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVectorUB
-    --when (almostSurelyLB /= almostSurelyUB) $ DBG.traceM "lower and upper bound induce a different qualitative result!!!!"
+    let cases i k 
+          | k < (1 :: Prob) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability below" ++ show k -- inconclusive result
+          | k < (1 :: Prob) = True
+          | IntSet.member i mustReachPopIdxs = False
+          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST."
+        pendVector = V.imap cases vec
+    DBG.traceM $ "Pending Vector: " ++ show pendVector
+    DBG.traceM "Conclusive analysis!"
+    almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
     return (almostSurely, scString ++ show pendVector)
 
 qualitativeModelCheckProgram :: Formula ExprProp -- phi: input formula to check
