@@ -1,5 +1,5 @@
-probabilistic query: approximate;
-formula = G ((call And alice And isFair) -> ~ (XNu obs));
+probabilistic query: qualitative;
+formula = G ((call And alice And isFair) --> ~ (XNu obs));
 
 program:
 u3 fairness;
@@ -23,7 +23,7 @@ alice(bool &x) {
 
 bob(bool &y) {
     bool prior_bob, recurse, alice_choice;
-    // sample according to the prior (0.5)
+    // sample according to the prior (0.4)
     prior_bob = 1u1 {4u4 : 10u4} 0u1;
     recurse = 1u1 {3u3 : 5u3} 0u1;
     if (recurse) {
