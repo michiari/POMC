@@ -251,21 +251,24 @@ lowerStatement sks thisFinfo linkPred0 (Query fname args) = do
   -- An observation was raised
   obsSid <- getSidInc
   let obsState = PState obsSid (mkPSLabels fsk) ThrowObs
-  insertPop (psId $ fiThrow calleeFinfo, callSid) (NoRet, Det obsState)
+  -- We restore the state before the call, without returning parameters
+  insertPop (psId $ fiThrow calleeFinfo, callSid) (RetObs, Det obsState)
   -- We need to restart the query
   insertPush obsSid (psAction obsState, Det obsState)
   -- Here we don't respect the condition on pops to save one state
-  insertPop (obsSid, obsSid) (RetObs, Det callState)
+  insertPop (obsSid, obsSid) (NoRet, Det callState)
 
   -- Add dummy return to exit query block
   retSid <- getSidInc
   let retState = PState retSid (mkPSLabels fsk) Return
   -- If the query returns normally, link it to the dummy ret
-  insertPop (psId $ fiRetPad calleeFinfo, callSid) (RetInfo (skParams calleeSk) args, Det retState)
+  insertPop (psId $ fiRetPad calleeFinfo, callSid) (NoRet, Det retState)
   -- Shift the qry
   insertShift retSid (psAction retState, Det retState)
 
-  return ( \succStates -> addPops (retSid, qrySid) NoRet succStates
+  return ( \succStates -> addPops (retSid, qrySid)
+                          (RetInfo (skParams calleeSk) args) succStates
+                          -- Restore variables from before the query
          , Known thisTarget
          )
 
@@ -451,7 +454,7 @@ computeDsts bitenc pconv allProps gvii localsInfo oldVval act dt =
            -- Other actions are evaluated in the next state
      newDsts
   where cvval = case act of
-          CallOp _ _ _ -> {-DBG.traceShow (oldVval, act) $-} prepareForCall act oldVval
+          CallOp _ _ _ -> prepareForCall act oldVval
           _ -> oldVval
         composeDst vval (g, dst)
           | toBool $ evalExpr gvii vval g =
