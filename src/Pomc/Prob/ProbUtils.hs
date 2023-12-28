@@ -193,12 +193,12 @@ toBool TermSat = True
 toBool TermUnsat = False
 toBool r = error $ "cannot convert a non boolean result. Got instead: " ++ show r
 
-toProb :: TermResult -> (Prob, Prob)
-toProb (ApproxSingleResult (lb, ub)) = (lb, ub)
+toProb :: TermResult -> Prob
+toProb (ApproxSingleResult (lb, _)) = lb
 toProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
 
-toProbVec :: TermResult -> (Vector Prob, Vector Prob)
-toProbVec (ApproxAllResult (lb, ub)) = (lb, ub)
+toProbVec :: TermResult -> Vector Prob
+toProbVec (ApproxAllResult (lb, _)) = lb
 toProbVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
 toBoolVec :: TermResult -> Vector Bool

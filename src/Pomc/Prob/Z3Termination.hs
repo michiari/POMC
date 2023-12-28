@@ -637,7 +637,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   -- computing the PAST certificate
   if not dMustReachPop
     then do
-      unless (all (\(_,ub) -> ub < 1) (Map.toList upperBounds)) $ error "not AST but upper bound 1"
+      unless (all (\(_,ub) -> ub < 1) (Map.toList upperBounds) || fst (head variables) == (0 :: Int, -1 :: Int)) $ error "not AST but upper bound 1"
       return False
     else do
       let semiconfs = map (\(varKey, _) -> fst varKey) variables

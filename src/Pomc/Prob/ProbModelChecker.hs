@@ -91,7 +91,7 @@ terminationGEExplicit popa bound = first toBool <$> terminationExplicit popa (Co
 
 -- what is the probability that the input POPA terminates?
 terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> IO (Prob, String)
-terminationApproxExplicit popa = first (snd . toProb) <$> terminationExplicit popa (ApproxSingleQuery SMTWithHints)
+terminationApproxExplicit popa = first toProb <$> terminationExplicit popa (ApproxSingleQuery SMTWithHints)
 
 -- handling the termination query
 terminationExplicit :: (Ord s, Hashable s, Show s, Ord a)
@@ -166,18 +166,10 @@ programTermination prog query =
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     --p <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    (ApproxAllResult (vec,_), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query
-    DBG.traceM $ "Computed termination probabilities: " ++ show vec
+    (res, mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query
+    DBG.traceM $ "Computed termination probabilities: " ++ show res
     --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
-    let cases i k 
-          | k < (1 :: Prob) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability below" ++ show k -- inconclusive result
-          | k < (1 :: Prob) = Just True
-          | IntSet.member i mustReachPopIdxs = Just False
-          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST."
-        pendVector = V.imap cases vec
-    DBG.traceM $ "Pending Vector: " ++ show pendVector
-    DBG.traceM $ "Conclusive analysis?: " ++ show (all isJust pendVector)
-    return (vec V.! 0, scString ++ "\n" ++ show query)
+    return (toProb res, scString ++ "\n" ++ show query)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
@@ -229,7 +221,7 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     (ApproxAllResult (vec, _), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
     DBG.traceM $ "Computed termination probabilities: " ++ show vec
     --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
-    let cases i k 
+    let cases i k
           | k < (1 :: Prob) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability below" ++ show k -- inconclusive result
           | k < (1 :: Prob) = True
           | IntSet.member i mustReachPopIdxs = False
