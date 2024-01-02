@@ -165,6 +165,7 @@ programTermination prog query =
     -- asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
+    DBG.traceM $ "Summary chain: " ++ scString
     --p <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
     (res, mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query
     DBG.traceM $ "Computed termination probabilities: " ++ show res
@@ -212,6 +213,8 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   in do
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
     scString <- stToIO $ CM.showMap sc
+    DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
+    DBG.traceM $ "Summary chain: " ++ scString
     {-
     asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs

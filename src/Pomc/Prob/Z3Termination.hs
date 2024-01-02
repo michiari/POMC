@@ -32,6 +32,8 @@ import qualified Data.IntSet as IntSet
 import qualified Data.Set as Set
 import Data.Hashable (Hashable)
 import qualified Data.IntMap.Strict as Map
+
+import qualified Data.Map as GeneralMap
 import qualified Data.HashTable.IO as HT
 import qualified Data.HashMap.Lazy as HM
 import Data.Maybe(fromJust, isJust, isNothing)
@@ -135,7 +137,7 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingIdxes, _) eqMap
             when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: " ++ show (gnId_, rightContext)
             let e = Map.findWithDefault 0 rightContext (popContexts gn)
             eq <- mkEq var =<< mkRealNum e
-            eqString <- astToString eq
+            --eqString <- astToString eq
             --DBG.traceM $ "Asserting Pop equation: " ++ eqString
             --assert eq
             addFixpEq eqMap varKey $ PopEq $ fromRational e
@@ -186,7 +188,7 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) eqMap mkComp  
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
     when (not (IntSet.member gnId_ asPendingIdxes) || (gnId_ == 0 && approxSingleQuery)) $ do
       eq <- mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
-      eqString <- astToString eq
+      --eqString <- astToString eq
       --DBG.traceM $ "Asserting Push equation: " ++ eqString
       --assert eq
       --assert =<< mkGe var =<< mkRealNum 0
@@ -214,7 +216,7 @@ encodeShift varMap@(_, _, asPendingIdxes, _) eqMap mkComp gn varKey@(gnId_, righ
     (transitions, unencoded_vars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
     unless (IntSet.member gnId_ asPendingIdxes) $ do
       eq <- mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
-      eqString <- astToString eq
+      --eqString <- astToString eq
       --DBG.traceM $ "Asserting Shift equation: " ++ eqString
       --assert eq
       --assert =<< mkGe var =<< mkRealNum 0
@@ -566,19 +568,16 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   eps <- liftIO $ readIORef epsVar
   let iterEps = min defaultEps $ eps * eps
 
-  zeroVars <- preprocessApproxFixp eMap iterEps (2 * length sccMembers)
-  zeroValue <- mkRealNum (0 :: Double)
-  forM_ zeroVars $ \varKey -> do
-    addFixpEq eMap varKey (PopEq 0)
-    liftIO $ HT.insert m varKey zeroValue
+  updatedVars <- preprocessApproxFixp eMap iterEps (2 * length sccMembers)
+  forM_ updatedVars $ \(varKey, p) -> do
+    pAST <- mkRealNum (p :: Double)
+    liftIO $ HT.insert m varKey pAST
 
   oviRes <- ovi defaultOVISettingsDouble eMap
 
   _ <- oviToRational defaultOVISettingsDouble eMap oviRes
 
   unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities"
-
-  upperBound <- liftIO $ HT.toList (oviUpperBound oviRes)
 
   {-
   DBG.traceM "Approximating via Value Iteration"
@@ -613,19 +612,20 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
 
   -}
   -- updating upper bounds
-  variables <- liftIO $ HT.toList newAdded
+  variables <- liftIO $ map fst <$> HT.toList newAdded
 
-  sumChecks <- forM variables $ \(key, _) -> do
-    ub <- liftIO $ min (1 :: Double) . fromJust <$> HT.lookup (oviUpperBound oviRes) key
+  forM_ variables $ \varKey -> do
+    ub <- liftIO $ min (1 :: Double) . fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
     ubAST <- mkRealNum ub
-    liftIO $ HT.insert m key ubAST
-    return (key, ub)
+    liftIO $ HT.insert m varKey ubAST
 
-  DBG.traceM $ "Computed upper bounds: " ++ show sumChecks
-  let upperBounds = (\mapAll -> Map.restrictKeys mapAll (IntSet.fromList sccMembers)) . Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ sumChecks
-  DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show upperBounds
+  upperBound <- liftIO $ HT.toList (oviUpperBound oviRes)
 
-  -- updating lower bounds (approxFracVec)
+  let upperBoundsTermProbs = (\mapAll -> Map.restrictKeys mapAll (IntSet.fromList sccMembers)) . Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ upperBound
+  let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
+  DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
+  DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show upperBoundsTermProbs
+
   forM_  upperBound $ \(varKey, p) -> do
     liftIO (HT.lookup eMap varKey) >>= \case
         Just (PopEq _) -> return () -- An eq constraint has already been asserted
@@ -637,10 +637,10 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   -- computing the PAST certificate
   if not dMustReachPop
     then do
-      unless (all (\(_,ub) -> ub < 1) (Map.toList upperBounds) || fst (head variables) == (0 :: Int, -1 :: Int)) $ error "not AST but upper bound 1"
+      unless (all (\(_,ub) -> ub < 1) (Map.toList upperBoundsTermProbs) || (head variables) == (0 :: Int, -1 :: Int)) $ error "not AST but upper bound 1"
       return False
     else do
-      let semiconfs = map (\(varKey, _) -> fst varKey) variables
+      let semiconfs = nub $ map fst variables
       insertedRewVars <- forM semiconfs $ \k -> do
           (_, b) <- lookupRewVar rVarMap k
           return (k,b)
@@ -653,12 +653,12 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
         ) >>= \case
           (Unsat, _) -> do
             DBG.traceM "PAST certification failed!"
-            if all (\(_,ub) -> ub < 1) (Map.toList upperBounds)
+            if all (\(_,ub) -> ub < 1) (Map.toList upperBoundsTermProbs)
               then return False
               else error "fail to prove PAST when some semiconfs have upper bounds on their termination equal to 1"
           (Sat, _) -> do
             DBG.traceM $ "PAST certification succeeded!"
-            when (any (\(_,ub) -> ub < 1) (Map.toList upperBounds)) $ error "Found a PAST certificate for non AST semiconf!!"
+            when (any (\(_,ub) -> ub < 1) (Map.toList upperBoundsTermProbs)) $ error "Found a PAST certificate for non AST semiconf!!"
             return True
           _ -> error "undefined result when running the past certificate"
 
