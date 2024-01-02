@@ -258,7 +258,7 @@ ovi settings eqMap = liftIO $ do
         ++ show inductive
       if inductive
         then do
-        MV.forM_ leqSys (\(k, _) -> HT.mutate upperApprox k (\(Just v) -> (Just $ v * 1.0001, v)))
+        MV.forM_ leqSys (\(k, _) -> HT.mutate upperApprox k (\(Just v) -> (Just $ v * 1.00001, v)))
         return OVIResult { oviSuccess  = True
                          , oviIters = oviMaxIters settings - maxIters
                          , oviLowerBound = lowerApprox
