@@ -41,7 +41,7 @@ data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviPowerIterEps :: n
                                  , oviPowerIterDampingFactor :: n
                                  , oviMaxPowerIters :: Int
-                                 , oviRationalAprroxEps :: n
+                                 , oviRationalApproxEps :: n
                                  , oviMaxKIndIters :: Int
                                  }
 
@@ -55,7 +55,7 @@ defaultOVISettingsDouble = OVISettings
   , oviPowerIterEps = 1e-3
   , oviPowerIterDampingFactor = 1e-1
   , oviMaxPowerIters = 10000
-  , oviRationalAprroxEps = 1e-8
+  , oviRationalApproxEps = 1e-8
   , oviMaxKIndIters = 10
   }
 
@@ -69,7 +69,7 @@ defaultOVISettingsProb = OVISettings
   , oviPowerIterEps = 1 % 1000
   , oviPowerIterDampingFactor = 1 % 10
   , oviMaxPowerIters = 10000
-  , oviRationalAprroxEps = 1 % 10^(8 :: Integer)
+  , oviRationalApproxEps = 1 % 10^(8 :: Integer)
   , oviMaxKIndIters = 10
   }
 
@@ -83,7 +83,7 @@ defaultOVISettingsProb = OVISettings
 --   , oviPowerIterEps = 1e-3
 --   , oviPowerIterDampingFactor = 1e-1
 --   , oviMaxPowerIters = 10000
---   , oviRationalAprroxEps = 1e-8
+--   , oviRationalApproxEps = 1e-8
 --   , oviMaxKIndIters = 10
 --   }
 
@@ -274,7 +274,7 @@ ovi settings eqMap = liftIO $ do
 oviToRational :: (MonadIO m, Ord n, RealFrac n, Show n, RealFloat n)
               => OVISettings n -> EqMap n -> OVIResult n -> m Bool
 oviToRational settings eqMap oviRes = liftIO $ do
-  let eps = oviRationalAprroxEps settings
+  let eps = oviRationalApproxEps settings
       fracEps = toRational eps
       -- two solutions for approximating the floating point upper bound with rational values
       f1 p = (\(Right v) -> v) $ realFloatToRational p

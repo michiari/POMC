@@ -565,8 +565,8 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
       eMap = eqMap globals
       rVarMap = rewVarMap globals
 
-  eps <- liftIO $ readIORef epsVar
-  let iterEps = min defaultEps $ eps * eps
+  currentEps <- liftIO $ readIORef epsVar
+  let iterEps = min defaultEps $ currentEps * currentEps
 
   updatedVars <- preprocessApproxFixp eMap iterEps (2 * length sccMembers)
   forM_ updatedVars $ \(varKey, p) -> do
@@ -576,7 +576,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   oviRes <- ovi defaultOVISettingsDouble eMap
 
   rCertified <- oviToRational defaultOVISettingsDouble eMap oviRes
-  unless (rCertified) $ error "cannot deduce a rational certificate for this semiconf"
+  unless rCertified $ error "cannot deduce a rational certificate for this semiconf"
 
   unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities"
 
@@ -627,18 +627,17 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
   DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show upperBoundsTermProbs
 
-  forM_  upperBound $ \(varKey, p) -> do
+  forM_  variables $ \varKey -> do
     liftIO (HT.lookup eMap varKey) >>= \case
         Just (PopEq _) -> return () -- An eq constraint has already been asserted
         _ -> do
-          maybeVar <- liftIO $ HT.lookup newAdded varKey
-          when (isNothing maybeVar) $ error "updating value iteration for a variable that does not result to be added in this SCC decomposition"
+          p <- liftIO $ fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
           addFixpEq eMap varKey (PopEq p)
 
   -- computing the PAST certificate
   if not dMustReachPop
     then do
-      unless (all (\(_,ub) -> ub < 1) (Map.toList upperBoundsTermProbs) || (head variables) == (0 :: Int, -1 :: Int)) $ error "not AST but upper bound 1"
+      unless (all (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs) || ((head variables) == (0 :: Int, -1 :: Int))) $ error "not AST but upper bound 1"
       return False
     else do
       let semiconfs = nub $ map fst variables
@@ -652,14 +651,12 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
           evaluated <- fromJust <$> eval model var
           liftIO $ HT.insert rVarMap k evaluated
         ) >>= \case
-          (Unsat, _) -> do
-            DBG.traceM "PAST certification failed!"
-            if all (\(_,ub) -> ub < 1) (Map.toList upperBoundsTermProbs)
+          (Unsat, _) -> DBG.traceM "PAST certification failed!" >>
+            if all (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs)
               then return False
               else error "fail to prove PAST when some semiconfs have upper bounds on their termination equal to 1"
-          (Sat, _) -> do
-            DBG.traceM $ "PAST certification succeeded!"
-            when (any (\(_,ub) -> ub < 1) (Map.toList upperBoundsTermProbs)) $ error "Found a PAST certificate for non AST semiconf!!"
+          (Sat, _) -> DBG.traceM "PAST certification succeeded!" >> do
+            when (any (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs)) $ error "Found a PAST certificate for non AST semiconf!!"
             return True
           _ -> error "undefined result when running the past certificate"
 

@@ -32,7 +32,7 @@ import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
 
 import Data.Maybe (fromJust, isJust)
 import Data.Ratio (approxRational)
-import Control.Monad (unless, filterM, when, sequence)
+import Control.Monad (unless, filterM, when)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST (stToIO)
 import qualified Data.HashTable.IO as HT
@@ -40,6 +40,8 @@ import qualified Data.HashTable.ST.Basic as BHT
 
 import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
+
+import Data.Ratio((%))
 
 import qualified Debug.Trace as DBG
 
@@ -201,6 +203,9 @@ approxFixp eqMap eps maxIters = do
 
 defaultEps :: EqMapNumbersType
 defaultEps = 1e-8
+
+defaultREps :: Prob
+defaultREps = 1 % 10^(8 :: Integer)
 
 defaultMaxIters :: Int
 defaultMaxIters = 1000000

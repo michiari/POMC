@@ -26,6 +26,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , freshNegId
                            , decode
                            , defaultTolerance
+                           , defaultRTolerance
                            , encodeInitialSemiconf
                            , solver
                            , toBool
@@ -155,6 +156,9 @@ data Solver = PureSMT | SMTWithHints | SMTCert Double deriving (Eq, Show)
 
 defaultTolerance :: EqMapNumbersType
 defaultTolerance = 1e-5
+
+defaultRTolerance :: Prob
+defaultRTolerance = 1e-5
 
 -- different termination queries
 -- CompQuery asks whether the probability to terminate is <, <=, >, >= than the given probability depending on Comp

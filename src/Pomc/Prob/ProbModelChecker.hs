@@ -165,7 +165,7 @@ programTermination prog query =
     -- asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
-    DBG.traceM $ "Summary chain: " ++ scString
+    --DBG.traceM $ "Summary chain: " ++ scString
     --p <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
     (res, mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query
     DBG.traceM $ "Computed termination probabilities: " ++ show res
@@ -223,12 +223,11 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     -}
     (ApproxAllResult (vec, _), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
     DBG.traceM $ "Computed termination probabilities: " ++ show vec
-    --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
     let cases i k
-          | k < (1 :: Prob) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability below" ++ show k -- inconclusive result
-          | k < (1 :: Prob) = True
+          | k < (1 - defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
+          | k < (1 - defaultRTolerance) = True
           | IntSet.member i mustReachPopIdxs = False
-          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST."
+          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST." -- inconclusive result
         pendVector = V.imap cases vec
     DBG.traceM $ "Pending Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
