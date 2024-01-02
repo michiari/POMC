@@ -271,7 +271,7 @@ callRetEx = ExplicitPopa
       [ (2, [(1, makeInputSet ["call"], 1 :: Prob)]) ]
   , epopaDeltaPop =
       [ (1, 1, [(1, makeInputSet ["call"], 2 % 3), (2, makeInputSet ["ret"], 1 % 3)])
-      , (1, 0, [(0, makeInputSet ["call"], 0)])
+      , (1, 0, [(3, makeInputSet ["call"], 1)])
       ]
   }
 
