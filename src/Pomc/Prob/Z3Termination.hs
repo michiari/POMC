@@ -635,7 +635,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
           addFixpEq eMap varKey (PopEq p)
 
   -- computing the PAST certificate
-  if not dMustReachPop
+  if not dMustReachPop || all (\(_,ub) -> ub < 1 - defaultTolerance) (Map.toList upperBoundsTermProbs)
     then do
       unless (all (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs) || ((head variables) == (0 :: Int, -1 :: Int))) $ error "not AST but upper bound 1"
       return False
@@ -651,10 +651,9 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
           evaluated <- fromJust <$> eval model var
           liftIO $ HT.insert rVarMap k evaluated
         ) >>= \case
-          (Unsat, _) -> DBG.traceM "PAST certification failed!" >>
-            if all (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs)
-              then return False
-              else error "fail to prove PAST when some semiconfs have upper bounds on their termination equal to 1"
+          (Unsat, _) -> DBG.traceM "PAST certification failed!" >> do
+            unless (all (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs)) $ error "fail to prove PAST when some semiconfs have upper bounds on their termination equal to 1"
+            return False
           (Sat, _) -> DBG.traceM "PAST certification succeeded!" >> do
             when (any (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs)) $ error "Found a PAST certificate for non AST semiconf!!"
             return True
