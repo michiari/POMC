@@ -291,7 +291,7 @@ oviToRational settings eqMap oviRes = liftIO $ do
           DBG.traceM $ "Trying with k-induction, remaining iterations: " ++ show kIters
           HT.mapM_ (\(k, sv) -> do
                        v <- fromJust <$> HT.lookup rub k
-                       HT.insert rub k $ approxRational (min v sv) fracEps
+                       HT.insert rub k (min v sv) 
                    ) srub
           checkWithKInd $ kIters - 1
   checkWithKInd $ oviMaxKIndIters settings
