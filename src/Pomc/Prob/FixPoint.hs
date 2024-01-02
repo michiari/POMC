@@ -191,10 +191,6 @@ preprocessApproxFixp eqMap eps maxIters = do
         ) (False, updatedVars) eqMap >>= go
   liftIO $ go (isLiveSys, [])
 
-
-
-
-
 approxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
            => EqMap n -> n -> Int -> m (ProbVec n)
 approxFixp eqMap eps maxIters = do

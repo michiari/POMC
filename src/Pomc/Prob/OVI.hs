@@ -29,6 +29,8 @@ import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
 -- import qualified Numeric.Rounded as R
 
+import Witch.Instances(realFloatToRational)
+
 import qualified Debug.Trace as DBG
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
@@ -269,18 +271,25 @@ ovi settings eqMap = liftIO $ do
 
   go (oviKleeneEps settings) (oviPowerIterEps settings) (oviMaxIters settings)
 
-oviToRational :: (MonadIO m, Ord n, RealFrac n, Show n)
+oviToRational :: (MonadIO m, Ord n, RealFrac n, Show n, RealFloat n)
               => OVISettings n -> EqMap n -> OVIResult n -> m Bool
 oviToRational settings eqMap oviRes = liftIO $ do
   let eps = oviRationalAprroxEps settings
       fracEps = toRational eps
-  reqMap <- mapEqMapPop (\p -> approxRational p eps) eqMap
+      -- two solutions for approximating the floating point upper bound with rational values
+      f1 p = (\(Right v) -> v) $ realFloatToRational p
+      f2 p = approxRational p eps
+      f2eps p = approxRational (p + eps) eps
+      showF1 = "realFloatToRational"
+      showF2 = "approxRational"
+
+  reqMap <- mapEqMapPop f1 eqMap
   rleqSys <- toLiveEqMap reqMap
   -- Convert upper bound to rational
-  rub <- mapVec (\p -> approxRational (p + eps) eps) $ oviUpperBound oviRes
+  rub <- mapVec f1 $ oviUpperBound oviRes
   srub <- HT.newSized =<< stToIO (BHT.size rub)
-  let checkWithKInd 0 = return False
-      checkWithKInd kIters = do
+  let checkWithKInd _ _ _  0 = return False
+      checkWithKInd showF rleqSys srub kIters  = do
         -- Evaluate equation system
         inductive <- evalEqSys rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
 
@@ -288,10 +297,20 @@ oviToRational settings eqMap oviRes = liftIO $ do
         if inductive
           then return inductive
           else do
-          DBG.traceM $ "Trying with k-induction, remaining iterations: " ++ show kIters
+          DBG.traceM $ "Trying with k-induction with function " ++ showF  ++ ", remaining iterations: " ++ show kIters
           HT.mapM_ (\(k, sv) -> do
                        v <- fromJust <$> HT.lookup rub k
                        HT.insert rub k (min v sv) 
                    ) srub
-          checkWithKInd $ kIters - 1
-  checkWithKInd $ oviMaxKIndIters settings
+          checkWithKInd showF rleqSys srub (kIters - 1) 
+  success <- checkWithKInd showF1 rleqSys srub $ oviMaxKIndIters settings
+  if success 
+    then return success
+    else do 
+      reqMap <- mapEqMapPop f2 eqMap
+      rleqSys <- toLiveEqMap reqMap
+      -- Convert upper bound to rational
+      rub <- mapVec f2eps $ oviUpperBound oviRes
+      srub <- HT.newSized =<< stToIO (BHT.size rub)
+      checkWithKInd showF2 rleqSys srub $ oviMaxKIndIters settings
+

@@ -55,6 +55,7 @@ library:
   - filepath
   - z3
   - scientific
+  - witch
   # - rounded
 
 executables:
