@@ -277,7 +277,9 @@ oviToRational settings eqMap oviRes = liftIO $ do
   let eps = oviRationalApproxEps settings
       fracEps = toRational eps
       -- two solutions for approximating the floating point upper bound with rational values
-      f1 p = (\(Right v) -> v) $ realFloatToRational p
+      f1 p = case realFloatToRational p of 
+        (Right v) -> v
+        (Left exc) -> error $ "error when converting to rational upper bound " ++ show p ++ " - " ++ show exc
       f2 p = approxRational p eps
       f2eps p = approxRational (p + eps) eps
       showF1 = "realFloatToRational"
