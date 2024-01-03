@@ -1,3 +1,4 @@
+// reference: Yizhou Zhang, Nada Amin, Reasoning about "Reasoning about Reasoning", POPL 2022.
 probabilistic query: approximate;
 
 program:

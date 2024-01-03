@@ -12,6 +12,9 @@ young() {
 
   y = 0u2 {1u3 : 4u4} 1u2 {1u3 : 4u4} 2u2 {1u3 : 4u4} 3u2;
   e = 0u2 {1u3 : 3u3} 1u2 {1u3 : 3u3} 2u2;
+
+  get_vaccine = 1u2 {2u2 : 3u2} 0u2;
+  observe !get_vaccine || y + e < 2u4;
   
   while (y > 0u2) {
     query young();
@@ -23,8 +26,7 @@ young() {
     e = e - 1u2;
   }
 
-  get_vaccine = 1u2 {1u2 : 3u2} 0u2;
-  observe !get_vaccine || y + e < 2u4;
+
 
 }
 
@@ -34,8 +36,10 @@ elder() {
 
   y = 0u3 {1u2 : 2u2} 1u3;
   e = 0u3 {1u3 : 5u3} 1u3 {1u3 : 5u3} 2u3 {1u3 : 5u3} 3u3 {1u3 : 5u3} 4u3;
-  
 
+  get_vaccine = 1u2 {9u4 : 10u4} 0u2;
+  observe !get_vaccine || y + e < 2u4;
+  
   while (y > 0u3) {
     query young();
     y = y - 1u3;
@@ -46,7 +50,6 @@ elder() {
     e = e - 1u3;
   }
 
-  get_vaccine = 1u2 {2u2 : 3u2} 0u2;
-  observe !get_vaccine || y + e < 2u4;
+  
 
 }
