@@ -568,6 +568,9 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   currentEps <- liftIO $ readIORef epsVar
   let iterEps = min defaultEps $ currentEps * currentEps
 
+  --eqMapList <- liftIO $ HT.toList eMap
+  --DBG.traceM $ "Current equation system: \n" ++ concatMap (\l -> show l ++ "\n") eqMapList
+
   updatedVars <- preprocessApproxFixp eMap iterEps (2 * length sccMembers)
   forM_ updatedVars $ \(varKey, p) -> do
     pAST <- mkRealNum (p :: Double)

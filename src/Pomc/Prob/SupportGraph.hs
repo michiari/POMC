@@ -236,6 +236,10 @@ buildTransition globals probdelta from isSupport prob_ dest =
     lookupInsert actualId
     when (isNothing maybeId) $ build globals probdelta dest
 
+
+---------------------------------------------------------
+-- preprocessing procedures before checking termination for all the semiconfs of a support graph --
+
 -- some renaming to make the algorithm more understandable
 type CanReachPop = Bool
 type MustReachPop = Bool
@@ -250,6 +254,7 @@ data DeficientGlobals s state = DeficientGlobals
   , mustReachPop :: MV.MVector s MustReachPop
   }
 
+-- perform the Gabow algorithm to determine semiconfs that cannot reach a pop
 asPendingSemiconfs :: Show state => SupportGraph s state -> ST s (IntSet, IntSet)
 asPendingSemiconfs suppGraph = do
   newSS            <- GS.new
@@ -264,7 +269,6 @@ asPendingSemiconfs suppGraph = do
                                  , canReachPop = newCanReachPop
                                  , mustReachPop = newMustReachPop
                                  }
-  -- perform the Gabow algorithm to determine semiconfs that cannot reach a pop
   gn <- MV.unsafeRead suppGraph 0
   addtoPath globals gn
   _ <- dfs globals gn

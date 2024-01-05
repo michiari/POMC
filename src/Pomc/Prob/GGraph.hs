@@ -9,6 +9,7 @@
 module Pomc.Prob.GGraph ( GGraph
                         , GNode(..)
                         , qualitativeModelCheck
+                        , quantitativeModelCheck
                         ) where
 
 import Pomc.Prob.ProbUtils
@@ -109,16 +110,18 @@ type GGraph s = CM.CustoMap s GNode
 -- requires: the initial semiconfiguration has id 0
 -- requires: idSeq is at 0
 -- pstate: a parametric type for states of the input popa
-decomposeGGraph :: (Ord pstate, Hashable pstate, Show pstate)
+buildGGraph :: (Ord pstate, Hashable pstate, Show pstate)
                 => GGlobals s pstate
                 -> DeltaWrapper pstate
                 -> [State] -- initial states of the phiOpa 
                 -> (Int -> ST s (GraphNode pstate)) -- getter for retrieving a graphNode associated with the given int
                 -> (Int -> Bool) -- is a semiconf pending?
                 -> ST s (GGraph s, Int)
-decomposeGGraph gglobals delta phiInitials getGn isPending = do
+buildGGraph gglobals delta phiInitials getGn isPending = do
   iniGn <- getGn 0
   let iniLabel = getLabel . fst . semiconf $ iniGn
+  currentIdSeq <- readSTRef $ idSeq gglobals
+  when (currentIdSeq /= 0) $ error "memory found containing some trash values when building graph G"
   filtered <- foldM (\acc s ->
                       if iniLabel == E.extractInput (bitenc delta) (current s)
                         then do
@@ -132,47 +135,47 @@ decomposeGGraph gglobals delta phiInitials getGn isPending = do
                     )
                     []
                     phiInitials
-  initialNodes <- readSTRef . idSeq $ gglobals
-  forM_ filtered $ \s -> decompose gglobals delta getGn isPending (iniGn, s)
+  initialNodesBound <- readSTRef . idSeq $ gglobals
+  forM_ filtered $ \s -> build gglobals delta getGn isPending (iniGn, s)
   idx <- readSTRef . idSeq $ gglobals
   g <- CM.take idx <$> readSTRef (gGraph gglobals)
-  return (g, initialNodes)
+  return (g, initialNodesBound)
 
-decompose :: (Ord pstate, Hashable pstate, Show pstate)
+build :: (Ord pstate, Hashable pstate, Show pstate)
           => GGlobals s pstate -- global variables of the algorithm
           -> DeltaWrapper pstate
           -> (Int -> ST s (GraphNode pstate)) -- getter for retrieving a graphNode associated with the given int
           -> (Int -> Bool) -- is a semiconf pending?
           -> (GraphNode pstate, State) -- current GNode
           -> ST s ()
-decompose gglobals delta getGn isPending (gn, p) = do
+build gglobals delta getGn isPending (gn, p) = do
   let
     (q,g) = semiconf gn
     precRel = (prec delta) (fst . fromJust $ g) (getLabel q)
     cases
       -- a sanity check
-      | getLabel q /= E.extractInput (bitenc delta) (current p) = error "inconsistent GNode when decomposing the G Graph"
+      | getLabel q /= E.extractInput (bitenc delta) (current p) = error "inconsistent GNode when building the G Graph"
 
       -- this case includes the initial push
       | (isNothing g) || precRel == Just Yield =
-        decomposePush gglobals delta getGn isPending (gn,p)
+        buildPush gglobals delta getGn isPending (gn,p)
 
       | precRel == Just Equal =
-        decomposeShift gglobals delta getGn isPending (gn, p)
+        buildShift gglobals delta getGn isPending (gn, p)
 
-      | precRel == Just Take = error $ "a pop transition cannot be reached in the augmented graph of pending semiconfs" ++ show gn
+      | precRel == Just Take = error $ "a pop transition cannot be reached in the augmented graph of pending semiconfs, as it terminates almost surely" ++ show gn
       | otherwise = return ()
   cases
 
 
-decomposePush :: (Ord pstate, Hashable pstate, Show pstate)
+buildPush :: (Ord pstate, Hashable pstate, Show pstate)
               => GGlobals s pstate -- global variables of the algorithm
               -> DeltaWrapper pstate
               -> (Int -> ST s (GraphNode pstate)) -- getter for retrieving a graphNode associated with the given int
               -> (Int -> Bool) -- is a semiconf pending?
               -> (GraphNode pstate, State) -- current gnode
               -> ST s ()
-decomposePush gglobals delta getGn isPending (gn, p) =
+buildPush gglobals delta getGn isPending (gn, p) =
   let fPendingPushSemiconfs = Set.toList . Set.filter isPending . Set.map to $ internalEdges gn
       fPendingSuppSemiconfs = Set.toList . Set.filter isPending . Set.map to $ supportEdges gn
       fPushPhiStates = (phiDeltaPush delta) p
@@ -180,7 +183,7 @@ decomposePush gglobals delta getGn isPending (gn, p) =
     -- handling the push edges
     fPushGns <- mapM getGn fPendingPushSemiconfs
     let fPushGnodes = [(gn1, p1) | gn1 <- fPushGns, p1 <- fPushPhiStates, (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)]
-    forM_ fPushGnodes $ \(gn1, p1) -> decomposeEdge gglobals delta getGn isPending (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
+    forM_ fPushGnodes $ \(gn1, p1) -> buildEdge gglobals delta getGn isPending (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
     -- handling the support edges
     fSuppGns <- mapM getGn fPendingSuppSemiconfs
     let leftContext = AugState (getState . fst . semiconf $ gn) (E.extractInput (bitenc delta) (current p)) p
@@ -216,16 +219,16 @@ decomposePush gglobals delta getGn isPending (gn, p) =
                       , (getState . fst . semiconf $ gn1) == q
                       , consistentFilter (AugState q lab p1)
                       ]
-    forM_ fSuppGnodes $ \(gn1, p1, suppSatSet) -> decomposeEdge gglobals delta getGn isPending (gn, p) suppSatSet (gn1, p1)
+    forM_ fSuppGnodes $ \(gn1, p1, suppSatSet) -> buildEdge gglobals delta getGn isPending (gn, p) suppSatSet (gn1, p1)
 
-decomposeShift :: (Ord pstate, Hashable pstate, Show pstate)
+buildShift :: (Ord pstate, Hashable pstate, Show pstate)
                => GGlobals s pstate -- global variables of the algorithm
                -> DeltaWrapper pstate
                -> (Int -> ST s (GraphNode pstate)) -- getter for retrieving a graphNode associated with the given int
                -> (Int -> Bool) -- is a semiconf pending?
                -> (GraphNode pstate, State) -- current GNopde
                -> ST s ()
-decomposeShift gglobals delta getGn isPending (gn, p) =
+buildShift gglobals delta getGn isPending (gn, p) =
   let fPendingSemiconfs = Set.toList . Set.filter isPending . Set.map to $ internalEdges gn
       fPhiStates = (phiDeltaShift delta) p
   in do
@@ -233,10 +236,10 @@ decomposeShift gglobals delta getGn isPending (gn, p) =
     unless (Set.null . supportEdges $ gn) $ error "a shift semiconf cannot have summaries"
     fGns <- mapM getGn fPendingSemiconfs
     let fGnodes = [(gn1, p1) | gn1 <- fGns, p1 <- fPhiStates, (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)]
-    forM_ fGnodes $ \(gn1, p1) -> decomposeEdge gglobals delta getGn isPending (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
+    forM_ fGnodes $ \(gn1, p1) -> buildEdge gglobals delta getGn isPending (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
 
 -- decomposing an edge to a new node
-decomposeEdge :: (Ord pstate, Hashable pstate, Show pstate)
+buildEdge :: (Ord pstate, Hashable pstate, Show pstate)
                  => GGlobals s pstate -- global variables of the algorithm
                  -> DeltaWrapper pstate
                  -> (Int -> ST s (GraphNode pstate)) -- getter for retrieving a graphNode associated with the given int
@@ -245,7 +248,7 @@ decomposeEdge :: (Ord pstate, Hashable pstate, Show pstate)
                  -> ProbEncodedSet -- for formulae satisfied in a support
                  -> (GraphNode pstate, State) -- to node
                  -> ST s ()
-decomposeEdge gglobals delta getGn isPending (gn, p) suppSatSet (gn1, p1) =
+buildEdge gglobals delta getGn isPending (gn, p) suppSatSet (gn1, p1) =
   let
     insertEdge to_  g@GNode{edges = edges_} = g{edges = Map.insertWith PE.union to_ suppSatSet edges_}
     lookupInsert to_ = BH.lookup (ggraphMap gglobals) (gnId gn, p) >>= CM.modify (gGraph gglobals) (insertEdge to_) . fromJust
@@ -256,7 +259,7 @@ decomposeEdge gglobals delta getGn isPending (gn, p) suppSatSet (gn1, p1) =
         BH.insert (ggraphMap gglobals) (gnId gn1, p1) actualId
         CM.insert (gGraph gglobals) actualId $ GNode {gId= actualId, graphNode = gnId gn1, phiNode = p1, edges = Map.empty, iValue = 0, descSccs = IntSet.empty}
     lookupInsert actualId
-    when (isNothing maybeId) $ decompose gglobals delta getGn isPending (gn1, p1)
+    when (isNothing maybeId) $ build gglobals delta getGn isPending (gn1, p1)
 
 -------- finding the bottom SCCs of subgraph H -------------
 type GraphNodesSCC = IntSet
@@ -301,7 +304,7 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
                             , gGraph = emptyGGraph
                             , grGlobals = emptyGRGlobals
                           }
-  (g, iniCount) <- decomposeGGraph gGlobals delta phiInitials (MV.unsafeRead suppGraph) (pendVector V.!)
+  (g, iniCount) <- buildGGraph gGlobals delta phiInitials (MV.unsafeRead suppGraph) (pendVector V.!)
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
   sccCounter <- newSTRef (-2 :: Int)
@@ -365,39 +368,6 @@ dfs hGlobals delta isPending fromPhi g =
       then createComponentPhi hGlobals g (IntSet.unions descendantSCCs)
       else createComponent hGlobals delta isPending g (IntSet.unions descendantSCCs)
 
--- helpers
-addtoPath :: HGlobals s pstate -> GNode -> HEdge -> ST s GNode
-addtoPath hglobals node edge  = do
-  GS.push (sStack hglobals) edge
-  sSize <- GS.size $ sStack hglobals
-  MV.unsafeModify (graph hglobals) (\g -> g{iValue = sSize }) (gId node)
-  GS.push (bStack hglobals) sSize
-  return node{iValue = sSize}
-
-merge :: HGlobals s pstate -> GNode -> ST s ()
-merge hGlobals g = do
-  -- contract the B stack, that represents the boundaries between SCCs on the current path
-  GS.popWhile_ (bStack hGlobals) (\x -> iValue g < x)
-
-deleteDescendants :: HGlobals s pstate -> GraphNodesSCC -> IntSet -> ST s IntSet
-deleteDescendants hGlobals sccSemiconfs descendants = do
-  modifySTRef' (bottomHSCCs hGlobals) $ Map.filterWithKey (\idx scc -> not (IntSet.member idx descendants) || IntSet.disjoint sccSemiconfs scc)
-  (\m -> IntSet.filter (`Map.member` m) descendants) <$> readSTRef (bottomHSCCs hGlobals)
-
-isBottom :: HGlobals s pstate -> IntSet -> (Int -> Bool) -> ST s Bool
-isBottom hGlobals suppGraphSCC isPending = do
-  gns <- forM (IntSet.toList suppGraphSCC) $ MV.unsafeRead (supportGraph hGlobals)
-  let checkInternals = all (\e -> IntSet.member (to e) suppGraphSCC) . Set.filter (isPending . to) . internalEdges
-      checkSupports  = all (\e -> IntSet.member (to e) suppGraphSCC) . Set.filter (isPending . to) . supportEdges
-  return $ all (\gn -> checkInternals gn && checkSupports gn) gns
-
-isAccepting :: HGlobals s pstate -> DeltaWrapper pstate -> [HEdge] -> ST s Bool
-isAccepting hGlobals delta sccEdges = do
-  gs <- mapM (MV.unsafeRead (graph hGlobals) . toG) sccEdges
-  let maybeSupport (Internal _ ) = Nothing
-      maybeSupport (Support _ sss) = Just sss
-      acceptanceBitVector = PE.unions $ map (PE.encodeSatState (proBitenc delta) . phiNode) gs ++ mapMaybe maybeSupport sccEdges
-  return $ PE.isSatisfying acceptanceBitVector
 
 createComponent :: HGlobals s pstate -> DeltaWrapper pstate -> (Int -> Bool) -> GNode -> IntSet -> ST s IntSet
 createComponent hGlobals delta isPending g descendantSCCs = do
@@ -430,7 +400,7 @@ createComponent hGlobals delta isPending g descendantSCCs = do
               forM_ sccEdges $ \e -> MV.modify (graph hGlobals) (\g -> g{iValue = -1, descSccs = filteredDescendants}) (toG e)
               return filteredDescendants
     else return descendantSCCs
-
+      
 createComponentPhi :: HGlobals s pstate -> GNode -> IntSet -> ST s IntSet
 createComponentPhi hGlobals g descendantSCCs = do
   topB <- GS.peek $ bStack hGlobals
@@ -450,3 +420,108 @@ createComponentPhi hGlobals g descendantSCCs = do
           forM_ sccEdges $ \e -> MV.modify (graph hGlobals) (\g -> g{iValue = -1, descSccs = filteredDescendants}) (toG e)
           return filteredDescendants
     else return descendantSCCs
+      
+-- Gabow helpers
+addtoPath :: HGlobals s pstate -> GNode -> HEdge -> ST s GNode
+addtoPath hglobals node edge  = do
+  GS.push (sStack hglobals) edge
+  sSize <- GS.size $ sStack hglobals
+  MV.unsafeModify (graph hglobals) (\g -> g{iValue = sSize}) (gId node)
+  GS.push (bStack hglobals) sSize
+  return node{iValue = sSize}
+
+merge :: HGlobals s pstate -> GNode -> ST s ()
+merge hGlobals g = do
+  -- contract the B stack, that represents the boundaries between SCCs on the current path
+  GS.popWhile_ (bStack hGlobals) (\x -> iValue g < x)
+-- end Gabow helpers
+
+-- helpers for the construction of subgraph H
+--
+deleteDescendants :: HGlobals s pstate -> GraphNodesSCC -> IntSet -> ST s IntSet
+deleteDescendants hGlobals sccSemiconfs descendants = do
+  modifySTRef' (bottomHSCCs hGlobals) $ Map.filterWithKey (\idx scc -> not (IntSet.member idx descendants) || IntSet.disjoint sccSemiconfs scc)
+  -- returning filtered descendant
+  (\m -> IntSet.filter (`Map.member` m) descendants) <$> readSTRef (bottomHSCCs hGlobals)
+
+-- first necessary condition for an SCC to be in H
+isBottom :: HGlobals s pstate -> IntSet -> (Int -> Bool) -> ST s Bool
+isBottom hGlobals suppGraphSCC isPending = do
+  gns <- forM (IntSet.toList suppGraphSCC) $ MV.unsafeRead (supportGraph hGlobals)
+  let checkInternals = all (\e -> IntSet.member (to e) suppGraphSCC) . Set.filter (isPending . to) . internalEdges
+      checkSupports  = all (\e -> IntSet.member (to e) suppGraphSCC) . Set.filter (isPending . to) . supportEdges
+  return $ all (\gn -> checkInternals gn && checkSupports gn) gns
+
+-- second necessary condition for an SCC to be in H
+isAccepting :: HGlobals s pstate -> DeltaWrapper pstate -> [HEdge] -> ST s Bool
+isAccepting hGlobals delta sccEdges = do
+  gs <- mapM (MV.unsafeRead (graph hGlobals) . toG) sccEdges
+  let maybeSupport (Internal _ ) = Nothing
+      maybeSupport (Support _ sss) = Just sss
+      acceptanceBitVector = PE.unions $ map (PE.encodeSatState (proBitenc delta) . phiNode) gs ++ mapMaybe maybeSupport sccEdges
+  return $ PE.isSatisfying acceptanceBitVector
+--
+-- end helpers for the construction of subgraph H
+
+
+-- quantitative model checking --
+-- requires: the initial semiconfiguration has id 0
+-- pstate: a parametric type for states of the input popa
+quantitativeModelCheck :: (Ord pstate, Hashable pstate, Show pstate)
+                      => DeltaWrapper pstate
+                      -> Formula APType -- phi: input formula to check
+                      -> [State] -- initial states of the phiOpa 
+                      -> SupportGraph s pstate
+                      -> Vector Bool
+                      -> ST s Prob
+quantitativeModelCheck delta phi phiInitials suppGraph pendVector = do
+  -- global data structures for constructing graph G
+  newIdSequence <- newSTRef (0 :: Int)
+  emptyGGraphMap <- BH.new
+  emptyGGraph <- CM.empty
+  emptyGRGlobals <-  GR.newGRobals
+  let gGlobals = GGlobals { idSeq = newIdSequence
+                            , ggraphMap = emptyGGraphMap
+                            , gGraph = emptyGGraph
+                            , grGlobals = emptyGRGlobals
+                          }
+  (g, iniCount) <- buildGGraph gGlobals delta phiInitials (MV.unsafeRead suppGraph) (pendVector V.!)
+  -- globals data structures for qualitative model checking
+  -- -1 is reserved for useless (i.e. single node) SCCs
+  sccCounter <- newSTRef (-2 :: Int)
+  newSS         <- GS.new
+  newBS         <- GS.new
+  newFoundSCCs <- newSTRef Map.empty
+  let hGlobals = HGlobals { graph = g
+                          , supportGraph = suppGraph
+                          , sStack = newSS
+                          , bStack = newBS
+                          , cGabow = sccCounter
+                          , bottomHSCCs = newFoundSCCs
+                          }
+  (phiNodes, notPhiNodes) <- foldM
+    (\(pn, npn) i -> do
+      node <- MV.unsafeRead g i
+      if E.member (bitenc delta) phi . current . phiNode $ node
+        then return (i:pn, npn)
+        else return (pn, i:npn)
+    )
+    ([],[])
+    [0.. (iniCount -1)]
+
+  -- explore nodes where phi does not hold
+  forM_ notPhiNodes $ \i -> do
+    node <- MV.unsafeRead g i
+    when (iValue node == 0) $
+      addtoPath hGlobals node (Internal (gId node)) >>= dfs hGlobals delta (pendVector V.!) False >> return ()
+  -- explore nodes where phi does hold
+  forM_ phiNodes $ \i -> do
+    node <- MV.unsafeRead g i
+    nullCandidates <- Map.null <$> readSTRef (bottomHSCCs hGlobals)
+    when (iValue node == 0 && not nullCandidates) $
+      addtoPath hGlobals node (Internal (gId node)) >>= dfs hGlobals delta (pendVector V.!) True >> return ()
+  -- returning whether there is a bottom SCC in H reachable from a not Phi initial node
+  error "not implemented yet"
+  --Map.null <$> readSTRef (bottomHSCCs hGlobals)
+
+
