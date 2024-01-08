@@ -11,14 +11,13 @@ module Pomc.Prob.GReach ( GRobals(..)
                         , showGrobals
                         , Delta(..)
                         ) where
-
+import Pomc.Prob.ProbUtils(Prob)
 import Pomc.Prob.ProbEncoding (ProbEncodedSet, ProBitencoding)
 import qualified Pomc.Prob.ProbEncoding as PE
 
 import Pomc.Encoding (BitEncoding)
 import Pomc.Prec (Prec(..))
 import Pomc.Check(EncPrecFunc)
-import Pomc.State(State(..))
 
 import Pomc.SatUtil
 
@@ -67,9 +66,9 @@ data Delta state = Delta
   { bitenc :: BitEncoding
   , proBitenc :: ProBitencoding
   , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
-  , deltaPush :: state -> [state] -- deltaPush relation
-  , deltaShift :: state -> [state] -- deltaShift relation
-  , deltaPop :: state -> state -> [state] -- deltapop relation
+  , deltaPush :: state -> [(state, Prob)] -- deltaPush relation
+  , deltaShift :: state -> [(state, Prob)] -- deltaShift relation
+  , deltaPop :: state -> state -> [(state, Prob)] -- deltapop relation
   , consistentFilter :: state -> Bool
   }
 
@@ -146,7 +145,7 @@ reachPush globals delta q g qState pathSatSet =
       doPush p = reachTransition globals delta Nothing Nothing (p, Just (qProps, q))
   in do
     SM.insert (suppStarts globals) (getId q) g
-    newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState
+    newStates <- wrapStates (sIdGen globals) $ map fst $ (deltaPush delta) qState
     mapM_ doPush newStates
     currentSuppEnds <- MM.lookup (suppEnds globals) (getId q)
     mapM_ (\(s, supportSatSet) -> reachTransition globals delta (Just pathSatSet) (Just supportSatSet) (s,g))
@@ -164,7 +163,7 @@ reachShift globals delta _ g qState pathSatSet =
   let qProps = getStateProps (bitenc delta) qState
       doShift p = reachTransition globals delta (Just pathSatSet) Nothing (p, Just (qProps, snd . fromJust $ g))
   in do
-    newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState
+    newStates <- wrapStates (sIdGen globals) $ map fst $ (deltaShift delta) qState
     mapM_ doShift newStates
 
 reachPop :: (SatState state, Eq state, Hashable state, Show state)
@@ -186,7 +185,7 @@ reachPop globals delta _ g qState pathSatSet =
           currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
           mapM_ closeSupports currentSuppStarts
   in do
-    newStates <- wrapStates (sIdGen globals) $
+    newStates <- wrapStates (sIdGen globals) $ map fst $
       (deltaPop delta) qState (getState . snd . fromJust $ g)
     mapM_  doPop newStates
 

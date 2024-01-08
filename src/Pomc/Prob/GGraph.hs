@@ -6,8 +6,7 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Prob.GGraph ( GGraph
-                        , GNode(..)
+module Pomc.Prob.GGraph ( GNode(..)
                         , qualitativeModelCheck
                         , quantitativeModelCheck
                         ) where
@@ -18,6 +17,7 @@ import Pomc.SatUtil(SatState(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Potl(Formula(..))
 import Pomc.PropConv(APType)
+import Pomc.Check (EncPrecFunc)
 
 import Pomc.GStack(GStack)
 import qualified Pomc.GStack as GS
@@ -34,8 +34,13 @@ import qualified Pomc.Prob.ProbEncoding as PE
 
 import qualified Pomc.Encoding as E
 
+import Pomc.Prob.FixPoint(VarKey)
+
 import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
+
+import Data.Map(Map)
+import qualified Data.Map as GeneralMap
 
 import Data.Set(Set)
 import qualified Data.Set as Set
@@ -47,15 +52,21 @@ import Control.Monad(when, unless, forM_, foldM, forM)
 import Control.Monad.ST (ST)
 
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
-import Data.Maybe (fromJust, isNothing, mapMaybe)
+import Data.Maybe (fromJust, isNothing, isJust, mapMaybe)
 
 import GHC.Generics (Generic)
 import Data.Hashable
+import qualified Data.HashTable.IO as HT
 import qualified Data.HashTable.ST.Basic as BH
 
 import qualified Data.Vector.Mutable as MV
 import Data.Vector(Vector)
 import qualified Data.Vector as V
+
+import Z3.Monad
+
+import qualified Debug.Trace as DBG
+import GHC.IO (ioToST)
 
 -- A data type for nodes in the augmented graph G
 data GNode = GNode
@@ -95,17 +106,16 @@ instance SatState (AugState s) where
   getStateProps _ (AugState _ lab _) = lab
   {-# INLINABLE getStateProps #-}
 
--- the global variables in the algorithm
+-- the G Graph computed by this function
+type GGraph s = CM.CustoMap s GNode
+
+-- the global variables in the algorithm for constructing graph G
 data GGlobals s pstate = GGlobals
   { idSeq      :: STRef s Int
   , ggraphMap   :: HashTable s (Int, State) Int
-  , gGraph      :: STRef s (CM.CustoMap s GNode)
+  , gGraph      :: STRef s (GGraph s)
   , grGlobals   :: GRobals s (AugState pstate)
   }
-
-
--- the G Graph computed by this function
-type GGraph s = CM.CustoMap s GNode
 
 -- requires: the initial semiconfiguration has id 0
 -- requires: idSeq is at 0
@@ -187,16 +197,16 @@ buildPush gglobals delta getGn isPending (gn, p) =
     -- handling the support edges
     fSuppGns <- mapM getGn fPendingSuppSemiconfs
     let leftContext = AugState (getState . fst . semiconf $ gn) (E.extractInput (bitenc delta) (current p)) p
-        cDeltaPush (AugState q0 _ p0)  =  [ AugState q1 lab p1 |
-                                            (q1, lab, _) <- (deltaPush delta) q0
+        cDeltaPush (AugState q0 _ p0)  =  [ (AugState q1 lab p1, prob_) |
+                                            (q1, lab, prob_) <- (deltaPush delta) q0
                                           , p1 <- (phiDeltaPush delta) p0
                                           ]
-        cDeltaShift (AugState q0 _ p0) =  [ AugState q1 lab p1 |
-                                            (q1, lab, _) <- (deltaShift delta) q0
+        cDeltaShift (AugState q0 _ p0) =  [ (AugState q1 lab p1, prob_) |
+                                            (q1, lab, prob_) <- (deltaShift delta) q0
                                           , p1 <- (phiDeltaShift delta) p0
                                           ]
-        cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ AugState q2 lab p2 |
-                                                             (q2, lab, _) <- (deltaPop delta) q0 q1
+        cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ (AugState q2 lab p2, prob_) |
+                                                             (q2, lab, prob_) <- (deltaPop delta) q0 q1
                                                            , p2 <- (phiDeltaPop delta) p0 p1
                                                            ]
 
@@ -270,7 +280,7 @@ data HGlobals s pstate = HGlobals
   , sStack     :: GStack s HEdge
   , bStack     :: GStack s Int
   , cGabow     :: STRef s Int
-  , bottomHSCCs  :: STRef s (IntMap GraphNodesSCC) -- we store only those reachable from a not phi initial state
+  , bottomHSCCs  :: STRef s (IntMap GraphNodesSCC) --  in qualitative model checking, we store only those reachable from a not phi initial state
   }
 
 data HEdge = Internal {toG :: Int} |
@@ -304,6 +314,7 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
                             , gGraph = emptyGGraph
                             , grGlobals = emptyGRGlobals
                           }
+
   (g, iniCount) <- buildGGraph gGlobals delta phiInitials (MV.unsafeRead suppGraph) (pendVector V.!)
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
@@ -400,7 +411,7 @@ createComponent hGlobals delta isPending g descendantSCCs = do
               forM_ sccEdges $ \e -> MV.modify (graph hGlobals) (\g -> g{iValue = -1, descSccs = filteredDescendants}) (toG e)
               return filteredDescendants
     else return descendantSCCs
-      
+
 createComponentPhi :: HGlobals s pstate -> GNode -> IntSet -> ST s IntSet
 createComponentPhi hGlobals g descendantSCCs = do
   topB <- GS.peek $ bStack hGlobals
@@ -420,7 +431,7 @@ createComponentPhi hGlobals g descendantSCCs = do
           forM_ sccEdges $ \e -> MV.modify (graph hGlobals) (\g -> g{iValue = -1, descSccs = filteredDescendants}) (toG e)
           return filteredDescendants
     else return descendantSCCs
-      
+
 -- Gabow helpers
 addtoPath :: HGlobals s pstate -> GNode -> HEdge -> ST s GNode
 addtoPath hglobals node edge  = do
@@ -465,6 +476,8 @@ isAccepting hGlobals delta sccEdges = do
 
 
 -- quantitative model checking --
+
+
 -- requires: the initial semiconfiguration has id 0
 -- pstate: a parametric type for states of the input popa
 quantitativeModelCheck :: (Ord pstate, Hashable pstate, Show pstate)
