@@ -327,16 +327,22 @@ callRetLoop2 = ExplicitPopa
       ]
   }
 
+-- Paper example
 loopFunShort :: ExplicitPopa Word String
 loopFunShort = ExplicitPopa
   { epAlphabet = stlV3Alphabet
-  , epInitial = (1, makeInputSet ["call"])
+  , epInitial = (0, makeInputSet ["call"])
   , epopaDeltaPush =
-      [ (1, [(1, makeInputSet ["call"], 2 % 3), (2, makeInputSet ["ret"], 1 % 3)]) ]
+      [ (0, [(1, makeInputSet ["call"], 1)])
+      , (1, [(1, makeInputSet ["call"], 2 % 3), (2, makeInputSet ["ret"], 1 % 3)])
+      , (3, [(3, makeInputSet ["call"], 1)])
+      ]
   , epopaDeltaShift =
-      [ (2, [(2, makeInputSet ["ret"], 1)]) ]
+      [ (2, [(1, makeInputSet ["ret"], 1)]) ]
   , epopaDeltaPop =
-      [ (2, 1, [(1, makeInputSet ["call"], 1 % 2), (2, makeInputSet ["ret"], 1 % 2)]) ]
+      [ (1, 1, [(1, makeInputSet ["call"], 1 % 2), (2, makeInputSet ["ret"], 1 % 2)])
+      , (1, 0, [(3, makeInputSet ["call"], 1)])
+      ]
   }
 
 loopFunStm :: ExplicitPopa Word String
