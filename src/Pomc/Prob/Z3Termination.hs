@@ -20,8 +20,8 @@ import Pomc.Prob.SupportGraph
 import Pomc.Prob.FixPoint
 import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
 
-import Pomc.ZStack(ZStack)
-import qualified Pomc.ZStack as ZS
+import Pomc.IOStack(IOStack)
+import qualified Pomc.IOStack as ZS
 
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad (foldM, unless, when, forM_, forM)
@@ -49,7 +49,6 @@ import Data.IORef (IORef, newIORef, modifyIORef, readIORef, writeIORef)
 
 import qualified Debug.Trace as DBG
 import Data.List (nub, groupBy)
-import Control.Monad (filterM)
 
 -- a map Key: (gnId GraphNode, getId StateId) - value : Z3 variables (represented as ASTs)
 -- each Z3 variable represents [[q,b | p ]]
@@ -375,8 +374,8 @@ type PartialVarMap = (HT.BasicHashTable VarKey AST, Bool)
 
 data DeficientGlobals state = DeficientGlobals
   { supportGraph :: SupportGraph RealWorld state
-  , sStack     :: ZStack Int
-  , bStack     :: ZStack Int
+  , sStack     :: IOStack Int
+  , bStack     :: IOStack Int
   , iVector    :: MV.IOVector Int
   , successorsCntxs :: MV.IOVector SuccessorsPopContexts
   , mustReachPop :: IORef IntSet
