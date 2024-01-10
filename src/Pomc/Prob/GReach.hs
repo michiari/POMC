@@ -318,9 +318,9 @@ lookupVar newAdded globals decoded rightContext = do
   when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system"
   asPendingIdxes <- readIORef (cannotReachPop globals)
   if IntSet.member id_ asPendingIdxes
-      then do 
-        addFixpEq (lowerEqMap globals) key (PopEq 0) 
-        addFixpEq (upperEqMap globals) key (PopEq 0) 
+      then do
+        addFixpEq (lowerEqMap globals) key (PopEq 0)
+        addFixpEq (upperEqMap globals) key (PopEq 0)
         return (key, True)
         else do
             previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
@@ -442,7 +442,7 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
       doEncode poppedSemiconfs = do
         newAdded <- newIORef Set.empty
         let to_be_encoded = [(s, semiconfId_, rc) | (s, semiconfId_) <- poppedSemiconfs, rc <- IntSet.toList popContxs]
-        insertedVars <- map snd <$> (forM to_be_encoded $ \(s, _, rc) -> lookupVar newAdded globals (decode s) rc)
+        insertedVars <- map snd <$> forM to_be_encoded (\(s, _, rc) -> lookupVar newAdded globals (decode s) rc)
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
         forM_ to_be_encoded $ \(s, _, rc) -> encode newAdded globals sIdGen delta supports s rc
         newAddedSet <- readIORef newAdded

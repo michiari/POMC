@@ -141,8 +141,8 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingIdxes, _) (lowe
             --eqString <- astToString eq
             --DBG.traceM $ "Asserting Pop equation: " ++ eqString
             --assert eq
-            addFixpEq lowerEqMap varKey $ PopEq $ fromRational e
             addFixpEq upperEqMap varKey $ PopEq $ fromRational e
+            addFixpEq lowerEqMap varKey $ PopEq $ fromRational e
             return [] -- pop transitions do not generate new variables
 
         | otherwise = fail "unexpected prec rel"
@@ -224,7 +224,7 @@ encodeShift varMap@(_, _, asPendingIdxes, _) (lowerEqMap, upperEqMap) mkComp gn 
       --DBG.traceM $ "Asserting Shift equation: " ++ eqString
       --assert eq
       --assert =<< mkGe var =<< mkRealNum 0
-      addFixpEq lowerEqMap varKey $ ShiftEq terms
+      addFixpEq upperEqMap varKey $ ShiftEq terms
       addFixpEq lowerEqMap varKey $ ShiftEq terms
     return unencoded_vars
 -- end
@@ -544,9 +544,8 @@ createComponent globals gn (popContxs, dMustReachPop) precFun query = do
         currentASPSs <- liftIO $ readIORef (cannotReachPop globals)
         newAdded <- liftIO HT.new
         let to_be_encoded = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
-        insertedUpperVars <- map snd <$> forM to_be_encoded (lookupVar (varMap, newAdded, currentASPSs, encodeInitial) (lowerEqMap globals, upperEqMap globals))
-        insertedLowerVars <- map snd <$> forM to_be_encoded (lookupVar (varMap, newAdded, currentASPSs, encodeInitial) (lowerEqMap globals, upperEqMap globals))
-        when (or insertedUpperVars || or insertedLowerVars) $ error "inserting a variable that has already been encoded"
+        insertedVars <- map snd <$> forM to_be_encoded (lookupVar (varMap, newAdded, currentASPSs, encodeInitial) (lowerEqMap globals, upperEqMap globals))
+        when (or insertedVars ) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
         reset >> encode to_be_encoded (varMap, newAdded, currentASPSs, encodeInitial) (lowerEqMap globals, upperEqMap globals) (supportGraph globals) precFun mkGe query
         actualMustReachPop <- solveSCCQuery poppedEdges dMustReachPop (varMap, newAdded, currentASPSs, encodeInitial) globals precFun
@@ -586,7 +585,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   currentEps <- liftIO $ readIORef epsVar
   let iterEps = min defaultEps $ currentEps * currentEps
 
-  --eqMapList <- liftIO $ HT.toList eMap
+  --eqMapList <- liftIO $ HT.toList uEqMap
   --DBG.traceM $ "Current equation system: \n" ++ concatMap (\l -> show l ++ "\n") eqMapList
 
   -- TODO: is it correct not to put inside z3 the lower bounds on variables? Who knows...
@@ -637,6 +636,8 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   -}
 
   variables <- liftIO $ map fst <$> HT.toList newAdded
+
+  DBG.traceM $ "Added variables: " ++ show variables
   
   -- updating lower bounds
   approxVec <- approxFixp lEqMap iterEps defaultMaxIters
