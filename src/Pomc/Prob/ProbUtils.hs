@@ -31,8 +31,8 @@ module Pomc.Prob.ProbUtils ( Prob
                            , solver
                            , toBool
                            , toBoolVec
-                           , toProb
-                           , toProbVec
+                           , toLowerProb
+                           , toUpperProb
                            , debug
                            ) where
 
@@ -53,6 +53,8 @@ import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
 import Data.Vector(Vector)
+
+import Data.Map(Map)
 
 import qualified Debug.Trace as DBG
 
@@ -189,7 +191,7 @@ solver (PendingQuery s) = s
 -- ApproxSingleResult represents the approximate probability to terminate of the popa 
 -- PendingResult represents whether a semiconf is pending (i.e. it has positive probability to non terminate) for all semiconfs of the popa
 -- by convention, 
-data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob, Vector Prob) | ApproxSingleResult (Prob, Prob) | PendingResult (Vector Bool)
+data TermResult = TermSat | TermUnsat | ApproxAllResult (Map (Int,Int) Prob, Map (Int,Int) Prob) | ApproxSingleResult (Prob, Prob) | PendingResult (Vector Bool)
   deriving (Show, Eq, Generic, NFData)
 
 toBool :: TermResult -> Bool
@@ -197,13 +199,13 @@ toBool TermSat = True
 toBool TermUnsat = False
 toBool r = error $ "cannot convert a non boolean result. Got instead: " ++ show r
 
-toProb :: TermResult -> Prob
-toProb (ApproxSingleResult (lb, _)) = lb
-toProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
+toLowerProb :: TermResult -> Prob
+toLowerProb (ApproxSingleResult (lb, _)) = lb
+toLowerProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
 
-toProbVec :: TermResult -> Vector Prob
-toProbVec (ApproxAllResult (lb, _)) = lb
-toProbVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
+toUpperProb :: TermResult -> Prob
+toUpperProb (ApproxSingleResult (_, ub)) = ub
+toUpperProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
 
 toBoolVec :: TermResult -> Vector Bool
 toBoolVec (PendingResult v) = v

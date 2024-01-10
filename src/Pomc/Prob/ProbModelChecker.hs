@@ -91,7 +91,7 @@ terminationGEExplicit popa bound = first toBool <$> terminationExplicit popa (Co
 
 -- what is the probability that the input POPA terminates?
 terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> IO (Prob, String)
-terminationApproxExplicit popa = first toProb <$> terminationExplicit popa (ApproxSingleQuery SMTWithHints)
+terminationApproxExplicit popa = first toUpperProb <$> terminationExplicit popa (ApproxSingleQuery SMTWithHints)
 
 -- handling the termination query
 terminationExplicit :: (Ord s, Hashable s, Show s, Ord a)
@@ -170,7 +170,7 @@ programTermination prog query =
     (res, mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query
     DBG.traceM $ "Computed termination probabilities: " ++ show res
     --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
-    return (toProb res, scString ++ "\n" ++ show query)
+    return (toUpperProb res, scString ++ "\n" ++ show query)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
@@ -221,14 +221,17 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
     -}
-    (ApproxAllResult (vec, _), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
-    DBG.traceM $ "Computed termination probabilities: " ++ show vec
-    let cases i k
+    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
+    let ubTermMap = Map.mapKeysWith (+) fst ubMap
+        ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
+
+        cases i k
           | k < (1 - defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
           | k < (1 - defaultRTolerance) = True
           | IntSet.member i mustReachPopIdxs = False
           | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST." -- inconclusive result
-        pendVector = V.imap cases vec
+        pendVector = V.imap cases ubVec
+    DBG.traceM $ "Computed termination probabilities: " ++ show ubVec
     DBG.traceM $ "Pending Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
@@ -303,3 +306,138 @@ qualitativeModelCheckExplicitGen phi popa =
                  , epopaDeltaPop = transDeltaPop (epopaDeltaPop popa)
                  }
   in qualitativeModelCheckExplicit tphi tPopa
+
+
+-- QUANTITATIVE MODEL CHECKING
+-- is the probability that the POPA satisfies phi equal to 1?
+quantitativeModelCheck :: (Ord s, Hashable s, Show s)
+                            => Formula APType -- input formula to check
+                            -> Alphabet APType -- structural OP alphabet
+                            -> (E.BitEncoding -> (s, Label)) -- POPA initial states
+                            -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
+                            -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
+                            -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
+                            -> IO ((Prob,Prob), String)
+quantitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
+  let
+    (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
+      makeOpa phi IsProb alphabet (\_ _ -> True)
+
+    deltaPush  = bDeltaPush bitenc
+    deltaShift = bDeltaShift bitenc
+    deltaPop  = bDeltaPop bitenc
+
+    initial = bInitials bitenc
+
+    proEnc = PE.makeProBitEncoding cl phiIsFinal
+
+    phiPush p = (phiDeltaPush p Nothing)
+    phiShift p = (phiDeltaShift p Nothing)
+
+    wrapper = Delta
+      { bitenc = bitenc
+      , proBitenc = proEnc
+      , prec = precFunc
+      , deltaPush = deltaPush
+      , deltaShift = deltaShift
+      , deltaPop = deltaPop
+      , phiDeltaPush = phiPush
+      , phiDeltaShift = phiShift
+      , phiDeltaPop = phiDeltaPop
+      }
+
+  in do
+    sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
+    scString <- stToIO $ CM.showMap sc
+    DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
+    DBG.traceM $ "Summary chain: " ++ scString
+    {-
+    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
+    DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
+    pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
+    -}
+    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
+    let ubTermMap = Map.mapKeysWith (+) fst ubProbs
+        ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
+        cases i k
+          | k < (1 - defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
+          | k < (1 - defaultRTolerance) = True
+          | IntSet.member i mustReachPopIdxs = False
+          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST." -- inconclusive result
+        pendVector = V.imap cases ubVec
+    DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show ubVec
+    DBG.traceM $ "Pending Upper Bounds Vector: " ++ show pendVector
+    DBG.traceM "Conclusive analysis!"
+    bounds <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs
+    return (bounds, scString ++ show pendVector)
+
+quantitativeModelCheckProgram :: Formula ExprProp -- phi: input formula to check
+                             -> Program -- input program
+                             -> IO ((Prob, Prob), String)
+quantitativeModelCheckProgram phi prog =
+  let
+    (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
+    transPhi = encodeFormula pconv phi
+  in quantitativeModelCheck transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
+
+quantitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
+                    => Formula APType -- phi: input formula to check
+                    -> ExplicitPopa s APType -- input OPA
+                    -> IO ((Prob,Prob), String)
+quantitativeModelCheckExplicit phi popa =
+  let
+    -- all the structural labels + all the labels which appear in phi
+    essentialAP = Set.fromList $ End : (fst $ epAlphabet popa) ++ (getProps phi)
+
+    maybeList Nothing = []
+    maybeList (Just l) = l
+
+    -- generate the delta relation of the input opa
+    encodeDistr bitenc = map (\(s, b, p) -> (s, E.encodeInput bitenc (Set.intersection essentialAP b), p))
+    makeDeltaMapI delta bitenc = Map.fromListWith (++) $
+      map (\(q, distr) -> (q, encodeDistr bitenc distr))
+          delta
+    deltaPush  = makeDeltaMapI  (epopaDeltaPush popa)
+    deltaShift  = makeDeltaMapI  (epopaDeltaShift popa)
+    popaDeltaPush bitenc q = maybeList $ Map.lookup q (deltaPush bitenc)
+    popaDeltaShift bitenc q = maybeList $ Map.lookup q (deltaShift bitenc)
+
+    makeDeltaMapS delta bitenc = Map.fromListWith (++) $
+      map (\(q, q', distr) -> ((q, q'), encodeDistr bitenc distr))
+          delta
+    deltaPop = makeDeltaMapS (epopaDeltaPop popa)
+    popaDeltaPop bitenc q q' = maybeList $ Map.lookup (q, q') (deltaPop bitenc)
+
+    initial bitenc = (fst . epInitial $ popa, E.encodeInput bitenc . Set.intersection essentialAP . snd .  epInitial $ popa)
+  in quantitativeModelCheck phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
+
+
+quantitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
+                              => Formula a -- phi: input formula to check
+                              -> ExplicitPopa s a -- input OPA
+                              -> IO ((Prob, Prob), String)
+quantitativeModelCheckExplicitGen phi popa =
+  let
+    (sls, prec) = epAlphabet popa
+    essentialAP = Set.fromList $ End : sls ++ getProps phi
+    (tphi, tprec, [tsls], pconv) = convProps phi prec [sls]
+    transDelta = map (second
+                        (map (\(a, b, p) ->
+                            (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
+                        )
+                     )
+    transDeltaPop = map ( \(q,q0, distr) -> (q,q0,
+                                                  map (\(a, b, p) ->
+                                                    (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
+                                                  distr
+                                            )
+                        )
+    transInitial = second (Set.map (encodeProp pconv) . Set.intersection essentialAP)
+    tPopa = popa { epAlphabet   = (tsls, tprec)
+                , epInitial = transInitial (epInitial popa)
+                 , epopaDeltaPush  = transDelta (epopaDeltaPush popa)
+                 , epopaDeltaShift = transDelta (epopaDeltaShift popa)
+                 , epopaDeltaPop = transDeltaPop (epopaDeltaPop popa)
+                 }
+  in quantitativeModelCheckExplicit tphi tPopa
+

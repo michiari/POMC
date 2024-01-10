@@ -245,15 +245,14 @@ solveQuery q
     encodeApproxAllQuery eps _ graph varMap@(m, _, asPendingIdxs, _) _ eqMap = do
       assertHints varMap eqMap eps
       upperBoundModel <- fromJust . snd <$> getModel
-      groupedVec <- liftIO $ groupASTs m (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
-      sumAstVec <- V.mapM mkAdd groupedVec
+      filteredASTs <- filter (\(key, _) -> not (IntSet.member (fst key) asPendingIdxs)) <$> liftIO (HT.toList m)
       setZ3PPOpts
-      ub <-  V.forM sumAstVec $ \a -> do
-                s <- astToString . fromJust =<< eval upperBoundModel a
-                return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
-      lbMap <- Map.fromListWith (+) . map (\(k, PopEq d) -> (fst k, approxRational (d - eps) eps)) <$> liftIO (HT.toList eqMap)
-      let lbVector = V.generate (MV.length graph) (\idx -> Map.findWithDefault 0 idx lbMap)
-      return $ ApproxAllResult (lbVector, ub)
+      ub <-  GeneralMap.fromList <$> forM filteredASTs (\(varKey, var) -> do
+                s <- astToString . fromJust =<< eval upperBoundModel var
+                return (varKey, toRational (read (takeWhile (/= '?') s) :: Scientific)))
+                
+      lbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, approxRational (d - eps) eps)) <$> liftIO (HT.toList eqMap)
+      return $ ApproxAllResult (lbMap, ub)
     encodeApproxSingleQuery eps _ _ varMap@(m, _, _, _) _ eqMap = do
       assertHints varMap eqMap eps
       upperBoundModel <- fromJust . snd <$> getModel
@@ -437,7 +436,6 @@ terminationQuerySCC suppGraph precFun query = do
   addtoPath globals gn
   _ <- dfs globals precFun query gn
   -- returning the computed values
-  asPendingIdxs <- liftIO $ readIORef (cannotReachPop globals)
   currentEps <- liftIO $ readIORef (eps globals)
   mustReachPopIdxs <- liftIO $ readIORef (mustReachPop globals)
   let actualEps = min defaultEps $ currentEps * currentEps
@@ -457,11 +455,11 @@ terminationQuerySCC suppGraph precFun query = do
                 s <- astToString . fromJust =<< eval m sumVar
                 return $ toRational (read (takeWhile (/= '?') s) :: Scientific)
             -}
-            upperProbMap <- Map.fromListWith (+) . map (\(k, PopEq d) -> (fst k, d)) <$> liftIO (HT.toList newUpperEqMap)
-            let upperProbVector = V.generate (MV.length suppGraph) (\idx -> let d = Map.findWithDefault 0 idx upperProbMap in if d == 0 then 0 else approxRational (d + actualEps) actualEps)
-            lowerProbMap <- Map.fromListWith (+) . map (\(k, PopEq d) -> (fst k, d)) <$> liftIO (HT.toList newLowerEqMap)
-            let lowerProbVector = V.generate (MV.length suppGraph) (\idx -> let d = Map.findWithDefault 0 idx lowerProbMap in if d == 0 then 0 else approxRational (d - actualEps) actualEps)
-            return  (ApproxAllResult (lowerProbVector, upperProbVector), mustReachPopIdxs)
+            upperProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newUpperEqMap)
+            let upperProbRationalMap = GeneralMap.map (\v -> approxRational (v + actualEps) actualEps) upperProbMap
+            lowerProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newLowerEqMap)
+            let lowerProbRationalMap = GeneralMap.map (\v -> approxRational (v - actualEps) actualEps) lowerProbMap
+            return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
           readApproxSingleQuery = do
               {-
               ub <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
@@ -670,7 +668,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
           addFixpEq uEqMap varKey (PopEq p)
 
   -- computing the PAST certificate
-  if not dMustReachPop || all (\(_,ub) -> ub < 1 - defaultTolerance) (Map.toList upperBoundsTermProbs)
+  if not dMustReachPop || all (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs)
     then do
       unless (all (\(_,ub) -> ub < 1 - iterEps) (Map.toList upperBoundsTermProbs) || ((head variables) == (0 :: Int, -1 :: Int))) $ error "not AST but upper bound 1"
       return False
