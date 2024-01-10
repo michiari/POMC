@@ -13,6 +13,7 @@ module Pomc.Prob.GReach ( GRobals(..)
                         , reachableStates
                         , showGrobals
                         , weightQuerySCC
+                        , freezeSuppEnds
                         ) where
 import Pomc.Prob.ProbUtils(Prob, EqMapNumbersType)
 import Pomc.Prob.FixPoint
@@ -25,9 +26,6 @@ import Pomc.Check(EncPrecFunc)
 import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
 
 import Pomc.SatUtil
-
-import Pomc.GStack(GStack)
-import qualified Pomc.GStack as GS
 
 import Pomc.IOStack(IOStack)
 import qualified Pomc.IOStack as IOGS
@@ -256,6 +254,11 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
 
 
 --- compute weigths of a support transition 
+freezeSuppEnds :: GRobals RealWorld state -> IO (Vector (Set (StateId state)))
+freezeSuppEnds globals = stToIO $ do
+  computedSuppEnds <- readSTRef (suppEnds globals)
+  V.generateM (MV.length computedSuppEnds) (\idx -> GeneralMap.keysSet <$> MV.unsafeRead computedSuppEnds idx)
+
 type SuccessorsPopContexts = IntSet
 
 data WeightedGRobals state = WeightedGRobals
@@ -264,8 +267,8 @@ data WeightedGRobals state = WeightedGRobals
   , varMap     :: IORef (IOSetMap Int) -- variables associated with a semiconf
   , sStack     :: IOStack (StateId state, Stack state)
   , bStack     :: IOStack Int
-  , iVector    :: MV.IOVector Int
-  , successorsCntxs :: MV.IOVector SuccessorsPopContexts
+  , iVector    :: HT.BasicHashTable Int Int
+  , successorsCntxs :: HT.BasicHashTable Int IntSet
   , cannotReachPop :: IORef IntSet
   , eqMap :: EqMap EqMapNumbersType
   , actualEps :: IORef EqMapNumbersType
@@ -275,7 +278,7 @@ data WeightedGRobals state = WeightedGRobals
 weightQuerySCC :: (SatState state, Eq state, Hashable state, Show state)
                  => WeightedGRobals state
                  -> SIdGen RealWorld state
-                 -> Delta state -- delta relation of the opa
+                 -> Delta state -- delta relation of the augmented opa
                  -> Vector (Set(StateId state))
                  -> state -- current state
                  -> state -- target state
@@ -352,7 +355,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) =
           newShiftStates <- stToIO $ wrapStates sIdGen $ map fst $ (deltaShift delta) qState
           IntSet.unions <$> forM newShiftStates (\p -> follow (p, Just (qProps, snd . fromJust $ g)))
 
-        | precRel == Just Take = do 
+        | precRel == Just Take = do
             newPopStates <- stToIO $ wrapStates sIdGen $ map fst $ (deltaPop delta) qState (getState . snd . fromJust $ g)
             return $ IntSet.fromList (map getId (V.toList newPopStates))
 
@@ -360,21 +363,30 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) =
 
       cases nextSemiconf nSCId iVal
         | (iVal == 0) = addtoPath globals nextSemiconf nSCId >> dfs globals sIdGen delta supports nextSemiconf (nSCId, target)
-        | (iVal < 0)  = MV.unsafeRead (successorsCntxs globals) nSCId
+        | (iVal < 0)  = lookupCntxs globals nSCId
         | (iVal > 0)  = merge globals nextSemiconf nSCId >> return IntSet.empty
         | otherwise = error "unreachable error"
       follow nextSemiconf = do
         nSCId <- lookupSemiconf globals nextSemiconf
-        iVal <- MV.unsafeRead (iVector globals) nSCId
+        iVal <- lookupIValue globals nSCId
         cases nextSemiconf nSCId iVal
 
   in do
     popContxs <- transitionCases =<< readIORef (encodeNothingStack globals)
     createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, target)
 
+lookupIValue :: WeightedGRobals state -> Int -> IO Int
+lookupIValue globals semiconfId = do
+  maybeIval <- HT.lookup (iVector globals) semiconfId
+  maybe (return 0) return maybeIval
+
+lookupCntxs :: WeightedGRobals state -> Int -> IO IntSet
+lookupCntxs globals semiconfId = do
+    maybeCntxs <- HT.lookup (successorsCntxs globals) semiconfId
+    maybe (return IntSet.empty) return maybeCntxs
 
 lookupSemiconf :: WeightedGRobals state -> (StateId state, Stack state) -> IO Int
-lookupSemiconf globals semiconf = do 
+lookupSemiconf globals semiconf = do
   maybeId <- HT.lookup (graphMap globals) (decode semiconf)
   actualId <- maybe (freshIOPosId (idSeq globals)) return maybeId
   when (isNothing maybeId) $ HT.insert (graphMap globals) (decode semiconf) actualId
@@ -383,19 +395,19 @@ lookupSemiconf globals semiconf = do
 freshIOPosId :: IORef Int -> IO Int
 freshIOPosId idSeq = do
   curr <- readIORef idSeq
-  modifyIORef' idSeq (+1);
+  modifyIORef' idSeq (+1)
   return curr
 
 addtoPath :: WeightedGRobals state -> (StateId state, Stack state) -> Int -> IO ()
 addtoPath globals semiconf semiconfId = do
   IOGS.push (sStack globals) semiconf
   sSize <- IOGS.size $ sStack globals
-  MV.unsafeWrite (iVector globals) semiconfId sSize
+  HT.insert (iVector globals) semiconfId sSize
   IOGS.push (bStack globals) sSize
 
 merge ::  WeightedGRobals state -> (StateId state, Stack state) -> Int -> IO ()
 merge globals _ semiconfId = do
-  iVal <- MV.unsafeRead (iVector globals) semiconfId
+  iVal <- lookupIValue globals semiconfId
   -- contract the B stack, that represents the boundaries between SCCs on the current path
   IOGS.popWhile_ (bStack globals) (iVal <)
 
@@ -410,7 +422,7 @@ createComponent :: (SatState state, Eq state, Hashable state, Show state)
   -> IO SuccessorsPopContexts
 createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, target) = do
   topB <- IOGS.peek $ bStack globals
-  iVal <- MV.unsafeRead (iVector globals) semiconfId
+  iVal <- lookupIValue globals semiconfId
   let createC = do
         IOGS.pop_ (bStack globals)
         sSize <- IOGS.size $ sStack globals
@@ -419,8 +431,8 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
         DBG.traceM $ "Pop contexts: " ++ show popContxs
         forM poppedSemiconfs $ \s -> do
           actualId <- fromJust <$> HT.lookup (graphMap globals) (decode s)
-          MV.unsafeWrite (iVector globals) actualId (-1)
-          MV.unsafeWrite (successorsCntxs globals) actualId popContxs
+          HT.insert (iVector globals) actualId (-1)
+          HT.insert (successorsCntxs globals) actualId popContxs
           return (s, actualId)
       doEncode poppedSemiconfs = do
         newAdded <- newIORef Set.empty
@@ -436,7 +448,7 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
         isInitial <- (== 0) <$> IOGS.size (sStack globals)
         when isInitial $ do -- for the initial semiconf, encode anyway
           newAdded <- newIORef Set.empty
-          encodeInitialPush newAdded globals sIdGen delta supports q g semiconfId target 
+          encodeInitialPush newAdded globals sIdGen delta supports q g semiconfId target
           modifyIORef newAdded (Set.insert (semiconfId, -1))
           newAddedSet <- readIORef newAdded
           solveSCCQuery (map snd poppedSemiconfs) newAddedSet globals
