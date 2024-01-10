@@ -4,6 +4,7 @@
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
+{-# LANGUAGE LambdaCase #-}
 
 module Pomc.Prob.GReach ( GRobals(..)
                         , newGRobals
@@ -20,6 +21,7 @@ import qualified Pomc.Prob.ProbEncoding as PE
 import Pomc.Encoding (BitEncoding)
 import Pomc.Prec (Prec(..))
 import Pomc.Check(EncPrecFunc)
+import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
 
 import Pomc.SatUtil
 
@@ -43,6 +45,9 @@ import qualified Data.IntSet as IntSet
 
 import Data.IntMap(IntMap)
 import qualified Data.IntMap as Map
+
+import Data.Map(Map)
+import qualified Data.Map as GeneralMap
 
 import Data.Vector(Vector)
 import qualified Data.Vector as V
@@ -295,8 +300,8 @@ weightQuerySCC globals sIdGen delta supports current target = do
       return (error "not implemented", ub)
 
 
-lookupSemiconf :: IORef (Set (Int,Int)) -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO ((Int,Int), Bool)
-lookupSemiconf newAdded globals decoded rightContext = do
+lookupVar :: IORef (Set (Int,Int)) -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO ((Int,Int), Bool)
+lookupVar newAdded globals decoded rightContext = do
   maybeId <- HT.lookup (graphMap globals) decoded
   when (isNothing maybeId) $ error "future semiconfs should have been already visited and inserted in the hashtable"
   let id_ = fromJust maybeId
@@ -365,7 +370,7 @@ encodePush newAdded globals sIdGen delta supports q g qState (semiconfId, rightC
       recurse (dest, rc) = encode newAdded globals sIdGen delta supports dest rc
       closeSupports pushDest (unencodedSCs, terms) suppId =
         let suppDest = (suppId, g) in do
-        vars <- mapM (uncurry (lookupSemiconf newAdded globals)) [(decode pushDest, getId suppId), (decode suppDest, rightContext)]
+        vars <- mapM (uncurry (lookupVar newAdded globals)) [(decode pushDest, getId suppId), (decode suppDest, rightContext)]
         return ( (map fst . filter snd $ zip [(pushDest, getId suppId), (suppDest, rightContext)] (map snd vars)) ++ unencodedSCs
           , (map fst vars):terms
           )
@@ -399,7 +404,7 @@ encodeInitialPush newAdded globals sIdGen delta supports q _ semiconfId suppId =
         recurse dest = encode newAdded globals sIdGen delta supports dest suppId
         pushEnc (newSCs, terms) (p, prob_) =
           let dest = (p, Just (qProps, q)) in do
-            (key, alreadyEncoded) <- lookupSemiconf newAdded globals (decode dest) suppId
+            (key, alreadyEncoded) <- lookupVar newAdded globals (decode dest) suppId
             return ( if alreadyEncoded then newSCs else dest:newSCs
                   , (prob_, key, (suppId, -1)):terms
                   )
@@ -427,7 +432,7 @@ encodeShift newAdded globals sIdGen delta supports _ g qState (semiconfId, right
       recurse dest = encode newAdded globals sIdGen delta supports dest rightContext
       shiftEnc (newSCs, terms) (p, prob_) = do
         let dest = (p, Just (qProps, snd . fromJust $ g))
-        (key, alreadyEncoded) <- lookupSemiconf newAdded globals (decode dest) rightContext
+        (key, alreadyEncoded) <- lookupVar newAdded globals (decode dest) rightContext
         return ( if alreadyEncoded then newSCs else dest:newSCs
                 , (prob_, key):terms
                 )
@@ -530,10 +535,11 @@ createComponent globals sIdGen delta supports (q,g) popContxs semiconfId target 
       doEncode poppedSemiconfs = do
         newAdded <- newIORef Set.empty
         let to_be_encoded = [(s, semiconfId_, rc) | (s, semiconfId_) <- poppedSemiconfs, rc <- IntSet.toList popContxs]
-        insertedVars <- map snd <$> (forM to_be_encoded $ \(s, _, rc) -> lookupSemiconf newAdded globals (decode s) rc)
+        insertedVars <- map snd <$> (forM to_be_encoded $ \(s, _, rc) -> lookupVar newAdded globals (decode s) rc)
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
         forM_ to_be_encoded $ \(s, _, rc) -> encode newAdded globals sIdGen delta supports s rc
-        --solveSCCQuery poppedEdges dMustReachPop (varMap, newAdded, currentASPSs, encodeInitial) globals precFun
+        newAddedSet <- readIORef newAdded
+        solveSCCQuery (map snd poppedSemiconfs) newAddedSet globals
         return popContxs
       doNotEncode poppedSemiconfs = do
         modifyIORef (cannotReachPop globals) $ IntSet.union (IntSet.fromList $ map snd poppedSemiconfs)
@@ -542,8 +548,8 @@ createComponent globals sIdGen delta supports (q,g) popContxs semiconfId target 
           newAdded <- newIORef Set.empty
           encodeInitialPush newAdded globals sIdGen delta supports q g semiconfId target 
           modifyIORef newAdded (Set.insert (semiconfId, -1))
-          --solveSCCQuery [0] False (varMap, newAdded, currentASPSs, encodeInitial) globals precFun
-          return ()
+          newAddedSet <- readIORef newAdded
+          solveSCCQuery (map snd poppedSemiconfs) newAddedSet globals
         return popContxs
       cases
         | iVal /= topB = return popContxs
@@ -551,92 +557,78 @@ createComponent globals sIdGen delta supports (q,g) popContxs semiconfId target 
         | otherwise = createC >>= doNotEncode -- cannot reach a pop
   cases
 
-{-
--- params:
--- (var:: AST) = Z3 var associated with the initial semiconf
--- (graph :: SupportGraph RealWorld state :: ) = the graph
--- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
+
 solveSCCQuery :: (Eq state, Hashable state, Show state)
-=> [Int] -> Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> IO ()
-solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFun = do
---DBG.traceM "Assert hints to solve the query"
-let epsVar = eps globals
-eMap = eqMap globals
-rVarMap = rewVarMap globals
+  => [Int] -> Set (Int,Int) -> WeightedGRobals state -> IO ()
+solveSCCQuery sccMembers newAdded globals = do
+  --DBG.traceM "Assert hints to solve the query"
+  let variables = Set.toList newAdded
+      sccLen = length sccMembers
+      epsVar = actualEps globals
+      eMap = eqMap globals
 
-currentEps <- liftIO $ readIORef epsVar
-let iterEps = min defaultEps $ currentEps * currentEps
+  currentEps <- readIORef epsVar
+  let iterEps = min defaultEps $ currentEps * currentEps
 
---eqMapList <- liftIO $ HT.toList eMap
---DBG.traceM $ "Current equation system: \n" ++ concatMap (\l -> show l ++ "\n") eqMapList
+  --eqMapList <- liftIO $ HT.toList eMap
+  --DBG.traceM $ "Current equation system: \n" ++ concatMap (\l -> show l ++ "\n") eqMapList
 
-updatedVars <- preprocessApproxFixp eMap iterEps (2 * length sccMembers)
-forM_ updatedVars $ \(varKey, p) -> do
-pAST <- mkRealNum (p :: Double)
-liftIO $ HT.insert m varKey pAST
+  -- preprocessing to solve variables that do not need ovi
+  _ <- preprocessApproxFixp eMap iterEps (2 * sccLen)
 
-oviRes <- ovi defaultOVISettingsDouble eMap
+  oviRes <- ovi defaultOVISettingsDouble eMap
 
-rCertified <- oviToRational defaultOVISettingsDouble eMap oviRes
-unless rCertified $ error "cannot deduce a rational certificate for this semiconf"
+  rCertified <- oviToRational defaultOVISettingsDouble eMap oviRes
+  unless rCertified $ error "cannot deduce a rational certificate for this SCC"
 
-unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities"
+  unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
 
-{-
-DBG.traceM "Approximating via Value Iteration"
-approxVec <- approxFixp eqMap iterEps defaultMaxIters
-approxFracVec <- toRationalProbVec iterEps approxVec
+  {-
+  DBG.traceM "Approximating via Value Iteration"
+  approxVec <- approxFixp eqMap iterEps defaultMaxIters
+  approxFracVec <- toRationalProbVec iterEps approxVec
 
--- printing stuff - TO BE REMOVED
-forM_  approxFracVec $ \(varKey, _, p) -> do
-liftIO (HT.lookup eqMap varKey) >>= \case
-Just (PopEq _) -> return ()
-Just _ -> DBG.traceM ("Lower bound for " ++ show varKey ++ ": " ++ show p)
-_ -> error "weird error 1"
+  -- printing stuff - TO BE REMOVED
+  forM_  approxFracVec $ \(varKey, _, p) -> do
+  liftIO (HT.lookup eqMap varKey) >>= \case
+  Just (PopEq _) -> return ()
+  Just _ -> DBG.traceM ("Lower bound for " ++ show varKey ++ ": " ++ show p)
+  _ -> error "weird error 1"
 
-nonPops <- filterM (\(varKey, _, _) -> do
-liftIO (HT.lookup eqMap varKey) >>= \case
-Just (PopEq _) -> return False
-Just _ -> return True
-_ -> error "weird error 2"
-) approxFracVec
+  nonPops <- filterM (\(varKey, _, _) -> do
+  liftIO (HT.lookup eqMap varKey) >>= \case
+  Just (PopEq _) -> return False
+  Just _ -> return True
+  _ -> error "weird error 2"
+  ) approxFracVec
 
--- TODO: if you restore this code, you will have to handle this by rehaving closing edges on the path
-let actualAsReachesPop = scclen < 2 && asReachesPop
+  -- TODO: if you restore this code, you will have to handle this by rehaving closing edges on the path
+  let actualAsReachesPop = scclen < 2 && asReachesPop
 
-DBG.traceM "Asserting upper bounds 1 for value iteration"
-forM_ (groupBy (\k1 k2 -> fst k1 == fst k2) . map (\(varKey, _, _) -> varKey) $ nonPops) $ \list -> do
-sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup newAdded) list)
-assert =<< mkLe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
+  DBG.traceM "Asserting upper bounds 1 for value iteration"
+  forM_ (groupBy (\k1 k2 -> fst k1 == fst k2) . map (\(varKey, _, _) -> varKey) $ nonPops) $ \list -> do
+  sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup newAdded) list)
+  assert =<< mkLe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
 
--- assert bounds computed by value iteration
-DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
-model <- doAssert approxFracVec eps
+  -- assert bounds computed by value iteration
+  DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
+  model <- doAssert approxFracVec eps
 
--}
--- updating upper bounds
-variables <- liftIO $ map fst <$> HT.toList newAdded
+  -}
+  -- updating upper bounds
+  upperBound <- HT.toList (oviUpperBound oviRes)
 
-forM_ variables $ \varKey -> do
-ub <- liftIO $ min (1 :: Double) . fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
-ubAST <- mkRealNum ub
-liftIO $ HT.insert m varKey ubAST
+  let upperBoundsTermProbs = (\mapAll -> Map.restrictKeys mapAll (IntSet.fromList sccMembers)) . Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ upperBound
+  let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
+  DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
+  DBG.traceM $ "Computed upper bounds on fractions f: " ++ show upperBoundsTermProbs
 
-upperBound <- liftIO $ HT.toList (oviUpperBound oviRes)
-
-let upperBoundsTermProbs = (\mapAll -> Map.restrictKeys mapAll (IntSet.fromList sccMembers)) . Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ upperBound
-let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
-DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
-DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show upperBoundsTermProbs
-
-forM_  variables $ \varKey -> do
-liftIO (HT.lookup eMap varKey) >>= \case
-Just (PopEq _) -> return () -- An eq constraint has already been asserted
-_ -> do
-p <- liftIO $ fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
-addFixpEq eMap varKey (PopEq p)
+  forM_  variables $ \varKey -> do
+    HT.lookup eMap varKey >>= \case
+      Just (PopEq _) -> return () -- An eq constraint has already been asserted
+      _ -> do
+        p <- fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
+        addFixpEq eMap varKey (PopEq p)
 
 
-
--}
 

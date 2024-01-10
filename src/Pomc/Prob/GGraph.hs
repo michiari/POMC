@@ -577,7 +577,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       ([],[])
       groupedMaptoList
 
-    -- TODO: finish here the computation of the solution
+    error "finish here computation of the solution with a z3 query"
     return (0,1)
 
   -- helpers for the Z3 encoding
