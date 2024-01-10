@@ -305,7 +305,6 @@ weightQuerySCC globals sIdGen delta supports current target = do
       eps <- readIORef (actualEps globals)
       lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (lowerEqMap globals) (newId, -1)
       ub <- (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (upperEqMap globals) (newId, -1)
-      -- TODO: implement computation of the lower bound
       return (lb, ub)
 
 

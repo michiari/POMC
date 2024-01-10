@@ -716,7 +716,6 @@ encodePush wGrobals sIdGen supports delta typVarMap suppGraph gGraph isInH g gn 
                     return (lT, uT)
 
               | isJust maybePSummary = do
-                  -- TODO: computation of the fraction f
                   let supportGn = suppGraph V.! (graphNode toG)
                       supportState = getId . fst . semiconf $ supportGn
                       lP =  Set.foldl (+) 0 $ Set.map (\e -> (prob e) * (lowerBs GeneralMap.! (to e, supportState))) (internalEdges gn)
