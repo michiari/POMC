@@ -579,7 +579,8 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     newIVector <- liftIO $ HT.new
     newScntxs <- liftIO $ HT.new
     newCannotReachPop <- liftIO $ newIORef IntSet.empty
-    newEqMap <- liftIO HT.new
+    newLowerEqMap <- liftIO HT.new
+    newUpperEqMap <- liftIO HT.new
     newEps <- liftIO $ newIORef defaultTolerance
 
     let wGlobals = WeightedGRobals { GR.idSeq = newIdSeq
@@ -590,7 +591,8 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                                    , GR.iVector = newIVector
                                    , GR.successorsCntxs = newScntxs
                                    , GR.cannotReachPop = newCannotReachPop
-                                   , GR.eqMap = newEqMap
+                                   , GR.lowerEqMap = newLowerEqMap
+                                   , GR.upperEqMap = newUpperEqMap
                                    , GR.actualEps = newEps
                                     }
     -- encodings (2b) and (2c)
