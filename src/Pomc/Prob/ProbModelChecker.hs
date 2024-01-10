@@ -17,6 +17,9 @@ module Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   , qualitativeModelCheckProgram
                                   , qualitativeModelCheckExplicit
                                   , qualitativeModelCheckExplicitGen
+                                  , quantitativeModelCheckProgram
+                                  , quantitativeModelCheckExplicit
+                                  , quantitativeModelCheckExplicitGen
                                   ) where
 
 import Pomc.Prop (Prop(..))

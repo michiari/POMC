@@ -581,6 +581,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     newCannotReachPop <- liftIO $ newIORef IntSet.empty
     newLowerEqMap <- liftIO HT.new
     newUpperEqMap <- liftIO HT.new
+    newEncodeNothing <- liftIO $ newIORef True
     newEps <- liftIO $ newIORef defaultTolerance
 
     let wGlobals = WeightedGRobals { GR.idSeq = newIdSeq
@@ -594,6 +595,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                                    , GR.lowerEqMap = newLowerEqMap
                                    , GR.upperEqMap = newUpperEqMap
                                    , GR.actualEps = newEps
+                                   , GR.encodeNothingStack = newEncodeNothing
                                     }
     -- encodings (2b) and (2c)
     (lEncs1, uEncs1) <- foldM
@@ -626,7 +628,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       s <- astToString . fromJust =<< eval model sumVar
       return $ toRational (read (takeWhile (/= '?') s) :: Scientific))
             
-    reset >> mapM_ assert uEncs2 >> mapM_ assert uEncs2
+    reset >> mapM_ assert uEncs1 >> mapM_ assert uEncs2
     ub <- fromJust . snd <$> withModel (\model -> do
       phiVars <- liftIO $ forM phiStates $ \idx -> fromJust <$> HT.lookup newMap idx
       sumVar <- mkAdd phiVars
