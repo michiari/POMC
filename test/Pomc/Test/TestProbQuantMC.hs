@@ -29,7 +29,8 @@ makeTestCase popa ((name, phi), (expLB, expUB)) =
     ((lb, ub), info) <- quantitativeModelCheckExplicitGen phi popa
     let debugMsg adjective expected actual = "Expected " ++ adjective ++ show expected ++ " but got " ++ show actual ++ ". Additional diagnostic information: " ++ info
     assertBool (debugMsg "lower bound at least " expLB lb) (expLB <= lb)  
-    assertBool (debugMsg "upper bound at most" expUB ub) (expUB >= ub)  
+    assertBool (debugMsg "upper bound at most " expUB ub) (expUB >= ub)  
+    assertBool ("Lower bound should be lower than the upper bound") (lb <= ub)  
 
 -- termination probability = 0.5
 maybeTerminatingTests :: TestTree
@@ -64,7 +65,7 @@ maybeTerminating = ExplicitPopa
                         }
 
 expectedMaybeTerminating :: [(Prob, Prob)]
-expectedMaybeTerminating = [ (0.24 :: Prob, 0.26 :: Prob ), (0 :: Prob, 0.01 :: Prob ), (0 :: Prob, 0.01 :: Prob ), (0 :: Prob, 0.01 :: Prob ), 
+expectedMaybeTerminating = [ (0.24 :: Prob, 0.26 :: Prob ) ,(0 :: Prob, 0.01 :: Prob ), (0.74 :: Prob, 0.76 :: Prob ), (0 :: Prob, 0.01 :: Prob ), 
                              (0    :: Prob, 0.01 :: Prob ), (0 :: Prob, 0.01 :: Prob ), (0.99 :: Prob, 1.01 :: Prob ), (0.49 :: Prob, 0.51 :: Prob ), 
                              (0.49 :: Prob, 0.51 :: Prob ), (0.49 :: Prob, 0.51 :: Prob ), (0.74 :: Prob, 0.76 :: Prob ), (0.99 :: Prob, 1.01 :: Prob ), 
                              (0.74 :: Prob, 0.76 :: Prob ), (0.99 :: Prob, 1.01 :: Prob ), (0.49 :: Prob, 0.51 :: Prob ), (0.49 :: Prob, 0.51 :: Prob ),
