@@ -5,7 +5,14 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Test.TestProbQualMC(tests) where
+module Pomc.Test.TestProbQualMC(tests
+                               , symmetricRandomWalk
+                               , symmetricRandomWalk2
+                               , biasedRandomWalk
+                               , nonTerminating
+                               , maybeTerminating
+                               , loopySampling 
+                               ) where
 
 import Test.Tasty
 import Test.Tasty.HUnit

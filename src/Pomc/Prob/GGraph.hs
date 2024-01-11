@@ -614,23 +614,9 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     groupedlMaptoList <- liftIO (HT.toList newlGroupedMap)
     encs2 <- foldM (\(acc) (_, vList) -> do
         vSum <- mkAdd vList
-        lConstr1 <- mkEq vSum =<< mkRational (1 :: Prob)
-        {-
-        uConstr1 <- mkGe vSum =<< mkRational (1 :: Prob)
-        lConstr2 <- mkGe vSum =<< mkRational (0.99 :: Prob)
-        uConstr2 <- mkLe vSum =<< mkRational (1.01 :: Prob)
-        lConstr1String <- astToString lConstr1
-        DBG.traceM $ "Asserting SumToOne (lower bound): " ++ lConstr1String
-        uConstr1String <- astToString uConstr1
-        DBG.traceM $ "Asserting SumToOne (upper bound): " ++ uConstr1String
-        --{-
-        lConstr2String <- astToString lConstr2
-        DBG.traceM $ "Asserting SumToOne (lower bound): " ++ lConstr2String
-        uConstr2String <- astToString uConstr2
-        DBG.traceM $ "Asserting SumToOne (upper bound): " ++ uConstr2String
-        ---}
-        -}
-        return (lConstr1:acc)
+        lConstr1 <- mkLe vSum =<< mkRational (1 :: Prob)
+        lConstr2 <- mkGe vSum =<< mkRational (1 - defaultRTolerance)
+        return (lConstr1:lConstr2:acc)
       )
       []
       groupedlMaptoList
@@ -638,8 +624,9 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     groupeduMaptoList <- liftIO (HT.toList newuGroupedMap)
     encs3 <- foldM (\(acc) (_, vList) -> do
           vSum <- mkAdd vList
-          lConstr1 <- mkEq vSum =<< mkRational (1 :: Prob)
-          return (lConstr1:acc)
+          uConstr1 <- mkGe vSum =<< mkRational (1 :: Prob)
+          uConstr2 <- mkLe vSum =<< mkRational (1 + defaultRTolerance)
+          return (uConstr1:uConstr2:acc)
         )
         []
         groupeduMaptoList
@@ -662,7 +649,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
           ) [] phiInitialGNodesIdxs
 
     sumlVar <- mkAdd philVars
-    sumuVar <- mkAdd philVars
+    sumuVar <- mkAdd phiuVars
 
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
@@ -850,7 +837,7 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
   in do
   -- a little sanity check
   unless (graphNode g == gnId gn) $ error "Encoding Shift encountered a non consistent pair GNode - graphNode"
-  DBG.traceM $ "Encoding a Gnode corresponding to a shift semiconf"
+  --DBG.traceM $ "Encoding a Gnode corresponding to a shift semiconf"
   transitions <- mapM shiftEnc fNodes
   lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
   uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
