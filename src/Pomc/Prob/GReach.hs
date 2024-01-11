@@ -15,7 +15,7 @@ module Pomc.Prob.GReach ( GRobals(..)
                         , weightQuerySCC
                         , freezeSuppEnds
                         ) where
-import Pomc.Prob.ProbUtils(Prob, EqMapNumbersType)
+import Pomc.Prob.ProbUtils(Prob, EqMapNumbersType, defaultTolerance)
 import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProbEncodedSet, ProBitencoding)
 import qualified Pomc.Prob.ProbEncoding as PE
@@ -273,39 +273,53 @@ data WeightedGRobals state = WeightedGRobals
   , upperEqMap :: EqMap EqMapNumbersType
   , lowerEqMap :: EqMap EqMapNumbersType
   , actualEps :: IORef EqMapNumbersType
-  , encodeNothingStack :: IORef Bool -- stateId of the current initial state
   }
 
 weightQuerySCC :: (SatState state, Eq state, Hashable state, Show state)
-                 => WeightedGRobals state
-                 -> SIdGen RealWorld state
+                 => SIdGen RealWorld state
                  -> Delta state -- delta relation of the augmented opa
                  -> Vector (Set(StateId state))
                  -> state -- current state
                  -> state -- target state
                  -> IO (Prob, Prob)
-weightQuerySCC globals sIdGen delta supports current target = do
+weightQuerySCC sIdGen delta supports current target = do
   q <- stToIO $ wrapState sIdGen current
   let semiconf = (q, Nothing)
-  maybeId <- HT.lookup (graphMap globals) (decode semiconf)
-  if isJust maybeId
-    then do
-      eps <- readIORef (actualEps globals)
-      lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (lowerEqMap globals) (fromJust maybeId, -1)
-      ub <- (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (upperEqMap globals) (fromJust maybeId, -1)
-      return (lb, ub)
-    else do
-      newId <- freshIOPosId (idSeq globals)
-      HT.insert (graphMap globals) (decode semiconf) newId
-      targetState <- stToIO $ wrapState sIdGen target
-      writeIORef (encodeNothingStack globals) True
-      addtoPath globals semiconf newId >> dfs globals sIdGen delta supports semiconf (newId, getId targetState) >> return ()
+  newIdSeq <- newIORef 0
+  newGraphMap <-  HT.new
+  newFVarMap <- IOSM.empty
+  newSStack <- IOGS.new
+  newBStack <- IOGS.new
+  newIVector <- HT.new
+  newScntxs <- HT.new
+  newCannotReachPop <- newIORef IntSet.empty
+  newLowerEqMap <- HT.new
+  newUpperEqMap <- HT.new
+  newEps <- newIORef defaultTolerance
 
-      -- returning the computed values
-      eps <- readIORef (actualEps globals)
-      lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (lowerEqMap globals) (newId, -1)
-      ub <- (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (upperEqMap globals) (newId, -1)
-      return (lb, ub)
+  let globals = WeightedGRobals { idSeq = newIdSeq
+                                , graphMap = newGraphMap
+                                , varMap  = newFVarMap
+                                , sStack = newSStack
+                                , bStack = newBStack
+                                , iVector = newIVector
+                                , successorsCntxs = newScntxs
+                                , cannotReachPop = newCannotReachPop
+                                , lowerEqMap = newLowerEqMap
+                                , upperEqMap = newUpperEqMap
+                                , actualEps = newEps
+                                  }
+  newId <- freshIOPosId (idSeq globals)
+  HT.insert (graphMap globals) (decode semiconf) newId
+  targetState <- stToIO $ wrapState sIdGen target
+  addtoPath globals semiconf newId >> dfs globals sIdGen delta supports semiconf (newId, getId targetState) True >> return ()
+
+  --DBG.traceM $ "Target state: " ++ show targetState
+  -- returning the computed values
+  eps <- readIORef (actualEps globals)
+  lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (lowerEqMap globals) (newId, -1)
+  ub <- (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (upperEqMap globals) (newId, -1)
+  return (lb, ub)
 
 
 lookupVar :: IORef (Set (Int,Int)) -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO ((Int,Int), Bool)
@@ -339,35 +353,36 @@ dfs :: (SatState state, Eq state, Hashable state, Show state)
     -> Vector (Set(StateId state))
     -> (StateId state, Stack state) -- current semiconf
     -> (Int, Int) -- target
+    -> Bool
     -> IO SuccessorsPopContexts
-dfs globals sIdGen delta supports (q,g) (semiconfId, target) =
+dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
   let qState = getState q
       qProps = getStateProps (bitenc delta) qState
       precRel = (prec delta) (fst . fromJust $ g) qProps
-      transitionCases encodeNothing
+      transitionCases
         -- semiconfigurations with empty stack but not the initial one
         | (isNothing g) && not encodeNothing = return IntSet.empty
 
         -- this case includes the initial push
         | (isNothing g) || (precRel == Just Yield && (consistentFilter delta) qState) = do
-            writeIORef (encodeNothingStack globals) False
-            newPushStates <- stToIO $ wrapStates sIdGen $ map fst $ (deltaPush delta) qState
-            forM_ newPushStates (\p -> follow (p, Just (qProps, q))) -- discard the result
-            let newSupportStates = Set.toList $ supports V.! (getId q)
-            IntSet.unions <$> forM newSupportStates (\p -> follow (p, g)) -- discard the result
+          let newSupportStates = Set.toList $ supports V.! (getId q)
+          popContexts <- IntSet.unions <$> forM newSupportStates (\p -> follow (p, g)) -- discard the result
+          newPushStates <- stToIO $ wrapStates sIdGen $ map fst $ (deltaPush delta) qState
+          forM_ newPushStates (\p -> follow (p, Just (qProps, q))) -- discard the result
+          return popContexts
 
         | precRel == Just Equal && (consistentFilter delta) qState = do
           newShiftStates <- stToIO $ wrapStates sIdGen $ map fst $ (deltaShift delta) qState
           IntSet.unions <$> forM newShiftStates (\p -> follow (p, Just (qProps, snd . fromJust $ g)))
 
         | precRel == Just Take = do
-            newPopStates <- stToIO $ wrapStates sIdGen $ map fst $ (deltaPop delta) qState (getState . snd . fromJust $ g)
+            newPopStates <- stToIO $ wrapStates sIdGen  $ map fst $ (deltaPop delta) qState (getState . snd . fromJust $ g)
             return $ IntSet.fromList (map getId (V.toList newPopStates))
 
         | otherwise = return IntSet.empty
 
       cases nextSemiconf nSCId iVal
-        | (iVal == 0) = addtoPath globals nextSemiconf nSCId >> dfs globals sIdGen delta supports nextSemiconf (nSCId, target)
+        | (iVal == 0) = addtoPath globals nextSemiconf nSCId >> dfs globals sIdGen delta supports nextSemiconf (nSCId, target) False
         | (iVal < 0)  = lookupCntxs globals nSCId
         | (iVal > 0)  = merge globals nextSemiconf nSCId >> return IntSet.empty
         | otherwise = error "unreachable error"
@@ -377,7 +392,8 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) =
         cases nextSemiconf nSCId iVal
 
   in do
-    popContxs <- transitionCases =<< readIORef (encodeNothingStack globals)
+    popContxs <- transitionCases
+    --DBG.traceM $ "Creating component for semiconf: " ++ show (q,g)
     createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, target)
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
@@ -432,14 +448,15 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
         IOGS.pop_ (bStack globals)
         sSize <- IOGS.size $ sStack globals
         poppedSemiconfs <- IOGS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
-        DBG.traceM  $ "Popped Semiconfigurations: " ++ show poppedSemiconfs
-        DBG.traceM $ "Pop contexts: " ++ show popContxs
+        --DBG.traceM $ "Pop contexts: " ++ show popContxs
         forM poppedSemiconfs $ \s -> do
           actualId <- fromJust <$> HT.lookup (graphMap globals) (decode s)
           HT.insert (iVector globals) actualId (-1)
           HT.insert (successorsCntxs globals) actualId popContxs
           return (s, actualId)
-      doEncode poppedSemiconfs = do
+      doEncode poppedSemiconfs = do  
+        --DBG.traceM  $ "Popped Semiconfigurations: " ++ show (poppedSemiconfs)   
+        --DBG.traceM $ "Encode!"
         newAdded <- newIORef Set.empty
         let to_be_encoded = [(s, semiconfId_, rc) | (s, semiconfId_) <- poppedSemiconfs, rc <- IntSet.toList popContxs]
         insertedVars <- map snd <$> forM to_be_encoded (\(s, _, rc) -> lookupVar newAdded globals (decode s) rc)
@@ -449,6 +466,8 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
         solveSCCQuery (map snd poppedSemiconfs) newAddedSet globals
         return popContxs
       doNotEncode poppedSemiconfs = do
+        --DBG.traceM  $ "Popped Semiconfigurations: " ++ show (map snd poppedSemiconfs)   
+        --DBG.traceM $ "Do not encode!"
         modifyIORef (cannotReachPop globals) $ IntSet.union (IntSet.fromList $ map snd poppedSemiconfs)
         isInitial <- (== 0) <$> IOGS.size (sStack globals)
         when isInitial $ do -- for the initial semiconf, encode anyway
@@ -459,7 +478,8 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
           solveSCCQuery (map snd poppedSemiconfs) newAddedSet globals
         return popContxs
       cases
-        | iVal /= topB = return popContxs
+        | iVal /= topB = --DBG.traceM "not bottom of the SCC - return as it is" >> 
+          return popContxs
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
         | otherwise = createC >>= doNotEncode -- cannot reach a pop
   cases
@@ -491,13 +511,15 @@ encode newAdded globals sIdGen delta supports (q,g) rightContext = do
 
         | precRel == Just Take = do
             --when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: "
-            popDistribution <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p,prob_)) $ (deltaPush delta) qState
-            let e = Map.findWithDefault 0 rightContext $ Map.fromList popDistribution
-            addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational e
-            addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational e
+            popDistribution <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p,prob_)) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
+            let prob_ = Map.findWithDefault 0 rightContext $ Map.fromList popDistribution
+            --DBG.traceM $ "Encoding pop semiconf to rightContext: " ++ show rightContext ++ " - with prob " ++ show prob_
+            addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational prob_
+            addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational prob_
 
 
         | otherwise = fail "unexpected prec rel"
+  --DBG.traceM $ "Encoding semiconf: " ++ show (q,g) ++ " - with right context: " ++ show rightContext
   cases
 
 encodePush :: (SatState state, Eq state, Hashable state, Show state)
@@ -533,6 +555,7 @@ encodePush newAdded globals sIdGen delta supports q g qState (semiconfId, rightC
     (unencodedSCs, terms) <- foldM pushEnc ([], []) newStates
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PushEq $ concat terms
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PushEq $ concat terms
+    --DBG.traceM $ "Encoding push: " ++ show (concat terms)
     mapM_ recurse unencodedSCs
 
 encodeInitialPush :: (SatState state, Eq state, Hashable state, Show state)
@@ -562,6 +585,7 @@ encodeInitialPush newAdded globals sIdGen delta supports q _ semiconfId suppId =
       (unencodedSCs, terms) <- foldM pushEnc ([], []) newStates
       addFixpEq (lowerEqMap globals) (semiconfId, -1) $ PushEq terms
       addFixpEq (upperEqMap globals) (semiconfId, -1) $ PushEq terms
+      --DBG.traceM $ "Encoding initial push: " ++ show terms
       addFixpEq (lowerEqMap globals) (suppId, -1) $ PopEq (1 :: Double)
       addFixpEq (upperEqMap globals) (suppId, -1) $ PopEq (1 :: Double)
       mapM_ recurse unencodedSCs
@@ -591,6 +615,7 @@ encodeShift newAdded globals sIdGen delta supports _ g qState (semiconfId, right
     (unencodedSCs, terms) <- foldM shiftEnc ([], []) newStates
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ ShiftEq terms
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ ShiftEq terms
+    --DBG.traceM $ "Encoding shift: " ++ show terms
     mapM_ recurse unencodedSCs
 
 
@@ -670,8 +695,8 @@ solveSCCQuery sccMembers newAdded globals = do
 
   let upperBoundsTermProbs = (\mapAll -> Map.restrictKeys mapAll (IntSet.fromList sccMembers)) . Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ upperBound
   let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
-  DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
-  DBG.traceM $ "Computed upper bounds on fractions f: " ++ show upperBoundsTermProbs
+  --DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
+  --DBG.traceM $ "Computed upper bounds on weight w: " ++ show upperBoundsTermProbs
 
   forM_  variables $ \varKey -> do
     HT.lookup uEqMap varKey >>= \case
