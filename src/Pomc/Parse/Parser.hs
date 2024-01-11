@@ -51,8 +51,9 @@ data CheckRequest =
   ProbTermRequest  { ptreqTermQuery :: TermQuery
                    , ptreqMiniProb  :: Program
                    } |
-  ProbCheckRequest { pcreqFormula  :: P.Formula ExprProp
-                   , pcreqMiniProb :: Program
+  ProbCheckRequest { pcreqFormula      :: P.Formula ExprProp
+                   , pcreqMiniProb     :: Program
+                   , pcreqQuantitative :: Bool
                    }
 
 spaceP :: Parser ()
@@ -320,14 +321,17 @@ checkRequestP = nonProbModeP <|> probModeP where
                                    , ptreqMiniProb  = prog
                                    }
           mcModeP = do
-            _ <- symbolP "qualitative" >> symbolP ";"
+            quantitative <- (False <$ symbolP "qualitative")
+                            <|> (True <$ symbolP "quantitative")
+            _ <- symbolP ";"
             _ <- symbolP "formula" >> symbolP "="
             formula <- potlP
             _ <- symbolP ";"
             _ <- symbolP "program" >> symbolP ":"
             prog <- programP
             return ProbCheckRequest { pcreqFormula = untypeExprFormula prog formula
-                                    , pcreqMiniProb  = prog
+                                    , pcreqMiniProb = prog
+                                    , pcreqQuantitative = quantitative
                                     }
 
   untypePropFormula = fmap $ \p -> case p of

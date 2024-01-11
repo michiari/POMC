@@ -11,7 +11,7 @@ module Main (main) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
-import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram)
+import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram)
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
@@ -82,7 +82,8 @@ main = do
 
     ProgCheckRequest phis prog -> sum <$> forM phis (runProg isOmega prog)
     ProbTermRequest tquery prog -> runProbTerm tquery prog
-    ProbCheckRequest phi prog -> runProbCheck phi prog
+    ProbCheckRequest phi prog False -> runQualProbCheck phi prog
+    ProbCheckRequest phi prog True -> runQuantProbCheck phi prog
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
@@ -127,11 +128,20 @@ main = do
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
-    runProbCheck phi prog = do
-      putStr (concat [ "\nProbabilistic Model Checking\nQuery: ", show phi
+    runQualProbCheck phi prog = do
+      putStr (concat [ "\nQualitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
       ((tres, _), time) <- timeAction fst $ qualitativeModelCheckProgram phi prog
+      putStr $ show tres
+      putStrLn (concat ["\nElapsed time: ", timeToString time])
+      return time
+
+    runQuantProbCheck phi prog = do
+      putStr (concat [ "\nQuantitative Probabilistic Model Checking\nQuery: ", show phi
+                     , "\nResult:  "
+                     ])
+      ((tres, _), time) <- timeAction fst $ quantitativeModelCheckProgram phi prog
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
