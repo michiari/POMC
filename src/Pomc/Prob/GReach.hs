@@ -346,8 +346,12 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
           IntSet.unions <$> forM newShiftStates (\p -> follow (p, Just (qProps, snd . fromJust $ g)))
 
         | precRel == Just Take = do
-            newPopStates <- stToIO $ wrapStates sIdGen  $ map fst $ (deltaPop delta) qState (getState . snd . fromJust $ g)
-            return $ IntSet.fromList (map getId (V.toList newPopStates))
+            popDistribution <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p,prob_)) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
+            DBG.traceM $ "Encoding pop semiconf to rightContexts: " ++ show popDistribution
+            forM_ popDistribution $ \(rightContext, prob_) -> do
+              addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational prob_
+              addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational prob_
+            return $ IntSet.fromList (map fst popDistribution)
 
         | otherwise = return IntSet.empty
 
@@ -518,15 +522,9 @@ encode globals sIdGen delta supports (q,g) rightContext = do
         | precRel == Just Equal =
             encodeShift globals sIdGen delta q g qState (semiconfId, rightContext)
 
-        | precRel == Just Take = do
+        | precRel == Just Take = return ()
             --when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: "
-            popDistribution <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p,prob_)) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
-            let prob_ = Map.findWithDefault 0 rightContext $ Map.fromList popDistribution
-            DBG.traceM $ "Encoding pop semiconf to rightContext: " ++ show rightContext ++ " - with prob " ++ show prob_
-            addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational prob_
-            addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational prob_
-
-
+            
         | otherwise = fail "unexpected prec rel"
   --DBG.traceM $ "Encoding semiconf: " ++ show (q,g) ++ " - with right context: " ++ show rightContext
   cases
