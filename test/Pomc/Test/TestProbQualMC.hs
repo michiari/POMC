@@ -20,6 +20,7 @@ import Pomc.Test.EvalFormulas (TestCase, zipExpected, excludeIndices, probFormul
 import Pomc.Test.OPMs (stlV3Alphabet, makeInputSet)
 import Data.Maybe(fromJust, isJust)
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), qualitativeModelCheckExplicitGen)
+import Pomc.Prob.ProbUtils(Solver(..))
 
 import Data.Ratio((%))
 
@@ -37,7 +38,7 @@ makeTestCase :: ExplicitPopa Word String
             -> TestTree
 makeTestCase popa ((name, phi), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") $ do 
-    (res, info) <- qualitativeModelCheckExplicitGen phi popa
+    (res, info) <- qualitativeModelCheckExplicitGen OVI phi popa
     let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
     assertBool debugMsg (res == expected)  
   

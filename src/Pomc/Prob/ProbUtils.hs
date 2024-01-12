@@ -154,7 +154,7 @@ decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
 --               with an iterative method and use it as a hint for the SMT solver
 -- SMTCert: approximate the solution with an iterative method and ask the SMT solver
 --          for a certificate within the given tolerance
-data Solver = PureSMT | SMTWithHints | SMTCert Double deriving (Eq, Show)
+data Solver = PureSMT | SMTWithHints | SMTCert Double | OVI deriving (Eq, Show)
 
 defaultTolerance :: EqMapNumbersType
 defaultTolerance = 1e-5

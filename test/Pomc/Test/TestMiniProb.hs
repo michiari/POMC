@@ -44,7 +44,7 @@ makeParseTest progSource (name, phi, tquery, expected) =
       pcreq <- case parse (checkRequestP <* eof) name $ filecont f of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                  Right pcreq     -> return pcreq
-      (tres, log) <- programTermination (pcreqMiniProc pcreq) tquery
+      (tres, log) <- programTermination tquery (pcreqMiniProc pcreq) 
       -- DBG.traceM log
       tres @?= expected
 

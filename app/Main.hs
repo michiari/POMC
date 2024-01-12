@@ -12,6 +12,7 @@ module Main (main) where
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram)
+import Pomc.Prob.ProbUtils(Solver(..))
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
@@ -123,7 +124,7 @@ main = do
       putStr (concat [ "\nProbabilistic Termination Checking\nQuery: ", show tquery
                      , "\nResult:  "
                      ])
-      ((tres, _), time) <- timeAction fst $ programTermination prog tquery
+      ((tres, _), time) <- timeAction fst $ programTermination tquery prog 
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
@@ -132,7 +133,7 @@ main = do
       putStr (concat [ "\nQualitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, _), time) <- timeAction fst $ qualitativeModelCheckProgram phi prog
+      ((tres, _), time) <- timeAction fst $ qualitativeModelCheckProgram OVI phi prog
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
@@ -141,7 +142,7 @@ main = do
       putStr (concat [ "\nQuantitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, _), time) <- timeAction fst $ quantitativeModelCheckProgram phi prog
+      ((tres, _), time) <- timeAction fst $ quantitativeModelCheckProgram OVI phi prog
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time

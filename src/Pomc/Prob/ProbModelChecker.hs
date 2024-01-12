@@ -147,8 +147,8 @@ terminationExplicit popa query =
     DBG.traceM $ "Computed termination bounds: " ++ show p
     return (p, show query)
 
-programTermination :: Program -> TermQuery -> IO (Prob, String)
-programTermination prog query =
+programTermination :: TermQuery -> Program -> IO (Prob, String)
+programTermination query prog =
   let (_, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
       (bitenc, precFunc, _, _, _, _, _, _) =
@@ -170,7 +170,7 @@ programTermination prog query =
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     --DBG.traceM $ "Summary chain: " ++ scString
     --p <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    (res, mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query
+    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery (solver query))
     DBG.traceM $ "Computed termination probabilities: " ++ show res
     --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
     return (toUpperProb res, scString ++ "\n" ++ show query)
@@ -178,14 +178,15 @@ programTermination prog query =
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
 qualitativeModelCheck :: (Ord s, Hashable s, Show s)
-                            => Formula APType -- input formula to check
+                            => Solver 
+                            -> Formula APType -- input formula to check
                             -> Alphabet APType -- structural OP alphabet
                             -> (E.BitEncoding -> (s, Label)) -- POPA initial states
                             -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
                             -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
                             -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
                             -> IO (Bool, String)
-qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
+qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
       makeOpa phi IsProb alphabet (\_ _ -> True)
@@ -224,7 +225,7 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
     -}
-    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
+    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery solver
     let ubTermMap = Map.mapKeysWith (+) fst ubMap
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
 
@@ -240,20 +241,22 @@ qualitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
     return (almostSurely, scString ++ show pendVector)
 
-qualitativeModelCheckProgram :: Formula ExprProp -- phi: input formula to check
+qualitativeModelCheckProgram :: Solver 
+                             -> Formula ExprProp -- phi: input formula to check
                              -> Program -- input program
                              -> IO (Bool, String)
-qualitativeModelCheckProgram phi prog =
+qualitativeModelCheckProgram solver phi prog =
   let
     (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
-  in qualitativeModelCheck transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
+  in qualitativeModelCheck solver transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
 qualitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
-                    => Formula APType -- phi: input formula to check
+                    => Solver 
+                    -> Formula APType -- phi: input formula to check
                     -> ExplicitPopa s APType -- input OPA
                     -> IO (Bool, String)
-qualitativeModelCheckExplicit phi popa =
+qualitativeModelCheckExplicit solver phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
     essentialAP = Set.fromList $ End : (fst $ epAlphabet popa) ++ (getProps phi)
@@ -278,14 +281,15 @@ qualitativeModelCheckExplicit phi popa =
     popaDeltaPop bitenc q q' = maybeList $ Map.lookup (q, q') (deltaPop bitenc)
 
     initial bitenc = (fst . epInitial $ popa, E.encodeInput bitenc . Set.intersection essentialAP . snd .  epInitial $ popa)
-  in qualitativeModelCheck phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
+  in qualitativeModelCheck solver phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
 
 
 qualitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
-                              => Formula a -- phi: input formula to check
+                              => Solver 
+                              -> Formula a -- phi: input formula to check
                               -> ExplicitPopa s a -- input OPA
                               -> IO (Bool, String)
-qualitativeModelCheckExplicitGen phi popa =
+qualitativeModelCheckExplicitGen solver phi popa =
   let
     (sls, prec) = epAlphabet popa
     essentialAP = Set.fromList $ End : sls ++ getProps phi
@@ -308,20 +312,21 @@ qualitativeModelCheckExplicitGen phi popa =
                  , epopaDeltaShift = transDelta (epopaDeltaShift popa)
                  , epopaDeltaPop = transDeltaPop (epopaDeltaPop popa)
                  }
-  in qualitativeModelCheckExplicit tphi tPopa
+  in qualitativeModelCheckExplicit solver tphi tPopa
 
 
 -- QUANTITATIVE MODEL CHECKING
 -- is the probability that the POPA satisfies phi equal to 1?
 quantitativeModelCheck :: (Ord s, Hashable s, Show s)
-                            => Formula APType -- input formula to check
+                            => Solver 
+                            -> Formula APType -- input formula to check
                             -> Alphabet APType -- structural OP alphabet
                             -> (E.BitEncoding -> (s, Label)) -- POPA initial states
                             -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
                             -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
                             -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
                             -> IO ((Prob,Prob), String)
-quantitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
+quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
       makeOpa phi IsProb alphabet (\_ _ -> True)
@@ -359,7 +364,7 @@ quantitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
     pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
     -}
-    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery SMTWithHints
+    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery solver
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
         cases i k
@@ -374,20 +379,22 @@ quantitativeModelCheck phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
     bounds <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs
     return (bounds, scString ++ show pendVector)
 
-quantitativeModelCheckProgram :: Formula ExprProp -- phi: input formula to check
+quantitativeModelCheckProgram :: Solver 
+                             -> Formula ExprProp -- phi: input formula to check
                              -> Program -- input program
                              -> IO ((Prob, Prob), String)
-quantitativeModelCheckProgram phi prog =
+quantitativeModelCheckProgram solver phi prog =
   let
     (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
-  in quantitativeModelCheck transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
+  in quantitativeModelCheck solver transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
 quantitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
-                    => Formula APType -- phi: input formula to check
+                    => Solver 
+                    -> Formula APType -- phi: input formula to check
                     -> ExplicitPopa s APType -- input OPA
                     -> IO ((Prob,Prob), String)
-quantitativeModelCheckExplicit phi popa =
+quantitativeModelCheckExplicit solver phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
     essentialAP = Set.fromList $ End : (fst $ epAlphabet popa) ++ (getProps phi)
@@ -412,14 +419,15 @@ quantitativeModelCheckExplicit phi popa =
     popaDeltaPop bitenc q q' = maybeList $ Map.lookup (q, q') (deltaPop bitenc)
 
     initial bitenc = (fst . epInitial $ popa, E.encodeInput bitenc . Set.intersection essentialAP . snd .  epInitial $ popa)
-  in quantitativeModelCheck phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
+  in quantitativeModelCheck solver phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
 
 
 quantitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
-                              => Formula a -- phi: input formula to check
+                              => Solver 
+                              -> Formula a -- phi: input formula to check
                               -> ExplicitPopa s a -- input OPA
                               -> IO ((Prob, Prob), String)
-quantitativeModelCheckExplicitGen phi popa =
+quantitativeModelCheckExplicitGen solver phi popa =
   let
     (sls, prec) = epAlphabet popa
     essentialAP = Set.fromList $ End : sls ++ getProps phi
@@ -442,5 +450,5 @@ quantitativeModelCheckExplicitGen phi popa =
                  , epopaDeltaShift = transDelta (epopaDeltaShift popa)
                  , epopaDeltaPop = transDeltaPop (epopaDeltaPop popa)
                  }
-  in quantitativeModelCheckExplicit tphi tPopa
+  in quantitativeModelCheckExplicit solver tphi tPopa
 

@@ -13,6 +13,8 @@ import Pomc.Test.EvalFormulas (TestCase, zipExpected, excludeIndices, probFormul
 import Pomc.Test.OPMs (stlV3Alphabet, makeInputSet)
 import Data.Maybe(fromJust, isJust)
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), quantitativeModelCheckExplicitGen)
+import Pomc.Prob.ProbUtils(Solver(..))
+
 
 -- import the models
 import Pomc.Test.TestProbQualMC(symmetricRandomWalk
@@ -35,7 +37,7 @@ makeTestCase :: ExplicitPopa Word String
             -> TestTree
 makeTestCase popa ((name, phi), (expLB, expUB)) =
   testCase (name ++ " (" ++ show phi ++ ")") $ do 
-    ((lb, ub), info) <- quantitativeModelCheckExplicitGen phi popa
+    ((lb, ub), info) <- quantitativeModelCheckExplicitGen OVI phi popa
     let debugMsg adjective expected actual = "Expected " ++ adjective ++ show expected ++ " but got " ++ show actual ++ ". Additional diagnostic information: " ++ info
     assertBool (debugMsg "lower bound at least " expLB lb) (expLB <= lb)  
     assertBool (debugMsg "upper bound at most " expUB ub) (expUB >= ub)  
