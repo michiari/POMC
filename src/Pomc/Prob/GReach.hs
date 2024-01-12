@@ -319,31 +319,9 @@ weightQuerySCC sIdGen delta supports current target = do
   eps <- readIORef (actualEps globals)
   lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (lowerEqMap globals) (newId, -1)
   ub <- (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (upperEqMap globals) (newId, -1)
+  DBG.traceM $ "Returning weights: " ++ show (lb, ub)
+  when (lb > ub || lb > 1) $ error "unsound bounds on weight for this summary transition"
   return (lb, ub)
-
-
-lookupVar :: IORef (Set (Int,Int)) -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO ((Int,Int), Bool)
-lookupVar newAdded globals decoded rightContext = do
-  maybeId <- HT.lookup (graphMap globals) decoded
-  when (isNothing maybeId) $ error $ "future semiconfs should have been already visited and inserted in the hashtable: " ++ show decoded
-  let id_ = fromJust maybeId
-      key = (id_, rightContext)
-      (_, a,b) = decoded
-  when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system"
-  asPendingIdxes <- readIORef (cannotReachPop globals)
-  if IntSet.member id_ asPendingIdxes
-      then do
-        addFixpEq (lowerEqMap globals) key (PopEq 0)
-        addFixpEq (upperEqMap globals) key (PopEq 0)
-        return (key, True)
-        else do
-            previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
-            if previouslyVisited
-              then return (key, True)
-              else do
-                IOSM.insert (varMap globals) id_ rightContext
-                modifyIORef' newAdded (Set.insert (id_,rightContext))
-                return (key, False)
 
 -- functions for Gabow algorithm
 dfs :: (SatState state, Eq state, Hashable state, Show state)
@@ -395,6 +373,29 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
     popContxs <- transitionCases
     --DBG.traceM $ "Creating component for semiconf: " ++ show (q,g)
     createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, target)
+
+lookupVar :: IORef (Set (Int,Int)) -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO ((Int,Int), Bool)
+lookupVar newAdded globals decoded rightContext = do
+  maybeId <- HT.lookup (graphMap globals) decoded
+  when (isNothing maybeId) $ error $ "future semiconfs should have been already visited and inserted in the hashtable: " ++ show decoded
+  let id_ = fromJust maybeId
+      key = (id_, rightContext)
+      (_, a,b) = decoded
+  when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system"
+  asPendingIdxes <- readIORef (cannotReachPop globals)
+  if IntSet.member id_ asPendingIdxes
+      then do
+        addFixpEq (lowerEqMap globals) key (PopEq 0)
+        addFixpEq (upperEqMap globals) key (PopEq 0)
+        return (key, True)
+        else do
+            previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
+            if previouslyVisited
+              then return (key, True)
+              else do
+                IOSM.insert (varMap globals) id_ rightContext
+                modifyIORef' newAdded (Set.insert (id_,rightContext))
+                return (key, False)
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
 lookupIValue globals semiconfId = do
@@ -513,7 +514,7 @@ encode newAdded globals sIdGen delta supports (q,g) rightContext = do
             --when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: "
             popDistribution <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p,prob_)) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
             let prob_ = Map.findWithDefault 0 rightContext $ Map.fromList popDistribution
-            --DBG.traceM $ "Encoding pop semiconf to rightContext: " ++ show rightContext ++ " - with prob " ++ show prob_
+            DBG.traceM $ "Encoding pop semiconf to rightContext: " ++ show rightContext ++ " - with prob " ++ show prob_
             addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational prob_
             addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational prob_
 
@@ -551,12 +552,12 @@ encodePush newAdded globals sIdGen delta supports q g qState (semiconfId, rightC
                 )
 
   in do
-    --DBG.traceM $ "Encoding push: "
+    DBG.traceM $ "Encoding push: "
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
     (unencodedSCs, terms) <- foldM pushEnc ([], []) newStates
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PushEq $ concat terms
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PushEq $ concat terms
-    --DBG.traceM $ show (concat terms)
+    DBG.traceM $ show (concat terms)
     mapM_ recurse unencodedSCs
 
 encodeInitialPush :: (SatState state, Eq state, Hashable state, Show state)
@@ -582,12 +583,12 @@ encodeInitialPush newAdded globals sIdGen delta supports q _ semiconfId suppId =
                   )
 
     in do
-      --DBG.traceM $ "Encoding initial push."
+      DBG.traceM $ "Encoding initial push."
       newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
       (unencodedSCs, terms) <- foldM pushEnc ([], []) newStates
       addFixpEq (lowerEqMap globals) (semiconfId, -1) $ PushEq terms
       addFixpEq (upperEqMap globals) (semiconfId, -1) $ PushEq terms
-      --DBG.traceM $ show terms
+      DBG.traceM $ show terms
       addFixpEq (lowerEqMap globals) (suppId, -1) $ PopEq (1 :: Double)
       addFixpEq (upperEqMap globals) (suppId, -1) $ PopEq (1 :: Double)
       mapM_ recurse unencodedSCs
@@ -613,12 +614,12 @@ encodeShift newAdded globals sIdGen delta supports _ g qState (semiconfId, right
                 , (prob_, key):terms
                 )
   in do
-    --DBG.traceM $ "Encoding shift: "
+    DBG.traceM $ "Encoding shift: "
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaShift delta) qState
     (unencodedSCs, terms) <- foldM shiftEnc ([], []) newStates
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ ShiftEq terms
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ ShiftEq terms
-    --DBG.traceM $ show terms
+    DBG.traceM $ show terms
     mapM_ recurse unencodedSCs
 
 
@@ -643,70 +644,72 @@ solveSCCQuery sccMembers newAdded globals = do
   _ <- preprocessApproxFixp lEqMap iterEps (2 * sccLen)
   _ <- preprocessApproxFixp uEqMap iterEps (2 * sccLen)
 
+  -- lEqMap and uEqMap should be the same here 
+  unsolvedEqs <- isLiveEqSys lEqMap
 
-  oviRes <- ovi defaultOVISettingsDouble uEqMap
+  when unsolvedEqs $ do
+    oviRes <- ovi defaultOVISettingsDouble uEqMap
 
-  rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
-  unless rCertified $ error "cannot deduce a rational certificate for this SCC when computing fraction f"
+    rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
+    unless rCertified $ error "cannot deduce a rational certificate for this SCC when computing fraction f"
 
-  unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
+    unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
 
-  {-
-  DBG.traceM "Approximating via Value Iteration"
-  approxVec <- approxFixp eqMap iterEps defaultMaxIters
-  approxFracVec <- toRationalProbVec iterEps approxVec
+    {-
+    DBG.traceM "Approximating via Value Iteration"
+    approxVec <- approxFixp eqMap iterEps defaultMaxIters
+    approxFracVec <- toRationalProbVec iterEps approxVec
 
-  -- printing stuff - TO BE REMOVED
-  forM_  approxFracVec $ \(varKey, _, p) -> do
-  liftIO (HT.lookup eqMap varKey) >>= \case
-  Just (PopEq _) -> return ()
-  Just _ -> DBG.traceM ("Lower bound for " ++ show varKey ++ ": " ++ show p)
-  _ -> error "weird error 1"
+    -- printing stuff - TO BE REMOVED
+    forM_  approxFracVec $ \(varKey, _, p) -> do
+    liftIO (HT.lookup eqMap varKey) >>= \case
+    Just (PopEq _) -> return ()
+    Just _ -> DBG.traceM ("Lower bound for " ++ show varKey ++ ": " ++ show p)
+    _ -> error "weird error 1"
 
-  nonPops <- filterM (\(varKey, _, _) -> do
-  liftIO (HT.lookup eqMap varKey) >>= \case
-  Just (PopEq _) -> return False
-  Just _ -> return True
-  _ -> error "weird error 2"
-  ) approxFracVec
+    nonPops <- filterM (\(varKey, _, _) -> do
+    liftIO (HT.lookup eqMap varKey) >>= \case
+    Just (PopEq _) -> return False
+    Just _ -> return True
+    _ -> error "weird error 2"
+    ) approxFracVec
 
-  -- TODO: if you restore this code, you will have to handle this by rehaving closing edges on the path
-  let actualAsReachesPop = scclen < 2 && asReachesPop
+    -- TODO: if you restore this code, you will have to handle this by rehaving closing edges on the path
+    let actualAsReachesPop = scclen < 2 && asReachesPop
 
-  DBG.traceM "Asserting upper bounds 1 for value iteration"
-  forM_ (groupBy (\k1 k2 -> fst k1 == fst k2) . map (\(varKey, _, _) -> varKey) $ nonPops) $ \list -> do
-  sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup newAdded) list)
-  assert =<< mkLe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
+    DBG.traceM "Asserting upper bounds 1 for value iteration"
+    forM_ (groupBy (\k1 k2 -> fst k1 == fst k2) . map (\(varKey, _, _) -> varKey) $ nonPops) $ \list -> do
+    sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup newAdded) list)
+    assert =<< mkLe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
 
-  -- assert bounds computed by value iteration
-  DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
-  model <- doAssert approxFracVec eps
+    -- assert bounds computed by value iteration
+    DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
+    model <- doAssert approxFracVec eps
 
-  -}
+    -}
 
-  -- updating lower bounds
-  approxVec <- approxFixp lEqMap iterEps defaultMaxIters
-  forM_  variables $ \varKey -> do
-    HT.lookup lEqMap varKey >>= \case
+    -- updating lower bounds
+    approxVec <- approxFixp lEqMap iterEps defaultMaxIters
+    forM_  variables $ \varKey -> do
+      HT.lookup lEqMap varKey >>= \case
+          Just (PopEq _) -> return () -- An eq constraint has already been asserted
+          _ -> do
+            p <- fromJust <$> HT.lookup approxVec varKey
+            addFixpEq lEqMap varKey (PopEq p)
+
+    -- updating upper bounds
+    upperBound <- HT.toList (oviUpperBound oviRes)
+
+    when (any ((> 1) . snd) upperBound) $ error "the upper bound on weight cannot be greater than one" 
+    let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
+    DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
+
+    forM_  variables $ \varKey -> do
+      HT.lookup uEqMap varKey >>= \case
         Just (PopEq _) -> return () -- An eq constraint has already been asserted
         _ -> do
-          p <- fromJust <$> HT.lookup approxVec varKey
-          addFixpEq lEqMap varKey (PopEq p)
-
-  -- updating upper bounds
-  upperBound <- HT.toList (oviUpperBound oviRes)
-
-  let upperBoundsTermProbs = (\mapAll -> Map.restrictKeys mapAll (IntSet.fromList sccMembers)) . Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ upperBound
-  let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
-  --DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
-  --DBG.traceM $ "Computed upper bounds on weight w: " ++ show upperBoundsTermProbs
-
-  forM_  variables $ \varKey -> do
-    HT.lookup uEqMap varKey >>= \case
-      Just (PopEq _) -> return () -- An eq constraint has already been asserted
-      _ -> do
-        p <- fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
-        addFixpEq uEqMap varKey (PopEq p)
+          p <- fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
+          addFixpEq uEqMap varKey (PopEq p)
 
 
 

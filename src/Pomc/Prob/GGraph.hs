@@ -731,7 +731,7 @@ encodePush sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH
       pushEnc toIdx = do
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
         touVar <- liftIO $ fromJust <$> HT.lookup uTypVarMap toIdx
-        --DBG.traceM $ "Encoding transition to " ++ show toIdx
+        DBG.traceM $ "Encoding transition to " ++ show toIdx
         -- a small trick to be refactored later (itneed a lot of boring refactoring...)
         let toG =gGraph V.! toIdx
             maybePInternal = Set.lookupLE (Edge (graphNode toG) 0) $ internalEdges gn
@@ -742,7 +742,7 @@ encodePush sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH
                       normalizedLP = p * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
                       normalizedUP = p * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
                   in do
-                    --DBG.traceM $ "It corresponds to a push transition"
+                    DBG.traceM $ "It corresponds to a push transition"
                     lT <- encodeTransition [normalizedLP] tolVar
                     uT <- encodeTransition [normalizedUP] touVar
                     return (lT, uT)
@@ -778,7 +778,7 @@ encodePush sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH
                         , GR.consistentFilter = consistentFilter
                         }
                   in do 
-                    --DBG.traceM $ "It corresponds to a support transition - launching call to inner computation of fraction f"
+                    DBG.traceM $ "It corresponds to a support transition - launching call to inner computation of fraction f"
                     (lW, uW) <- liftIO $ weightQuerySCC sIdGen cDelta supports leftContext rightContext
                     let normalizedLW = lW * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
                         normalizedUW = uW * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
