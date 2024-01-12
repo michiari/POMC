@@ -1,5 +1,5 @@
-probabilistic query: approximate;
-//formula = F (G ([|final_winner == 0u2]));
+probabilistic query: quantitative;
+formula = F (G ([|final_winner == 0u2]));
 
 program:
 u2[3] upper;
