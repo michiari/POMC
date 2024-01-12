@@ -596,13 +596,38 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     -- preparing the global variables for the computation of the fractions f
     freezedSuppEnds <- liftIO $ GR.freezeSuppEnds (grGlobals gGlobals)
 
+    newIdSeq <- liftIO $ newIORef 0
+    newGraphMap <-  liftIO $ HT.new
+    newFVarMap <- liftIO $ IOSM.empty
+    newSStack <- liftIO $ IOGS.new
+    newBStack <- liftIO $ IOGS.new
+    newIVector <- liftIO $ HT.new
+    newScntxs <- liftIO $ HT.new
+    newCannotReachPop <- liftIO $ newIORef IntSet.empty
+    newLowerEqMap <- liftIO $ HT.new
+    newUpperEqMap <- liftIO $ HT.new
+    newEps <- liftIO $ newIORef defaultTolerance
+
+    let globals = GR.WeightedGRobals { GR.idSeq = newIdSeq
+                                  , GR.graphMap = newGraphMap
+                                  , GR.varMap  = newFVarMap
+                                  , GR.sStack = newSStack
+                                  , GR.bStack = newBStack
+                                  , GR.iVector = newIVector
+                                  , GR.successorsCntxs = newScntxs
+                                  , GR.cannotReachPop = newCannotReachPop
+                                  , GR.lowerEqMap = newLowerEqMap
+                                  , GR.upperEqMap = newUpperEqMap
+                                  , GR.actualEps = newEps
+                                    }
+
     DBG.traceM "Encoding conditions (2b) and (2c)"
     -- encodings (2b) and (2c)
     (encs1) <- foldM
       (\(acc) gNode ->
           if isInH gNode
             then do
-              (newEncs) <- encode (GR.sIdGen (grGlobals gGlobals)) freezedSuppEnds delta (newlMap, newuMap) freezedSuppGraph freezedGGraph (prec delta) isInH gNode pendProbsLowerBounds pendProbsUpperBounds lowerBounds upperBounds
+              (newEncs) <- encode globals (GR.sIdGen (grGlobals gGlobals)) freezedSuppEnds delta (newlMap, newuMap) freezedSuppGraph freezedGGraph (prec delta) isInH gNode pendProbsLowerBounds pendProbsUpperBounds lowerBounds upperBounds
               return (newEncs ++ acc)
             else return (acc)
       )
@@ -678,7 +703,8 @@ encodeTransition probs toVar = do
   mkMul $ normalizedProbs ++ [toVar]
 
 encode :: (Ord pstate, Hashable pstate, Show pstate)
-      => SIdGen RealWorld (AugState pstate)
+      => GR.WeightedGRobals (AugState pstate) 
+      -> SIdGen RealWorld (AugState pstate)
       -> Vector (Set(SU.StateId (AugState pstate)))
       -> DeltaWrapper pstate
       -> (TypicalVarMap, TypicalVarMap)
@@ -692,7 +718,7 @@ encode :: (Ord pstate, Hashable pstate, Show pstate)
       -> Map VarKey Prob
       -> Map VarKey Prob
       -> Z3 ([AST])
-encode sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB lowerBs upperBs = do
+encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB lowerBs upperBs = do
   let gn = suppGraph V.! (graphNode gNode)
       (q,g) = semiconf gn
       qLabel = getLabel q
@@ -700,7 +726,7 @@ encode sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun i
       cases
         -- this case includes the initial push
         | isNothing g || precRel == Just Yield =
-            encodePush sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH gNode gn pendProbsLB pendProbsUB lowerBs upperBs
+            encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH gNode gn pendProbsLB pendProbsUB lowerBs upperBs
 
         | precRel == Just Equal =
             encodeShift (lTypVarMap, uTypVarMap) gGraph isInH gNode gn pendProbsLB pendProbsUB
@@ -712,7 +738,8 @@ encode sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun i
 
 -- encoding helpers --
 encodePush :: (Ord pstate, Hashable pstate, Show pstate)
-  => SIdGen RealWorld (AugState pstate)
+  => GR.WeightedGRobals (AugState pstate) 
+  -> SIdGen RealWorld (AugState pstate)
   -> Vector (Set(SU.StateId (AugState pstate)))
   -> DeltaWrapper pstate
   -> (TypicalVarMap, TypicalVarMap)
@@ -726,7 +753,7 @@ encodePush :: (Ord pstate, Hashable pstate, Show pstate)
   -> Map VarKey Prob
   -> Map VarKey Prob
   -> Z3 ([AST])
-encodePush sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB lowerBs upperBs =
+encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB lowerBs upperBs =
   let fNodes = IntSet.toList . IntSet.filter (\idx -> isInH (gGraph V.! idx)) . Map.keysSet $ edges g
       pushEnc toIdx = do
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
@@ -779,7 +806,7 @@ encodePush sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH
                         }
                   in do 
                     DBG.traceM $ "It corresponds to a support transition - launching call to inner computation of fraction f"
-                    (lW, uW) <- liftIO $ weightQuerySCC sIdGen cDelta supports leftContext rightContext
+                    (lW, uW) <- liftIO $ weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
                     let normalizedLW = lW * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
                         normalizedUW = uW * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
                     lT <- encodeTransition [normalizedLW] tolVar

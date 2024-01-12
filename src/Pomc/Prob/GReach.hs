@@ -276,49 +276,40 @@ data WeightedGRobals state = WeightedGRobals
   }
 
 weightQuerySCC :: (SatState state, Eq state, Hashable state, Show state)
-                 => SIdGen RealWorld state
+                 => WeightedGRobals state
+                 -> SIdGen RealWorld state
                  -> Delta state -- delta relation of the augmented opa
                  -> Vector (Set(StateId state))
                  -> state -- current state
                  -> state -- target state
                  -> IO (Prob, Prob)
-weightQuerySCC sIdGen delta supports current target = do
+weightQuerySCC globals sIdGen delta supports current target = do
   q <- stToIO $ wrapState sIdGen current
   let semiconf = (q, Nothing)
-  newIdSeq <- newIORef 0
-  newGraphMap <-  HT.new
-  newFVarMap <- IOSM.empty
-  newSStack <- IOGS.new
-  newBStack <- IOGS.new
-  newIVector <- HT.new
-  newScntxs <- HT.new
-  newCannotReachPop <- newIORef IntSet.empty
-  newLowerEqMap <- HT.new
-  newUpperEqMap <- HT.new
-  newEps <- newIORef defaultTolerance
-
-  let globals = WeightedGRobals { idSeq = newIdSeq
-                                , graphMap = newGraphMap
-                                , varMap  = newFVarMap
-                                , sStack = newSStack
-                                , bStack = newBStack
-                                , iVector = newIVector
-                                , successorsCntxs = newScntxs
-                                , cannotReachPop = newCannotReachPop
-                                , lowerEqMap = newLowerEqMap
-                                , upperEqMap = newUpperEqMap
-                                , actualEps = newEps
-                                  }
-  newId <- freshIOPosId (idSeq globals)
-  HT.insert (graphMap globals) (decode semiconf) newId
   targetState <- stToIO $ wrapState sIdGen target
-  addtoPath globals semiconf newId >> dfs globals sIdGen delta supports semiconf (newId, getId targetState) True >> return ()
+  maybeSemiconfId <- HT.lookup (graphMap globals) (decode semiconf)
+
+  actualId <- case maybeSemiconfId of 
+    Just scId -> do 
+      encodeInitialPush globals sIdGen delta q Nothing scId (getId targetState) 
+      solveSCCQuery [scId] (Set.singleton (scId, -1)) globals
+      return scId
+    Nothing -> do
+      newId <- freshIOPosId (idSeq globals)
+      HT.insert (graphMap globals) (decode semiconf) newId
+      addtoPath globals semiconf newId >> dfs globals sIdGen delta supports semiconf (newId, getId targetState) True
+        >> return newId
 
   --DBG.traceM $ "Target state: " ++ show targetState
   -- returning the computed values
   eps <- readIORef (actualEps globals)
-  lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (lowerEqMap globals) (newId, -1)
-  ub <- (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (upperEqMap globals) (newId, -1)
+  lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (lowerEqMap globals) (actualId, -1)
+  ub <- (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (upperEqMap globals) (actualId, -1)
+  -- cleaning the hashtable
+  HT.delete (lowerEqMap globals) (actualId, -1)
+  HT.delete (upperEqMap globals) (actualId, -1)
+  HT.delete (lowerEqMap globals) (getId targetState, -1)
+  HT.delete (upperEqMap globals) (getId targetState, -1)
   DBG.traceM $ "Returning weights: " ++ show (lb, ub)
   when (lb > ub || lb > 1 || ub > 1.3) $ error "unsound bounds on weight for this summary transition"
   return (lb, ub)
@@ -343,11 +334,12 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
 
         -- this case includes the initial push
         | (isNothing g) || (precRel == Just Yield && (consistentFilter delta) qState) = do
-          let newSupportStates = Set.toList $ supports V.! (getId q)
-          popContexts <- IntSet.unions <$> forM newSupportStates (\p -> follow (p, g)) -- discard the result
           newPushStates <- stToIO $ wrapStates sIdGen $ map fst $ (deltaPush delta) qState
           forM_ newPushStates (\p -> follow (p, Just (qProps, q))) -- discard the result
-          return popContexts
+          let newSupportStates = Set.toList $ supports V.! (getId q)
+          if isNothing g
+            then return IntSet.empty
+            else IntSet.unions <$> forM newSupportStates (\p -> follow (p, g))
 
         | precRel == Just Equal && (consistentFilter delta) qState = do
           newShiftStates <- stToIO $ wrapStates sIdGen $ map fst $ (deltaShift delta) qState
