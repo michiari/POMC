@@ -12,7 +12,7 @@ module Main (main) where
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram)
-import Pomc.Prob.ProbUtils(Solver(..))
+import Pomc.Prob.ProbUtils (Solver(..), Stats(..))
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
@@ -128,7 +128,7 @@ main = do
       putStr (concat [ "\nProbabilistic Termination Checking\nQuery: ", show tquery
                      , "\nResult:  "
                      ])
-      ((tres, _), time) <- timeAction fst $ programTermination tquery prog 
+      ((tres, _, _), time) <- timeAction fst3 $ programTermination tquery prog 
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
@@ -137,19 +137,29 @@ main = do
       putStr (concat [ "\nQualitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, _), time) <- timeAction fst $ qualitativeModelCheckProgram solver phi prog
+      ((tres, stats, _), time) <- timeAction fst3 $ qualitativeModelCheckProgram solver phi prog
       putStr $ show tres
-      putStrLn (concat ["\nElapsed time: ", timeToString time])
+      putStrLn (concat [ "\nElapsed time: "
+                       , timeToString time, " (total), "
+                       , timeToString $ upperBoundTime stats, " (upper bounds), "
+                       , timeToString $ pastTime stats, " (PAST certificates)."
+                       ])
       return time
 
     runQuantProbCheck solver phi prog = do
       putStr (concat [ "\nQuantitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, _), time) <- timeAction fst $ quantitativeModelCheckProgram solver phi prog
+      ((tres, stats, _), time) <- timeAction fst3 $ quantitativeModelCheckProgram solver phi prog
       putStr $ show tres
-      putStrLn (concat ["\nElapsed time: ", timeToString time])
+      putStrLn (concat [ "\nElapsed time: "
+                       , timeToString time, " (total), "
+                       , timeToString $ upperBoundTime stats, " (upper bounds), "
+                       , timeToString $ pastTime stats, " (PAST certificates)."
+                       ])
       return time
+
+    fst3 (a, _, _) = a
 
     addEndPrec precRels = noEndPR
                           ++ map (\p -> (End, p, Yield)) sl

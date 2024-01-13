@@ -7,11 +7,15 @@
 
 module Pomc.TimeUtils ( timeFunApp
                       , timeAction
+                      , timeActionAcc
+                      , startTimer
+                      , stopTimer
                       , timeToString
                       ) where
 
 import Text.Printf (printf)
 import GHC.Clock
+import Data.Word (Word64)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.DeepSeq (NFData, force)
 
@@ -20,11 +24,24 @@ timeFunApp toForce f x = timeAction toForce $ return $ f x
 
 timeAction :: (MonadIO m, NFData b) => (a -> b) -> m a -> m (a, Double)
 timeAction toForce action = do
-  t1 <- liftIO getMonotonicTimeNSec
+  t1 <- startTimer
   a <- action
-  _ <- return $! force (toForce a)
+  time <- stopTimer t1 (toForce a)
+  return (a, time)
+
+timeActionAcc :: (MonadIO m, NFData b) => Double -> (a -> b) -> m a -> m (a, Double)
+timeActionAcc acc toForce action = do
+  (a, time) <- timeAction toForce action
+  return (a, acc + time)
+
+startTimer :: MonadIO m => m Word64
+startTimer = liftIO getMonotonicTimeNSec
+
+stopTimer :: (MonadIO m, NFData b) => Word64 -> b -> m Double
+stopTimer t1 toForce = do
+  _ <- return $! force toForce
   t2 <- liftIO getMonotonicTimeNSec
-  return (a, fromIntegral (t2 - t1) * 1e-9)
+  return $ fromIntegral (t2 - t1) * 1e-9
 
 -- Adapted from Criterion.Measurement.secs by Bryan O'Sullivan
 timeToString :: Double -> String

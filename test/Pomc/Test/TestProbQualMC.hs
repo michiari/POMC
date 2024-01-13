@@ -38,7 +38,7 @@ makeTestCase :: ExplicitPopa Word String
             -> TestTree
 makeTestCase popa ((name, phi), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") $ do 
-    (res, info) <- qualitativeModelCheckExplicitGen OVI phi popa
+    (res, _, info) <- qualitativeModelCheckExplicitGen OVI phi popa
     let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
     assertBool debugMsg (res == expected)  
   

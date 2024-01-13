@@ -20,6 +20,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , Comp(..)
                            , TermQuery(..)
                            , TermResult(..)
+                           , Stats(..)
                            , initSIdGen
                            , wrapState
                            , freshPosId
@@ -210,6 +211,12 @@ toUpperProb r = error $ "cannot convert a non single probability result. Got ins
 toBoolVec :: TermResult -> Vector Bool
 toBoolVec (PendingResult v) = v
 toBoolVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
+
+data Stats = Stats { upperBoundTime :: Double
+                   , pastTime :: Double
+                   , quantWeightTime :: Double
+                   , quantSolTime :: Double
+                   }
 
 debug :: String -> a -> a
 --debug = DBG.trace

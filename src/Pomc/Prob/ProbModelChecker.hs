@@ -147,7 +147,7 @@ terminationExplicit popa query =
     DBG.traceM $ "Computed termination bounds: " ++ show p
     return (p, show query)
 
-programTermination :: TermQuery -> Program -> IO (Prob, String)
+programTermination :: TermQuery -> Program -> IO (Prob, Stats, String)
 programTermination query prog =
   let (_, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
@@ -170,10 +170,10 @@ programTermination query prog =
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     --DBG.traceM $ "Summary chain: " ++ scString
     --p <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery (solver query))
+    (res, _, stats) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery (solver query))
     DBG.traceM $ "Computed termination probabilities: " ++ show res
     --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
-    return (toUpperProb res, scString ++ "\n" ++ show query)
+    return (toUpperProb res, stats, scString ++ "\n" ++ show query)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
@@ -185,7 +185,7 @@ qualitativeModelCheck :: (Ord s, Hashable s, Show s)
                             -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
                             -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
                             -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
-                            -> IO (Bool, String)
+                            -> IO (Bool, Stats, String)
 qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
@@ -225,7 +225,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
     -}
-    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery solver
+    (ApproxAllResult (_, ubMap), mustReachPopIdxs, stats) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery solver
     let ubTermMap = Map.mapKeysWith (+) fst ubMap
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
 
@@ -239,12 +239,12 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     DBG.traceM $ "Pending Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
-    return (almostSurely, scString ++ show pendVector)
+    return (almostSurely, stats, scString ++ show pendVector)
 
 qualitativeModelCheckProgram :: Solver 
                              -> Formula ExprProp -- phi: input formula to check
                              -> Program -- input program
-                             -> IO (Bool, String)
+                             -> IO (Bool, Stats, String)
 qualitativeModelCheckProgram solver phi prog =
   let
     (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
@@ -255,7 +255,7 @@ qualitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
                     => Solver 
                     -> Formula APType -- phi: input formula to check
                     -> ExplicitPopa s APType -- input OPA
-                    -> IO (Bool, String)
+                    -> IO (Bool, Stats, String)
 qualitativeModelCheckExplicit solver phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
@@ -288,7 +288,7 @@ qualitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
                               => Solver 
                               -> Formula a -- phi: input formula to check
                               -> ExplicitPopa s a -- input OPA
-                              -> IO (Bool, String)
+                              -> IO (Bool, Stats, String)
 qualitativeModelCheckExplicitGen solver phi popa =
   let
     (sls, prec) = epAlphabet popa
@@ -325,7 +325,7 @@ quantitativeModelCheck :: (Ord s, Hashable s, Show s)
                             -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
                             -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
                             -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
-                            -> IO ((Prob,Prob), String)
+                            -> IO ((Prob,Prob), Stats, String)
 quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
@@ -364,7 +364,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
     pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
     -}
-    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery solver
+    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs, stats) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery solver
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
         cases i k
@@ -377,12 +377,12 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     DBG.traceM $ "Pending Upper Bounds Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
     bounds <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs
-    return (bounds, scString ++ show pendVector)
+    return (bounds, stats, scString ++ show pendVector)
 
 quantitativeModelCheckProgram :: Solver 
                              -> Formula ExprProp -- phi: input formula to check
                              -> Program -- input program
-                             -> IO ((Prob, Prob), String)
+                             -> IO ((Prob, Prob), Stats, String)
 quantitativeModelCheckProgram solver phi prog =
   let
     (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
@@ -393,7 +393,7 @@ quantitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
                     => Solver 
                     -> Formula APType -- phi: input formula to check
                     -> ExplicitPopa s APType -- input OPA
-                    -> IO ((Prob,Prob), String)
+                    -> IO ((Prob,Prob), Stats, String)
 quantitativeModelCheckExplicit solver phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
@@ -426,7 +426,7 @@ quantitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
                               => Solver 
                               -> Formula a -- phi: input formula to check
                               -> ExplicitPopa s a -- input OPA
-                              -> IO ((Prob, Prob), String)
+                              -> IO ((Prob, Prob), Stats, String)
 quantitativeModelCheckExplicitGen solver phi popa =
   let
     (sls, prec) = epAlphabet popa
