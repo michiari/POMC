@@ -13,6 +13,7 @@ module Pomc.Prob.GGraph ( GNode(..)
 
 import Pomc.Prob.ProbUtils hiding (SIdGen)
 import Pomc.SatUtil(SIdGen, SatState(..))
+import Pomc.TimeUtils (startTimer, stopTimer)
 import qualified Pomc.SatUtil as SU
 import Pomc.State(State(..), Input)
 import Pomc.Prec (Prec(..))
@@ -76,7 +77,7 @@ import Z3.Monad
 
 import qualified Debug.Trace as DBG
 import GHC.IO (ioToST)
-import Data.IORef (newIORef)
+import Data.IORef (newIORef, modifyIORef', readIORef)
 import Data.Scientific (Scientific)
 
 -- A data type for nodes in the augmented graph G
@@ -499,7 +500,7 @@ quantitativeModelCheck :: (Ord pstate, Hashable pstate, Show pstate)
                       -> IntSet
                       -> Map VarKey Prob
                       -> Map VarKey Prob
-                      -> ST RealWorld (Prob, Prob)
+                      -> ST RealWorld (Prob, Prob, Stats)
 quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds = do
   -- global data structures for constructing graph G
   newIdSequence <- newSTRef (0 :: Int)
@@ -607,19 +608,21 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     newLowerEqMap <- liftIO $ HT.new
     newUpperEqMap <- liftIO $ HT.new
     newEps <- liftIO $ newIORef defaultTolerance
+    newStats <- liftIO . newIORef $ Stats 0 0 0 0
 
     let globals = GR.WeightedGRobals { GR.idSeq = newIdSeq
-                                  , GR.graphMap = newGraphMap
-                                  , GR.varMap  = newFVarMap
-                                  , GR.sStack = newSStack
-                                  , GR.bStack = newBStack
-                                  , GR.iVector = newIVector
-                                  , GR.successorsCntxs = newScntxs
-                                  , GR.cannotReachPop = newCannotReachPop
-                                  , GR.lowerEqMap = newLowerEqMap
-                                  , GR.upperEqMap = newUpperEqMap
-                                  , GR.actualEps = newEps
-                                    }
+                                     , GR.graphMap = newGraphMap
+                                     , GR.varMap  = newFVarMap
+                                     , GR.sStack = newSStack
+                                     , GR.bStack = newBStack
+                                     , GR.iVector = newIVector
+                                     , GR.successorsCntxs = newScntxs
+                                     , GR.cannotReachPop = newCannotReachPop
+                                     , GR.lowerEqMap = newLowerEqMap
+                                     , GR.upperEqMap = newUpperEqMap
+                                     , GR.actualEps = newEps
+                                     , GR.stats = newStats
+                                     }
 
     DBG.traceM "Encoding conditions (2b) and (2c)"
     -- encodings (2b) and (2c)
@@ -676,6 +679,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     sumlVar <- mkAdd philVars
     sumuVar <- mkAdd phiuVars
 
+    startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
       mString <- modelToString model
@@ -687,8 +691,11 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       DBG.traceM $ "Computed lower bound on the quantitative probability: " ++ show l
       DBG.traceM $ "Computed upper bound on the quantitative probability: " ++ show u
       return $ (toRational (read (takeWhile (/= '?') l) :: Scientific), toRational (read (takeWhile (/= '?') u) :: Scientific)))
-            
-    return (lb, ub)
+
+    tSol <- stopTimer startSol ub
+    allStats <- (\s -> s { quantSolTime = quantSolTime s + tSol}) <$> liftIO (readIORef (GR.stats globals))
+
+    return (lb, ub, allStats)
 
   -- helpers for the Z3 encoding
 

@@ -376,8 +376,8 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show ubVec
     DBG.traceM $ "Pending Upper Bounds Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
-    bounds <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs
-    return (bounds, stats, scString ++ show pendVector)
+    (ub, lb, stats) <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs
+    return ((ub, lb), stats, scString ++ show pendVector)
 
 quantitativeModelCheckProgram :: Solver 
                              -> Formula ExprProp -- phi: input formula to check
