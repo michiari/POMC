@@ -379,16 +379,11 @@ lookupVarNoInsert globals decoded rightContext = do
       (_, a,b) = decoded
   when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system"
   asPendingIdxes <- readIORef (cannotReachPop globals)
-  if IntSet.member id_ asPendingIdxes
-      then do
-        addFixpEq (lowerEqMap globals) key (PopEq 0)
-        addFixpEq (upperEqMap globals) key (PopEq 0)
-        return (key, True)
-        else do
-            previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
-            if previouslyVisited
-              then return (key, True)
-              else return (key, False)
+  when (IntSet.member id_ asPendingIdxes) $ error "semiconfigurations that cannot reach a pop should not enter the equation system"
+  previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
+  if previouslyVisited
+    then return (key, True)
+    else return (key, False)
 
 lookupVar :: IORef (Set (Int,Int)) -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO ((Int,Int), Bool)
 lookupVar newAdded globals decoded rightContext = do
@@ -399,19 +394,14 @@ lookupVar newAdded globals decoded rightContext = do
       (_, a,b) = decoded
   when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system"
   asPendingIdxes <- readIORef (cannotReachPop globals)
-  if IntSet.member id_ asPendingIdxes
-      then do
-        addFixpEq (lowerEqMap globals) key (PopEq 0)
-        addFixpEq (upperEqMap globals) key (PopEq 0)
-        return (key, True)
-        else do
-            previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
-            if previouslyVisited
-              then return (key, True)
-              else do
-                IOSM.insert (varMap globals) id_ rightContext
-                modifyIORef' newAdded (Set.insert (id_,rightContext))
-                return (key, False)
+  when (IntSet.member id_ asPendingIdxes) $ error "semiconfigurations that cannot reach a pop should not enter the equation system"
+  previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
+  if previouslyVisited
+    then return (key, True)
+    else do
+      IOSM.insert (varMap globals) id_ rightContext
+      modifyIORef' newAdded (Set.insert (id_,rightContext))
+      return (key, False)
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
 lookupIValue globals semiconfId = do
@@ -647,16 +637,6 @@ solveSCCQuery sccMembers newAdded globals = do
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
 
     {-
-    DBG.traceM "Approximating via Value Iteration"
-    approxVec <- approxFixp eqMap iterEps defaultMaxIters
-    approxFracVec <- toRationalProbVec iterEps approxVec
-
-    -- printing stuff - TO BE REMOVED
-    forM_  approxFracVec $ \(varKey, _, p) -> do
-    liftIO (HT.lookup eqMap varKey) >>= \case
-    Just (PopEq _) -> return ()
-    Just _ -> DBG.traceM ("Lower bound for " ++ show varKey ++ ": " ++ show p)
-    _ -> error "weird error 1"
 
     nonPops <- filterM (\(varKey, _, _) -> do
     liftIO (HT.lookup eqMap varKey) >>= \case
@@ -673,10 +653,6 @@ solveSCCQuery sccMembers newAdded globals = do
     sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup newAdded) list)
     assert =<< mkLe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
 
-    -- assert bounds computed by value iteration
-    DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
-    model <- doAssert approxFracVec eps
-
     -}
 
     -- updating lower bounds
@@ -691,7 +667,6 @@ solveSCCQuery sccMembers newAdded globals = do
     -- updating upper bounds
     upperBound <- HT.toList (oviUpperBound oviRes)
 
-    when (any ((> 1.3) . snd) upperBound) $ error $ "the upper bound on weight cannot be greater than one: " ++ show (filter ((> 1) . snd) upperBound) 
     let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
     DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
 
