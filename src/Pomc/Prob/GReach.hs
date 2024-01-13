@@ -15,11 +15,13 @@ module Pomc.Prob.GReach ( GRobals(..)
                         , weightQuerySCC
                         , freezeSuppEnds
                         ) where
-import Pomc.Prob.ProbUtils(Prob, EqMapNumbersType, defaultTolerance)
+
+import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..), defaultTolerance)
 import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProbEncodedSet, ProBitencoding)
 import qualified Pomc.Prob.ProbEncoding as PE
 
+import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.Encoding (BitEncoding)
 import Pomc.Prec (Prec(..))
 import Pomc.Check(EncPrecFunc)
@@ -70,9 +72,9 @@ import qualified Data.HashTable.Class as BC
 import qualified Data.HashTable.IO as HT
 
 import qualified Data.Vector.Mutable as MV
-import GHC.IO (stToIO)
+import GHC.IO (stToIO, liftIO)
 
-import Data.IORef (IORef, newIORef, modifyIORef, readIORef, writeIORef, modifyIORef')
+import Data.IORef (IORef, newIORef, modifyIORef, modifyIORef', readIORef, writeIORef, modifyIORef')
 import Data.Ratio (approxRational)
 
 import qualified Debug.Trace as DBG
@@ -273,6 +275,7 @@ data WeightedGRobals state = WeightedGRobals
   , upperEqMap :: EqMap EqMapNumbersType
   , lowerEqMap :: EqMap EqMapNumbersType
   , actualEps :: IORef EqMapNumbersType
+  , stats :: IORef Stats
   }
 
 weightQuerySCC :: (SatState state, Eq state, Hashable state, Show state)
@@ -639,12 +642,18 @@ solveSCCQuery sccMembers newAdded globals = do
   unsolvedEqs <- isLiveEqSys lEqMap
 
   when unsolvedEqs $ do
+    startWeights <- startTimer
+
     oviRes <- ovi defaultOVISettingsDouble uEqMap
 
     rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
     unless rCertified $ error "cannot deduce a rational certificate for this SCC when computing fraction f"
 
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
+
+    tWeights <- stopTimer startWeights rCertified
+    modifyIORef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
+
 
     {-
     DBG.traceM "Approximating via Value Iteration"
