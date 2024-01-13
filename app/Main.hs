@@ -38,6 +38,7 @@ import Control.Monad
 data PomcArgs = PomcArgs
   { finite :: Bool
   , infinite :: Bool
+  , noovi :: Bool
   , fileName :: FilePath
   } deriving (Data,Typeable,Show,Eq)
 
@@ -45,6 +46,7 @@ pomcArgs :: PomcArgs
 pomcArgs = PomcArgs
   { finite = False &= help "Use finite-word semantics"
   , infinite = False &= help "Use infinite-word (omega) semantics (default)"
+  , noovi = False &= help "Use z3 instead of Optimistic Value Iteration for probabilistic model checking"
   , fileName = def &= args &= typFile -- &= help "Input file"
   }
   &= summary "POMC v2.1.0"
@@ -59,6 +61,8 @@ main = do
     then die "--finite and --infinite cannot be specified together."
     else return ()
   let isOmega = not $ finite pargs
+      probSolver | noovi pargs = SMTWithHints
+                 | otherwise = OVI
       fname = fileName pargs
 
   fcontent <- readFile fname
@@ -83,8 +87,8 @@ main = do
 
     ProgCheckRequest phis prog -> sum <$> forM phis (runProg isOmega prog)
     ProbTermRequest tquery prog -> runProbTerm tquery prog
-    ProbCheckRequest phi prog False -> runQualProbCheck phi prog
-    ProbCheckRequest phi prog True -> runQuantProbCheck phi prog
+    ProbCheckRequest phi prog False -> runQualProbCheck probSolver phi prog
+    ProbCheckRequest phi prog True -> runQuantProbCheck probSolver phi prog
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
@@ -129,20 +133,20 @@ main = do
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
-    runQualProbCheck phi prog = do
+    runQualProbCheck solver phi prog = do
       putStr (concat [ "\nQualitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, _), time) <- timeAction fst $ qualitativeModelCheckProgram OVI phi prog
+      ((tres, _), time) <- timeAction fst $ qualitativeModelCheckProgram solver phi prog
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
-    runQuantProbCheck phi prog = do
+    runQuantProbCheck solver phi prog = do
       putStr (concat [ "\nQuantitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, _), time) <- timeAction fst $ quantitativeModelCheckProgram OVI phi prog
+      ((tres, _), time) <- timeAction fst $ quantitativeModelCheckProgram solver phi prog
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
