@@ -151,7 +151,7 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingIdxs, _) (lower
               solvedVar <- mkRealNum e
               eq <- mkEq var solvedVar
               eqString <- astToString eq
-              DBG.traceM $ "Asserting Pop equation: " ++ eqString
+              --DBG.traceM $ "Asserting Pop equation: " ++ eqString
               assert eq
               liftIO $ HT.insert m varKey solvedVar
 
@@ -206,10 +206,10 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) (lowerEqMap, u
       when useZ3 $ do
         eq <- mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
         eqString <- astToString eq
-        DBG.traceM $ "Asserting Push equation: " ++ eqString
+        --DBG.traceM $ "Asserting Push equation: " ++ eqString
         assert eq
         assert =<< mkGe var =<< mkRealNum 0
-      DBG.traceM $ show varKey ++ " = PushEq " ++ show terms
+      --DBG.traceM $ show varKey ++ " = PushEq " ++ show terms
       addFixpEq upperEqMap varKey $ PushEq $ concat terms
       addFixpEq lowerEqMap varKey $ PushEq $ concat terms
     return unencoded_vars
@@ -238,7 +238,7 @@ encodeShift varMap@(_, _, asPendingIdxes, _) (lowerEqMap, upperEqMap) mkComp gn 
       when useZ3 $ do
         eq <- mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
         eqString <- astToString eq
-        DBG.traceM $ "Asserting Shift equation: " ++ eqString
+        --DBG.traceM $ "Asserting Shift equation: " ++ eqString
         assert eq
         assert =<< mkGe var =<< mkRealNum 0
       addFixpEq upperEqMap varKey $ ShiftEq terms
@@ -661,13 +661,10 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
       DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
       DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show upperBoundsTermProbs
       DBG.traceM $ "Do the descendant must reach pop? " ++ show dMustReachPop
-      DBG.traceM $ "Are the upper bounds proving not AST? " ++ show (all (\(_,ub) -> ub < 1 - defaultTolerance) (Map.toList upperBoundsTermProbs))
-      when (length sccMembers > 1 &&  unsolvedEqs == 0) $ error "this is not possible!!!"
-      when (unsolvedEqs /= unsolvedEqs2) $ error "not possible again!!"
 
-      if not dMustReachPop || all (\(_,ub) -> ub < 1 - augTolerance) (Map.toList upperBoundsTermProbs)
+      if not dMustReachPop
         then do
-          unless (all (\(_,ub) -> ub < 1 - augTolerance) (Map.toList upperBoundsTermProbs) || ((head variables) == (0 :: Int, -1 :: Int))) $ error "not AST but upper bound 1"
+          unless (all (\(_,ub) -> ub < 1 - augTolerance) (Map.toList upperBoundsTermProbs) || ((head variables) == (0 :: Int, -1 :: Int)) || Map.null upperBoundsTermProbs) $ error "not AST but upper bound 1"
           return False
         else return True
 
