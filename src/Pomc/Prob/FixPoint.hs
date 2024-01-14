@@ -19,7 +19,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , copyVec
                           , zeroVec
                           , evalEqSys
-                          , isLiveEqSys
+                          , numLiveEqSys
                           , approxFixpFrom
                           , approxFixp
                           , defaultEps
@@ -146,12 +146,12 @@ approxFixpFrom leqMap eps maxIters probVec
       lessThanEps <- evalEqSys leqMap checkIter probVec probVec
       unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 
-isLiveEqSys :: (MonadIO m, Ord n, Fractional n, Show n)
-            => EqMap n -> m Bool
-isLiveEqSys eqMap = 
-  let isLiveEq (PopEq _) = False
-      isLiveEq _ = True
-  in liftIO $ HT.foldM (\acc (_, eq) -> return (acc || isLiveEq eq)) False eqMap
+numLiveEqSys :: (MonadIO m, Ord n, Fractional n, Show n)
+            => EqMap n -> m Int
+numLiveEqSys eqMap = 
+  let isLiveEq (PopEq _) = 0
+      isLiveEq _ = 1
+  in liftIO $ HT.foldM (\acc (_, eq) -> return (acc + isLiveEq eq)) 0 eqMap
 
 -- determine variables for which zero is a fixpoint
 preprocessApproxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
@@ -170,7 +170,7 @@ preprocessApproxFixp eqMap eps maxIters = do
                           return isZero
                           ) =<< HT.toList probVec
                         )
-  isLiveSys <- isLiveEqSys eqMap
+  isLiveSys <- (> 0) <$> numLiveEqSys eqMap
   -- replace with the actual values
   let -- apply an operation over a list of maybes
       applyOpTerms op = foldl1 (\acc el -> do x <- acc; y<-el; return (op x y))

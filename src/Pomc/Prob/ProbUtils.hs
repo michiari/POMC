@@ -22,6 +22,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , TermResult(..)
                            , Stats(..)
                            , initSIdGen
+                           , sIdCount
                            , wrapState
                            , freshPosId
                            , freshNegId
@@ -100,6 +101,9 @@ initSIdGen = do
   newStateToId <- H.new -- new empty HashTable
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }
+
+sIdCount :: SIdGen s state -> ST.ST s Int 
+sIdCount sig = readSTRef (idSequence sig)   
 
 -- wrap a State into the StateId data type and into the ST monad, and update accordingly SidGen
 wrapState :: (Eq state, Hashable state)
@@ -216,6 +220,11 @@ data Stats = Stats { upperBoundTime :: Double
                    , pastTime :: Double
                    , quantWeightTime :: Double
                    , quantSolTime :: Double
+                   , suppGraphLen :: Int
+                   , popaStatesCount :: Int
+                   , nonTrivialEquations :: Int 
+                   , sccCount :: Int
+                   , largestSCCSemiconfsCount :: Int
                    }
 
 debug :: String -> a -> a

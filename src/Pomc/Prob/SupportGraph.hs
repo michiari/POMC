@@ -36,7 +36,7 @@ import qualified Data.IntMap.Strict as Map
 import Control.Monad(forM, forM_, when, unless)
 import Control.Monad.ST (ST)
 
-import Data.STRef (STRef, newSTRef, readSTRef)
+import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 import Data.Maybe (fromJust, isNothing)
 
 import qualified Debug.Trace as DBG
@@ -91,8 +91,9 @@ buildGraph  :: (Eq state, Hashable state, Show state)
         => DeltaWrapper state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
         -> Label -- label of the initial state
+        -> STRef s Stats
         -> ST s (SupportGraph s state) -- returning a graph
-buildGraph probdelta i iLabel = do
+buildGraph probdelta i iLabel stats = do
   -- initialize the global variables
   newSig <- initSIdGen
   emptySuppStarts <- SM.empty
@@ -115,6 +116,9 @@ buildGraph probdelta i iLabel = do
   -- compute the support graph of the input popa
   build globals probdelta initialNode
   idx <- readSTRef . idSeq $ globals
+  statesCount <- sIdCount newSig
+  modifySTRef' stats $ \s -> s{suppGraphLen = idx}
+  modifySTRef' stats $ \s -> s{popaStatesCount = statesCount}
   fmap (CM.take idx) $ readSTRef . graph $ globals
 
 -- requires: the initial state of the OPA is mapped to StateId with getId 0

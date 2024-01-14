@@ -142,7 +142,12 @@ main = do
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "
                        , timeToString $ upperBoundTime stats, " (upper bounds), "
-                       , timeToString $ pastTime stats, " (PAST certificates)."
+                       , timeToString $ pastTime stats, " (PAST certificates),"
+                       , show $ popaStatesCount stats, " (input pOPA states count),"
+                       , show $ suppGraphLen stats, " (Support Graph count),"
+                       , show $ nonTrivialEquations stats, " (non trivial equations solved for termination probabilities),"
+                       , show $ sccCount stats, " (SCC count in the Support Graph),"
+                       , show $ largestSCCSemiconfsCount stats, " (Size of the largest SCC in the Support Graph)."
                        ])
       return time
 
@@ -155,7 +160,14 @@ main = do
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "
                        , timeToString $ upperBoundTime stats, " (upper bounds), "
-                       , timeToString $ pastTime stats, " (PAST certificates)."
+                       , timeToString $ pastTime stats, " (PAST certificates),"
+                       , timeToString $ quantWeightTime stats, " (weights for quant MC),"
+                       , timeToString $ quantSolTime stats, " (eq system for quant MC),"
+                       , show $ popaStatesCount stats, " (input pOPA states count),"
+                       , show $ suppGraphLen stats, " (Support Graph count),"
+                       , show $ nonTrivialEquations stats, " (non trivial equations solved for termination probabilities),"
+                       , show $ sccCount stats, " (SCC count in the Support Graph),"
+                       , show $ largestSCCSemiconfsCount stats, " (Size of the largest SCC in the Support Graph)."
                        ])
       return time
 

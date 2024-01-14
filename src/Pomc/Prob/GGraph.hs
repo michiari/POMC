@@ -500,8 +500,9 @@ quantitativeModelCheck :: (Ord pstate, Hashable pstate, Show pstate)
                       -> IntSet
                       -> Map VarKey Prob
                       -> Map VarKey Prob
-                      -> ST RealWorld (Prob, Prob, Stats)
-quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds = do
+                      -> STRef RealWorld Stats
+                      -> ST RealWorld (Prob, Prob)
+quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds oldStats = do
   -- global data structures for constructing graph G
   newIdSequence <- newSTRef (0 :: Int)
   emptyGGraphMap <- BH.new
@@ -527,7 +528,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                           , bottomHSCCs = newFoundSCCs
                           }
 
-  
+
   -- computing all the bottom SCCs of graph H
   phiInitialGNodesIdxs <- foldM (\acc idx -> do
     node <- MV.unsafeRead computedGraph idx
@@ -608,7 +609,6 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     newLowerEqMap <- liftIO $ HT.new
     newUpperEqMap <- liftIO $ HT.new
     newEps <- liftIO $ newIORef defaultTolerance
-    newStats <- liftIO . newIORef $ Stats 0 0 0 0
 
     let globals = GR.WeightedGRobals { GR.idSeq = newIdSeq
                                      , GR.graphMap = newGraphMap
@@ -621,7 +621,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                                      , GR.lowerEqMap = newLowerEqMap
                                      , GR.upperEqMap = newUpperEqMap
                                      , GR.actualEps = newEps
-                                     , GR.stats = newStats
+                                     , GR.stats = oldStats
                                      }
 
     DBG.traceM "Encoding conditions (2b) and (2c)"
@@ -660,15 +660,15 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
         groupeduMaptoList
 
     -- computing a lower bound on the probability to satisfy the given property
-    philVars <- liftIO $ foldM  (\acc idx -> 
+    philVars <- liftIO $ foldM  (\acc idx ->
         if isInH (freezedGGraph V.! idx)
           then do
             var <- fromJust <$> HT.lookup newlMap idx
             return (var:acc)
           else return acc
         ) [] phiInitialGNodesIdxs
-    
-    phiuVars <- liftIO $ foldM  (\acc idx -> 
+
+    phiuVars <- liftIO $ foldM  (\acc idx ->
           if isInH (freezedGGraph V.! idx)
             then do
               var <- fromJust <$> HT.lookup newuMap idx
@@ -693,9 +693,9 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       return $ (toRational (read (takeWhile (/= '?') l) :: Scientific), toRational (read (takeWhile (/= '?') u) :: Scientific)))
 
     tSol <- stopTimer startSol ub
-    allStats <- (\s -> s { quantSolTime = quantSolTime s + tSol}) <$> liftIO (readIORef (GR.stats globals))
+    liftIO $ stToIO $ modifySTRef' oldStats (\s -> s { quantSolTime = quantSolTime s + tSol})
 
-    return (lb, ub, allStats)
+    return (lb, ub)
 
   -- helpers for the Z3 encoding
 
@@ -710,7 +710,7 @@ encodeTransition probs toVar = do
   mkMul $ normalizedProbs ++ [toVar]
 
 encode :: (Ord pstate, Hashable pstate, Show pstate)
-      => GR.WeightedGRobals (AugState pstate) 
+      => GR.WeightedGRobals (AugState pstate)
       -> SIdGen RealWorld (AugState pstate)
       -> Vector (Set(SU.StateId (AugState pstate)))
       -> DeltaWrapper pstate
@@ -739,13 +739,11 @@ encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph 
             encodeShift (lTypVarMap, uTypVarMap) gGraph isInH gNode gn pendProbsLB pendProbsUB
 
         | otherwise = fail "unexpected prec rel"
-  --DBG.traceM $ "Encoding gNode: " ++ show gNode
-  --DBG.traceM $ "Corresponding semiconf: " ++ show gn
   cases
 
 -- encoding helpers --
 encodePush :: (Ord pstate, Hashable pstate, Show pstate)
-  => GR.WeightedGRobals (AugState pstate) 
+  => GR.WeightedGRobals (AugState pstate)
   -> SIdGen RealWorld (AugState pstate)
   -> Vector (Set(SU.StateId (AugState pstate)))
   -> DeltaWrapper pstate
@@ -781,7 +779,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
                     uT <- encodeTransition [normalizedUP] touVar
                     return (lT, uT)
 
-              | isJust maybePSummary && to (fromJust maybePSummary) == (graphNode toG) = 
+              | isJust maybePSummary && to (fromJust maybePSummary) == (graphNode toG) =
                   let supportGn = suppGraph V.! (graphNode toG)
                       supportState = getId . fst . semiconf $ supportGn
                       --lP =  Set.foldl (+) 0 $ Set.map (\e -> (prob e) * (lowerBs GeneralMap.! (to e, supportState))) (internalEdges gn)
@@ -811,7 +809,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
                         , GR.deltaPop = cDeltaPop
                         , GR.consistentFilter = consistentFilter
                         }
-                  in do 
+                  in do
                     DBG.traceM $ "It corresponds to a support transition - launching call to inner computation of fraction f"
                     (lW, uW) <- liftIO $ weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
                     let normalizedLW = lW * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
@@ -826,7 +824,6 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
   in do
     -- a little sanity check
     unless (graphNode g == gnId gn) $ error "Encoding Push encountered a non consistent pair GNode - graphNode"
-    --DBG.traceM $ "Encoding a Gnode corresponding to a push semiconf"
     transitions <- mapM pushEnc fNodes
     lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
     uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
@@ -871,7 +868,6 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
   in do
   -- a little sanity check
   unless (graphNode g == gnId gn) $ error "Encoding Shift encountered a non consistent pair GNode - graphNode"
-  --DBG.traceM $ "Encoding a Gnode corresponding to a shift semiconf"
   transitions <- mapM shiftEnc fNodes
   lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
   uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)

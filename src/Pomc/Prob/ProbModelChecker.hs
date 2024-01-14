@@ -62,6 +62,8 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as MV
 import Control.Monad (when, unless)
 import Data.Maybe (isNothing, isJust)
+import Data.IORef (newIORef)
+import Data.STRef (newSTRef, readSTRef)
 
 -- TODO: add normalize RichDistr to optimize the encoding
 -- note that non normalized encodings are at the moment (16.11.23) correctly handled by the termination algorithms
@@ -137,7 +139,8 @@ terminationExplicit popa query =
             , deltaPop = popaDeltaPop
             }
   in do
-    sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa)
+    stats <- stToIO $ newSTRef $ Stats 0 0 0 0 0 0 0 0 0
+    sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa) stats
     scString <- stToIO $ CM.showMap sc
     --DBG.traceM $ "Computed the following support graph: " ++ scString
     asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
@@ -164,21 +167,23 @@ programTermination query prog =
                }
 
   in do
-    sc <- stToIO $ buildGraph pDelta initVs initLbl
+    stats <- stToIO $ newSTRef $ Stats 0 0 0 0 0 0 0 0 0
+    sc <- stToIO $ buildGraph pDelta initVs initLbl stats
     -- asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     --DBG.traceM $ "Summary chain: " ++ scString
     --p <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    (res, _, stats) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery (solver query))
+    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery (solver query)) stats
     DBG.traceM $ "Computed termination probabilities: " ++ show res
     --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
-    return (toUpperProb res, stats, scString ++ "\n" ++ show query)
+    computedStats <- stToIO $ readSTRef stats
+    return (toUpperProb res, computedStats, scString ++ "\n" ++ show query)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
 qualitativeModelCheck :: (Ord s, Hashable s, Show s)
-                            => Solver 
+                            => Solver
                             -> Formula APType -- input formula to check
                             -> Alphabet APType -- structural OP alphabet
                             -> (E.BitEncoding -> (s, Label)) -- POPA initial states
@@ -215,23 +220,18 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       }
 
   in do
-    sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
+    stats <- stToIO $ newSTRef $ Stats 0 0 0 0 0 0 0 0 0
+    sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     DBG.traceM $ "Summary chain: " ++ scString
-    {-
-    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
-    DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
-    pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
-    almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
-    -}
-    (ApproxAllResult (_, ubMap), mustReachPopIdxs, stats) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery solver
+    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubMap
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
 
         cases i k
-          | k < (1 - defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
-          | k < (1 - defaultRTolerance) = True
+          | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
+          | k < (1 - 100 * defaultRTolerance) = True
           | IntSet.member i mustReachPopIdxs = False
           | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST." -- inconclusive result
         pendVector = V.imap cases ubVec
@@ -239,9 +239,10 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     DBG.traceM $ "Pending Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
-    return (almostSurely, stats, scString ++ show pendVector)
+    computedStats <- stToIO $ readSTRef stats
+    return (almostSurely, computedStats, scString ++ show pendVector)
 
-qualitativeModelCheckProgram :: Solver 
+qualitativeModelCheckProgram :: Solver
                              -> Formula ExprProp -- phi: input formula to check
                              -> Program -- input program
                              -> IO (Bool, Stats, String)
@@ -252,7 +253,7 @@ qualitativeModelCheckProgram solver phi prog =
   in qualitativeModelCheck solver transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
 qualitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
-                    => Solver 
+                    => Solver
                     -> Formula APType -- phi: input formula to check
                     -> ExplicitPopa s APType -- input OPA
                     -> IO (Bool, Stats, String)
@@ -285,7 +286,7 @@ qualitativeModelCheckExplicit solver phi popa =
 
 
 qualitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
-                              => Solver 
+                              => Solver
                               -> Formula a -- phi: input formula to check
                               -> ExplicitPopa s a -- input OPA
                               -> IO (Bool, Stats, String)
@@ -318,7 +319,7 @@ qualitativeModelCheckExplicitGen solver phi popa =
 -- QUANTITATIVE MODEL CHECKING
 -- is the probability that the POPA satisfies phi equal to 1?
 quantitativeModelCheck :: (Ord s, Hashable s, Show s)
-                            => Solver 
+                            => Solver
                             -> Formula APType -- input formula to check
                             -> Alphabet APType -- structural OP alphabet
                             -> (E.BitEncoding -> (s, Label)) -- POPA initial states
@@ -355,7 +356,8 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
       }
 
   in do
-    sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial)
+    stats <- stToIO $ newSTRef $ Stats 0 0 0 0 0 0 0 0 0
+    sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     DBG.traceM $ "Summary chain: " ++ scString
@@ -364,22 +366,23 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
     pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
     -}
-    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs, stats) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc $ ApproxAllQuery solver
+    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
         cases i k
-          | k < (1 - defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
-          | k < (1 - defaultRTolerance) = True
+          | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
+          | k < (1 - 100 * defaultRTolerance) = True
           | IntSet.member i mustReachPopIdxs = False
           | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST." -- inconclusive result
         pendVector = V.imap cases ubVec
     DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show ubVec
     DBG.traceM $ "Pending Upper Bounds Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
-    (ub, lb, stats) <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs
-    return ((ub, lb), stats, scString ++ show pendVector)
+    (ub, lb) <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs stats
+    computedStats <- stToIO $ readSTRef stats
+    return ((ub, lb), computedStats, scString ++ show pendVector)
 
-quantitativeModelCheckProgram :: Solver 
+quantitativeModelCheckProgram :: Solver
                              -> Formula ExprProp -- phi: input formula to check
                              -> Program -- input program
                              -> IO ((Prob, Prob), Stats, String)
@@ -390,7 +393,7 @@ quantitativeModelCheckProgram solver phi prog =
   in quantitativeModelCheck solver transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
 quantitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
-                    => Solver 
+                    => Solver
                     -> Formula APType -- phi: input formula to check
                     -> ExplicitPopa s APType -- input OPA
                     -> IO ((Prob,Prob), Stats, String)
@@ -423,7 +426,7 @@ quantitativeModelCheckExplicit solver phi popa =
 
 
 quantitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
-                              => Solver 
+                              => Solver
                               -> Formula a -- phi: input formula to check
                               -> ExplicitPopa s a -- input OPA
                               -> IO ((Prob, Prob), Stats, String)

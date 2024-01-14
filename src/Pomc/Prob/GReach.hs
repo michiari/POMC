@@ -58,7 +58,7 @@ import qualified Data.Set as Set
 
 import Control.Monad.ST (ST, RealWorld)
 import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, writeSTRef, readSTRef)
+import Data.STRef (STRef, newSTRef, writeSTRef, readSTRef, modifySTRef')
 
 import Control.Monad(unless, when, foldM, forM_, forM)
 
@@ -275,7 +275,7 @@ data WeightedGRobals state = WeightedGRobals
   , upperEqMap :: EqMap EqMapNumbersType
   , lowerEqMap :: EqMap EqMapNumbersType
   , actualEps :: IORef EqMapNumbersType
-  , stats :: IORef Stats
+  , stats :: STRef RealWorld Stats
   }
 
 weightQuerySCC :: (SatState state, Eq state, Hashable state, Show state)
@@ -458,15 +458,12 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
         IOGS.pop_ (bStack globals)
         sSize <- IOGS.size $ sStack globals
         poppedSemiconfs <- IOGS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
-        --DBG.traceM $ "Pop contexts: " ++ show popContxs
         forM poppedSemiconfs $ \s -> do
           actualId <- fromJust <$> HT.lookup (graphMap globals) (decode s)
           HT.insert (iVector globals) actualId (-1)
           HT.insert (successorsCntxs globals) actualId popContxs
           return (s, actualId)
       doEncode poppedSemiconfs = do
-        --DBG.traceM  $ "Popped Semiconfigurations: " ++ show (poppedSemiconfs)   
-        --DBG.traceM $ "Encode!"
         newAdded <- newIORef Set.empty
         let to_be_encoded = [(s, semiconfId_, rc) | (s, semiconfId_) <- poppedSemiconfs, rc <- IntSet.toList popContxs]
         insertedVars <- map snd <$> forM to_be_encoded (\(s, _, rc) -> lookupVar newAdded globals (decode s) rc)
@@ -476,8 +473,6 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
         solveSCCQuery (map snd poppedSemiconfs) newAddedSet globals
         return popContxs
       doNotEncode poppedSemiconfs = do
-        --DBG.traceM  $ "Popped Semiconfigurations: " ++ show (map snd poppedSemiconfs)   
-        --DBG.traceM $ "Do not encode!"
         modifyIORef (cannotReachPop globals) $ IntSet.union (IntSet.fromList $ map snd poppedSemiconfs)
         isInitial <- (== 0) <$> IOGS.size (sStack globals)
         when isInitial $ do -- for the initial semiconf, encode anyway
@@ -485,8 +480,7 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
           solveSCCQuery (map snd poppedSemiconfs) (Set.singleton (semiconfId, -1)) globals
         return popContxs
       cases
-        | iVal /= topB = --DBG.traceM "not bottom of the SCC - return as it is" >> 
-          return popContxs
+        | iVal /= topB = return popContxs
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
         | otherwise = createC >>= doNotEncode -- cannot reach a pop
   cases
@@ -519,7 +513,6 @@ encode globals sIdGen delta supports (q,g) rightContext = do
             --when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: "
             
         | otherwise = fail "unexpected prec rel"
-  --DBG.traceM $ "Encoding semiconf: " ++ show (q,g) ++ " - with right context: " ++ show rightContext
   cases
 
 encodePush :: (SatState state, Eq state, Hashable state, Show state)
@@ -547,12 +540,11 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) =
           return $ (map (\[v1, v2] -> (prob_, v1, v2)) pushTerms):terms
 
   in do
-    DBG.traceM $ "Encoding push: "
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
     terms <- foldM pushEnc [] newStates
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PushEq $ concat terms
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PushEq $ concat terms
-    DBG.traceM $ show (concat terms)
+    DBG.traceM $ "Encoding push: " ++ show (concat terms)
 
 encodeInitialPush :: (SatState state, Eq state, Hashable state, Show state)
     => WeightedGRobals state
@@ -574,12 +566,11 @@ encodeInitialPush globals sIdGen delta q _ semiconfId suppId =
               else return terms
 
     in do
-      DBG.traceM $ "Encoding initial push."
       newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
       terms <- foldM pushEnc [] newStates
       addFixpEq (lowerEqMap globals) (semiconfId, -1) $ PushEq terms
       addFixpEq (upperEqMap globals) (semiconfId, -1) $ PushEq terms
-      DBG.traceM $ show terms
+      DBG.traceM $ "Encoding initial push:" ++ show terms
       addFixpEq (lowerEqMap globals) (suppId, -1) $ PopEq (1 :: Double)
       addFixpEq (upperEqMap globals) (suppId, -1) $ PopEq (1 :: Double)
 
@@ -601,12 +592,11 @@ encodeShift globals sIdGen delta _ g qState (semiconfId, rightContext) =
           then return $ (prob_, key):terms
           else return terms
   in do
-    DBG.traceM $ "Encoding shift: "
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaShift delta) qState
     terms <- foldM shiftEnc [] newStates
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ ShiftEq terms
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ ShiftEq terms
-    DBG.traceM $ show terms
+    DBG.traceM $ "Encoding shift: " ++ show terms
 
 solveSCCQuery :: (Eq state, Hashable state, Show state)
   => [Int] -> Set (Int,Int) -> WeightedGRobals state -> IO ()
@@ -629,9 +619,9 @@ solveSCCQuery sccMembers newAdded globals = do
   _ <- preprocessApproxFixp uEqMap iterEps (2 * sccLen)
 
   -- lEqMap and uEqMap should be the same here 
-  unsolvedEqs <- isLiveEqSys lEqMap
+  unsolvedEqs <- numLiveEqSys lEqMap
 
-  when unsolvedEqs $ do
+  when (unsolvedEqs > 0) $ do
     startWeights <- startTimer
 
     oviRes <- ovi defaultOVISettingsDouble uEqMap
@@ -642,7 +632,7 @@ solveSCCQuery sccMembers newAdded globals = do
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
 
     tWeights <- stopTimer startWeights rCertified
-    modifyIORef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
+    stToIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
 
 
     {-
