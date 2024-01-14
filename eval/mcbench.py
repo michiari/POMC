@@ -13,7 +13,13 @@ import csv
 time_pattern = re.compile(r"Total elapsed time: .+ \(([0-9]+\.[0-9]+e[\+\-0-9]+) s\)")
 mem_pattern = re.compile(r"Max memory used \(KB\): ([0-9]+)")
 result_pattern = re.compile(r"Result:  ((True)|(False))")
-states_pattern = re.compile(r"Input OPA state count: ([0-9]+)")
+states_pattern = re.compile(r"Input (OPA|pOPA) state count: ([0-9]+)")
+supp_pattern = re.compile(r"Support graph size: ([0-9]+)")
+eqs_pattern = re.compile(r"Non-trivial equations solved for termination probabilities: ([0-9]+)")
+sccs_pattern = re.compile(r"SCC count in the support graph: ([0-9]+)")
+maxscc_pattern = re.compile(r"Size of the largest SCC in the support graph: ([0-9]+)")
+ub_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(upper bounds\)")
+past_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(PAST certificates\)")
 memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
 
@@ -73,6 +79,8 @@ def exec_bench(fname, args):
 
     error_dict = {
         'time': -1,
+        'ub_time': -1,
+        'past_time': -1,
         'mem_tot': -1,
         'mem_gc': -2**10,
         'states': -1
@@ -88,31 +96,45 @@ def exec_bench(fname, args):
     mem_match = mem_pattern.search(raw_stderr)
     result_match = [r[0] for r in result_pattern.findall(raw_stdout)]
     states_match = states_pattern.search(raw_stdout)
+    ub_match = ub_pattern.search(raw_stdout)
+    past_match = past_pattern.search(raw_stdout)
     memgc_match = memgc_pattern.search(raw_stderr)
+    supp_match = supp_pattern.search(raw_stdout)
+    eqs_match = eqs_pattern.search(raw_stdout)
+    sccs_match = sccs_pattern.search(raw_stdout)
+    maxscc_match = maxscc_pattern.search(raw_stdout)
     result = result_match[0]
-    states = int(states_match.group(1)) if states_match else '?'
+    states = int(states_match.group(2)) if states_match else '?'
     return {
         'time': float(time_match.group(1)),
+        'ub_time': float(ub_match.group(1)),
+        'past_time': float(past_match.group(1)),
         'mem_tot': int(mem_match.group(1)),
         'mem_gc': int(memgc_match.group(1)),
         'result': result,
-        'states': states
+        'states': states,
+        'supp_size': int(supp_match.group(1)),
+        'eqs': int(eqs_match.group(1)),
+        'sccs': int(sccs_match.group(1)),
+        'maxscc': int(maxscc_match.group(1)),
     }
 
 def iter_bench(fname, args):
     get_column = lambda rows, i: [r[i] for r in rows]
     results = [exec_bench(fname, args) for _ in range(0, args.iters)]
-    print(results)
-    times = get_column(results, 'time')
-    mems = get_column(results, 'mem_tot')
-    memgcs = get_column(results, 'mem_gc')
     return {
         'name': fname,
-        'time': statistics.mean(times),
-        'mem_tot': statistics.mean(mems),
-        'mem_gc': statistics.mean(memgcs)/(2**10),
+        'time': statistics.mean(get_column(results, 'time')),
+        'ub_time': statistics.mean(get_column(results, 'ub_time')),
+        'past_time': statistics.mean(get_column(results, 'past_time')),
+        'mem_tot': statistics.mean(get_column(results, 'mem_tot')),
+        'mem_gc': statistics.mean(get_column(results, 'mem_gc'))/(2**10),
         'result': results[0]['result'],
-        'states': results[0]['states']
+        'states': results[0]['states'],
+        'supp_size': results[0]['supp_size'],
+        'eqs': results[0]['eqs'],
+        'sccs': results[0]['sccs'],
+        'maxscc': results[0]['maxscc'],
     }
 
 def exec_all(fnames, args):

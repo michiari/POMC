@@ -128,7 +128,7 @@ main = do
       putStr (concat [ "\nProbabilistic Termination Checking\nQuery: ", show tquery
                      , "\nResult:  "
                      ])
-      ((tres, _, _), time) <- timeAction fst3 $ programTermination tquery prog 
+      ((tres, _, _), time) <- timeAction fst3 $ programTermination tquery prog
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
@@ -141,13 +141,13 @@ main = do
       putStr $ show tres
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "
-                       , timeToString $ upperBoundTime stats, " (upper bounds), "
-                       , timeToString $ pastTime stats, " (PAST certificates),"
-                       , show $ popaStatesCount stats, " (input pOPA states count),"
-                       , show $ suppGraphLen stats, " (Support Graph count),"
-                       , show $ nonTrivialEquations stats, " (non trivial equations solved for termination probabilities),"
-                       , show $ sccCount stats, " (SCC count in the Support Graph),"
-                       , show $ largestSCCSemiconfsCount stats, " (Size of the largest SCC in the Support Graph)."
+                       , showEFloat (Just 4) (upperBoundTime stats) " s (upper bounds), "
+                       , showEFloat (Just 4) (pastTime stats) " s (PAST certificates)"
+                       , "\nInput pOPA state count: ", show $ popaStatesCount stats
+                       , "\nSupport graph size: ", show $ suppGraphLen stats
+                       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations stats
+                       , "\nSCC count in the support graph: ", show $ sccCount stats
+                       , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
                        ])
       return time
 
