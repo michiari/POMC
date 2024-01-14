@@ -1,4 +1,5 @@
-probabilistic query: approximate;
+probabilistic query: qualitative;
+formula = F (ret And main);
 
 program:
 
@@ -26,12 +27,11 @@ young() {
     e = e - 1u2;
   }
 
-
-
 }
 
 elder() {
   bool get_vaccine;
+  bool casualty;
   u3 y, e;
 
   y = 0u3 {1u2 : 2u2} 1u3;
@@ -50,6 +50,6 @@ elder() {
     e = e - 1u3;
   }
 
-  
+  casualty = 1u1 {1u7 : 100u7} 0u1;
 
 }
