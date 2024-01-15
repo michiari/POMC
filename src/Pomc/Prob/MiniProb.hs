@@ -35,7 +35,7 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Control.Monad.State.Lazy (State, runState, get, gets, modify, when, foldM)
 
--- import qualified Debug.Trace as DBG
+import qualified Debug.Trace as DBG
 
 data Popa s a = Popa
   { popaAlphabet   :: Alphabet a -- OP alphabet
@@ -217,7 +217,7 @@ lowerStatement sks thisFinfo linkPred (Call fname args) = do
   calleeFinfo <- (M.! fname) . lsFinfo <$> get
   insertPush callSid (psAction callState, EntryStates fname)
   -- Since this is not a query call, we unwind it and propagate the observation
-  insertPop (psId $ fiThrow calleeFinfo, callSid) (NoRet, Det $ fiThrow thisFinfo)
+  insertPop (psId $ fiThrow calleeFinfo, callSid) (RetObs, Det $ fiThrow thisFinfo)
 
   let thisTarget = Det callState
   linkPred thisTarget
@@ -260,7 +260,9 @@ lowerStatement sks thisFinfo linkPred0 (Query fname args) = do
 
   -- Add dummy return to exit query block
   retSid <- getSidInc
-  let retState = PState retSid (mkPSLabels fsk) Return
+  -- It's part of the callee because we restore the caller's state afterwards
+  -- TODO: can we restore the caller's state in the pop before the shift?
+  let retState = PState retSid (mkPSLabels calleeSk) Return
   -- If the query returns normally, link it to the dummy ret
   insertPop (psId $ fiRetPad calleeFinfo, callSid) (NoRet, Det retState)
   -- Shift the qry
