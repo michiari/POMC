@@ -1,5 +1,5 @@
-probabilistic query: approximate;
-//formula = G ((call And alice And [p == 3u3]) --> ~ (XNu obs));
+probabilistic query: qualitative;
+formula = ~ ((~ obs) Ud (call And Bob And XNu obs));
 
 program:
 u4 p;

@@ -20,7 +20,8 @@ Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Co
 */ 
 
 
-probabilistic query: approximate;
+probabilistic query: qualitative;
+formula = F (ret And main);
 
 program:
 u3 p;

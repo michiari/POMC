@@ -1,5 +1,5 @@
 probabilistic query: qualitative;
-formula = XNu ([|final_winner == 2u2]);
+formula = F (G (~ obs));
 
 program:
 u2[3] upper;
@@ -19,6 +19,7 @@ Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Co
 */ 
 
 main (){
+    u2 row_choice, column_choice;
     upper[0u2] = 0u2;
 	upper[1u2] = 1u2;
 	upper[2u2] = 0u2;
@@ -30,16 +31,17 @@ main (){
 	lower[2u2] = 0u2;
 
     final_winner = 0u2;
+    query sampleAction(2u2, row_choice, column_choice);
 
-    query sample_action(2u2);
 }
 
-sample_action(u2 current_player) {
+sampleAction(u2 current_player, u2 &row_choice, u2&column_choice) {
     bool another_turn;
     u2 other_player;
-
+    u2 otherPlayerRowChoice, otherPlayerColumnChoice; 
+    
     // sample a choice from the priori
-    query action_priori(current_player);
+    query action_priori(current_player, row_choice, column_choice);
     
     // is there a final_winner or is the grid filled?
     another_turn = upper[0u2] == 0u2 || upper[1u2] == 0u2 || upper[2u2] == 0u2 || middle[0u2] == 0u2 || middle[1u2] == 0u2 || middle[2u2] == 0u2 || lower[0u2] == 0u2 || lower[1u2] == 0u2 || lower[2u2] == 0u2;
@@ -51,34 +53,40 @@ sample_action(u2 current_player) {
         if (current_player == 1u2) {
             other_player = 2u2;
         } else {
-        other_player = 1u2;
+            other_player = 1u2;
         }
-        query sample_action(other_player);
+        query sampleAction(other_player, otherPlayerRowChoice, otherPlayerColumnChoice);
 
     } else {}
 
-    // computing the expected utility
+    // observing according to the utility of the outcome
     expected_utility(current_player);
+
+    // returning row_choice and column_choice - the choice of the players
 }
 
 
-action_priori(u2 current_player) {
-    u2 row_choice, column_choice;
-    row_choice = 0u2 {1u2 : 3u2} 1u2 {1u2: 3u2} 2u2;
-    column_choice = 0u2 {1u2 : 3u2} 1u2 {1u2: 3u2} 2u2;
+action_priori(u2 current_player, u2 &row_choice, u2 &column_choice) {
+    u2 sampled_row_choice, sampled_column_choice;
+
+    sampled_row_choice = 0u2 {1u2 : 3u2} 1u2 {1u2: 3u2} 2u2;
+    sampled_column_choice = 0u2 {1u2 : 3u2} 1u2 {1u2: 3u2} 2u2;
+
     // observe that the choice is feasible, and update the grid
-    if (row_choice == 0u2) {
-        observe upper[column_choice] == 0u2;
-        upper[column_choice] = current_player;
+    if (sampled_row_choice == 0u2) {
+        observe upper[sampled_column_choice] == 0u2;
+        upper[sampled_column_choice] = current_player;
     } else {
-        if (row_choice == 1u2) {
-            observe middle[column_choice] == 0u2;
-            middle[column_choice] = current_player;
+        if (sampled_row_choice == 1u2) {
+            observe middle[sampled_column_choice] == 0u2;
+            middle[sampled_column_choice] = current_player;
         } else {
-            observe lower[column_choice] == 0u2;
-            lower[column_choice] = current_player;
+            observe lower[sampled_column_choice] == 0u2;
+            lower[sampled_column_choice] = current_player;
         }
     }
+    row_choice = sampled_row_choice;
+    column_choice = sampled_column_choice;
 }
 
 expected_utility(u2 current_player) {

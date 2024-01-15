@@ -1,5 +1,5 @@
 probabilistic query: qualitative;
-formula = F (ret And main);
+formula = ~ (F (qry And ~ (PNd ((XNu ret) Or ~ (XNu T)))));
 
 program:
 
@@ -9,6 +9,7 @@ main() {
 
 young() {
   bool get_vaccine;
+  bool elderCasualty;
   u2 y, e;
 
   y = 0u2 {1u3 : 4u4} 1u2 {1u3 : 4u4} 2u2 {1u3 : 4u4} 3u2;
@@ -23,15 +24,15 @@ young() {
   }
 
   while (e > 0u2) {
-    query elder();
+    query elder(elderCasualty);
     e = e - 1u2;
   }
 
 }
 
-elder() {
+elder(bool &casualty) {
   bool get_vaccine;
-  bool casualty;
+  bool inner_casualty;
   u3 y, e;
 
   y = 0u3 {1u2 : 2u2} 1u3;
@@ -46,10 +47,14 @@ elder() {
   }
 
   while (e > 0u3) {
-    query elder();
+    query elder(inner_casualty);
     e = e - 1u3;
   }
 
-  casualty = 1u1 {1u7 : 100u7} 0u1;
+  if (casualty == 1u1) {
+  } else {
+      casualty = 1u1 {1u7 : 100u7} 0u1;
+
+  }
 
 }
