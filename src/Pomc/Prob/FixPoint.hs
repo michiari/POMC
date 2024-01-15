@@ -45,6 +45,7 @@ import qualified Data.Vector.Mutable as MV
 import Data.Ratio((%))
 
 import qualified Debug.Trace as DBG
+import Control.Monad (foldM)
 
 type VarKey = (Int, Int)
 
@@ -148,10 +149,11 @@ approxFixpFrom leqMap eps maxIters probVec
 
 numLiveEqSys :: (MonadIO m, Ord n, Fractional n, Show n)
             => EqMap n -> m Int
-numLiveEqSys eqMap = 
+numLiveEqSys eqMap =
   let isLiveEq (PopEq _) = 0
       isLiveEq _ = 1
   in liftIO $ HT.foldM (\acc (_, eq) -> return (acc + isLiveEq eq)) 0 eqMap
+
 
 -- determine variables for which zero is a fixpoint
 preprocessApproxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
@@ -161,23 +163,23 @@ preprocessApproxFixp eqMap eps maxIters = do
   leqMap <- toLiveEqMap eqMap
   -- iterate just n and check if fixpoint remains zero
   approxFixpFrom leqMap eps maxIters probVec
-  let isLiveEq (PopEq _) = False
-      isLiveEq _ = True
-  zeroVars <- liftIO $ map fst <$> (filterM (\(varKey, p) -> do
-                          eq <- fromJust <$> HT.lookup eqMap varKey
-                          let isZero = isLiveEq eq && (p == 0)
-                          when isZero $ liftIO $ HT.insert eqMap varKey (PopEq 0)
-                          return isZero
-                          ) =<< HT.toList probVec
-                        )
-  isLiveSys <- (> 0) <$> numLiveEqSys eqMap
+  (zeroVars, nonZeroVars) <- liftIO $ MV.foldM (\(acc1, acc2) (varKey, _) -> do
+                                p <- fromJust <$> HT.lookup probVec varKey
+                                when (p == 0) $ liftIO $ HT.insert eqMap varKey (PopEq 0)
+                                if (p == 0)
+                                  then return (varKey:acc1, acc2)
+                                  else return (acc1, varKey:acc2)
+                                ) ([], []) leqMap
+
   -- replace with the actual values
   let -- apply an operation over a list of maybes
+      isLiveSys = length nonZeroVars > 0
       applyOpTerms op = foldl1 (\acc el -> do x <- acc; y<-el; return (op x y))
       immediateValue (PopEq n) = Just n
       immediateValue _ = Nothing
       go (False, updatedVars) = return (updatedVars ++ map (\v -> (v,0)) zeroVars)
-      go (True, updatedVars) = HT.foldM (\(recurse, upVars) (varKey, eq) -> do
+      go (True, updatedVars) = foldM (\(recurse, upVars) varKey -> do
+          eq <- fromJust <$> HT.lookup eqMap varKey
           case eq of
             PopEq _ -> return (recurse, upVars)
             ShiftEq terms -> do
@@ -197,8 +199,7 @@ preprocessApproxFixp eqMap eps maxIters = do
               if isJust eqValue
                 then HT.insert eqMap varKey (PopEq (fromJust eqValue)) >> return (True, (varKey, fromJust eqValue) : upVars)
                 else return (recurse, upVars)
-
-        ) (False, updatedVars) eqMap >>= go
+        ) (False, updatedVars) nonZeroVars >>= go
   liftIO $ go (isLiveSys, [])
 
 approxFixp :: (MonadIO m, Ord n, Fractional n, Show n)

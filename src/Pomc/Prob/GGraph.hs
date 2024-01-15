@@ -681,6 +681,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
 
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
+    DBG.traceM $ "Calling Z3..."
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
       mString <- modelToString model
       DBG.traceM $ "Computed model(Lower and upper bound): " ++ mString

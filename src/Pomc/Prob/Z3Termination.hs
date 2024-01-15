@@ -649,7 +649,6 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
 
   -- lEqMap and uEqMap should be the same here 
   unsolvedEqs <- numLiveEqSys lEqMap
-  unsolvedEqs2 <- numLiveEqSys uEqMap
 
 
   if (unsolvedEqs == 0)

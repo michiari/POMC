@@ -360,7 +360,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
-    DBG.traceM $ "Summary chain: " ++ scString
+    --DBG.traceM $ "Summary chain: " ++ scString
     {-
     asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
