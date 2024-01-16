@@ -569,6 +569,7 @@ createComponent globals gn (popContxs, dMustReachPop) precFun useZ3 = do
         poppedEdges <- liftIO $ ZS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
         DBG.traceM  $ "Popped Semiconfigurations: " ++ show poppedEdges
         DBG.traceM $ "Pop contexts: " ++ show popContxs
+        DBG.traceM  $ "Length of current SCC: " ++ show (length poppedEdges)
         forM_ poppedEdges $ \e -> do
           liftIO $ MV.unsafeWrite (iVector globals) e (-1)
           liftIO $ MV.unsafeWrite (successorsCntxs globals) e popContxs
