@@ -1,5 +1,5 @@
 probabilistic query: qualitative;
-formula = ~ (XNd (PNd (sampleAction And XNd (PNd (sampleAction And XNd (PNd (sampleAction And XNd (PNd (sampleAction And XNd (PNd sampleAction))))))))));
+formula = ~ (XNd (PNd (sampleAction And XNd (PNd (sampleAction And XNd (PNd sampleAction))))));
 
 program:
 u2[3] upper;
