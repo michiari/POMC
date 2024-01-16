@@ -649,7 +649,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
 
   -- lEqMap and uEqMap should be the same here 
   unsolvedEqs <- numLiveEqSysWithHints lEqMap variables
-
+  DBG.traceM $ "Number of live equations to be solved: " ++ show unsolvedEqs
 
   if unsolvedEqs == 0
     then do
