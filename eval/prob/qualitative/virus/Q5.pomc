@@ -1,5 +1,5 @@
 probabilistic query: qualitative;
-formula = F (elder And (XNd (PNd (elder And XNd (PNd (elder))))));
+formula = F ((XNd ((PNd (elder)))) And (XNu ([elder|inner_casualty == 0u1])));
 
 program:
 
