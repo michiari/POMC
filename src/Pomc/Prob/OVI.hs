@@ -6,13 +6,13 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Prob.OVI ( ovi
+module Pomc.Prob.OVI ( oviWithHints
                      , OVISettings(..)
                      , defaultOVISettingsDouble
                      , defaultOVISettingsProb
                      -- , defaultOVISettingsRounded
                      , OVIResult(..)
-                     , oviToRational
+                     , oviToRationalWithHints
                      ) where
 
 import Pomc.Prob.ProbUtils (Prob)
@@ -198,9 +198,9 @@ computeEigen leqSys eps maxIters lowerApprox eigenVec = liftIO $ do
   return $ eigenVal - 1 -- -1 because we added the identity matrix
 
 
-ovi :: (MonadIO m, Fractional n, Ord n, Show n)
-    => OVISettings n -> EqMap n -> m (OVIResult n)
-ovi settings eqMap = liftIO $ do
+oviWithHints :: (MonadIO m, Fractional n, Ord n, Show n)
+    => OVISettings n -> EqMap n -> [(Int,Int)] -> m (OVIResult n)
+oviWithHints settings eqMap lVars = liftIO $ do
   s <- stToIO $ BHT.size eqMap
   DBG.traceM $ "Starting OVI on a system with " ++ show s ++ " variables..."
   lowerApprox <- zeroVec eqMap
@@ -208,7 +208,7 @@ ovi settings eqMap = liftIO $ do
   upperApprox <- copyVec lowerApprox
   evalUpperApprox <- newVecSameSize lowerApprox
   -- create system containing only live equations
-  leqSys <- toLiveEqMap eqMap
+  leqSys <- toLiveEqMapWithHints eqMap lVars
   -- create eigenVec and initialize it to 1
   -- we only use live equations for eigenVec to avoid too many 0 values
   eigenVec <- HT.newSized $ MV.length leqSys
@@ -271,9 +271,9 @@ ovi settings eqMap = liftIO $ do
 
   go (oviKleeneEps settings) (oviPowerIterEps settings) (oviMaxIters settings)
 
-oviToRational :: (MonadIO m, Ord n, RealFrac n, Show n, RealFloat n)
-              => OVISettings n -> EqMap n -> OVIResult n -> m Bool
-oviToRational settings eqMap oviRes = liftIO $ do
+oviToRationalWithHints :: (MonadIO m, Ord n, RealFrac n, Show n, RealFloat n)
+              => OVISettings n -> EqMap n -> OVIResult n -> [(Int,Int)] -> m Bool
+oviToRationalWithHints settings eqMap oviRes lVars = liftIO $ do
   let eps = oviRationalApproxEps settings
       fracEps = toRational eps
       -- two solutions for approximating the floating point upper bound with rational values
@@ -286,7 +286,7 @@ oviToRational settings eqMap oviRes = liftIO $ do
       showF2 = "approxRational"
 
   reqMap <- mapEqMapPop f1 eqMap
-  rleqSys <- toLiveEqMap reqMap
+  rleqSys <- toLiveEqMapWithHints reqMap lVars
   -- Convert upper bound to rational
   rub <- mapVec f1 $ oviUpperBound oviRes
   srub <- HT.newSized =<< stToIO (BHT.size rub)
@@ -310,7 +310,7 @@ oviToRational settings eqMap oviRes = liftIO $ do
     then return success
     else do 
       reqMap <- mapEqMapPop f2 eqMap
-      rleqSys <- toLiveEqMap reqMap
+      rleqSys <- toLiveEqMapWithHints reqMap lVars
       -- Convert upper bound to rational
       rub <- mapVec f2eps $ oviUpperBound oviRes
       srub <- HT.newSized =<< stToIO (BHT.size rub)

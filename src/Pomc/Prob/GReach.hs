@@ -25,7 +25,7 @@ import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.Encoding (BitEncoding)
 import Pomc.Prec (Prec(..))
 import Pomc.Check(EncPrecFunc)
-import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
+import Pomc.Prob.OVI (oviWithHints, oviToRationalWithHints, defaultOVISettingsDouble, OVIResult(..))
 
 import Pomc.SatUtil
 
@@ -612,19 +612,19 @@ solveSCCQuery sccMembers newAdded globals = do
   --DBG.traceM $ "Current equation system: \n" ++ concatMap (\l -> show l ++ "\n") eqMapList
 
   -- preprocessing to solve variables that do not need ovi
-  _ <- preprocessApproxFixp lEqMap iterEps (2 * sccLen)
-  _ <- preprocessApproxFixp uEqMap iterEps (2 * sccLen)
+  _ <- preprocessApproxFixpWithHints lEqMap iterEps (2 * sccLen) variables
+  _ <- preprocessApproxFixpWithHints uEqMap iterEps (2 * sccLen) variables
 
   -- lEqMap and uEqMap should be the same here 
-  unsolvedEqs <- numLiveEqSys lEqMap
+  unsolvedEqs <- numLiveEqSysWithHints lEqMap variables
 
   when (unsolvedEqs > 0) $ do
     startWeights <- startTimer
 
     DBG.traceM "Running OVI to solve the equation system"
-    oviRes <- ovi defaultOVISettingsDouble uEqMap
+    oviRes <- oviWithHints defaultOVISettingsDouble uEqMap variables
 
-    rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
+    rCertified <- oviToRationalWithHints defaultOVISettingsDouble uEqMap oviRes variables
     unless rCertified $ error "cannot deduce a rational certificate for this SCC when computing fraction f"
 
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
@@ -633,7 +633,7 @@ solveSCCQuery sccMembers newAdded globals = do
     stToIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
 
     -- updating lower bounds
-    approxVec <- approxFixp lEqMap iterEps defaultMaxIters
+    approxVec <- approxFixpWithHints lEqMap iterEps defaultMaxIters variables
     forM_  variables $ \varKey -> do
       HT.lookup lEqMap varKey >>= \case
           Just (PopEq _) -> return () -- An eq constraint has already been asserted
@@ -644,7 +644,7 @@ solveSCCQuery sccMembers newAdded globals = do
     -- updating upper bounds
     upperBound <- HT.toList (oviUpperBound oviRes)
 
-    let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
+    let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll newAdded) . GeneralMap.fromList $ upperBound
     DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
 
     forM_  variables $ \varKey -> do

@@ -13,20 +13,20 @@ module Pomc.Prob.FixPoint ( VarKey
                           , ProbVec
                           , mapEqMapPop
                           , addFixpEq
-                          , toLiveEqMap
+                          , toLiveEqMapWithHints
                           , newVecSameSize
                           , mapVec
                           , copyVec
                           , zeroVec
                           , evalEqSys
-                          , numLiveEqSys
+                          , numLiveEqSysWithHints
                           , approxFixpFrom
-                          , approxFixp
+                          , approxFixpWithHints
                           , defaultEps
                           , defaultMaxIters
                           , toRationalProbVec
                           , toUpperRationalProbVec
-                          , preprocessApproxFixp
+                          , preprocessApproxFixpWithHints
                           ) where
 
 import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
@@ -80,12 +80,13 @@ substituteKnownVals :: MonadIO m => EqMap n -> ProbVec n -> m ()
 substituteKnownVals eqMap knownVals =
   liftIO $ HT.mapM_ (\(k, v) -> HT.insert eqMap k $ PopEq v) knownVals
 
-toLiveEqMap :: (MonadIO m, Fractional n) => EqMap n -> m (LEqSys n)
-toLiveEqMap eqMap = liftIO $ do
-  s <- stToIO $ BHT.size eqMap
-  leqMap <- MV.unsafeNew s
-  n <- HT.foldM
-    (\i (k, eq) -> do
+-- careful: lVars are not necessarily live
+toLiveEqMapWithHints :: (MonadIO m, Fractional n) => EqMap n -> [(Int,Int)] -> m (LEqSys n)
+toLiveEqMapWithHints eqMap lVars = liftIO $ do
+  leqMap <- MV.unsafeNew (length lVars)
+  n <- liftIO $ foldM
+    (\i k -> do
+        eq <- fromJust <$> HT.lookup eqMap k
         case eq of
           PushEq terms -> MV.unsafeWrite leqMap i
                           (k, PushLEq $ map (\(p, k1, k2) -> (fromRational p, k1, k2)) terms)
@@ -94,7 +95,7 @@ toLiveEqMap eqMap = liftIO $ do
                            (k, ShiftLEq $ map (\(p, k1) -> (fromRational p, k1)) terms)
                            >> return (i + 1)
           _ -> return i
-    ) 0 eqMap
+    ) 0 lVars
   return $ MV.unsafeTake n leqMap
 
 newVecSameSize :: MonadIO m => ProbVec a -> m (ProbVec b)
@@ -147,20 +148,19 @@ approxFixpFrom leqMap eps maxIters probVec
       lessThanEps <- evalEqSys leqMap checkIter probVec probVec
       unless lessThanEps $ approxFixpFrom leqMap eps (maxIters - 1) probVec
 
-numLiveEqSys :: (MonadIO m, Ord n, Fractional n, Show n)
-            => EqMap n -> m Int
-numLiveEqSys eqMap =
+numLiveEqSysWithHints :: (MonadIO m, Ord n, Fractional n, Show n)
+            => EqMap n -> [(Int,Int)] -> m Int
+numLiveEqSysWithHints eqMap lVars =
   let isLiveEq (PopEq _) = 0
       isLiveEq _ = 1
-  in liftIO $ HT.foldM (\acc (_, eq) -> return (acc + isLiveEq eq)) 0 eqMap
-
+  in liftIO $ foldM (\acc k -> do eq <- fromJust <$> HT.lookup eqMap k; return (acc + isLiveEq eq)) 0 lVars
 
 -- determine variables for which zero is a fixpoint
-preprocessApproxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
-                      => EqMap n -> n -> Int -> m [(VarKey, n)]
-preprocessApproxFixp eqMap eps maxIters = do
+preprocessApproxFixpWithHints :: (MonadIO m, Ord n, Fractional n, Show n)
+                      => EqMap n -> n -> Int -> [(Int,Int)] -> m [(VarKey, n)]
+preprocessApproxFixpWithHints eqMap eps maxIters lVars = do
   probVec <- zeroVec eqMap
-  leqMap <- toLiveEqMap eqMap
+  leqMap <- toLiveEqMapWithHints eqMap lVars
   -- iterate just n and check if fixpoint remains zero
   approxFixpFrom leqMap eps maxIters probVec
   (zeroVars, nonZeroVars) <- liftIO $ MV.foldM (\(acc1, acc2) (varKey, _) -> do
@@ -202,11 +202,11 @@ preprocessApproxFixp eqMap eps maxIters = do
         ) (False, updatedVars) nonZeroVars >>= go
   liftIO $ go (isLiveSys, [])
 
-approxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
-           => EqMap n -> n -> Int -> m (ProbVec n)
-approxFixp eqMap eps maxIters = do
+approxFixpWithHints :: (MonadIO m, Ord n, Fractional n, Show n)
+           => EqMap n -> n -> Int -> [(Int,Int)] -> m (ProbVec n)
+approxFixpWithHints eqMap eps maxIters lVars = do
   probVec <- zeroVec eqMap
-  leqMap <- toLiveEqMap eqMap
+  leqMap <- toLiveEqMapWithHints eqMap lVars
   approxFixpFrom leqMap eps maxIters probVec
   return probVec
 

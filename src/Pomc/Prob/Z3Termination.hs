@@ -19,7 +19,7 @@ import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.SupportGraph
 import Pomc.Prob.FixPoint
-import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
+import Pomc.Prob.OVI (oviWithHints, oviToRationalWithHints, defaultOVISettingsDouble, OVIResult(..))
 
 import Pomc.IOStack(IOStack)
 import qualified Pomc.IOStack as ZS
@@ -636,22 +636,22 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
   let iterEps = min defaultTolerance $ currentEps * currentEps
 
   variables <- liftIO $ map fst <$> HT.toList newAdded
-  augVariables <- liftIO $ mapM (\k -> do varAST <- fromJust <$> HT.lookup m k; return (k,varAST)) variables
+  augVariables <- liftIO $ HT.toList newAdded
   --listed <- liftIO $ HT.toList lEqMap
   --DBG.traceM $ "Lower eq system: " ++ show listed
 
   -- preprocessing phase
-  _ <- preprocessApproxFixp lEqMap defaultEps (5 * length sccMembers)
-  updatedUpperVars <- preprocessApproxFixp uEqMap defaultEps (5 * length sccMembers)
+  _ <- preprocessApproxFixpWithHints lEqMap defaultEps (3 * length sccMembers) variables
+  updatedUpperVars <- preprocessApproxFixpWithHints uEqMap defaultEps (3 * length sccMembers) variables
   forM_ updatedUpperVars $ \(varKey, p) -> do
     pAST <- mkRealNum (p :: Double)
     liftIO $ HT.insert m varKey pAST
 
   -- lEqMap and uEqMap should be the same here 
-  unsolvedEqs <- numLiveEqSys lEqMap
+  unsolvedEqs <- numLiveEqSysWithHints lEqMap variables
 
 
-  if (unsolvedEqs == 0)
+  if unsolvedEqs == 0
     then do
       DBG.traceM $ "No equation system had to be solved here, just propagating values"
       upperBound <- liftIO $ forM variables $ \k -> do PopEq u <- fromJust <$> HT.lookup uEqMap k; return (k,u)
@@ -670,7 +670,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
     else do
       -- updating lower bounds
       liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquations = acc} -> s{nonTrivialEquations = acc + unsolvedEqs}
-      approxVec <- approxFixp lEqMap defaultEps defaultMaxIters
+      approxVec <- approxFixpWithHints lEqMap defaultEps defaultMaxIters variables
       forM_  variables $ \varKey -> do
         liftIO (HT.lookup lEqMap varKey) >>= \case
             Just (PopEq _) -> return () -- An eq constraint has already been asserted
@@ -683,7 +683,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
       upperBound <- if useZ3
         then do
           DBG.traceM "Approximating via Value Iteration + z3"
-          approxUpperVec <- approxFixp uEqMap defaultEps defaultMaxIters
+          approxUpperVec <- approxFixpWithHints uEqMap defaultEps defaultMaxIters variables
           approxFracVec <- toRationalProbVec defaultEps approxUpperVec
 
           DBG.traceM "Upper bounds must be at least 1:"
@@ -721,8 +721,8 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
 
         else do
           DBG.traceM "Using OVI to update upper bounds"
-          oviRes <- ovi defaultOVISettingsDouble uEqMap
-          rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
+          oviRes <- oviWithHints defaultOVISettingsDouble uEqMap variables
+          rCertified <- oviToRationalWithHints defaultOVISettingsDouble uEqMap oviRes variables
           unless rCertified $ error "cannot deduce a rational certificate for this semiconf"
           unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities"
 
