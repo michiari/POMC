@@ -35,6 +35,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , toBoolVec
                            , toLowerProb
                            , toUpperProb
+                           , newStats
                            , debug
                            ) where
 
@@ -222,10 +223,15 @@ data Stats = Stats { upperBoundTime :: Double
                    , quantSolTime :: Double
                    , suppGraphLen :: Int
                    , popaStatesCount :: Int
-                   , nonTrivialEquations :: Int 
+                   , nonTrivialEquations :: Int
                    , sccCount :: Int
                    , largestSCCSemiconfsCount :: Int
+                   , largestSCCEqsCount :: Int
+                   , gGraphTime :: Double
                    }
+
+newStats :: Stats
+newStats = Stats 0 0 0 0 0 0 0 0 0 0 0
 
 debug :: String -> a -> a
 --debug = DBG.trace

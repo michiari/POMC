@@ -142,12 +142,14 @@ main = do
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "
                        , showEFloat (Just 4) (upperBoundTime stats) " s (upper bounds), "
-                       , showEFloat (Just 4) (pastTime stats) " s (PAST certificates)"
+                       , showEFloat (Just 4) (pastTime stats) " s (PAST certificates), "
+                       , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis)."
                        , "\nInput pOPA state count: ", show $ popaStatesCount stats
                        , "\nSupport graph size: ", show $ suppGraphLen stats
                        , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations stats
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
+                       , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
                        ])
       return time
 
@@ -159,15 +161,17 @@ main = do
       putStr $ show tres
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "
-                       , timeToString $ upperBoundTime stats, " (upper bounds), "
-                       , timeToString $ pastTime stats, " (PAST certificates),"
-                       , timeToString $ quantWeightTime stats, " (weights for quant MC),"
-                       , timeToString $ quantSolTime stats, " (eq system for quant MC),"
-                       , show $ popaStatesCount stats, " (input pOPA states count),"
-                       , show $ suppGraphLen stats, " (Support Graph count),"
-                       , show $ nonTrivialEquations stats, " (non trivial equations solved for termination probabilities),"
-                       , show $ sccCount stats, " (SCC count in the Support Graph),"
-                       , show $ largestSCCSemiconfsCount stats, " (Size of the largest SCC in the Support Graph)."
+                       , showEFloat (Just 4) (upperBoundTime stats) " (upper bounds), "
+                       , showEFloat (Just 4) (pastTime stats) " (PAST certificates), "
+                       , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis),"
+                       , showEFloat (Just 4) (quantWeightTime stats) " (weights for quant MC),"
+                       , showEFloat (Just 4) (quantSolTime stats) " (eq system for quant MC)."
+                       , "\nInput pOPA state count: ", show $ popaStatesCount stats
+                       , "\nSupport graph size: ", show $ suppGraphLen stats
+                       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations stats
+                       , "\nSCC count in the support graph: ", show $ sccCount stats
+                       , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
+                       , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
                        ])
       return time
 

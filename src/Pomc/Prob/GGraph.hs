@@ -327,7 +327,10 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
                             , grGlobals = emptyGRGlobals
                           }
 
+  DBG.traceM "Building graph G..."
   (g, iniCount) <- buildGGraph gGlobals delta phiInitials (MV.unsafeRead suppGraph) (pendVector V.!)
+
+  DBG.traceM "Analyzing graph G..."
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
   sccCounter <- newSTRef (-2 :: Int)

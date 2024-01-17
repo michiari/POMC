@@ -27,6 +27,7 @@ import Pomc.Prec (Alphabet)
 import Pomc.Potl (Formula(..), getProps, normalize)
 import Pomc.Check(makeOpa, InitialsComputation(..))
 import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula )
+import Pomc.TimeUtils (startTimer, stopTimer)
 
 import qualified Pomc.Encoding as E
 
@@ -139,7 +140,7 @@ terminationExplicit popa query =
             , deltaPop = popaDeltaPop
             }
   in do
-    stats <- stToIO $ newSTRef $ Stats 0 0 0 0 0 0 0 0 0
+    stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa) stats
     scString <- stToIO $ CM.showMap sc
     --DBG.traceM $ "Computed the following support graph: " ++ scString
@@ -167,7 +168,7 @@ programTermination query prog =
                }
 
   in do
-    stats <- stToIO $ newSTRef $ Stats 0 0 0 0 0 0 0 0 0
+    stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph pDelta initVs initLbl stats
     -- asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
@@ -220,7 +221,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       }
 
   in do
-    stats <- stToIO $ newSTRef $ Stats 0 0 0 0 0 0 0 0 0
+    stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
@@ -238,9 +239,13 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     DBG.traceM $ "Computed termination probabilities: " ++ show ubVec
     DBG.traceM $ "Pending Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
+
+    startGGTime <- startTimer
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
+
+    tGG <- stopTimer startGGTime almostSurely
     computedStats <- stToIO $ readSTRef stats
-    return (almostSurely, computedStats, scString ++ show pendVector)
+    return (almostSurely, computedStats { gGraphTime = tGG }, scString ++ show pendVector)
 
 qualitativeModelCheckProgram :: Solver
                              -> Formula ExprProp -- phi: input formula to check
@@ -356,7 +361,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
       }
 
   in do
-    stats <- stToIO $ newSTRef $ Stats 0 0 0 0 0 0 0 0 0
+    stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
@@ -378,9 +383,14 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show ubVec
     DBG.traceM $ "Pending Upper Bounds Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
+
+    startGGTime <- startTimer
     (ub, lb) <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs stats
+
+    tGG <- stopTimer startGGTime ub
     computedStats <- stToIO $ readSTRef stats
-    return ((ub, lb), computedStats, scString ++ show pendVector)
+
+    return ((ub, lb), computedStats { gGraphTime = tGG }, scString ++ show pendVector)
 
 quantitativeModelCheckProgram :: Solver
                              -> Formula ExprProp -- phi: input formula to check
