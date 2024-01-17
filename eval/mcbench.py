@@ -83,7 +83,11 @@ def exec_bench(fname, args):
         'past_time': -1,
         'mem_tot': -1,
         'mem_gc': -2**10,
-        'states': -1
+        'states': -1,
+        'supp_size': -1,
+        'eqs': -1,
+        'sccs': -1,
+        'maxscc': -1,
     }
     if raw_res.returncode != 0:
         if raw_res.returncode == -9:

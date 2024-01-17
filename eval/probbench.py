@@ -31,7 +31,7 @@ def pretty_print(results, ms, csvfile):
     if csvfile:
         with open(csvfile, 'w', newline='') as f:
             cw = csv.writer(f)
-            cw.writerow(header)
+            cw.writerow(map(lambda x: x[0], key_map_list))
             cw.writerows(results_matrix)
 
 
