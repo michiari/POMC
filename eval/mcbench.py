@@ -18,8 +18,10 @@ supp_pattern = re.compile(r"Support graph size: ([0-9]+)")
 eqs_pattern = re.compile(r"Non-trivial equations solved for termination probabilities: ([0-9]+)")
 sccs_pattern = re.compile(r"SCC count in the support graph: ([0-9]+)")
 maxscc_pattern = re.compile(r"Size of the largest SCC in the support graph: ([0-9]+)")
+maxeqs_pattern = re.compile(r"Largest number of equations in an SCC in the Support Graph: ([0-9]+)")
 ub_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(upper bounds\)")
 past_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(PAST certificates\)")
+gg_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(graph analysis\)")
 memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
 
@@ -81,6 +83,7 @@ def exec_bench(fname, args):
         'time': -1,
         'ub_time': -1,
         'past_time': -1,
+        'gg_time': -1,
         'mem_tot': -1,
         'mem_gc': -2**10,
         'states': -1,
@@ -88,6 +91,7 @@ def exec_bench(fname, args):
         'eqs': -1,
         'sccs': -1,
         'maxscc': -1,
+        'maxeqs': -1,
     }
     if raw_res.returncode != 0:
         if raw_res.returncode == -9:
@@ -102,17 +106,20 @@ def exec_bench(fname, args):
     states_match = states_pattern.search(raw_stdout)
     ub_match = ub_pattern.search(raw_stdout)
     past_match = past_pattern.search(raw_stdout)
+    gg_match = gg_pattern.search(raw_stdout)
     memgc_match = memgc_pattern.search(raw_stderr)
     supp_match = supp_pattern.search(raw_stdout)
     eqs_match = eqs_pattern.search(raw_stdout)
     sccs_match = sccs_pattern.search(raw_stdout)
     maxscc_match = maxscc_pattern.search(raw_stdout)
+    maxeqs_match = maxeqs_pattern.search(raw_stdout)
     result = result_match[0]
     states = int(states_match.group(2)) if states_match else '?'
     return {
         'time': float(time_match.group(1)),
         'ub_time': float(ub_match.group(1)),
         'past_time': float(past_match.group(1)),
+        'gg_time': float(gg_match.group(1)),
         'mem_tot': int(mem_match.group(1)),
         'mem_gc': int(memgc_match.group(1)),
         'result': result,
@@ -121,6 +128,7 @@ def exec_bench(fname, args):
         'eqs': int(eqs_match.group(1)),
         'sccs': int(sccs_match.group(1)),
         'maxscc': int(maxscc_match.group(1)),
+        'maxeqs': int(maxeqs_match.group(1)),
     }
 
 def iter_bench(fname, args):
@@ -131,6 +139,7 @@ def iter_bench(fname, args):
         'time': statistics.mean(get_column(results, 'time')),
         'ub_time': statistics.mean(get_column(results, 'ub_time')),
         'past_time': statistics.mean(get_column(results, 'past_time')),
+        'gg_time': statistics.mean(get_column(results, 'gg_time')),
         'mem_tot': statistics.mean(get_column(results, 'mem_tot')),
         'mem_gc': statistics.mean(get_column(results, 'mem_gc'))/(2**10),
         'result': results[0]['result'],
@@ -139,6 +148,7 @@ def iter_bench(fname, args):
         'eqs': results[0]['eqs'],
         'sccs': results[0]['sccs'],
         'maxscc': results[0]['maxscc'],
+        'maxeqs': results[0]['maxeqs'],
     }
 
 def exec_all(fnames, args):
