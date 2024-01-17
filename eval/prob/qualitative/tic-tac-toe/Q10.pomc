@@ -1,5 +1,5 @@
 probabilistic query: qualitative;
-formula = XNu ([main|row_choice == 0u2] && [main|column_choice == 2u2]);
+formula = ~ (XNu ([main|row_choice == 0u2] && [main|column_choice == 2u2]));
 
 program:
 u2[3] upper;

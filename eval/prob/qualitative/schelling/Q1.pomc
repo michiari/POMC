@@ -1,6 +1,5 @@
 probabilistic query: qualitative;
-formula = ~ (F (qry And ~ (XNd (call And ~ (XNu obs))) And ~ (PNd (call And ~ (XNu obs)))));
-
+formula = F (G (~ obs));
 
 program:
 u4 p;
