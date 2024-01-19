@@ -241,10 +241,10 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     DBG.traceM $ "Pending Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
     computedStats <- stToIO $ readSTRef stats
-    DBG.traceM $ "Stats so far: " ++ concat [ 
-        showEFloat (Just 4) (upperBoundTime computedStats) " s (upper bounds), "
+    DBG.traceM $ "Stats so far: " ++ concat [
+        "Times: "
+      , showEFloat (Just 4) (upperBoundTime computedStats) " s (upper bounds), "
       , showEFloat (Just 4) (pastTime computedStats) " s (PAST certificates), "
-      , showEFloat (Just 4) (gGraphTime computedStats) " s (graph analysis)."
       , "\nInput pOPA state count: ", show $ popaStatesCount computedStats
       , "\nSupport graph size: ", show $ suppGraphLen computedStats
       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations computedStats
