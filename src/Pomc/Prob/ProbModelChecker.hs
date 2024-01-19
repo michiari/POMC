@@ -65,6 +65,7 @@ import Control.Monad (when, unless)
 import Data.Maybe (isNothing, isJust)
 import Data.IORef (newIORef)
 import Data.STRef (newSTRef, readSTRef)
+import Numeric (showEFloat)
 
 -- TODO: add normalize RichDistr to optimize the encoding
 -- note that non normalized encodings are at the moment (16.11.23) correctly handled by the termination algorithms
@@ -239,12 +240,24 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     DBG.traceM $ "Computed termination probabilities: " ++ show ubVec
     DBG.traceM $ "Pending Vector: " ++ show pendVector
     DBG.traceM "Conclusive analysis!"
+    computedStats <- stToIO $ readSTRef stats
+    DBG.traceM $ "Stats so far: " ++ concat [ 
+        showEFloat (Just 4) (upperBoundTime computedStats) " s (upper bounds), "
+      , showEFloat (Just 4) (pastTime computedStats) " s (PAST certificates), "
+      , showEFloat (Just 4) (gGraphTime computedStats) " s (graph analysis)."
+      , "\nInput pOPA state count: ", show $ popaStatesCount computedStats
+      , "\nSupport graph size: ", show $ suppGraphLen computedStats
+      , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations computedStats
+      , "\nSCC count in the support graph: ", show $ sccCount computedStats
+      , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount computedStats
+      , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount computedStats
+      ]
 
     startGGTime <- startTimer
     almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
 
     tGG <- stopTimer startGGTime almostSurely
-    computedStats <- stToIO $ readSTRef stats
+
     return (almostSurely, computedStats { gGraphTime = tGG }, scString ++ show pendVector)
 
 qualitativeModelCheckProgram :: Solver
