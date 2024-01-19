@@ -74,62 +74,47 @@ def exec_bench(fname, args):
     )
     raw_stdout = raw_res.stdout.decode('utf-8')
     raw_stderr = raw_res.stderr.decode('utf-8')
+    raw_out = raw_stdout + raw_stderr
     if args.verbose >= 1:
         print(raw_stdout)
     if args.verbose >= 2:
         print(raw_stderr)
 
-    error_dict = {
-        'time': -1,
-        'ub_time': -1,
-        'past_time': -1,
-        'gg_time': -1,
-        'mem_tot': -1,
-        'mem_gc': -2**10,
-        'states': -1,
-        'supp_size': -1,
-        'eqs': -1,
-        'sccs': -1,
-        'maxscc': -1,
-        'maxeqs': -1,
-    }
-    if raw_res.returncode != 0:
-        if raw_res.returncode == -9:
-            return error_dict | { 'result': 'TO' }
-        elif raw_res.returncode == 137:
-            return error_dict | { 'result': 'OOM' }
-        return error_dict | { 'result': 'Error {:d}'.format(raw_res.returncode) }
-
     time_match = time_pattern.search(raw_stdout)
     mem_match = mem_pattern.search(raw_stderr)
     result_match = [r[0] for r in result_pattern.findall(raw_stdout)]
-    states_match = states_pattern.search(raw_stdout)
-    ub_match = ub_pattern.search(raw_stdout)
-    past_match = past_pattern.search(raw_stdout)
+    states_match = states_pattern.search(raw_out)
+    ub_match = ub_pattern.search(raw_out)
+    past_match = past_pattern.search(raw_out)
     gg_match = gg_pattern.search(raw_stdout)
     memgc_match = memgc_pattern.search(raw_stderr)
-    supp_match = supp_pattern.search(raw_stdout)
-    eqs_match = eqs_pattern.search(raw_stdout)
-    sccs_match = sccs_pattern.search(raw_stdout)
-    maxscc_match = maxscc_pattern.search(raw_stdout)
-    maxeqs_match = maxeqs_pattern.search(raw_stdout)
-    result = result_match[0]
-    states = int(states_match.group(2)) if states_match else '?'
-    return {
-        'time': float(time_match.group(1)),
-        'ub_time': float(ub_match.group(1)),
-        'past_time': float(past_match.group(1)),
-        'gg_time': float(gg_match.group(1)),
-        'mem_tot': int(mem_match.group(1)),
-        'mem_gc': int(memgc_match.group(1)),
-        'result': result,
-        'states': states,
-        'supp_size': int(supp_match.group(1)),
-        'eqs': int(eqs_match.group(1)),
-        'sccs': int(sccs_match.group(1)),
-        'maxscc': int(maxscc_match.group(1)),
-        'maxeqs': int(maxeqs_match.group(1)),
+    supp_match = supp_pattern.search(raw_out)
+    eqs_match = eqs_pattern.search(raw_out)
+    sccs_match = sccs_pattern.search(raw_out)
+    maxscc_match = maxscc_pattern.search(raw_out)
+    maxeqs_match = maxeqs_pattern.search(raw_out)
+    check_match = lambda m, groupno=1, err=-1: m.group(groupno) if m else err
+    record = {
+        'time': float(check_match(time_match)),
+        'ub_time': float(check_match(ub_match)),
+        'past_time': float(check_match(past_match)),
+        'gg_time': float(check_match(gg_match)),
+        'mem_tot': int(check_match(mem_match)),
+        'mem_gc': int(check_match(memgc_match, 1, -2**10)),
+        'states': int(check_match(states_match, 2)),
+        'supp_size': int(check_match(supp_match)),
+        'eqs': int(check_match(eqs_match)),
+        'sccs': int(check_match(sccs_match)),
+        'maxscc': int(check_match(maxscc_match)),
+        'maxeqs': int(check_match(maxeqs_match)),
     }
+    if raw_res.returncode != 0:
+        if raw_res.returncode == -9:
+            return record | { 'result': 'TO' }
+        elif raw_res.returncode == 137:
+            return record | { 'result': 'OOM' }
+        return record | { 'result': 'Error {:d}'.format(raw_res.returncode) }
+    return record | { 'result': result_match[0] }
 
 def iter_bench(fname, args):
     get_column = lambda rows, i: [r[i] for r in rows]
