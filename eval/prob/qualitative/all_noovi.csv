@@ -1,0 +1,17 @@
+name,states,supp_size,eqs,sccs,maxscc,ub_time,past_time,time,mem_tot,result
+prob/qualitative/schelling/Q1.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/schelling/Q2.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/schelling/Q3.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/schelling/Q10.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/schelling/Q11.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/schelling/Q12.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/tic-tac-toe/Q1.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/tic-tac-toe/Q2.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/tic-tac-toe/Q6.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/tic-tac-toe/Q7.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/tic-tac-toe/Q8.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/tic-tac-toe/Q9.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/virus/Q1.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/virus/Q2.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/virus/Q4.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
+prob/qualitative/virus/Q7.pomc,-1,-1,-1,-1,-1,-1,-1,-1,-1,TO
