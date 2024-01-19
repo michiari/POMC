@@ -31,18 +31,19 @@ def to_list(records, key_map_list):
 
 def pretty_print(results, latex=False):
     idf = lambda x: x
-    to_ms = lambda t: float(t) * 1000
+    to_ms = lambda t: int(float(t) * 1000)
     key_map_list = [
         ('bench', idf),
         ('states', idf),
         ('supp_size', idf),
         ('eqs', idf),
         ('sccs', idf),
-        ('maxscc', idf),
+        ('maxeqs', idf),
         ('formula', idf),
         ('z3_time', idf),
         ('ub_time', to_ms),
         ('past_time', to_ms),
+        ('gg_time', idf),
         ('time', idf),
         ('mem_tot', lambda m: float(m) / 2**20),
         ('result', idf),
@@ -50,7 +51,7 @@ def pretty_print(results, latex=False):
     key_fun = lambda r: f'{r[0]}{int(r[6][1:]):02d}'
     results_matrix = sorted(to_list(results, key_map_list), key=key_fun)
 
-    header = ["Benchmark", "|Q_A|", "|SG|", "|f|", "#SCC", "|SCC|max", "formula", "z3 Time", "OVI UB Time (ms)", "OVI PAST Time (ms)", f"OVI Time (s)", "Memory (GiB)", "Result"]
+    header = ["Benchmark", "|Q_A|", "|SG|", "|f|", "#SCC", "|f(SCC)|max", "formula", "z3 Time", "OVI UB Time (ms)", "OVI PAST Time (ms)", "G Time (s)", "OVI Time (s)", "Memory (GiB)", "Holds AS"]
 
     print(tabulate(results_matrix, headers=header, tablefmt="latex" if latex else "plain", floatfmt=".2f"))
 

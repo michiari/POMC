@@ -10,7 +10,7 @@ def pretty_print(results, csvfile):
     key_list = ['name', 'states', 'supp_size', 'eqs', 'sccs', 'maxscc', 'maxeqs', 'ub_time', 'past_time', 'gg_time', 'time', 'mem_tot', 'result']
     results_matrix = to_list(results, list(map(lambda k: (k,  lambda x: x), key_list)))
 
-    header = ["Name", "|Q_A|", "|SG|", "|f|", "#SCC", "|SCC|max", "|f(SCC)|max", "UB Time (s)", "PAST Time (s)", "G Time (s)", "Time (s)", "Memory (KiB)", "Result"]
+    header = ["Name", "|Q_A|", "|SG|", "|f|", "#SCC", "|SCC|max", "|f(SCC)|max", "UB Time (s)", "PAST Time (s)", "G Time (s)", "Time (s)", "Memory (KiB)", "Holds AS"]
 
     print(tabulate(results_matrix, headers=header))
 
