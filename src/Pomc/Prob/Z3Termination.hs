@@ -688,11 +688,12 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
           approxUpperVec <- approxFixpWithHints uEqMap defaultEps defaultMaxIters variables
           approxFracVec <- toRationalProbVec defaultEps approxUpperVec
 
+          {-
           DBG.traceM "Upper bounds must be at least 1:"
           forM_ (groupBy (\k1 k2 -> fst k1 == fst k2) variables) $ \list -> do
               sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup m) list)
               assert =<< mkGe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
-
+          -}
           {-
       
             DBG.traceM "Asserting upper bounds 1 for value iteration"
