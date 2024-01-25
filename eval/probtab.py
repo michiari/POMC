@@ -24,6 +24,7 @@ def load_data(ovi_files, z3_files):
             ovi_records[k]['z3_time'] = r['result']
         else:
             ovi_records[k]['z3_time'] = r['time']
+            ovi_records[k]['z3_ub_time'] = r['ub_time']
     return ovi_records
 
 def to_list(records, key_map_list):
@@ -40,6 +41,7 @@ def pretty_print(results, latex=False):
         ('sccs', idf),
         ('maxeqs', idf),
         ('formula', idf),
+        ('z3_ub_time', to_ms),
         ('z3_time', idf),
         ('ub_time', to_ms),
         ('past_time', to_ms),
@@ -51,7 +53,7 @@ def pretty_print(results, latex=False):
     key_fun = lambda r: f'{r[0]}{int(r[6][1:]):02d}'
     results_matrix = sorted(to_list(results, key_map_list), key=key_fun)
 
-    header = ["Benchmark", "|Q_A|", "|SG|", "|f|", "#SCC", "|f(SCC)|max", "formula", "z3 Time", "OVI UB Time (ms)", "OVI PAST Time (ms)", "G Time (s)", "OVI Time (s)", "Memory (GiB)", "Holds AS"]
+    header = ["Benchmark", "|Q_A|", "|SG|", "|f|", "#SCC", "|f(SCC)|max", "formula", "z3 UB Time (ms)", "z3 Time (s)", "OVI UB Time (ms)", "OVI PAST Time (ms)", "G Time (s)", "OVI Time (s)", "Memory (GiB)", "Holds AS"]
 
     print(tabulate(results_matrix, headers=header, tablefmt="latex" if latex else "plain", floatfmt=".2f"))
 
