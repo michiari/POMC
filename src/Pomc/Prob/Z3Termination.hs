@@ -64,6 +64,16 @@ encodeTransition e toAST = do
   probReal <- mkRealNum (prob e)
   mkMul [probReal, toAST]
 
+mkOp1 :: ([AST] -> Z3 AST) -> [AST] -> Z3 AST
+mkOp1 _ [ast] = return ast
+mkOp1 mkOp asts = mkOp asts
+
+mkAdd1 :: [AST] -> Z3 AST
+mkAdd1 = mkOp1 mkAdd
+
+mkMul1 :: [AST] -> Z3 AST
+mkMul1 = mkOp1 mkMul
+
 -- (Z3 Var, was it already present?)
 lookupVar :: VarMap -> (EqMap EqMapNumbersType, EqMap EqMapNumbersType) -> VarKey -> Z3 (AST, Bool)
 lookupVar (varMap, newAdded, asPendingIdxes, encodeInitial) (leqMap, uEqMap) key = do
@@ -186,7 +196,7 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) (lowerEqMap, u
         if isNullTerm
           then return (currs, newUnencoded, terms) -- One variable is null, so we don't add the term
           else do
-          eq <- mkMul (map fst vars)
+          eq <- mkMul1 (map fst vars)
           return (eq:currs, newUnencoded, varsIds:terms)
 
       pushEnc (currs, vars, terms) e = do
@@ -211,7 +221,7 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) (lowerEqMap, u
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
     when (not (IntSet.member gnId_ asPendingIdxes) || (gnId_ == 0 && approxSingleQuery)) $ do
       when useZ3 $ do
-        eq <- mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
+        eq <- mkComp var =<< mkAdd1 transitions -- generate the equation for this semiconf
         eqString <- astToString eq
         --DBG.traceM $ "Asserting Push equation: " ++ eqString
         assert eq
@@ -247,7 +257,7 @@ encodeShift varMap@(_, _, asPendingIdxes, _) (lowerEqMap, upperEqMap) mkComp gn 
     (transitions, unencoded_vars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
     unless (IntSet.member gnId_ asPendingIdxes) $ do
       when useZ3 $ do
-        eq <- mkComp var =<< mkAdd transitions -- generate the equation for this semiconf
+        eq <- mkComp var =<< mkAdd1 transitions -- generate the equation for this semiconf
         eqString <- astToString eq
         --DBG.traceM $ "Asserting Shift equation: " ++ eqString
         assert eq
