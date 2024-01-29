@@ -628,8 +628,12 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
             assert =<< mkLe var =<< mkAdd [pReal, epsReal])
         solverCheckAndGetModel >>= \case
           (Sat, Just model) -> return model
-          (Unsat, _) -> liftIO (writeIORef (eps globals) (2 * currentEps)) >> pop 1 >> doAssert approxFracVec (2 * currentEps) -- backtrack one point and restart
-          _ -> error "undefinite result when checking an SCC"
+          (Unsat, _)
+            | currentEps <= 1 -> do
+                DBG.traceM $ "Unsat, backtrack. Current eps: " ++ show currentEps
+                liftIO (writeIORef (eps globals) (2 * currentEps)) >> pop 1 >> doAssert approxFracVec (2 * currentEps) -- backtrack one point and restart
+            | otherwise -> error "Maximum tolerance reaced when solving SCC"
+          _ -> error "Undefinite result when checking an SCC"
 
   liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
   liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCount = acc} -> s{largestSCCSemiconfsCount = max acc (length $ nub sccMembers)}
