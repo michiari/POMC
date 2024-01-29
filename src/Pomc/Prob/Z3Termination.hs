@@ -180,11 +180,15 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) (lowerEqMap, u
         supportGn <- liftIO $ MV.unsafeRead graph (to e)
         let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
         vars <- mapM (lookupVar varMap (lowerEqMap, upperEqMap)) varsIds
-        eq <- mkMul (map fst vars)
-        return ( eq:currs
-               , [(gnId__, rightContext_) | ((_,alrEncoded), (gnId__, rightContext_)) <- zip vars varsIds, not alrEncoded] ++ unencoded_vars
-               , varsIds:terms
-               )
+        let newUnencoded = [(gnId__, rightContext_) | ((_, False), (gnId__, rightContext_)) <- zip vars varsIds]
+                           ++ unencoded_vars
+        isNullTerm <- or <$> mapM (isVarNull upperEqMap) varsIds
+        if isNullTerm
+          then return (currs, newUnencoded, terms) -- One variable is null, so we don't add the term
+          else do
+          eq <- mkMul (map fst vars)
+          return (eq:currs, newUnencoded, varsIds:terms)
+
       pushEnc (currs, vars, terms) e = do
         toGn <- liftIO $ MV.unsafeRead graph (to e)
         (equations, unencoded_vars, varTerms) <- foldM (closeSummaries toGn) ([], [], []) (supportEdges gn)
@@ -210,8 +214,10 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) (lowerEqMap, u
         assert eq
         assert =<< mkGe var =<< mkRealNum 0
       --DBG.traceM $ show varKey ++ " = PushEq " ++ show terms
-      addFixpEq upperEqMap varKey $ PushEq $ concat terms
-      addFixpEq lowerEqMap varKey $ PushEq $ concat terms
+      let pushEq | null terms = PopEq 0
+                 | otherwise = PushEq $ concat terms
+      addFixpEq upperEqMap varKey pushEq
+      addFixpEq lowerEqMap varKey pushEq
     return unencoded_vars
 
 encodeShift :: (Eq state, Hashable state, Show state)
@@ -643,8 +649,8 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
 
   variables <- liftIO $ map fst <$> HT.toList newAdded
   augVariables <- liftIO $ HT.toList newAdded
-  --listed <- liftIO $ HT.toList lEqMap
-  --DBG.traceM $ "Lower eq system: " ++ show listed
+  -- listed <- liftIO $ HT.toList lEqMap
+  -- DBG.traceM $ "Lower eq system: " ++ show listed
 
   -- preprocessing phase
   _ <- preprocessApproxFixpWithHints lEqMap defaultEps (3 * length sccMembers) variables
