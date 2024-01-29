@@ -74,11 +74,11 @@ lookupVar (varMap, newAdded, asPendingIdxes, encodeInitial) (leqMap, uEqMap) key
     else do
       new_var <- if IntSet.member (fst key) asPendingIdxes
                   then if snd key == -1 && encodeInitial
-                    then do 
+                    then do
                       addFixpEq leqMap key (PopEq 1)
                       addFixpEq uEqMap key (PopEq 1)
                       mkRealNum (1 :: EqMapNumbersType)
-                    else do 
+                    else do
                       addFixpEq leqMap key (PopEq 0)
                       addFixpEq uEqMap key (PopEq 0)
                       mkRealNum (0 :: EqMapNumbersType)
@@ -626,6 +626,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
             pReal <- mkRealNum pRational
             assert =<< mkGe var pReal
             assert =<< mkLe var =<< mkAdd [pReal, epsReal])
+        -- DBG.traceM =<< solverToString
         solverCheckAndGetModel >>= \case
           (Sat, Just model) -> return model
           (Unsat, _)
@@ -652,7 +653,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
     pAST <- mkRealNum (p :: Double)
     liftIO $ HT.insert m varKey pAST
 
-  -- lEqMap and uEqMap should be the same here 
+  -- lEqMap and uEqMap should be the same here
   unsolvedEqs <- numLiveEqSysWithHints lEqMap variables
   DBG.traceM $ "Number of live equations to be solved: " ++ show unsolvedEqs
   liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc unsolvedEqs }
@@ -699,7 +700,6 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
               assert =<< mkGe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
           -}
           {-
-      
             DBG.traceM "Asserting upper bounds 1 for value iteration"
             forM_ (groupBy (\k1 k2 -> fst k1 == fst k2) . map (\(varKey, _, _) -> varKey) $ nonPops) $ \list -> do
               sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup newAdded) list)
@@ -707,7 +707,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
 
             -- assert bounds computed by value iteration
 
-            -}
+          -}
           DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
           model <- doAssert approxFracVec iterEps
 
