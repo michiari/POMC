@@ -1,3 +1,4 @@
+{-# LANGUAGE HexFloatLiterals #-}
 {- |
    Module      : Pomc.Prob.FixPoint
    Copyright   : 2023 Michele Chiari
@@ -211,10 +212,7 @@ approxFixpWithHints eqMap eps maxIters lVars = do
   return probVec
 
 defaultEps :: EqMapNumbersType
-defaultEps = 1e-8
-
-defaultREps :: Prob
-defaultREps = 1 % 10^(8 :: Integer)
+defaultEps = 0x1p-26 -- ~ 1e-8
 
 defaultMaxIters :: Int
 defaultMaxIters = 1000000
