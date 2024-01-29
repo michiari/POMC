@@ -192,7 +192,6 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) (lowerEqMap, u
       pushEnc (currs, vars, terms) e = do
         toGn <- liftIO $ MV.unsafeRead graph (to e)
         (equations, unencoded_vars, varTerms) <- foldM (closeSummaries toGn) ([], [], []) (supportEdges gn)
-        transition <- encodeTransition e =<< mkAdd equations
         newVars <- if Set.null (supportEdges gn)
                       then do
                         (_, alreadyEncoded) <- lookupVar varMap (lowerEqMap, upperEqMap) (gnId toGn, -2 :: Int)
@@ -200,10 +199,14 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) (lowerEqMap, u
                           then return []
                           else return [(gnId toGn, -2 :: Int)]
                       else return unencoded_vars
-        return ( transition:currs
-               , newVars ++ vars
-               , (map (\[v1, v2] -> (prob e, v1, v2)) varTerms):terms
-               )
+        if null equations
+          then return (currs, newVars ++ vars, terms)
+          else do
+          transition <- encodeTransition e =<< mkAdd1 equations
+          return ( transition:currs
+                 , newVars ++ vars
+                 , (map (\[v1, v2] -> (prob e, v1, v2)) varTerms):terms
+                 )
   in do
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
     when (not (IntSet.member gnId_ asPendingIdxes) || (gnId_ == 0 && approxSingleQuery)) $ do
@@ -214,7 +217,7 @@ encodePush graph varMap@(_, _, asPendingIdxes, approxSingleQuery) (lowerEqMap, u
         assert eq
         assert =<< mkGe var =<< mkRealNum 0
       --DBG.traceM $ show varKey ++ " = PushEq " ++ show terms
-      let pushEq | null terms = PopEq 0
+      let pushEq | null (concat terms) = PopEq 0
                  | otherwise = PushEq $ concat terms
       addFixpEq upperEqMap varKey pushEq
       addFixpEq lowerEqMap varKey pushEq
@@ -233,11 +236,13 @@ encodeShift varMap@(_, _, asPendingIdxes, _) (lowerEqMap, upperEqMap) mkComp gn 
   let shiftEnc (currs, new_vars, terms) e = do
         let target = (to e, rightContext)
         (toVar, alreadyEncoded) <- lookupVar varMap (lowerEqMap, upperEqMap) target
-        trans <- encodeTransition e toVar
-        return ( trans:currs
-              , if alreadyEncoded then new_vars else target:new_vars
-              , (prob e, target):terms
-              )
+        let newUnencoded = if alreadyEncoded then new_vars else target:new_vars
+        isNullTerm <- isVarNull upperEqMap target
+        if isNullTerm
+          then return (currs, newUnencoded, terms)
+          else do
+          trans <- encodeTransition e toVar
+          return (trans:currs, newUnencoded, (prob e, target):terms)
   in do
     (transitions, unencoded_vars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
     unless (IntSet.member gnId_ asPendingIdxes) $ do
@@ -247,8 +252,10 @@ encodeShift varMap@(_, _, asPendingIdxes, _) (lowerEqMap, upperEqMap) mkComp gn 
         --DBG.traceM $ "Asserting Shift equation: " ++ eqString
         assert eq
         assert =<< mkGe var =<< mkRealNum 0
-      addFixpEq upperEqMap varKey $ ShiftEq terms
-      addFixpEq lowerEqMap varKey $ ShiftEq terms
+      let shiftEq | null terms = PopEq 0
+                  | otherwise = ShiftEq terms
+      addFixpEq upperEqMap varKey shiftEq
+      addFixpEq lowerEqMap varKey shiftEq
     return unencoded_vars
 -- end
 
