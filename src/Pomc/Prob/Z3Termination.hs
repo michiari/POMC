@@ -6,8 +6,7 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Prob.Z3Termination ( terminationQuery
-                               , terminationQuerySCC
+module Pomc.Prob.Z3Termination ( terminationQuerySCC
                                ) where
 
 import Prelude hiding (LT, GT)
@@ -99,31 +98,6 @@ lookupVar (varMap, newAdded, asPendingIdxes, encodeInitial) (leqMap, uEqMap) key
       liftIO $ HT.insert varMap key new_var
       return (new_var, False)
 -- end helpers
-
--- compute the probabilities that a graph will terminate
--- requires: the initial semiconfiguration is at position 0 in the Support graph
-terminationQuery :: (Eq state, Hashable state, Show state)
-                 => SupportGraph RealWorld state
-                 -> EncPrecFunc
-                 -> (IntSet, IntSet) -- semiconfs that cannot reach a pop, and a subset of those that do it almost surely
-                 -> TermQuery
-                 -> Z3 TermResult
-terminationQuery graph precFun (asPending, asNonPending) query = do
-    error "Termination Query has not been kept up to date to latest modifications to the code, hence We are forbidding you to call it"
-    {-
-    newMap <- liftIO HT.new
-    unusedMap <- liftIO HT.new
-    new_var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
-    liftIO $ HT.insert newMap (0 :: Int, -1 :: Int) new_var
-    lowerEqMap <- liftIO HT.new
-    upperEqMap <- liftIO HT.new
-    -- encode the probability transition relation by asserting a set of Z3 formulas
-    setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
-    encode [(0 ::Int , -1 :: Int)] (newMap, unusedMap, asPending, encodeInitialSemiconf query) (lowerEqMap, upperEqMap) graph precFun mkGe query
-    error "fix it according to recent lower and upper EqMap"
-    --solveQuery query new_var graph (newMap, unusedMap, asPending, encodeInitialSemiconf query) asNonPending eqMap
-    -}
-
 
 encode :: (Eq state, Hashable state, Show state)
       => [(Int, Int)]
@@ -269,148 +243,6 @@ encodeShift varMap@(_, _, asPendingIdxes, _) (lowerEqMap, upperEqMap) mkComp gn 
     return unencoded_vars
 -- end
 
--- params:
--- (q :: TermQuery) = input query
--- (var:: AST) = Z3 var associated with the initial semiconf
--- (graph :: SupportGraph RealWorld state :: ) = the graph
--- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
-{-
-solveQuery :: TermQuery -> AST -> SupportGraph RealWorld state
-           -> VarMap -> IntSet -> EqMap EqMapNumbersType -> Z3 TermResult
-solveQuery q
-  | ApproxAllQuery solv <- q = encodeApproxAllQuery (getTolerance solv)
-  | ApproxSingleQuery solv <- q = encodeApproxSingleQuery (getTolerance solv)
-  | PendingQuery solv <- q = encodePendingQuery (getTolerance solv)-- TODO: enable hints here and see if it's any better
-  | CompQuery comp bound solv <- q = encodeComparison comp bound solv
-  where
-    encodeApproxAllQuery eps _ graph varMap@(m, _, asPendingIdxs, _) _ eqMap = do
-      assertHints varMap eqMap eps
-      upperBoundModel <- fromJust . snd <$> getModel
-      filteredASTs <- filter (\(key, _) -> not (IntSet.member (fst key) asPendingIdxs)) <$> liftIO (HT.toList m)
-      setZ3PPOpts
-      ub <-  GeneralMap.fromList <$> forM filteredASTs (\(varKey, var) -> do
-                s <- astToString . fromJust =<< eval upperBoundModel var
-                return (varKey, toRational (read (takeWhile (/= '?') s) :: Scientific)))
-
-      lbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, approxRational (d - eps) eps)) <$> liftIO (HT.toList eqMap)
-      return $ ApproxAllResult (lbMap, ub)
-    encodeApproxSingleQuery eps _ _ varMap@(m, _, _, _) _ eqMap = do
-      assertHints varMap eqMap eps
-      upperBoundModel <- fromJust . snd <$> getModel
-      setZ3PPOpts
-      ub <- astToString . fromJust =<< eval upperBoundModel . fromJust =<< liftIO (HT.lookup m (0,-1))
-      lb <- (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> liftIO (HT.lookup eqMap (0,-1))
-      return $ ApproxSingleResult (lb, toRational (read (takeWhile (/= '?') ub) :: Scientific))
-
-    encodePendingQuery solv _ graph varMap@(m, _, asPendingIdxs, _) asNonPendingIdxs eqMap = do
-      DBG.traceM "Asserting hints"
-      assertHints varMap eqMap solv
-      DBG.traceM "Computing an overrapproximating model"
-      model <- fromJust . snd <$> getModel
-      vec <- liftIO $ groupASTs m (MV.length graph) (\key -> not (IntSet.member (fst key) asPendingIdxs))
-      PendingResult <$> V.imapM (isPending graph model asNonPendingIdxs) vec
-
-    getTolerance SMTWithHints = defaultTolerance
-    getTolerance (SMTCert eps) = eps
-    getTolerance _ = error "You must use hints in the current version!!"
-
-    getMaybeTolerance SMTWithHints = Just defaultTolerance
-    getMaybeTolerance (SMTCert eps) = Just eps
-    getMaybeTolerance _ = Nothing
-
-    assertHints varMap eqMap  eps = do
-      -- oviRes <- ovi defaultOVISettingsDouble eqMap
-      -- oviToRational defaultOVISettingsDouble eqMap oviRes
-      -- oviveclist <- liftIO $ HT.toList $ oviUpperBound oviRes
-      -- DBG.traceM $ "OVI result: " ++ show (oviSuccess oviRes) ++ show oviveclist
-      let iterEps = min defaultEps $ eps * eps
-      -- DBG.traceShowM =<< (liftIO $ HT.toList eqMap)
-      approxVec <- approxFixp eqMap iterEps defaultMaxIters
-      -- DBG.traceShowM =<< (liftIO $ HT.toList approxVec)
-      approxFracVec <- toRationalProbVec iterEps approxVec
-      DBG.traceM "Computed a lower bound!"
-      enlargeBounds approxFracVec eps
-      -- updating with found values
-      forM_  approxFracVec $ \(varKey, _, p) -> do
-        liftIO (HT.lookup eqMap varKey) >>= \case
-          Just (PopEq _) -> return () -- An eq constraint has already been asserted
-          _ -> addFixpEq eqMap varKey (PopEq p)
-      where enlargeBounds approxFracVec eps = do
-              epsReal <- mkRealNum eps
-              bounds <- concat <$> forM approxFracVec (\(varKey, pRational, _) -> liftIO (HT.lookup eqMap varKey) >>= \case
-                Just (PopEq _) -> return [] -- An eq constraint has already been asserted
-                _ -> do
-                  (var, True) <- lookupVar varMap (eqMap, error "refactor for uEqMap") varKey
-                  pReal <- mkRealNum pRational
-                  lb <- mkGe var pReal
-                  ub <-  mkLe var =<< mkAdd [pReal, epsReal]
-                  return [lb, ub])
-              --DBG.traceM "Collected some requirements"
-              checkAssumptions bounds >>= \case
-                  Sat -> mapM_ assert bounds
-                  Unsat -> enlargeBounds approxFracVec (2 * eps)
-                  Undef -> error "undefinite result when checking an SCC"
-
-    setZ3PPOpts = do
-      _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
-      _ <- parseSMTLib2String "(set-option :pp.decimal_precision 10)" [] [] [] []
-      return ()
-
-    encodeComparison comp bound solver var _ varMap _ eqMap = do
-      --DBG.traceM $ "encoding comparison! " ++ show comp ++ " " ++ show bound
-      when (isJust $ getMaybeTolerance solver) $ DBG.trace "asserting Hints" $ assertHints varMap eqMap (getTolerance solver)
-      let mkComp = case comp of
-            Lt -> mkLt
-            Le -> mkLe
-            Gt -> mkLe
-            Ge -> mkLt
-      assert =<< mkComp var =<< mkRealNum bound
-      -- check feasibility of all the asserts and interpret the result
-      parseResult comp <$> check
-        where parseResult :: Comp -> Result -> TermResult
-              parseResult Ge Sat   = TermUnsat
-              parseResult Ge Unsat = TermSat
-              parseResult Gt Sat   = TermUnsat
-              parseResult Gt Unsat = TermSat
-              parseResult _  Sat   = TermSat
-              parseResult _  Unsat = TermUnsat
-              parseResult _  Undef = error "Undef result error"
-
-
--- Query solving helpers
-groupASTs :: HT.BasicHashTable VarKey AST -> Int -> ((Int, Int) -> Bool) -> IO (Vector [AST])
-groupASTs varMap len cond = do
-  new_mv <- MV.replicate len []
-  HT.mapM_ (\(key, ast) -> when (cond key) $ MV.unsafeModify new_mv (ast :) (fst key)) varMap
-  V.freeze new_mv -- TODO: optimize this as it is linear in the size of the support graph
-
--- is a semiconf pending?
-isPending :: SupportGraph RealWorld state -> Model -> IntSet -> Int -> [AST] -> Z3 Bool
-isPending graph m mustReachPopIdx idx asts = do
-  sumAst <- mkAdd asts
-  -- some optimizations for cases where we already know if the semiconf is pending
-  -- so there is no need for additional checks
-  -- if a semiconf is a pop, then of course it terminates almost surely (and hence it is not pending)
-  isPop <- liftIO $ not . Map.null . popContexts <$> MV.unsafeRead graph idx
-  -- if no variable has been encoded for this semiconf, it means it ha zero prob to reach a pop (and hence it is pending)
-  let noVars = null asts
-      mustReachPop = IntSet.member idx mustReachPopIdx
-  less1 <- mkLt sumAst =<< mkRealNum (1 :: Prob) -- check if it can be pending
-  isUpperBounded <- fromJust <$> (evalBool m =<< mkLt sumAst =<< mkRealNum (1 :: Prob))
-  eq <- mkEq sumAst =<< mkRealNum (1 :: Prob)
-  if isPop || mustReachPop
-    then return False
-    else if noVars || isUpperBounded
-            then return True
-            else do
-              r <- checkAssumptions [less1]
-              let cases
-                    | Sat <- r = assert less1 >> return True
-                    | Unsat <- r = assert eq >> return False -- semiconf i is not pending
-                    | Undef <- r = error $ "Undefined result error when checking pending of semiconf" ++ show idx
-              cases
--}
-
 ---------------------------------------------------------------------------------------------------
 -- compute the exact termination probabilities, but do it with a backward analysis for every SCC --
 ---------------------------------------------------------------------------------------------------
@@ -454,11 +286,7 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   newLowerEqMap <- liftIO HT.new
   emptyMustReachPop <- liftIO $ newIORef IntSet.empty
   newRewVarMap <- liftIO HT.new
-  newEps <- case (solver query) of
-              SMTWithHints -> liftIO $ newIORef defaultEps
-              SMTCert givenEps -> liftIO $ newIORef givenEps
-              OVI -> liftIO $ newIORef defaultEps
-              _ -> error "you cannot use pure SMT when computing termination SCC-based"
+  newEps <- liftIO $ newIORef defaultEps
   let globals = DeficientGlobals { supportGraph = suppGraph
                                 , sStack = newSS
                                 , bStack = newBS
@@ -479,11 +307,9 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   _ <- parseSMTLib2String "(set-option :pp.decimal_precision 5)" [] [] [] []
 
   -- perform the Gabow algorithm to compute all termination probabilities
-  let useZ3 = case (solver query) of
+  let useZ3 = case solver query of
         SMTWithHints -> True
-        SMTCert _ -> True
         OVI -> False
-        _ -> error "in terminationquerySCC, we support only OVI, SMTWithHints and SMTCert as solvers for the moment"
 
   gn <- liftIO $ MV.unsafeRead suppGraph 0
   addtoPath globals gn
@@ -493,12 +319,15 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   currentEps <- liftIO $ readIORef (eps globals)
   mustReachPopIdxs <- liftIO $ readIORef (mustReachPop globals)
   let actualEps = min defaultEps $ currentEps * currentEps
+      intervalLogic (_, ub) Lt p = ub < p
+      intervalLogic (lb, _) Gt p = lb > p
+      intervalLogic (_, ub) Le p = ub <= p
+      intervalLogic (lb, _) Ge p = lb >= p
       readResults (ApproxAllQuery SMTWithHints) = do
         upperProbRationalMap <- GeneralMap.fromList <$> (mapM (\(varKey, varAST) -> do
             p <- astToString varAST
             let pRational = toRational (read (takeWhile (/= '?') p) :: Scientific)
             return (varKey, pRational)) =<< liftIO (HT.toList newMap))
-
         lowerProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newLowerEqMap)
         let lowerProbRationalMap = GeneralMap.map (\v -> approxRational (v - actualEps) actualEps) lowerProbMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
@@ -507,10 +336,12 @@ terminationQuerySCC suppGraph precFun query oldStats = do
         let ub = toRational (read (takeWhile (/= '?') ubString) :: Scientific)
         lb <- (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
         return (ApproxSingleResult (lb, ub), mustReachPopIdxs)
-
-      readResults (ApproxAllQuery (SMTCert _)) = readResults (ApproxAllQuery SMTWithHints)
-      readResults (ApproxSingleQuery (SMTCert _ )) = readResults (ApproxSingleQuery SMTWithHints)
-
+      readResults (CompQuery comp bound SMTWithHints) = do
+        ubString <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
+        let ub = toRational (read (takeWhile (/= '?') ubString) :: Scientific)
+        lb <- (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
+        return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
+      
       readResults (ApproxAllQuery OVI) = do
         upperProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newUpperEqMap)
         let upperProbRationalMap = GeneralMap.map (\v -> approxRational (v + actualEps) actualEps) upperProbMap
@@ -521,7 +352,10 @@ terminationQuerySCC suppGraph precFun query oldStats = do
         ub <- (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newUpperEqMap (0,-1))
         lb <- (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
         return (ApproxSingleResult (lb, ub), mustReachPopIdxs)
-      readResults _ = error "cannot use SCC decomposition for queries that do not estimate the actual probabilities"
+      readResults (CompQuery comp bound OVI) = do
+        ub <- (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newUpperEqMap (0,-1))
+        lb <- (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
+        return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
   readResults query
 
 dfs :: (Eq state, Hashable state, Show state)
@@ -716,21 +550,6 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
           approxUpperVec <- approxFixpWithHints uEqMap defaultEps defaultMaxIters variables
           approxFracVec <- toRationalProbVec defaultEps approxUpperVec
 
-          {-
-          DBG.traceM "Upper bounds must be at least 1:"
-          forM_ (groupBy (\k1 k2 -> fst k1 == fst k2) variables) $ \list -> do
-              sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup m) list)
-              assert =<< mkGe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
-          -}
-          {-
-            DBG.traceM "Asserting upper bounds 1 for value iteration"
-            forM_ (groupBy (\k1 k2 -> fst k1 == fst k2) . map (\(varKey, _, _) -> varKey) $ nonPops) $ \list -> do
-              sumVars <- mkAdd =<< liftIO (mapM (fmap fromJust . HT.lookup newAdded) list)
-              assert =<< mkLe sumVars =<< mkRealNum (1 :: EqMapNumbersType)
-
-            -- assert bounds computed by value iteration
-
-          -}
           DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
           model <- doAssert approxFracVec iterEps
 

@@ -13,6 +13,7 @@ import Pomc.Test.OPMs (stlV2Alphabet, stlV3Alphabet, makeInputSet)
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), terminationLTExplicit, terminationLEExplicit, terminationGTExplicit, terminationGEExplicit,
                                   terminationApproxExplicit)
 
+import Pomc.Prob.ProbUtils(Solver(..), Stats)
 import Data.Ratio((%))
 
 tests :: TestTree
@@ -20,14 +21,14 @@ tests = testGroup "ProbModelChecking.hs Termination Tests" $
             [ testGroup "Boolean Termination Tests" [dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests,
                                                      biasedRandomWalkTests, nestedRandomWalkTests, nonTerminatingTests, callRetExTests]
              , testGroup "Estimating Termination Probabilities" 
-                $ map (\(popa, expected, s) -> makeTestCase popa ((s, terminationApproxExplicit), expected)) exactTerminationProbabilities
+                $ map (\(popa, expected, s) -> makeTestCase popa ((s, \popa -> terminationApproxExplicit popa SMTWithHints), expected)) exactTerminationProbabilities
             ]
 
 type Prob = Rational
-type TestCase a = (String, (ExplicitPopa Word String -> IO (a, String)))
+type TestCase a = (String, (ExplicitPopa Word String -> IO (a, Stats, String)))
 
 termQueries :: [TestCase Bool]
-termQueries = [(s ++ show b, \popa -> f popa b) | (s,f) <- termFunctions, b <- termBounds]
+termQueries = [(s ++ show b, \popa -> f popa b SMTWithHints) | (s,f) <- termFunctions, b <- termBounds]
   where termFunctions = [("LT ", terminationLTExplicit), ("LE ", terminationLEExplicit), ("GT ", terminationGTExplicit), ("GE ", terminationGEExplicit)]
         termBounds = [0.0, 0.5, 1.0]
 
@@ -50,7 +51,7 @@ makeTestCase :: (Eq a, Show a)
              -> (TestCase a, a)
              -> TestTree
 makeTestCase popa ((name, query), expected) = testCase name $ do 
-  (res, info) <- query popa
+  (res, stats, info) <- query popa
   let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
   assertBool debugMsg (res == expected)
 

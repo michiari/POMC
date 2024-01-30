@@ -32,7 +32,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , encodeInitialSemiconf
                            , solver
                            , toBool
-                           , toBoolVec
+                           , toTermResult
                            , toLowerProb
                            , toUpperProb
                            , newStats
@@ -40,7 +40,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            ) where
 
 import Pomc.State(Input, State)
-import Pomc.Encoding (nat, BitEncoding)
+import Pomc.Encoding (nat)
 import Pomc.Check (EncPrecFunc)
 
 import qualified Pomc.Encoding as E
@@ -54,8 +54,6 @@ import Control.DeepSeq (NFData)
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
-
-import Data.Vector(Vector)
 
 import Data.Map(Map)
 
@@ -155,12 +153,11 @@ decode (s1, Nothing) = (getId s1, 0, 0)
 decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
 
 -- Strategy to use to compute the result
--- PureSMT: just query the SMT solver
 -- SMTWithHints: compute a lower approximation of the solution
 --               with an iterative method and use it as a hint for the SMT solver
 -- SMTCert: approximate the solution with an iterative method and ask the SMT solver
 --          for a certificate within the given tolerance
-data Solver = PureSMT | SMTWithHints | SMTCert Double | OVI deriving (Eq, Show)
+data Solver = SMTWithHints | OVI deriving (Eq, Show)
 
 defaultTolerance :: EqMapNumbersType
 defaultTolerance = 1e-5
@@ -176,7 +173,6 @@ defaultRTolerance = 1e-5
 data TermQuery = CompQuery Comp Prob Solver
                | ApproxAllQuery Solver
                | ApproxSingleQuery Solver
-               | PendingQuery Solver
   deriving (Show, Eq)
 
 data Comp = Lt | Le | Gt | Ge deriving (Show, Eq)
@@ -190,20 +186,23 @@ solver :: TermQuery -> Solver
 solver (CompQuery _ _ s) = s
 solver (ApproxAllQuery s) = s
 solver (ApproxSingleQuery s) = s
-solver (PendingQuery s) = s
 
 -- different possible results of a termination query
 -- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 
 -- ApproxSingleResult represents the approximate probability to terminate of the popa 
 -- PendingResult represents whether a semiconf is pending (i.e. it has positive probability to non terminate) for all semiconfs of the popa
 -- by convention, 
-data TermResult = TermSat | TermUnsat | ApproxAllResult (Map (Int,Int) Prob, Map (Int,Int) Prob) | ApproxSingleResult (Prob, Prob) | PendingResult (Vector Bool)
+data TermResult = TermSat | TermUnsat | ApproxAllResult (Map (Int,Int) Prob, Map (Int,Int) Prob) | ApproxSingleResult (Prob, Prob)
   deriving (Show, Eq, Generic, NFData)
 
 toBool :: TermResult -> Bool
 toBool TermSat = True
 toBool TermUnsat = False
 toBool r = error $ "cannot convert a non boolean result. Got instead: " ++ show r
+
+toTermResult :: Bool -> TermResult
+toTermResult True = TermSat
+toTermResult False = TermUnsat
 
 toLowerProb :: TermResult -> Prob
 toLowerProb (ApproxSingleResult (lb, _)) = lb
@@ -212,10 +211,6 @@ toLowerProb r = error $ "cannot convert a non single probability result. Got ins
 toUpperProb :: TermResult -> Prob
 toUpperProb (ApproxSingleResult (_, ub)) = ub
 toUpperProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
-
-toBoolVec :: TermResult -> Vector Bool
-toBoolVec (PendingResult v) = v
-toBoolVec r = error $ "cannot convert a non probability vector result. Got instead: " ++ show r
 
 data Stats = Stats { upperBoundTime :: Double
                    , pastTime :: Double

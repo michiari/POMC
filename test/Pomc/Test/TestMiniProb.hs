@@ -11,6 +11,7 @@ module Pomc.Test.TestMiniProb (tests) where
 import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
 import Pomc.Prob.ProbUtils (Solver(..), TermQuery(..), TermResult(..))
 import Pomc.Prob.ProbModelChecker (programTermination)
+import Pomc.Prob.ProbUtils (toUpperProb)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -46,7 +47,7 @@ makeParseTest progSource (name, phi, tquery, expected) =
                  Right pcreq     -> return pcreq
       (tres, _, log) <- programTermination tquery (pcreqMiniProc pcreq) 
       -- DBG.traceM log
-      tres @?= expected
+      (toUpperProb tres) @?= expected
 
 basicTests :: TestTree
 basicTests = testGroup "Basic Tests"

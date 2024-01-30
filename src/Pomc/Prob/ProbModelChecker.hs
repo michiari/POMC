@@ -35,7 +35,7 @@ import Pomc.Prob.SupportGraph(buildGraph, asPendingSemiconfs)
 
 import qualified Pomc.CustoMap as CM
 
-import Pomc.Prob.Z3Termination (terminationQuery, terminationQuerySCC)
+import Pomc.Prob.Z3Termination (terminationQuerySCC)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..), ExprProp)
 
@@ -84,28 +84,28 @@ data ExplicitPopa s a = ExplicitPopa
 -- TERMINATION
 -- is the probability to terminate respectively <, <=, >=, > than the given probability?
 -- (the return String is a debugging message for developing purposes)
-terminationLTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
-terminationLTExplicit popa bound = first toBool <$> terminationExplicit popa (CompQuery Lt bound PureSMT)
+terminationLTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> Solver -> IO (Bool, Stats, String)
+terminationLTExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Lt bound solv) popa
 
-terminationLEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
-terminationLEExplicit popa bound = first toBool <$> terminationExplicit popa (CompQuery Le bound PureSMT)
+terminationLEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> Solver -> IO (Bool, Stats, String)
+terminationLEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Le bound solv) popa
 
-terminationGTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
-terminationGTExplicit popa bound = first toBool <$> terminationExplicit popa (CompQuery Gt bound PureSMT)
+terminationGTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> Solver -> IO (Bool, Stats, String)
+terminationGTExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Gt bound solv) popa
 
-terminationGEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> IO (Bool, String)
-terminationGEExplicit popa bound = first toBool <$> terminationExplicit popa (CompQuery Ge bound PureSMT)
+terminationGEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> Solver -> IO (Bool, Stats, String)
+terminationGEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Ge bound solv) popa
 
 -- what is the probability that the input POPA terminates?
-terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> IO (Prob, String)
-terminationApproxExplicit popa = first toUpperProb <$> terminationExplicit popa (ApproxSingleQuery SMTWithHints)
+terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Solver -> IO (Prob, Stats, String)
+terminationApproxExplicit popa solv = (\(res, s, str) -> (toUpperProb res, s, str)) <$> terminationExplicit (ApproxSingleQuery solv) popa
 
 -- handling the termination query
 terminationExplicit :: (Ord s, Hashable s, Show s, Ord a)
-                    => ExplicitPopa s a
-                    -> TermQuery
-                    -> IO (TermResult, String)
-terminationExplicit popa query =
+                    => TermQuery
+                    -> ExplicitPopa s a
+                    -> IO (TermResult, Stats, String)
+terminationExplicit query popa =
   let
     (sls, prec) = epAlphabet popa
     (_, tprec, [tsls], pconv) = convProps T prec [sls]
@@ -144,15 +144,13 @@ terminationExplicit popa query =
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa) stats
     scString <- stToIO $ CM.showMap sc
-    --DBG.traceM $ "Computed the following support graph: " ++ scString
-    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
-    --DBG.traceM $ "(cannotReachPops, mustReachPops)" ++ show asPendSemiconfs
-    p <- evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs query)
 
-    DBG.traceM $ "Computed termination bounds: " ++ show p
-    return (p, show query)
+    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query stats
+    DBG.traceM $ "Computed termination probability: " ++ show res
+    computedStats <- stToIO $ readSTRef stats
+    return (res, computedStats, scString)
 
-programTermination :: TermQuery -> Program -> IO (Prob, Stats, String)
+programTermination :: TermQuery -> Program -> IO (TermResult, Stats, String)
 programTermination query prog =
   let (_, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
@@ -171,16 +169,11 @@ programTermination query prog =
   in do
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph pDelta initVs initLbl stats
-    -- asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
     scString <- stToIO $ CM.showMap sc
-    DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
-    --DBG.traceM $ "Summary chain: " ++ scString
-    --p <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuery sc precFunc asPendSemiconfs query
-    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery (solver query)) stats
+    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query stats
     DBG.traceM $ "Computed termination probabilities: " ++ show res
-    --let pendVectorLB = V.map (\k -> k < (1 :: Prob)) lb
     computedStats <- stToIO $ readSTRef stats
-    return (toUpperProb res, computedStats, scString ++ "\n" ++ show query)
+    return (res, computedStats, scString)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
