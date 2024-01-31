@@ -145,7 +145,7 @@ terminationExplicit query popa =
     sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa) stats
     scString <- stToIO $ CM.showMap sc
 
-    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query stats
+    (res, _) <- evalZ3With (chooseLogic $ solver query) stdOpts $ terminationQuerySCC sc precFunc query stats
     DBG.traceM $ "Computed termination probability: " ++ show res
     computedStats <- stToIO $ readSTRef stats
     return (res, computedStats, scString)
@@ -170,7 +170,7 @@ programTermination query prog =
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph pDelta initVs initLbl stats
     scString <- stToIO $ CM.showMap sc
-    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query stats
+    (res, _) <- evalZ3With (chooseLogic $ solver query) stdOpts $ terminationQuerySCC sc precFunc query stats
     DBG.traceM $ "Computed termination probabilities: " ++ show res
     computedStats <- stToIO $ readSTRef stats
     return (res, computedStats, scString)
@@ -213,14 +213,13 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       , phiDeltaShift = phiShift
       , phiDeltaPop = phiDeltaPop
       }
-
   in do
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
     --DBG.traceM $ "Summary chain: " ++ scString
-    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
+    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (chooseLogic solver) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubMap
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
 
@@ -471,3 +470,6 @@ quantitativeModelCheckExplicitGen solver phi popa =
                  }
   in quantitativeModelCheckExplicit solver tphi tPopa
 
+chooseLogic :: Solver -> Maybe Logic
+chooseLogic OVI = Just QF_LRA
+chooseLogic _ = Just QF_NRA
