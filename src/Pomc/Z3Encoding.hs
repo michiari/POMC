@@ -538,16 +538,18 @@ assertPhiEncoding encData from to = do
       stackx <- mkApp1 stack xLit
       let allXnextSat y = do
             yLit <- mkUnsignedInt64 y nodeSort
+            yInput <- mkNot =<< mkCheckPrec encData take yLit -- y is not a POP
             yPush <- mkEq stackx yLit -- y is the PUSH of stackx
             yShift <- mkEq stackx =<< mkApp1 stack yLit -- y is a SHIFT on stackx
-            ySuppClosed <- mkOr [yPush, yShift]
+            yStackCond <- mkOr [yPush, yShift]
+            ySuppClosed <- mkAnd [yInput, yStackCond]
 
             structy <- mkApp1 struct yLit
             let xnextSat g@(XNext dir arg) = do
                   gammagy <- mkApp (zGamma encData) [zFConstMap encData M.! g, yLit]
                   let satisfied z = do
                         zLit <- mkUnsignedInt64 z nodeSort
-                        checkPopz <- mkCheckPrec encData (zTake encData) zLit
+                        checkPopz <- mkCheckPrec encData take zLit
                         ctxz <- mkApp1 (zCtx encData) zLit
                         ctxzEqy <- mkEq ctxz yLit
                         xnfArgz <- groundxnf encData arg zLit
@@ -565,7 +567,7 @@ assertPhiEncoding encData from to = do
             allSat <- mkAndWith xnextSat [g | g@(XNext _ _) <- zClos encData]
             mkImplies ySuppClosed allSat
 
-      mkForallNodes [1..x] allXnextSat
+      mkForallNodes [1..(x-1)] allXnextSat
 
     {- Iff version of mkWxnext
     mkWxnext2 :: Word64 -> Z3 AST
