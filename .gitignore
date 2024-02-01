@@ -5,6 +5,7 @@ pomc.cabal
 stack.yaml.lock
 dist
 /references
+*/__pycache__
 
 # History files
 .Rhistory
