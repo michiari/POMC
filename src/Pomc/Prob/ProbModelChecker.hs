@@ -50,7 +50,7 @@ import qualified Data.IntSet as IntSet
 
 import qualified Data.Map as Map
 
-import Data.Bifunctor(first, second)
+import Data.Bifunctor(second)
 
 import Data.Hashable (Hashable)
 import Control.Monad.ST (stToIO)
@@ -61,9 +61,6 @@ import Z3.Opts
 import qualified Debug.Trace as DBG
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as MV
-import Control.Monad (when, unless)
-import Data.Maybe (isNothing, isJust)
-import Data.IORef (newIORef)
 import Data.STRef (newSTRef, readSTRef)
 import Numeric (showEFloat)
 
@@ -150,8 +147,8 @@ terminationExplicit query popa =
     computedStats <- stToIO $ readSTRef stats
     return (res, computedStats, scString)
 
-programTermination :: TermQuery -> Program -> IO (TermResult, Stats, String)
-programTermination query prog =
+programTermination :: Solver -> Program -> IO (TermResult, Stats, String)
+programTermination solver prog =
   let (_, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
       (bitenc, precFunc, _, _, _, _, _, _) =
@@ -170,7 +167,7 @@ programTermination query prog =
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph pDelta initVs initLbl stats
     scString <- stToIO $ CM.showMap sc
-    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc query stats
+    (res, _) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery solver) stats
     DBG.traceM $ "Computed termination probabilities: " ++ show res
     computedStats <- stToIO $ readSTRef stats
     return (res, computedStats, scString)

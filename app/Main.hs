@@ -12,7 +12,7 @@ module Main (main) where
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram)
-import Pomc.Prob.ProbUtils (Solver(..), Stats(..))
+import Pomc.Prob.ProbUtils (Solver(..), Stats(..), TermQuery(..))
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
@@ -86,7 +86,7 @@ main = do
       return $ sum stringTimes + sum mcTimes
 
     ProgCheckRequest phis prog -> sum <$> forM phis (runProg isOmega prog)
-    ProbTermRequest tquery prog -> runProbTerm tquery prog
+    ProbTermRequest _ prog -> runProbTerm probSolver prog
     ProbCheckRequest phi prog False -> runQualProbCheck probSolver phi prog
     ProbCheckRequest phi prog True -> runQuantProbCheck probSolver phi prog
 
@@ -124,11 +124,11 @@ main = do
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
-    runProbTerm tquery prog = do
-      putStr (concat [ "\nProbabilistic Termination Checking\nQuery: ", show tquery
+    runProbTerm solver prog = do
+      putStr (concat [ "\nProbabilistic Termination Checking\nQuery: ApproxSingleQuery ", show solver
                      , "\nResult:  "
                      ])
-      ((tres, _, _), time) <- timeAction fst3 $ programTermination tquery prog
+      ((tres, _, _), time) <- timeAction fst3 $ programTermination solver prog
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time

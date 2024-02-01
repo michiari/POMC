@@ -27,13 +27,13 @@ import Pomc.Prob.ProbUtils(Prob)
 tests :: TestTree
 tests = testGroup "MiniProb Tests" [basicTests]
 
-makeParseTestCase :: T.Text -> (String, String, TermQuery, Prob) -> TestTree
+makeParseTestCase :: T.Text -> (String, String, Solver, Prob) -> TestTree
 makeParseTestCase progSource npe@(_, phi, _, _) = testCase tname $ tthunk phi
   where (tname, tthunk) = makeParseTest progSource npe
 
-makeParseTest :: T.Text -> (String, String, TermQuery, Prob)
+makeParseTest :: T.Text -> (String, String, Solver, Prob)
               -> (String, String -> Assertion)
-makeParseTest progSource (name, phi, tquery, expected) =
+makeParseTest progSource (name, phi, solver, expected) =
   (name ++ " (" ++ phi ++ ")", assertion)
   where
     filecont f = T.concat [ T.pack "formulas = "
@@ -45,23 +45,23 @@ makeParseTest progSource (name, phi, tquery, expected) =
       pcreq <- case parse (checkRequestP <* eof) name $ filecont f of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                  Right pcreq     -> return pcreq
-      (tres, _, log) <- programTermination tquery (pcreqMiniProc pcreq) 
+      (tres, _, log) <- programTermination solver (pcreqMiniProc pcreq) 
       -- DBG.traceM log
       (toUpperProb tres) @?= expected
 
 basicTests :: TestTree
 basicTests = testGroup "Basic Tests"
-  $ [ makeParseTestCase linRecSrc ("Linearly Recursive Function Termination", "F T", ApproxSingleQuery SMTWithHints,  1)
-    , makeParseTestCase randomWalkSrc ("1D Random Walk Termination", "F T", ApproxSingleQuery SMTWithHints,  (2 % 3))
-    , makeParseTestCase mutualRecSrc ("Mutual Recursion Termination", "F T", ApproxSingleQuery SMTWithHints,  1)
-    , makeParseTestCase infiniteLoopSrc ("Infinite Loop", "F T", ApproxSingleQuery SMTWithHints,  1)
-    , makeParseTestCase observeLoopSrc ("Observe Loop", "F T", ApproxSingleQuery SMTWithHints,  1)
-    , makeParseTestCase queryBugSrc ("Query Bug", "F T", ApproxSingleQuery SMTWithHints,  0)
-    , makeParseTestCase callRetLoopSrc ("Call-ret Loop", "F T", ApproxSingleQuery SMTWithHints,   1 % 2)
-    , makeParseTestCase callRet1LoopSrc ("Call-ret One Loop", "F T", ApproxSingleQuery SMTWithHints,  6669651943 % 10000000000)
-    , makeParseTestCase doubleRndWalkSrc ("Double random walk example", "F T", ApproxSingleQuery SMTWithHints,  1 % 2)
-    , makeParseTestCase rndWalkFunSrc ("Random walk with function call", "F T", ApproxSingleQuery SMTWithHints,  1 % 2)
-    , makeParseTestCase loopFunSrc ("Recursive loop with function call", "F T", ApproxSingleQuery SMTWithHints,  3333333333 % 10000000000)
+  $ [ makeParseTestCase linRecSrc ("Linearly Recursive Function Termination", "F T", SMTWithHints,  1)
+    , makeParseTestCase randomWalkSrc ("1D Random Walk Termination", "F T",  SMTWithHints,  (2 % 3))
+    , makeParseTestCase mutualRecSrc ("Mutual Recursion Termination", "F T",  SMTWithHints,  1)
+    , makeParseTestCase infiniteLoopSrc ("Infinite Loop", "F T",  SMTWithHints,  1)
+    , makeParseTestCase observeLoopSrc ("Observe Loop", "F T",  SMTWithHints,  1)
+    , makeParseTestCase queryBugSrc ("Query Bug", "F T",  SMTWithHints,  0)
+    , makeParseTestCase callRetLoopSrc ("Call-ret Loop", "F T",  SMTWithHints,   1 % 2)
+    , makeParseTestCase callRet1LoopSrc ("Call-ret One Loop", "F T",  SMTWithHints,  6669651943 % 10000000000)
+    , makeParseTestCase doubleRndWalkSrc ("Double random walk example", "F T",  SMTWithHints,  1 % 2)
+    , makeParseTestCase rndWalkFunSrc ("Random walk with function call", "F T",  SMTWithHints,  1 % 2)
+    , makeParseTestCase loopFunSrc ("Recursive loop with function call", "F T",  SMTWithHints,  3333333333 % 10000000000)
     ]
 
 linRecSrc :: T.Text

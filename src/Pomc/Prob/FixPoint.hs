@@ -14,7 +14,6 @@ module Pomc.Prob.FixPoint ( VarKey
                           , ProbVec
                           , mapEqMapPop
                           , addFixpEq
-                          , isVarNull
                           , toLiveEqMapWithHints
                           , newVecSameSize
                           , mapVec
@@ -77,13 +76,6 @@ mapEqMapPop f eqMap = liftIO $ do
 
 addFixpEq :: MonadIO m => EqMap n -> VarKey -> FixpEq n -> m ()
 addFixpEq eqMap varKey eq = liftIO $ HT.insert eqMap varKey eq
-
-isVarNull :: (MonadIO m, Eq n, Num n) => EqMap n -> VarKey -> m Bool
-isVarNull eqMap varKey = liftIO $ (== Just (PopEq 0)) <$> HT.lookup eqMap varKey
-
-substituteKnownVals :: MonadIO m => EqMap n -> ProbVec n -> m ()
-substituteKnownVals eqMap knownVals =
-  liftIO $ HT.mapM_ (\(k, v) -> HT.insert eqMap k $ PopEq v) knownVals
 
 -- careful: lVars are not necessarily live
 toLiveEqMapWithHints :: (MonadIO m, Fractional n) => EqMap n -> [(Int,Int)] -> m (LEqSys n)
