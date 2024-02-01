@@ -75,11 +75,13 @@ isSupported f = case f of
   WXNext _ g      -> isSupported g
   HNext _ g       -> isSupported g
   HBack _ _       -> False
+  WHNext _ g      -> isSupported g
   Until _ g h     -> isSupported g && isSupported h
   Release _ g h   -> isSupported g && isSupported h
   Since _ _ _     -> False
   HUntil _ g h    -> isSupported g && isSupported h
   HSince _ _ _    -> False
+  HRelease _ g h  -> isSupported g && isSupported h
   Next g          -> isSupported g
   WNext g         -> isSupported g
   Back g          -> isSupported g
@@ -132,5 +134,5 @@ nestedXNext :: (TestCase, Word64, SMTStatus)
 nestedXNext =
   ( ("Nested XNexts"
     , XNext Down $ XNext Down $ XNext Down $ XNext Down $ ap "call")
-  , 40, Sat
+  , 23, Sat
   )

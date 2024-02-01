@@ -58,7 +58,7 @@ defaultSmtOpts maxDepth = SMTOpts { smtMaxDepth  = maxDepth
                                   , smtFastPrune = False
                                   }
 
-data SMTStatus = Sat | Unsat | Unknown deriving (Eq, Show)
+data SMTStatus = Sat | Unsat | Unknown deriving (Eq, Ord, Show)
 
 data TableauNode = TableauNode { nodeGammaC :: [Formula MP.ExprProp]
                                , nodeSmb    :: Prop MP.ExprProp
