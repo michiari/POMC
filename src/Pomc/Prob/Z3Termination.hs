@@ -426,14 +426,13 @@ createComponent globals gn (popContxs, dMustReachPop) precFun useZ3 = do
         currentASPSs <- liftIO $ readIORef (cannotReachPop globals)
         newAdded <- liftIO HT.new
         let toEncode = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
-        DBG.traceM $ "Variables to be encoded: " ++ show toEncode
         insertedVars <- map (snd . fromJust) <$> forM toEncode (lookupVar (varMap, newAdded, currentASPSs, encodeInitial) (lEqMap, uEqMap))
         when (or insertedVars ) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
         reset >> encode toEncode (varMap, newAdded, currentASPSs, encodeInitial) (lowerEqMap globals, upperEqMap globals) (supportGraph globals) precFun mkGe useZ3
         actualMustReachPop <- solveSCCQuery poppedEdges dMustReachPop (varMap, newAdded, currentASPSs, encodeInitial) globals precFun useZ3
         when actualMustReachPop $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef (mustReachPop globals) $ IntSet.insert e
-        DBG.traceM $ "Returning actual must reach pop: " ++ show actualMustReachPop
+        --DBG.traceM $ "Returning actual must reach pop: " ++ show actualMustReachPop
         return (popContxs, actualMustReachPop)
       doNotEncode poppedEdges = do
         liftIO $ modifyIORef (cannotReachPop globals) $ IntSet.union (IntSet.fromList poppedEdges)
@@ -514,7 +513,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
       let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll (Set.fromList variables)) . GeneralMap.fromList $ upperBound
       DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
       DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show upperBoundsTermProbs
-      DBG.traceM $ "Do the descendant must reach pop? " ++ show dMustReachPop
+      --DBG.traceM $ "Do the descendant must reach pop? " ++ show dMustReachPop
 
       if not dMustReachPop
         then do
