@@ -47,7 +47,7 @@ data OVISettings n = OVISettings { oviMaxIters :: Int
 
 defaultOVISettingsDouble :: OVISettings Double
 defaultOVISettingsDouble = OVISettings
-  { oviMaxIters = 10
+  { oviMaxIters = 20
   , oviMaxKleeneIters = 1000000
   , oviDampingFactor = 0.5
   , oviKleeneEps = 1e-3

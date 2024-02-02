@@ -1,28 +1,34 @@
 {- |
    Module      : Pomc.Test.TestProbTermination
-   Copyright   : 2023 Francesco Pontiggia
+   Copyright   : 2024 Francesco Pontiggia and Michele Chiari
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Test.TestProbTermination(tests) where
+module Pomc.Test.TestProbTermination (tests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import Pomc.Test.OPMs (stlV2Alphabet, stlV3Alphabet, makeInputSet)
-import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), terminationLTExplicit, terminationLEExplicit, terminationGTExplicit, terminationGEExplicit,
-                                  terminationApproxExplicit)
+import Pomc.Test.OPMs (stlV3Alphabet, makeInputSet)
+import Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
+                                  , terminationLTExplicit, terminationLEExplicit
+                                  , terminationGTExplicit, terminationGEExplicit
+                                  , terminationApproxExplicit
+                                  )
 
-import Pomc.Prob.ProbUtils(Solver(..), Stats)
-import Data.Ratio((%))
+import Pomc.Prob.ProbUtils (Solver(..), Stats)
+import Data.Ratio ((%))
 
 tests :: TestTree
-tests = testGroup "ProbModelChecking.hs Termination Tests" $ 
-            [ testGroup "Boolean Termination Tests" [dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests,
-                                                     biasedRandomWalkTests, nestedRandomWalkTests, nonTerminatingTests, callRetExTests]
-             , testGroup "Estimating Termination Probabilities" 
-                $ map (\(popa, expected, s) -> makeTestCase popa ((s, \popa -> terminationApproxExplicit popa SMTWithHints), expected)) exactTerminationProbabilities
-            ]
+tests = testGroup "ProbModelChecking.hs Termination Tests" $
+  [ testGroup "Boolean Termination Tests"
+    [ dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests
+    , biasedRandomWalkTests, nestedRandomWalkTests
+    , nonTerminatingTests, callRetExTests
+    ]
+  , testGroup "Estimating Termination Probabilities"
+    $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' OVI), expected)) exactTerminationProbabilities
+  ]
 
 type Prob = Rational
 type TestCase a = (String, (ExplicitPopa Word String -> IO (a, Stats, String)))
@@ -33,232 +39,236 @@ termQueries = [(s ++ show b, \popa -> f popa b SMTWithHints) | (s,f) <- termFunc
         termBounds = [0.0, 0.5, 1.0]
 
 exactTerminationProbabilities :: [(ExplicitPopa Word String, Prob, String)]
-exactTerminationProbabilities = [(dummyModel, 1, "Dummy Model"), 
-                                 (pseudoRandomWalk, 1, "Pseudo Random Walk"), 
-                                 (symmetricRandomWalk, 1, "Symmetric Random Walk"),
-                                 (biasedRandomWalk, 2%3, "Biased Random Walk"), 
-                                 (nestedRandomWalk, 1, "Nested Random Walk"),
-                                 (nonTerminating, 0, "Non terminating POPA"),
-                                 (callRetEx, 0, "Call-ret example"),
-                                 (callRetLoop1, 1, "Call-ret Loop 1"),
-                                 (callRetLoop2, 1, "Call-ret Loop 2"),
-                                 (loopFunShort, 1 % 2, "Recursive loop with function call short"),
-                                 (loopFunStm, 1 % 2, "Recursive loop with function call and stm")
-                                ]
+exactTerminationProbabilities =
+  [ (dummyModel, 1, "Dummy Model")
+  , (pseudoRandomWalk, 1, "Pseudo Random Walk")
+  , (symmetricRandomWalk, 1, "Symmetric Random Walk")
+  , (biasedRandomWalk, 2%3, "Biased Random Walk")
+  , (nestedRandomWalk, 1, "Nested Random Walk")
+  , (nonTerminating, 0, "Non terminating POPA")
+  , (callRetEx, 0, "Call-ret example")
+  , (callRetLoop1, 1 % 4, "Call-ret Loop 1")
+  , (callRetLoop2, 0, "Call-ret Loop 2")
+  , (loopFunShort, 1 % 2, "Recursive loop with function call short")
+  , (loopFunStm, 1 % 2, "Recursive loop with function call and stm")
+  ]
 
-makeTestCase :: (Eq a, Show a)
-             => (ExplicitPopa Word String)
-             -> (TestCase a, a)
+checkApproxResult :: (Ord a, Fractional a) => (a, a) -> a -> Bool
+checkApproxResult (lb, ub) e = e - tol <= lb && lb <= ub && ub <= e + tol
+  where tol = fromRational $ 1 % 10^(2 :: Integer)
+
+makeTestCase :: (Show a, Show b)
+             => (a -> b -> Bool)
+             -> (ExplicitPopa Word String)
+             -> (TestCase a, b)
              -> TestTree
-makeTestCase popa ((name, query), expected) = testCase name $ do 
-  (res, stats, info) <- query popa
+makeTestCase consistent popa ((name, query), expected) = testCase name $ do
+  (res, _, info) <- query popa
   let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
-  assertBool debugMsg (res == expected)
+  assertBool debugMsg (res `consistent` expected)
 
 -- dummy model
 dummyModelTests :: TestTree
 dummyModelTests = testGroup "Dummy Model Tests" $
-  map (makeTestCase dummyModel) (zip termQueries expectedDummyModel)
+  map (makeTestCase (==) dummyModel) (zip termQueries expectedDummyModel)
 
 -- termination probability = 1
 dummyModel :: (ExplicitPopa Word String)
 dummyModel = ExplicitPopa
-              { epAlphabet = stlV2Alphabet
-              , epInitial = (0, makeInputSet ["call"])
-              , epopaDeltaPush =
-                  [ (0, [(1, makeInputSet ["ret"], 1 :: Prob)])
-                  ]
-              , epopaDeltaShift =
-                  [ (1, [(2, makeInputSet ["ret"], 1 :: Prob)])
-                  ]
-              , epopaDeltaPop =
-                  [ (2, 0, [(3, makeInputSet ["ret"], 1 :: Prob)])
-                  ]
-              }
+  { epAlphabet = stlV3Alphabet
+  , epInitial = (0, makeInputSet ["call"])
+  , epopaDeltaPush =
+      [ (0, [(1, makeInputSet ["ret"], 1 :: Prob)]) ]
+  , epopaDeltaShift =
+      [ (1, [(2, makeInputSet ["ret"], 1 :: Prob)]) ]
+  , epopaDeltaPop =
+      [ (2, 0, [(3, makeInputSet ["ret"], 1 :: Prob)]) ]
+  }
 
 expectedDummyModel :: [Bool]
-expectedDummyModel = [False, False, False,
-                      False, False, True,
-                      True, True, False,
-                      True, True, True
-                      ]
+expectedDummyModel =
+  [ False, False, False
+  , False, False, True
+  , True, True, False
+  , True, True, True
+  ]
 
 -- pseudo Random Walk
 pseudoRandomWalkTests :: TestTree
 pseudoRandomWalkTests = testGroup "Pseudo Random Walk Tests" $
-  map (makeTestCase pseudoRandomWalk) (zip termQueries expectedPseudoRandomWalk)
+  map (makeTestCase (==) pseudoRandomWalk) (zip termQueries expectedPseudoRandomWalk)
 
 -- termination probability = 1
 pseudoRandomWalk :: (ExplicitPopa Word String)
 pseudoRandomWalk = ExplicitPopa
-                    { epAlphabet = stlV2Alphabet
-                    , epInitial = (0, makeInputSet ["call"])
-                    , epopaDeltaPush =
-                        [ (0, [(0, makeInputSet ["call"], 0.5 :: Prob), (1, makeInputSet ["ret"], 0.5 :: Prob)])
-                        ]
-                    , epopaDeltaShift =
-                        [ (1, [(2, makeInputSet ["ret"], 1 :: Prob)]),
-                          (3, [(2, makeInputSet ["ret"], 1 :: Prob)])
-                        ]
-                    , epopaDeltaPop =
-                        [ (2, 0, [(3, makeInputSet ["ret"], 1 :: Prob)])
-                        ]
-                    }
+  { epAlphabet = stlV3Alphabet
+  , epInitial = (0, makeInputSet ["call"])
+  , epopaDeltaPush =
+      [ (0, [(0, makeInputSet ["call"], 0.5 :: Prob), (1, makeInputSet ["ret"], 0.5 :: Prob)]) ]
+  , epopaDeltaShift =
+      [ (1, [(2, makeInputSet ["ret"], 1 :: Prob)])
+      , (3, [(2, makeInputSet ["ret"], 1 :: Prob)])
+      ]
+  , epopaDeltaPop =
+      [ (2, 0, [(3, makeInputSet ["ret"], 1 :: Prob)]) ]
+  }
 
 expectedPseudoRandomWalk :: [Bool]
-expectedPseudoRandomWalk = [False, False, False,
-                            False, False, True,
-                            True, True, False,
-                            True, True, True
-                           ]
+expectedPseudoRandomWalk =
+  [ False, False, False
+  , False, False, True
+  , True, True, False
+  , True, True, True
+  ]
 
--- symmetric Random Walk                          
+-- symmetric Random Walk
 symmetricRandomWalkTests :: TestTree
 symmetricRandomWalkTests = testGroup "Symmetric Random Walk Tests" $
-  map (makeTestCase symmetricRandomWalk) (zip termQueries expectedSymmetricRandomWalk)
+  map (makeTestCase (==) symmetricRandomWalk) (zip termQueries expectedSymmetricRandomWalk)
 
 -- termination probability = 1
 symmetricRandomWalk :: (ExplicitPopa Word String)
 symmetricRandomWalk = ExplicitPopa
-                        { epAlphabet = stlV2Alphabet
-                        , epInitial = (0, makeInputSet ["call"])
-                        , epopaDeltaPush =
-                            [ (0, [(1, makeInputSet ["call"], 1 :: Prob)]),
-                              (1, [(2, makeInputSet ["ret"], 1 :: Prob)]),
-                              (6, [(1, makeInputSet ["call"], 1 :: Prob)]),
-                              (8, [(1, makeInputSet ["call"], 1 :: Prob)])
-                            ]
-                        , epopaDeltaShift =
-                            [ (2, [(3, makeInputSet ["ret"], 0.5 :: Prob)]),
-                              (2, [(4, makeInputSet ["ret"], 0.5 :: Prob)]),
-                              (5, [(7, makeInputSet ["ret"],   1 :: Prob)]),
-                              (9, [(7, makeInputSet ["ret"],   1 :: Prob)])
-                            ]
-                        , epopaDeltaPop =
-                            [ (3, 1, [(5, makeInputSet ["ret"], 1 :: Prob)]),
-                              (4, 1, [(6, makeInputSet ["call"], 1 :: Prob)]),
-                              (7, 6, [(8, makeInputSet ["call"], 1 :: Prob)]),
-                              (7, 8, [(9, makeInputSet ["ret"], 1 :: Prob)]),
-                              (7, 0, [(10, makeInputSet ["ret"], 1 :: Prob)])
-                            ]
-                        }
+  { epAlphabet = stlV3Alphabet
+  , epInitial = (0, makeInputSet ["call"])
+  , epopaDeltaPush =
+      [ (0, [(1, makeInputSet ["call"], 1 :: Prob)])
+      , (1, [(2, makeInputSet ["ret"], 1 :: Prob)])
+      , (6, [(1, makeInputSet ["call"], 1 :: Prob)])
+      , (8, [(1, makeInputSet ["call"], 1 :: Prob)])
+      ]
+  , epopaDeltaShift =
+      [ (2, [(3, makeInputSet ["ret"], 0.5 :: Prob)])
+      , (2, [(4, makeInputSet ["ret"], 0.5 :: Prob)])
+      , (5, [(7, makeInputSet ["ret"],   1 :: Prob)])
+      , (9, [(7, makeInputSet ["ret"],   1 :: Prob)])
+      ]
+  , epopaDeltaPop =
+      [ (3, 1, [(5, makeInputSet ["ret"], 1 :: Prob)])
+      , (4, 1, [(6, makeInputSet ["call"], 1 :: Prob)])
+      , (7, 6, [(8, makeInputSet ["call"], 1 :: Prob)])
+      , (7, 8, [(9, makeInputSet ["ret"], 1 :: Prob)])
+      , (7, 0, [(10, makeInputSet ["ret"], 1 :: Prob)])
+      ]
+  }
 
 expectedSymmetricRandomWalk :: [Bool]
-expectedSymmetricRandomWalk = [ False, False, False,
-                                False, False, True,
-                                True, True, False,
-                                True, True, True
-                              ]
+expectedSymmetricRandomWalk =
+  [ False, False, False
+  , False, False, True
+  , True, True, False
+  , True, True, True
+  ]
 
--- biased Random Walk                             
+-- biased Random Walk
 biasedRandomWalkTests :: TestTree
 biasedRandomWalkTests = testGroup "Biased Random Walk Tests" $
-  map (makeTestCase biasedRandomWalk) (zip termQueries expectedBiasedRandomWalk)
+  map (makeTestCase (==) biasedRandomWalk) (zip termQueries expectedBiasedRandomWalk)
 
 -- example 1: termination probability = 2/3
 biasedRandomWalk :: (ExplicitPopa Word String)
 biasedRandomWalk = ExplicitPopa
-                    { epAlphabet = stlV3Alphabet
-                    , epInitial = (0, makeInputSet ["call"])
-                    , epopaDeltaPush =
-                      [ (0, [(1, makeInputSet ["stm"],  1 :: Prob)]),
-                        (1, [(2, makeInputSet ["stm"],  0.6 :: Prob)]),
-                        (1, [(3, makeInputSet ["stm"],  0.4 :: Prob)]),
-                        (4, [(1, makeInputSet ["stm"],  1 :: Prob)])
-                      ]
-                    , epopaDeltaShift =
-                      [ (5, [(6, makeInputSet ["stm"],  1 :: Prob)])
-                      ]
-                    , epopaDeltaPop =
-                      [ (2, 1, [(4, makeInputSet ["call"], 1 :: Prob)]),
-                        (3, 1, [(5, makeInputSet ["ret"], 1 :: Prob)]),
-                        (6, 4, [(1, makeInputSet ["stm"], 1 :: Prob)]),
-                        (6, 0, [(7, makeInputSet ["ret"], 1 :: Prob)])  
-                      ] 
-                    } 
+  { epAlphabet = stlV3Alphabet
+  , epInitial = (0, makeInputSet ["call"])
+  , epopaDeltaPush =
+      [ (0, [(1, makeInputSet ["stm"],  1 :: Prob)])
+      , (1, [(2, makeInputSet ["stm"],  0.6 :: Prob)])
+      , (1, [(3, makeInputSet ["stm"],  0.4 :: Prob)])
+      , (4, [(1, makeInputSet ["stm"],  1 :: Prob)])
+      ]
+  , epopaDeltaShift =
+      [ (5, [(6, makeInputSet ["stm"],  1 :: Prob)]) ]
+  , epopaDeltaPop =
+      [ (2, 1, [(4, makeInputSet ["call"], 1 :: Prob)])
+      , (3, 1, [(5, makeInputSet ["ret"], 1 :: Prob)])
+      , (6, 4, [(1, makeInputSet ["stm"], 1 :: Prob)])
+      , (6, 0, [(7, makeInputSet ["ret"], 1 :: Prob)])
+      ]
+  }
 
 expectedBiasedRandomWalk :: [Bool]
-expectedBiasedRandomWalk = [ False, False, True, 
-                             False, False, True,
-                             True, True, False,
-                             True, True, False
-                           ]
+expectedBiasedRandomWalk =
+  [ False, False, True
+  , False, False, True
+  , True, True, False
+  , True, True, False
+  ]
 
 -- nested Random Walk
 nestedRandomWalkTests :: TestTree
 nestedRandomWalkTests = testGroup "Nested Random Walk Tests" $
-  map (makeTestCase nestedRandomWalk) (zip termQueries expectedNestedRandomWalk)
+  map (makeTestCase (==) nestedRandomWalk) (zip termQueries expectedNestedRandomWalk)
 
 -- termination probability = 1?
 nestedRandomWalk :: (ExplicitPopa Word String)
 nestedRandomWalk = ExplicitPopa
-                        { epAlphabet = stlV3Alphabet
-                        , epInitial = (0, makeInputSet ["call"])
-                        , epopaDeltaPush =
-                            [ (0, [(1, makeInputSet ["stm"],   1 :: Prob)]),
-                              (1, [(2, makeInputSet ["stm"], 0.5 :: Prob)]),
-                              (1, [(3, makeInputSet ["stm"], 0.5 :: Prob)]),
-                              (4, [(5, makeInputSet ["stm"],   1 :: Prob)]),
-                              (5, [(6, makeInputSet ["stm"], 0.5 :: Prob)]),
-                              (5, [(7, makeInputSet ["stm"], 0.5 :: Prob)]),
-                              (8, [(5, makeInputSet ["stm"],   1 :: Prob)]),
-                              (9, [(1, makeInputSet ["stm"],   1 :: Prob)])
-                            ]
-                        , epopaDeltaShift =
-                            [ (10, [(11, makeInputSet ["stm"], 1 :: Prob)]),
-                              (13, [(14, makeInputSet ["stm"], 1 :: Prob)])
-                            ]
-                        , epopaDeltaPop =
-                            [ (2, 1, [(4, makeInputSet ["call"], 1 :: Prob)]),
-                              (6, 5, [(8, makeInputSet ["call"], 1 :: Prob)]),
-                              (7, 5, [(9, makeInputSet ["call"], 1 :: Prob)]),
-                              (3, 1, [(10, makeInputSet ["ret"], 1 :: Prob)]),
-                              (11, 0, [(12, makeInputSet ["ret"], 1 :: Prob)]),
-                              (11, 9, [(13, makeInputSet ["ret"], 1 :: Prob)]),
-                              (14, 8, [(9, makeInputSet ["call"], 1 :: Prob)]),
-                              (14, 4, [(10, makeInputSet ["ret"], 1 :: Prob)])     
-                            ]
-                        }
+  { epAlphabet = stlV3Alphabet
+  , epInitial = (0, makeInputSet ["call"])
+  , epopaDeltaPush =
+      [ (0, [(1, makeInputSet ["stm"],   1 :: Prob)])
+       , (1, [(2, makeInputSet ["stm"], 0.5 :: Prob)])
+       , (1, [(3, makeInputSet ["stm"], 0.5 :: Prob)])
+       , (4, [(5, makeInputSet ["stm"],   1 :: Prob)])
+       , (5, [(6, makeInputSet ["stm"], 0.5 :: Prob)])
+       , (5, [(7, makeInputSet ["stm"], 0.5 :: Prob)])
+       , (8, [(5, makeInputSet ["stm"],   1 :: Prob)])
+       , (9, [(1, makeInputSet ["stm"],   1 :: Prob)])
+      ]
+  , epopaDeltaShift =
+      [ (10, [(11, makeInputSet ["stm"], 1 :: Prob)])
+      , (13, [(14, makeInputSet ["stm"], 1 :: Prob)])
+      ]
+  , epopaDeltaPop =
+      [ (2, 1, [(4, makeInputSet ["call"], 1 :: Prob)])
+      , (6, 5, [(8, makeInputSet ["call"], 1 :: Prob)])
+      , (7, 5, [(9, makeInputSet ["call"], 1 :: Prob)])
+      , (3, 1, [(10, makeInputSet ["ret"], 1 :: Prob)])
+      , (11, 0, [(12, makeInputSet ["ret"], 1 :: Prob)])
+      , (11, 9, [(13, makeInputSet ["ret"], 1 :: Prob)])
+      , (14, 8, [(9, makeInputSet ["call"], 1 :: Prob)])
+      , (14, 4, [(10, makeInputSet ["ret"], 1 :: Prob)])
+      ]
+  }
 
 expectedNestedRandomWalk :: [Bool]
-expectedNestedRandomWalk = [ False, False, False,
-                             False, False, True,
-                             True, True, False,
-                             True, True, True
-                            ]
+expectedNestedRandomWalk =
+  [ False, False, False
+  , False, False, True
+  , True, True, False
+  , True, True, True
+  ]
 
 -- a non terminating POPA
 nonTerminatingTests :: TestTree
 nonTerminatingTests = testGroup "Non terminating POPA Tests" $
-  map (makeTestCase nonTerminating) (zip termQueries expectedNonTerminating)
+  map (makeTestCase (==) nonTerminating) (zip termQueries expectedNonTerminating)
 
 -- termination probability = 0
 nonTerminating :: (ExplicitPopa Word String)
 nonTerminating = ExplicitPopa
-                        { epAlphabet = stlV3Alphabet
-                        , epInitial = (0, makeInputSet ["call"])
-                        , epopaDeltaPush =
-                            [ (0, [(1, makeInputSet ["call"],   1 :: Prob)]),
-                              (1, [(1, makeInputSet ["call"],   1 :: Prob)])
-                            ]
-                        , epopaDeltaShift =
-                            [ 
-                            ]
-                        , epopaDeltaPop =
-                            [   
-                            ]
-                        }
+  { epAlphabet = stlV3Alphabet
+  , epInitial = (0, makeInputSet ["call"])
+  , epopaDeltaPush =
+      [ (0, [(1, makeInputSet ["call"],   1 :: Prob)])
+      , (1, [(1, makeInputSet ["call"],   1 :: Prob)])
+      ]
+  , epopaDeltaShift =
+      [ ]
+  , epopaDeltaPop =
+      [ ]
+  }
 
 expectedNonTerminating :: [Bool]
-expectedNonTerminating = [ False, True, True,
-                             True, True, True,
-                             False, False, False,
-                             True, False, False
-                            ]
+expectedNonTerminating =
+  [ False, True, True
+  , True, True, True
+  , False, False, False
+  , True, False, False
+  ]
 
 callRetExTests :: TestTree
 callRetExTests = testGroup "Call-ret example Tests" $
-  map (makeTestCase callRetEx) (zip termQueries expectedcallRetEx)
+  map (makeTestCase (==) callRetEx) (zip termQueries expectedcallRetEx)
 
 callRetEx :: ExplicitPopa Word String
 callRetEx = ExplicitPopa
@@ -277,11 +287,12 @@ callRetEx = ExplicitPopa
   }
 
 expectedcallRetEx :: [Bool]
-expectedcallRetEx = [ False, True, True,
-                      False, True, True,
-                      True, False, False,
-                      True, False, False
-                    ]
+expectedcallRetEx =
+  [ False, True, True
+  , False, True, True
+  , True, False, False
+  , True, False, False
+  ]
 
 callRetLoop1 :: ExplicitPopa Word String
 callRetLoop1 = ExplicitPopa

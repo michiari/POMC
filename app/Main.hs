@@ -12,7 +12,7 @@ module Main (main) where
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram)
-import Pomc.Prob.ProbUtils (Solver(..), Stats(..), TermQuery(..))
+import Pomc.Prob.ProbUtils (Solver(..), Stats(..))
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))

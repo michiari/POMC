@@ -76,7 +76,7 @@ data ExplicitPopa s a = ExplicitPopa
 
 ------------------------------------------------
 -- set of APIs for explicitly presented POPAs --
------------------------------------------------- 
+------------------------------------------------
 
 -- TERMINATION
 -- is the probability to terminate respectively <, <=, >=, > than the given probability?
@@ -94,8 +94,8 @@ terminationGEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a 
 terminationGEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Ge bound solv) popa
 
 -- what is the probability that the input POPA terminates?
-terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Solver -> IO (Prob, Stats, String)
-terminationApproxExplicit popa solv = (\(res, s, str) -> (toUpperProb res, s, str)) <$> terminationExplicit (ApproxSingleQuery solv) popa
+terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Solver -> IO ((Prob, Prob), Stats, String)
+terminationApproxExplicit popa solv = (\(ApproxSingleResult res, s, str) -> (res, s, str)) <$> terminationExplicit (ApproxSingleQuery solv) popa
 
 -- handling the termination query
 terminationExplicit :: (Ord s, Hashable s, Show s, Ord a)
