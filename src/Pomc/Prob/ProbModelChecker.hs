@@ -26,7 +26,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
 import Pomc.Potl (Formula(..), getProps, normalize)
 import Pomc.Check(makeOpa, InitialsComputation(..))
-import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula )
+import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula)
 import Pomc.TimeUtils (startTimer, stopTimer)
 
 import qualified Pomc.Encoding as E
