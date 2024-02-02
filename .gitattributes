@@ -1,0 +1,7 @@
+*.hs text
+*.py text
+*.sh text
+*.pomc text
+*.yaml text
+*.tex text
+*.md text
