@@ -73,6 +73,22 @@ mkAdd1 = mkOp1 mkAdd
 mkMul1 :: [AST] -> Z3 AST
 mkMul1 = mkOp1 mkMul
 
+extractUpperAst :: AST -> Z3 AST
+extractUpperAst ast = do
+  isAlgebraic <- isAlgebraicNumber ast
+  DBG.traceShowM =<< getAstKind ast
+  DBG.traceShowM =<< isAlgebraicNumber ast
+  DBG.traceM =<< astToString ast
+  if isAlgebraic
+    then getAlgebraicNumberUpper ast 5
+    else return ast
+
+extractUpperProb :: AST -> Z3 Prob
+extractUpperProb ast = extractUpperAst ast >>= getReal
+
+extractUpperDouble :: AST -> Z3 Double
+extractUpperDouble ast = extractUpperAst ast >>= getNumeralDouble
+
 -- (Z3 Var, was it already present?)
 lookupVar :: VarMap -> (EqMap EqMapNumbersType, EqMap EqMapNumbersType) -> VarKey -> Z3 (Maybe (AST, Bool))
 lookupVar (varMap, newAdded, asPendingIdxes, encodeInitial) (leqMap, uEqMap) key = do
@@ -130,8 +146,8 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _,  asPendingIdxs, _) (lower
             when useZ3 $ do
               solvedVar <- mkRealNum e
               eq <- mkEq var solvedVar
-              eqString <- astToString eq
-              --DBG.traceM $ "Asserting Pop equation: " ++ eqString
+              -- eqString <- astToString eq
+              -- DBG.traceM $ "Asserting Pop equation: " ++ eqString
               assert eq
               liftIO $ HT.insert m varKey solvedVar
 
@@ -290,10 +306,7 @@ terminationQuerySCC suppGraph precFun query oldStats = do
                                 , eps = newEps
                                 , stats = oldStats
                                 }
-  -- passing some parameters
-  setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
-  _ <- parseSMTLib2String "(set-option :pp.decimal true)" [] [] [] []
-  _ <- parseSMTLib2String "(set-option :pp.decimal_precision 5)" [] [] [] []
+  -- setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
 
   -- perform the Gabow algorithm to compute all termination probabilities
   let useZ3 = case solver query of
@@ -314,25 +327,22 @@ terminationQuerySCC suppGraph precFun query oldStats = do
       intervalLogic (lb, _) Ge p = lb >= p
       readResults (ApproxAllQuery SMTWithHints) = do
         upperProbRationalMap <- GeneralMap.fromList <$> (mapM (\(varKey, varAST) -> do
-            p <- astToString varAST
-            let pRational = toRational (read (takeWhile (/= '?') p) :: Scientific)
+            pRational <- extractUpperProb varAST
             return (varKey, pRational)) =<< liftIO (HT.toList newMap))
         lowerProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newLowerEqMap)
         let lowerProbRationalMap = GeneralMap.map (\v -> approxRational (v - actualEps) actualEps) lowerProbMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
       readResults (ApproxSingleQuery SMTWithHints) = do
-        ubString <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
-        DBG.traceM $ "Computed upper bound: " ++ show ubString
-        let ub = toRational (read (takeWhile (/= '?') ubString) :: Scientific)
+        ub <- extractUpperProb . fromJust =<< liftIO (HT.lookup newMap (0,-1))
+        DBG.traceM $ "Computed upper bound: " ++ show ub
         lb <- (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
         return (ApproxSingleResult (lb, ub), mustReachPopIdxs)
       readResults (CompQuery comp bound SMTWithHints) = do
-        ubString <- astToString . fromJust =<< liftIO (HT.lookup newMap (0,-1))
-        DBG.traceM $ "Computed upper bound: " ++ show ubString
-        let ub = toRational (read (takeWhile (/= '?') ubString) :: Scientific)
+        ub <- extractUpperProb . fromJust =<< liftIO (HT.lookup newMap (0,-1))
+        DBG.traceM $ "Computed upper bound: " ++ show ub
         lb <- (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
         return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
-      
+
       readResults (ApproxAllQuery OVI) = do
         upperProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newUpperEqMap)
         let upperProbRationalMap = GeneralMap.map (\v -> approxRational (v + actualEps) actualEps) upperProbMap
@@ -475,7 +485,10 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
             pReal <- mkRealNum pRational
             assert =<< mkGe var pReal
             assert =<< mkLe var =<< mkAdd [pReal, epsReal])
-        -- DBG.traceM =<< solverToString
+
+        -- solverDump <- solverToString
+        -- liftIO $ writeFile ("solver_dump_" ++ show currentEps ++ ".smt2") solverDump
+
         solverCheckAndGetModel >>= \case
           (Sat, Just model) -> return model
           (Unsat, _)
@@ -552,8 +565,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
             liftIO (HT.lookup uEqMap varKey) >>= \case
                 Just (PopEq _) -> return acc -- An eq constraint has already been asserted
                 _ -> do
-                  p <- astToString . fromJust =<< eval model varAST
-                  let pDouble = toRealFloat (read (takeWhile (/= '?') p) :: Scientific)
+                  pDouble <- extractUpperDouble . fromJust =<< eval model varAST
                   addFixpEq uEqMap varKey (PopEq pDouble)
                   return ((varKey, pDouble):acc))
             [] augVariables
@@ -563,7 +575,7 @@ solveSCCQuery sccMembers dMustReachPop varMap@(m, newAdded, _, _) globals precFu
           oviRes <- oviWithHints defaultOVISettingsDouble uEqMap variables
           rCertified <- oviToRationalWithHints defaultOVISettingsDouble uEqMap oviRes variables
           unless rCertified $ error "cannot deduce a rational certificate for this semiconf"
-          unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities"
+          unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bound on the termination probabilities"
 
           -- actual updates
           forM_ variables $ \varKey -> do
