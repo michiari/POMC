@@ -25,56 +25,56 @@ zipExpected cases expected
   | length cases == length expected = zip cases expected
   | otherwise = error "TestCases and Expected values of different lengths!"
 
-excludeIndices :: Ord a => [a] -> [Int] -> [a]
+excludeIndices :: [a] -> [Int] -> [a]
 excludeIndices l is = fst $
   foldr (\x (xs, i) -> if i `notElem` is then (x:xs, i-1) else (xs, i-1)) ([], length l - 1) l
 
 probFormulas :: [TestCase]
-probFormulas = 
+probFormulas =
   [ ( "0 - Eventually X"
     , Eventually (ap "X")
-    ) 
+    )
     ,
     ( "1 - Eventually ret X"
     , Eventually (ap "ret" `And` ap "X")
-    ) 
+    )
     ,
     ( "2 - X matches calls and return"
     , Always $ (ap "call" `And` ap "X") `Implies` (XNext Up $ (ap "ret" `And` ap "X"))
-    ) 
-    , 
+    )
+    ,
     ( "3 - Termination with Chain operator"
     , XNext Up (ap "ret")
-    ) 
+    )
     ,
     ( "4 - Termination with Chain operator and label"
     , XNext Up (ap "ret" `And` ap "Y")
-    ) 
+    )
     ,
     ( "5 - Termination or keeping calling X"
     , (XNext Up (ap "ret")) `Or` (Always $ Eventually $ ap "call" `And` ap "X")
-    ) 
+    )
     ,
     ( "6 - First call"
     , ap "call"
-    ) 
-    , 
+    )
+    ,
     ( "7 - Second statement"
     , PNext Down $ ap "stm"
-    ) 
-    , 
+    )
+    ,
     ( "8 - Second return"
     , PNext Up $ ap "ret"
-    ) 
+    )
     ,
     ( "9 - All calls terminate properly or improperly"
     , Always $ ap "call" `Implies` ((XNext Up ((ap "ret") `Or` (ap "exc"))) `Or` (PNext Up ((ap "ret") `Or` (ap "exc"))))
-    ) 
-    , 
+    )
+    ,
     ( "10 - Not Eventually X"
     , Not $ Eventually $ ap "X"
-    ) 
-    , 
+    )
+    ,
     ( "11 - if sample stm, then reach Y almost surely"
     , PNext Down $ ap "ret" `Or` (Eventually $ ap "Y")
     )
@@ -93,19 +93,19 @@ probFormulas =
     ,
     ( "15 - All calls terminate properly, apart from the initial one"
     , PNext Down $ Always $ ap "call" `Implies` (XNext Up (ap "ret")) `Or` (PNext Up (ap "ret"))
-    ) 
+    )
     ,
     ( "16 - Not Eventually Y"
     , Not $ Eventually $ ap "Y"
-    ) 
+    )
     ,
     ( "17 - Eventually statement"
     , Eventually $ ap "stm"
-    ) 
-    , 
+    )
+    ,
     ( "18 - Not Eventually stuttering in Y"
     , Not $ Eventually $ Always $ ap "Y"
-    ) 
+    )
   ]
 
 formulas :: [TestCase]

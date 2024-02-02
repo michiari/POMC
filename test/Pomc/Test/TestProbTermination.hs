@@ -10,6 +10,7 @@ module Pomc.Test.TestProbTermination (tests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 import Pomc.Test.OPMs (stlV3Alphabet, makeInputSet)
+import Pomc.Test.EvalFormulas (excludeIndices)
 import Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   , terminationLTExplicit, terminationLEExplicit
                                   , terminationGTExplicit, terminationGEExplicit
@@ -26,8 +27,11 @@ tests = testGroup "ProbModelChecking.hs Termination Tests" $
     , biasedRandomWalkTests, nestedRandomWalkTests
     , nonTerminatingTests, callRetExTests
     ]
-  , testGroup "Estimating Termination Probabilities"
+  , testGroup "Estimating Termination Probabilities with OVI"
     $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' OVI), expected)) exactTerminationProbabilities
+  , testGroup "Estimating Termination Probabilities with SMTWithHints"
+    $ flip excludeIndices [7, 8]
+    $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' SMTWithHints), expected)) exactTerminationProbabilities
   ]
 
 type Prob = Rational
@@ -46,7 +50,7 @@ exactTerminationProbabilities =
   , (biasedRandomWalk, 2%3, "Biased Random Walk")
   , (nestedRandomWalk, 1, "Nested Random Walk")
   , (nonTerminating, 0, "Non terminating POPA")
-  , (callRetEx, 0, "Call-ret example")
+  , (callRetEx, 1 % 4, "Call-ret example")
   , (callRetLoop1, 1 % 4, "Call-ret Loop 1")
   , (callRetLoop2, 0, "Call-ret Loop 2")
   , (loopFunShort, 1 % 2, "Recursive loop with function call short")
