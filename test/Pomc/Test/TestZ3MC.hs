@@ -37,8 +37,7 @@ tests = testGroup "Z3Encoding Model Checking Tests"
 
 slowTests :: TestTree
 slowTests = testGroup "Z3Encoding Model Checking Tests"
-  [ testHierDTestsSlow
-  ]
+  [ sasEvalSlowTests, testHierDTestsSlow, noHanEvalSlowTests ]
 
 makeTestCase :: T.Text -> (TestCase, Word64, SMTStatus) -> TestTree
 makeTestCase filecont tce@((_, phi), _, _) = testCase tname $ tthunk phi
@@ -62,7 +61,7 @@ makeTest filecont ((name, phi), k, expected) =
           prog <- case parse (programP <* eof) name filecont of
                     Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                     Right fsks      -> return fsks
-          smtres <- modelCheckProgram (defaultSmtOpts k) (fmap (TextProp . T.pack) f) prog
+          smtres <- modelCheckProgram ((defaultSmtOpts k) {-smtVerbose = True-}) (fmap (TextProp . T.pack) f) prog
           -- DBG.traceShowM smtres
           let debugMsg | smtStatus smtres == Unsat =
                          "Expected " ++ show expected ++ ", got Unsat. Trace:\n"
@@ -104,72 +103,93 @@ makeParseTest progSource ((name, phi), k, expected) =
 
 
 sasEvalTests :: TestTree
-sasEvalTests = testGroup "SAS MiniProc MC Eval Tests" $
-  map (makeTestCase sasMPSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 30) expectedSasEval
-  -- $ zip (filter (isSupported . snd) EvalFormulas.formulas) $ repeat Sat
+sasEvalTests = testGroup "SAS MiniProc MC Eval Tests" -- k <= 25
+  $ map (makeTestCase sasMPSource)
+  $ filter (\((name, _), _, _) -> read (take 2 name) `notElem` sasSlow) sasEval
 
 sasEvalBenchs :: TestTree
-sasEvalBenchs = testGroup "SAS MiniProc MC Eval Tests" $
-  map (makeBench sasMPSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 25) expectedSasEval
+sasEvalBenchs = testGroup "SAS MiniProc MC Eval Tests"
+  $ map (makeBench sasMPSource)
+  $ filter (\((name, _), _, _) -> read (take 2 name) `notElem` sasSlow) sasEval
+
+sasEvalSlowTests :: TestTree
+sasEvalSlowTests = testGroup "SAS MiniProc MC Eval Tests"
+  $ map (makeTestCase sasMPSource)
+  $ filter (\((name, _), _, _) -> read (take 2 name) `elem` sasSlow) sasEval
+
+sasEval :: [(TestCase, Word64, SMTStatus)]
+sasEval = zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 55) expectedSasEval
+
+sasSlow :: [Int]
+sasSlow = [11, 15, 23, 25, 32, 33, 38, 51, 57, 58, 60, 62]
 
 expectedSasEval :: [SMTStatus]
 expectedSasEval =
-  [ Sat, Unsat, Sat, Unsat, Unsat, Unsat -- 5
-  , Unsat, Unsat, Unsat -- 8
-  , Sat, Unknown {-Sat-}, Unsat, Sat -- 13
-  , Unknown {-Sat-}, Unsat -- 16
-  , Unsat, Unsat, Unsat, Unsat, Unsat, Unknown {-Sat-} -- base_tests
-  , Sat, Unknown {-Sat-}                               -- chain_next
-  , Sat, Unsat, Unsat, Unknown {-Sat-}                 -- contains_exc
-  , Unknown {-Sat-}                                    -- data_access
-  , Unknown {-Sat-}                                    -- exception_safety
-  , Unsat, Unsat                                       -- hier_down
-  , Unsat                                              -- hier_insp
-  , Sat, Unsat                                         -- hier_up
-  , Unsat, Unsat                                       -- normal_ret
-  , Unknown {-Sat-}                                    -- no_throw
-  , Unsat                                              -- uninstall_han
-  , Unsat, Unknown {-Sat-}, Unknown {-Sat-}            -- until_exc
-  , Unknown {-Sat-}, Unknown {-Sat-}                   -- until_misc
+  [ Sat, Unsat, Sat, Unsat, Unsat, Unsat                          -- 5
+  , Unsat, Unsat, Unsat                                           -- 8
+  , Sat, Sat, Unsat, Sat                                          -- 13
+  , Sat, Unsat                                                    -- 16
+  , Unsat, Unsat, Unsat, Unsat, Unsat, Sat                        -- base_tests
+  , Sat, Sat                                                      -- chain_next
+  , Sat, Unsat, Unsat, Sat                                        -- contains_exc
+  , Unknown {-up to 175, Sat-}                                    -- data_access
+  , Unknown {-up to 180, Sat-}                                    -- exception_safety
+  , Unsat, Unsat                                                  -- hier_down
+  , Unsat                                                         -- hier_insp
+  , Sat, Unsat                                                    -- hier_up
+  , Unsat, Unsat                                                  -- normal_ret
+  , Unknown {-up to 84, Sat-}                                     -- no_throw
+  , Unsat                                                         -- uninstall_han
+  , Unsat, Unknown {-up to 219, Sat-}, Unknown {-up to 310, Sat-} -- until_exc
+  , Sat, Unknown {-up to 229, Sat-}                               -- until_misc
   ]
 
 noHanEvalTests :: TestTree
-noHanEvalTests = testGroup "NoHan MiniProc MC Eval Tests" $
-  map (makeTestCase noHanSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 10) expectedNoHanEval
+noHanEvalTests = testGroup "NoHan MiniProc MC Eval Tests"
+  $ map (makeTestCase noHanSource)
+  $ filter (\((name, _), _, _) -> read (take 2 name) `notElem` noHanSlow) noHanEval
 
 noHanEvalBenchs :: TestTree
-noHanEvalBenchs = testGroup "NoHan MiniProc MC Eval Tests" $
-  map (makeBench noHanSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 10) expectedNoHanEval
+noHanEvalBenchs = testGroup "NoHan MiniProc MC Eval Tests"
+  $ map (makeBench noHanSource)
+  $ filter (\((name, _), _, _) -> read (take 2 name) `notElem` noHanSlow) noHanEval
+
+noHanEvalSlowTests :: TestTree
+noHanEvalSlowTests = testGroup "NoHan MiniProc MC Eval Tests"
+  $ map (makeTestCase noHanSource)
+  $ filter (\((name, _), _, _) -> read (take 2 name) `elem` noHanSlow) noHanEval
+
+noHanEval :: [(TestCase, Word64, SMTStatus)]
+noHanEval = zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 42) expectedNoHanEval
+
+noHanSlow :: [Int]
+noHanSlow = [31, 33, 55, 56, 57, 58]
 
 expectedNoHanEval :: [SMTStatus]
 expectedNoHanEval =
-  [ Sat, Unsat, Unknown {-Sat-}, Unsat, Unsat, Unsat   -- 5
-  , Unsat, Sat, Unsat                                  -- 8
-  , Unsat, Unsat, Unsat, Unsat                         -- 13
-  , Unsat, Unsat                                       -- 16
-  , Unknown {-Sat-}, Unsat, Unsat, Unsat, Unsat, Unsat -- base_tests
-  , Unsat, Unsat                                       -- chain_next
-  , Unsat, Unsat, Unknown {-Sat-}, Unsat               -- contains_exc
-  , Unknown {-Sat-}                                    -- data_access
-  , Unsat                                              -- exception_safety
-  , Unknown {-Sat-}, Unsat                             -- hier_down
-  , Unsat                                              -- hier_insp
-  , Unsat, Unsat                                       -- hier_up
-  , Unsat, Unsat                                       -- normal_ret
-  , Unsat                                              -- no_throw
-  , Unknown {-Sat-}                                    -- uninstall_han
-  , Unknown {-Sat-}, Unknown {-Sat-}, Unknown {-Sat-}  -- until_exc
-  , Unsat, Unsat                                       -- until_misc
+  [ Sat, Unsat, Sat, Unsat, Unsat, Unsat                                               -- 5
+  , Unsat, Sat, Unsat                                                                  -- 8
+  , Unsat, Unsat, Unsat, Unsat                                                         -- 13
+  , Unsat, Unsat                                                                       -- 16
+  , Unknown {-up to 175, Sat-}, Unsat, Unsat, Unsat, Unsat, Unsat                      -- base_tests
+  , Unsat, Unsat                                                                       -- chain_next
+  , Unsat, Unsat, Unknown {-up to 56, Sat-}, Unsat                                     -- contains_exc
+  , Unknown {-up to 172, Sat-}                                                         -- data_access
+  , Unsat                                                                              -- exception_safety
+  , Sat, Unsat                                                                         -- hier_down
+  , Unsat                                                                              -- hier_insp
+  , Unsat, Unsat                                                                       -- hier_up
+  , Unsat, Unsat                                                                       -- normal_ret
+  , Unsat                                                                              -- no_throw
+  , Sat                                                                                -- uninstall_han
+  , Unknown {-up to 128, Sat-}, Unknown {-up to 189, Sat-}, Unknown {-up to 100, Sat-} -- until_exc
+  , Unsat, Unsat                                                                       -- until_misc
   ]
 
 simpleThenEvalTests :: TestTree
 simpleThenEvalTests = testGroup "SimpleThen MiniProc MC Eval Tests" $
   map (makeTestCase simpleThenSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 14) expectedSimpleThenEval
+  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 500) expectedSimpleThenEval
 
 simpleThenEvalBenchs :: TestTree
 simpleThenEvalBenchs = testGroup "SimpleThen MiniProc MC Eval Tests" $
@@ -200,7 +220,7 @@ expectedSimpleThenEval =
 simpleElseEvalTests :: TestTree
 simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
   map (makeTestCase simpleElseSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 12) expectedSimpleElseEval
+  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 500) expectedSimpleElseEval
 
 simpleElseEvalBenchs :: TestTree
 simpleElseEvalBenchs = testGroup "SimpleElse MiniProc MC Eval Tests" $
@@ -209,23 +229,23 @@ simpleElseEvalBenchs = testGroup "SimpleElse MiniProc MC Eval Tests" $
 
 expectedSimpleElseEval :: [SMTStatus]
 expectedSimpleElseEval =
-  [ Sat, Unsat, Sat, Unsat, Unsat, Unsat           -- 5
-  , Unsat, Unsat, Unsat                            -- 8
-  , Sat, Sat, Unsat, Unsat                         -- 13
-  , Sat, Unsat                                     -- 16
-  , Unsat, Unsat, Unsat, Unsat, Unsat, Unsat       -- base_tests
-  , Unsat, Unsat                                   -- chain_next
-  , Sat, Unsat, Unsat, Unknown {-Sat-} -- contains_exc
-  , Unknown {-Sat-}                                -- data_access
-  , Unknown {-Sat-}                                -- exception_safety
-  , Unsat, Unsat                                   -- hier_down
-  , Unsat                                          -- hier_insp
-  , Unsat, Unsat                                   -- hier_up
-  , Unsat, Unknown {-Sat-}                         -- normal_ret
-  , Unknown {-Sat-}                                -- no_throw
-  , Unsat                                          -- uninstall_han
-  , Unsat, Unsat, Unsat                            -- until_exc
-  , Unsat, Unsat                                   -- until_misc
+  [ Sat, Unsat, Sat, Unsat, Unsat, Unsat     -- 5
+  , Unsat, Unsat, Unsat                      -- 8
+  , Sat, Sat, Unsat, Unsat                   -- 13
+  , Sat, Unsat                               -- 16
+  , Unsat, Unsat, Unsat, Unsat, Unsat, Unsat -- base_tests
+  , Unsat, Unsat                             -- chain_next
+  , Sat, Unsat, Unsat, Sat                   -- contains_exc
+  , Sat                                      -- data_access
+  , Sat                                      -- exception_safety
+  , Unsat, Unsat                             -- hier_down
+  , Unsat                                    -- hier_insp
+  , Unsat, Unsat                             -- hier_up
+  , Unsat, Sat                               -- normal_ret
+  , Sat                                      -- no_throw
+  , Unsat                                    -- uninstall_han
+  , Unsat, Unsat, Unsat                      -- until_exc
+  , Unsat, Unsat                             -- until_misc
   ]
 
 
@@ -435,27 +455,27 @@ testHierD =
   , (("Single next sat, weak", Next $ Next $ WHNext Down $ ap "pb"), 55, Sat)
   , (("Single next unsat, strong", Next $ Next $ HNext Down $ ap "pc"), 20, Unsat)
   , (("Single next unsat, weak", Next $ Next $ WHNext Down $ ap "pc"), 20, Unsat)
-  , (("Two nexts sat, strong", Next $ Next $ HNext Down $ HNext Down $ ap "pc"), 20, Unknown {-Sat-})
-  , (("Two nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ ap "pc"), 20, Unknown {-Sat-})
-  , (("Two nexts sat, mixed", Next $ Next $ HNext Down $ WHNext Down $ ap "pc"), 20, Unknown {-Sat-})
+  , (("Two nexts sat, strong", Next $ Next $ HNext Down $ HNext Down $ ap "pc"), 500, Unknown {-Sat-})
+  , (("Two nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ ap "pc"), 500, Unknown {-Sat-})
+  , (("Two nexts sat, mixed", Next $ Next $ HNext Down $ WHNext Down $ ap "pc"), 500, Unknown {-Sat-})
   , (("Two nexts unsat, strong", Next $ Next $ HNext Down $ HNext Down $ ap "pb"), 20, Unsat)
   , (("Two nexts unsat, weak", Next $ Next $ WHNext Down $ WHNext Down $ ap "pb"), 20, Unsat)
   , (("Two nexts unsat, mixed", Next $ Next $ HNext Down $ WHNext Down $ ap "pb"), 20, Unsat)
   , (("Many nexts unsat, strong", Next $ Next $ HNext Down $ HNext Down $ HNext Down $ HNext Down $ ap "pd"), 20, Unsat)
-  , (("Many nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ WHNext Down $ WHNext Down $ ap "pd"), 20, Unknown {-Sat-}) -- Unknown up to 200
+  , (("Many nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ WHNext Down $ WHNext Down $ ap "pd"), 500, Unknown {-Sat-}) -- Unknown up to 200
   , (("HUntil equal", HUntil Down T $ ap "call"), 20, Unsat)
   , (("HRelease equal", HRelease Down T $ ap "call"), 20, Sat)
-  , (("HUntil sat, trivial", Next $ Next $ HUntil Down T $ ap "pa"), 20, Unknown {-Sat-})
+  , (("HUntil sat, trivial", Next $ Next $ HUntil Down T $ ap "pa"), 500, Unknown {-Sat-})
   , (("HRelease sat, trivial", Next $ Next $ HRelease Down T $ ap "pa"), 20, Sat)
-  , (("HUntil sat", Next $ Next $ HUntil Down T $ ap "pc"), 20, Unknown {-Sat-})
-  , (("HRelease sat", Next $ Next $ HRelease Down (ap "pd") T), 20, Unknown {-Sat-})
+  , (("HUntil sat", Next $ Next $ HUntil Down T $ ap "pc"), 500, Unknown {-Sat-})
+  , (("HRelease sat", Next $ Next $ HRelease Down (ap "pd") T), 500, Unknown {-Sat-})
   , (("HUntil unsat", Next $ Next $ HUntil Down (Not $ ap "pa") $ ap "pd"), 20, Unsat)
   , (("HRelease unsat", Next $ Next $ HRelease Down (Not $ ap "pa") $ ap "pd"), 20, Unsat)
-  , (("HUntil HNext rhs sat", Next $ Next $ HUntil Down T $ HNext Down $ ap "pc"), 20, Unknown {-Sat-})
-  , (("HRelease WHNext lhs sat", Next $ Next $ HRelease Down (WHNext Down $ ap "pd") T), 20, Unknown {-Sat-})
-  , (("HUntil HNext lhs sat", Next $ Next $ HUntil Down (HNext Down $ Not $ ap "pa") $ ap "pc"), 20, Unknown {-Sat-})
-  , (("Nested HUntil sat", Next $ Next $ HUntil Down T $ HUntil Down (Not $ ap "pa") $ ap "pc"), 20, Unknown {-Sat-})
-  , (("Nested HRelease sat", Next $ Next $ HRelease Down (HRelease Down (ap "pd") (Not $ ap "pa")) T), 20, Unknown {-Sat-})
+  , (("HUntil HNext rhs sat", Next $ Next $ HUntil Down T $ HNext Down $ ap "pc"), 500, Unknown {-Sat-})
+  , (("HRelease WHNext lhs sat", Next $ Next $ HRelease Down (WHNext Down $ ap "pd") T), 500, Unknown {-Sat-})
+  , (("HUntil HNext lhs sat", Next $ Next $ HUntil Down (HNext Down $ Not $ ap "pa") $ ap "pc"), 500, Unknown {-Sat-})
+  , (("Nested HUntil sat", Next $ Next $ HUntil Down T $ HUntil Down (Not $ ap "pa") $ ap "pc"), 500, Unknown {-Sat-})
+  , (("Nested HRelease sat", Next $ Next $ HRelease Down (HRelease Down (ap "pd") (Not $ ap "pa")) T), 500, Unknown {-Sat-})
   ]
 
 testHierUTests :: TestTree
