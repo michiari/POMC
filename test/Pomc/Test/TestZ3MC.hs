@@ -344,7 +344,7 @@ nondetTests =
 nondetTrue :: [(T.Text, (TestCase, Word64, SMTStatus))]
 nondetTrue =
   [ (nondetSrc, (("True", Not T), 20, Unsat))
-  , (nondetSrcLong, (("True", Not T), 20, Unsat))
+  , (nondetSrcLong, (("True Long", Not T), 20, Unsat))
   , (veryNondetSrc, (("Very Nondet", Not T), 20, Unsat))
   , (nondetSrcLong, (("Not stm", Not (PNext Down $ ap "stm")), 20, Unsat))
   ]
@@ -445,7 +445,7 @@ testHierDTestsSlow = testGroup "Tests for Hierarchical Down Operators"
 
 testHierDBenchs :: TestTree
 testHierDBenchs = testGroup "Tests for Hierarchical Down Operators"
- $ map (makeBench testHierDSrc) testHierD
+ $ map (makeBench testHierDSrc) $ excludeIndices testHierD hierDSlow
 
 hierDSlow :: [Int]
 hierDSlow = [2, 3, 6, 7, 8, 13, 16, 18, 19, 22, 23, 24, 25, 26]
