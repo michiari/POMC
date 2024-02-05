@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {- |
    Module      : Pomc.Test.TestZ3MC
-   Copyright   : 2021-23 Michele Chiari
+   Copyright   : 2021-24 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
@@ -12,7 +12,7 @@ import Pomc.Test.TestZ3Sat (isSupported)
 import Pomc.Test.TestMP hiding (tests, benchs)
 import Pomc.Test.EvalFormulas as EvalFormulas (TestCase, zip3Expected, excludeIndices, formulas, ap)
 import Pomc.Potl
-import Pomc.Z3Encoding (SMTOpts(..), defaultSmtOpts, modelCheckProgram, SMTResult(..), SMTStatus(..))
+import Pomc.Z3Encoding ({- SMTOpts(..), -} defaultSmtOpts, modelCheckProgram, SMTResult(..), SMTStatus(..))
 import Pomc.MiniProc (ExprProp(..))
 import Pomc.Parse.Parser (CheckRequest(..), checkRequestP)
 import Pomc.Parse.MiniProc (programP)
@@ -103,7 +103,7 @@ makeParseTest progSource ((name, phi), k, expected) =
 
 
 sasEvalTests :: TestTree
-sasEvalTests = testGroup "SAS MiniProc MC Eval Tests" -- k <= 25
+sasEvalTests = testGroup "SAS MiniProc MC Eval Tests"
   $ map (makeTestCase sasMPSource)
   $ filter (\((name, _), _, _) -> read (take 2 name) `notElem` sasSlow) sasEval
 
@@ -189,43 +189,43 @@ expectedNoHanEval =
 simpleThenEvalTests :: TestTree
 simpleThenEvalTests = testGroup "SimpleThen MiniProc MC Eval Tests" $
   map (makeTestCase simpleThenSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 500) expectedSimpleThenEval
+  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 15) expectedSimpleThenEval
 
 simpleThenEvalBenchs :: TestTree
 simpleThenEvalBenchs = testGroup "SimpleThen MiniProc MC Eval Tests" $
   map (makeBench simpleThenSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 14) expectedSimpleThenEval
+  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 15) expectedSimpleThenEval
 
 expectedSimpleThenEval :: [SMTStatus]
 expectedSimpleThenEval =
-  [ Sat, Unsat, Sat, Unsat, Unsat, Unsat           -- 5
-  , Unsat, Unsat, Unsat                            -- 8
-  , Sat, Sat, Unsat, Sat                           -- 13
-  , Sat, Unsat                                     -- 16
-  , Unsat, Unsat, Unsat, Unsat, Unsat, Unsat       -- base_tests
-  , Unsat, Unsat                                   -- chain_next
-  , Sat, Unsat, Unsat, Unknown {-Sat-}             -- contains_exc
-  , Unknown {-Sat-}                                -- data_access
-  , Unknown {-Sat-}                                -- exception_safety
-  , Unsat, Unsat                                   -- hier_down
-  , Unsat                                          -- hier_insp
-  , Unsat, Unsat                                   -- hier_up
-  , Unsat, Unsat                                   -- normal_ret
-  , Unknown {-Sat-}                                -- no_throw
-  , Unsat                                          -- uninstall_han
-  , Unsat, Unsat, Unsat                            -- until_exc
-  , Unsat, Unsat                                   -- until_misc
+  [ Sat, Unsat, Sat, Unsat, Unsat, Unsat     -- 5
+  , Unsat, Unsat, Unsat                      -- 8
+  , Sat, Sat, Unsat, Sat                     -- 13
+  , Sat, Unsat                               -- 16
+  , Unsat, Unsat, Unsat, Unsat, Unsat, Unsat -- base_tests
+  , Unsat, Unsat                             -- chain_next
+  , Sat, Unsat, Unsat, Sat                   -- contains_exc
+  , Sat                                      -- data_access
+  , Sat                                      -- exception_safety
+  , Unsat, Unsat                             -- hier_down
+  , Unsat                                    -- hier_insp
+  , Unsat, Unsat                             -- hier_up
+  , Unsat, Unsat                             -- normal_ret
+  , Sat                                      -- no_throw
+  , Unsat                                    -- uninstall_han
+  , Unsat, Unsat, Unsat                      -- until_exc
+  , Unsat, Unsat                             -- until_misc
   ]
 
 simpleElseEvalTests :: TestTree
 simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
   map (makeTestCase simpleElseSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 500) expectedSimpleElseEval
+  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 13) expectedSimpleElseEval
 
 simpleElseEvalBenchs :: TestTree
 simpleElseEvalBenchs = testGroup "SimpleElse MiniProc MC Eval Tests" $
   map (makeTestCase simpleElseSource)
-  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 12) expectedSimpleElseEval
+  $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 13) expectedSimpleElseEval
 
 expectedSimpleElseEval :: [SMTStatus]
 expectedSimpleElseEval =
@@ -437,15 +437,18 @@ exprProp =
 
 testHierDTests :: TestTree
 testHierDTests = testGroup "Tests for Hierarchical Down Operators"
- $ map (makeTestCase testHierDSrc) $ excludeIndices testHierD [2, 3]
+ $ map (makeTestCase testHierDSrc) $ excludeIndices testHierD hierDSlow
 
 testHierDTestsSlow :: TestTree
 testHierDTestsSlow = testGroup "Tests for Hierarchical Down Operators"
- $ map (makeTestCase testHierDSrc) $ fmap (testHierD !!) [2, 3]
+ $ map (makeTestCase testHierDSrc) $ fmap (testHierD !!) hierDSlow
 
 testHierDBenchs :: TestTree
 testHierDBenchs = testGroup "Tests for Hierarchical Down Operators"
  $ map (makeBench testHierDSrc) testHierD
+
+hierDSlow :: [Int]
+hierDSlow = [2, 3, 6, 7, 8, 13, 16, 18, 19, 22, 23, 24, 25, 26]
 
 testHierD :: [(TestCase, Word64, SMTStatus)]
 testHierD =
@@ -455,27 +458,27 @@ testHierD =
   , (("Single next sat, weak", Next $ Next $ WHNext Down $ ap "pb"), 55, Sat)
   , (("Single next unsat, strong", Next $ Next $ HNext Down $ ap "pc"), 20, Unsat)
   , (("Single next unsat, weak", Next $ Next $ WHNext Down $ ap "pc"), 20, Unsat)
-  , (("Two nexts sat, strong", Next $ Next $ HNext Down $ HNext Down $ ap "pc"), 500, Unknown {-Sat-})
-  , (("Two nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ ap "pc"), 500, Unknown {-Sat-})
-  , (("Two nexts sat, mixed", Next $ Next $ HNext Down $ WHNext Down $ ap "pc"), 500, Unknown {-Sat-})
+  , (("Two nexts sat, strong", Next $ Next $ HNext Down $ HNext Down $ ap "pc"), 100, Unknown {-up to 102, Sat-})
+  , (("Two nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ ap "pc"), 100, Unknown {-up to 109, Sat-})
+  , (("Two nexts sat, mixed", Next $ Next $ HNext Down $ WHNext Down $ ap "pc"), 100, Unknown {-up to 109, Sat-})
   , (("Two nexts unsat, strong", Next $ Next $ HNext Down $ HNext Down $ ap "pb"), 20, Unsat)
   , (("Two nexts unsat, weak", Next $ Next $ WHNext Down $ WHNext Down $ ap "pb"), 20, Unsat)
   , (("Two nexts unsat, mixed", Next $ Next $ HNext Down $ WHNext Down $ ap "pb"), 20, Unsat)
   , (("Many nexts unsat, strong", Next $ Next $ HNext Down $ HNext Down $ HNext Down $ HNext Down $ ap "pd"), 20, Unsat)
-  , (("Many nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ WHNext Down $ WHNext Down $ ap "pd"), 500, Unknown {-Sat-}) -- Unknown up to 200
+  , (("Many nexts sat, weak", Next $ Next $ WHNext Down $ WHNext Down $ WHNext Down $ WHNext Down $ ap "pd"), 20, Unknown {-up to 100, Sat-})
   , (("HUntil equal", HUntil Down T $ ap "call"), 20, Unsat)
   , (("HRelease equal", HRelease Down T $ ap "call"), 20, Sat)
-  , (("HUntil sat, trivial", Next $ Next $ HUntil Down T $ ap "pa"), 500, Unknown {-Sat-})
+  , (("HUntil sat, trivial", Next $ Next $ HUntil Down T $ ap "pa"), 100, Unknown {-up to 159, Sat-})
   , (("HRelease sat, trivial", Next $ Next $ HRelease Down T $ ap "pa"), 20, Sat)
-  , (("HUntil sat", Next $ Next $ HUntil Down T $ ap "pc"), 500, Unknown {-Sat-})
-  , (("HRelease sat", Next $ Next $ HRelease Down (ap "pd") T), 500, Unknown {-Sat-})
+  , (("HUntil sat", Next $ Next $ HUntil Down T $ ap "pc"), 100, Unknown {-up to 158, Sat-})
+  , (("HRelease sat", Next $ Next $ HRelease Down (ap "pd") T), 100, Unknown {-up to 83, Sat-})
   , (("HUntil unsat", Next $ Next $ HUntil Down (Not $ ap "pa") $ ap "pd"), 20, Unsat)
   , (("HRelease unsat", Next $ Next $ HRelease Down (Not $ ap "pa") $ ap "pd"), 20, Unsat)
-  , (("HUntil HNext rhs sat", Next $ Next $ HUntil Down T $ HNext Down $ ap "pc"), 500, Unknown {-Sat-})
-  , (("HRelease WHNext lhs sat", Next $ Next $ HRelease Down (WHNext Down $ ap "pd") T), 500, Unknown {-Sat-})
-  , (("HUntil HNext lhs sat", Next $ Next $ HUntil Down (HNext Down $ Not $ ap "pa") $ ap "pc"), 500, Unknown {-Sat-})
-  , (("Nested HUntil sat", Next $ Next $ HUntil Down T $ HUntil Down (Not $ ap "pa") $ ap "pc"), 500, Unknown {-Sat-})
-  , (("Nested HRelease sat", Next $ Next $ HRelease Down (HRelease Down (ap "pd") (Not $ ap "pa")) T), 500, Unknown {-Sat-})
+  , (("HUntil HNext rhs sat", Next $ Next $ HUntil Down T $ HNext Down $ ap "pc"), 100, Unknown {-up to 158, Sat-})
+  , (("HRelease WHNext lhs sat", Next $ Next $ HRelease Down (WHNext Down $ ap "pd") T), 100, Unknown {-up to 295, Sat-})
+  , (("HUntil HNext lhs sat", Next $ Next $ HUntil Down (HNext Down $ Not $ ap "pa") $ ap "pc"), 100, Unknown {-up to 154, Sat-})
+  , (("Nested HUntil sat", Next $ Next $ HUntil Down T $ HUntil Down (Not $ ap "pa") $ ap "pc"), 100, Unknown {-up to 153, Sat-})
+  , (("Nested HRelease sat", Next $ Next $ HRelease Down (HRelease Down (ap "pd") (Not $ ap "pa")) T), 100, Unknown {-up to 153, Sat-})
   ]
 
 testHierUTests :: TestTree

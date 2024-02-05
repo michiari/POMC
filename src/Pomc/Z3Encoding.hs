@@ -138,6 +138,7 @@ checkQuery smtopts phi query = evalZ3 $ do
                                          , smtTimeModel = 0
                                          }
       | otherwise = do
+          -- DBG.traceM $ "Checking prefixes of length k = " ++ show to
           t0 <- startTimer
           assertPhiEncoding encData from to
           assertTime1 <- fmap (+ assertTime0) $ stopTimer t0 ()
