@@ -224,7 +224,7 @@ simpleElseEvalTests = testGroup "SimpleElse MiniProc MC Eval Tests" $
 
 simpleElseEvalBenchs :: TestTree
 simpleElseEvalBenchs = testGroup "SimpleElse MiniProc MC Eval Tests" $
-  map (makeTestCase simpleElseSource)
+  map (makeBench simpleElseSource)
   $ zip3Expected (filter (isSupported . snd) EvalFormulas.formulas) (repeat 13) expectedSimpleElseEval
 
 expectedSimpleElseEval :: [SMTStatus]
@@ -301,7 +301,7 @@ intBenchs = testGroup "Int Variables Tests"
   , testGroup "Nondeterministic Int"
     $ map (makeParseBench nondetSrc) nondetTests
   , testGroup "Nondeterministic Int Reachability"
-    $ map (uncurry makeTestCase) nondetTrue
+    $ map (uncurry makeBench) nondetTrue
   , testGroup "Nondeterministic Int Expressions"
     $ map (makeParseBench nondetSrcLong) nondetExprProp
   , testGroup "Int Array Tests" $ map (makeParseBench arraySrc) arrayTests
