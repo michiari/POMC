@@ -144,7 +144,8 @@ checkQuery smtopts phi query = evalZ3 $ do
           case maybeProgData of
             Just progData -> assertProgEncoding encData progData from to
             Nothing -> return ()
-           assertTime1 <- fmap (+ assertTime0) $ stopTimer t0 ()
+          assertPrune (smtFastPrune smtopts) encData maybeProgData to
+          assertTime1 <- fmap (+ assertTime0) $ stopTimer t0 ()
 
           (res1, checkTime1) <- timeActionAcc checkTime0 (== Z3.Sat) solverCheck
           case res1 of
@@ -187,26 +188,9 @@ checkQuery smtopts phi query = evalZ3 $ do
                                    , smtTimeModel = modelTime
                                    }
                 Z3.Undef -> error "Z3 unexpectedly reported Undef"
-                Z3.Unsat -> do
-                  t3 <- startTimer
-                  assertPrune (smtFastPrune smtopts) encData maybeProgData to
-                  assertTime3 <- fmap (+ assertTime2) $ stopTimer t3 ()
-
-                  (res3, checkTime3) <- timeActionAcc checkTime2 (== Z3.Sat) solverCheck
-                  case res3 of
-                    Z3.Unsat -> do
-                      when (smtVerbose smtopts) . liftIO . putStrLn
-                        $ "Prune rule is UNSAT (k = " ++ show to ++ ")"
-                      return SMTResult { smtStatus = Unsat
-                                       , smtTableau = Nothing
-                                       , smtTimeAssert = assertTime3
-                                       , smtTimeCheck = checkTime3
-                                       , smtTimeModel = 0
-                                       }
-                    Z3.Undef -> error "Z3 unexpectedly reported Undef"
-                    Z3.Sat -> completeCheck encData maybeProgData
-                              assertTime3 checkTime3
-                              (to + 1) (to + 1)
+                Z3.Unsat -> completeCheck encData maybeProgData
+                            assertTime2 checkTime2
+                            (to + 1) (to + 1)
 
     partialCheck :: EncData -> Maybe ProgData
                  -> Double -> Double -> Word64 -> Word64
@@ -1048,7 +1032,7 @@ assertPrune fastPrune encData maybeProgData x
       smbx <- mkApp1 smb xLit
       stackx <- mkApp1 stack xLit
       ctxx <- mkApp1 ctx xLit
-      prune1 <- mkExistsNodes [0..(x-1)]
+      prune1 <- mkExistsNodes [1..(x-1)]
                 (\y -> do
                     yLit <- mkUnsignedInt64 y nodeSort
                     sameFsxy <- mkSameFs xLit yLit
@@ -1070,7 +1054,7 @@ assertPrune fastPrune encData maybeProgData x
       smbx <- mkApp1 smb xLit
       stackx <- mkApp1 stack xLit
       -- ctxx <- mkApp1 (zCtx encData) xLit
-      assert =<< mkNot =<< mkExistsNodes [0..(x-1)]
+      assert =<< mkNot =<< mkExistsNodes [1..(x-1)]
         (\y -> do
             yLit <- mkUnsignedInt64 y nodeSort
             pending <- mkPending encData x y
