@@ -141,7 +141,10 @@ checkQuery smtopts phi query = evalZ3 $ do
           -- DBG.traceM $ "Checking prefixes of length k = " ++ show to
           t0 <- startTimer
           assertPhiEncoding encData from to
-          assertTime1 <- fmap (+ assertTime0) $ stopTimer t0 ()
+          case maybeProgData of
+            Just progData -> assertProgEncoding encData progData from to
+            Nothing -> return ()
+           assertTime1 <- fmap (+ assertTime0) $ stopTimer t0 ()
 
           (res1, checkTime1) <- timeActionAcc checkTime0 (== Z3.Sat) solverCheck
           case res1 of
@@ -163,9 +166,8 @@ checkQuery smtopts phi query = evalZ3 $ do
               t1 <- startTimer
               phiAssumptions <- mkPhiAssumptions (smtFastEmpty smtopts) encData to
               progAssumptions <- case maybeProgData of
+                Just progData -> mkProgAssumptions encData progData to
                 Nothing -> return []
-                Just progData -> assertProgEncoding encData (fromJust maybeProgData) from to
-                                 >> mkProgAssumptions encData progData to
               assertTime2 <- fmap (+ assertTime1) $ stopTimer t1 $ null progAssumptions
 
               (res2, checkTime2) <- timeActionAcc checkTime1 (== Z3.Sat)
