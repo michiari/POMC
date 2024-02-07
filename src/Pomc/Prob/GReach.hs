@@ -16,7 +16,7 @@ module Pomc.Prob.GReach ( GRobals(..)
                         , freezeSuppEnds
                         ) where
 
-import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..), defaultTolerance)
+import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..))
 import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProbEncodedSet, ProBitencoding)
 import qualified Pomc.Prob.ProbEncoding as PE
@@ -613,18 +613,16 @@ solveSCCQuery sccMembers newAdded globals = do
 
   -- preprocessing to solve variables that do not need ovi
   _ <- preprocessApproxFixpWithHints lEqMap iterEps (2 * sccLen) variables
-  _ <- preprocessApproxFixpWithHints uEqMap iterEps (2 * sccLen) variables
+  (_, unsolvedVars) <- preprocessApproxFixpWithHints uEqMap iterEps (2 * sccLen) variables
 
   -- lEqMap and uEqMap should be the same here 
-  unsolvedEqs <- numLiveEqSysWithHints lEqMap variables
-
-  when (unsolvedEqs > 0) $ do
+  unless (null unsolvedVars) $ do
     startWeights <- startTimer
 
     DBG.traceM "Running OVI to solve the equation system"
-    oviRes <- oviWithHints defaultOVISettingsDouble uEqMap variables
+    oviRes <- oviWithHints defaultOVISettingsDouble uEqMap unsolvedVars
 
-    rCertified <- oviToRationalWithHints defaultOVISettingsDouble uEqMap oviRes variables
+    rCertified <- oviToRationalWithHints defaultOVISettingsDouble uEqMap oviRes unsolvedVars
     unless rCertified $ error "cannot deduce a rational certificate for this SCC when computing fraction f"
 
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
@@ -633,24 +631,21 @@ solveSCCQuery sccMembers newAdded globals = do
     stToIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
 
     -- updating lower bounds
-    approxVec <- approxFixpWithHints lEqMap iterEps defaultMaxIters variables
-    forM_  variables $ \varKey -> do
+    approxVec <- approxFixpWithHints lEqMap iterEps defaultMaxIters unsolvedVars
+    forM_  unsolvedVars $ \varKey -> do
       HT.lookup lEqMap varKey >>= \case
-          Just (PopEq _) -> return () -- An eq constraint has already been asserted
+          Just (PopEq _) -> error "trying to update a dead variable"
           _ -> do
             p <- fromJust <$> HT.lookup approxVec varKey
             addFixpEq lEqMap varKey (PopEq p)
 
     -- updating upper bounds
-    upperBound <- HT.toList (oviUpperBound oviRes)
+    upperBound <- foldM (\acc varKey -> HT.lookup uEqMap varKey >>= \case
+          Just (PopEq _) -> error "trying to update a variable that is already dead"
+          _ -> do
+            p <- fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
+            addFixpEq uEqMap varKey (PopEq p)
+            return ((varKey, p): acc))
+      [] unsolvedVars
 
-    let upperBounds = (\mapAll -> GeneralMap.restrictKeys mapAll newAdded) . GeneralMap.fromList $ upperBound
-    DBG.traceM $ "Computed upper bounds: " ++ show upperBounds
-
-    forM_  variables $ \varKey -> do
-      HT.lookup uEqMap varKey >>= \case
-        Just (PopEq _) -> return () -- An eq constraint has already been asserted
-        _ -> do
-          p <- fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
-          addFixpEq uEqMap varKey (PopEq p)
-
+    DBG.traceM $ "Computed upper bounds: " ++ show upperBound
