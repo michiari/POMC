@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiWayIf #-}
 {- |
    Module      : Pomc.Z3Encoding
-   Copyright   : 2020-2023 Michele Chiari
+   Copyright   : 2020-2024 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
@@ -43,11 +44,12 @@ import qualified Data.Text as T
 
 -- import qualified Debug.Trace as DBG
 
-data SMTOpts = SMTOpts { smtMaxDepth  :: Word64
-                       , smtVerbose   :: Bool
-                       , smtComplete  :: Bool
-                       , smtFastEmpty :: Bool
-                       , smtFastPrune :: Bool
+data SMTOpts = SMTOpts { smtMaxDepth       :: Word64
+                       , smtVerbose        :: Bool
+                       , smtComplete       :: Bool
+                       , smtFastEmpty      :: Bool
+                       , smtFastPrune      :: Bool
+                       , smtUseArrayTheory :: Bool
                        }
 
 defaultSmtOpts :: Word64 -> SMTOpts
@@ -56,6 +58,7 @@ defaultSmtOpts maxDepth = SMTOpts { smtMaxDepth  = maxDepth
                                   , smtComplete  = True
                                   , smtFastEmpty = True
                                   , smtFastPrune = False
+                                  , smtUseArrayTheory = False
                                   }
 
 data SMTStatus = Sat | Unsat | Unknown deriving (Eq, Ord, Show)
@@ -109,13 +112,14 @@ checkQuery :: SMTOpts
            -> Formula MP.ExprProp
            -> Query
            -> IO SMTResult
-checkQuery smtopts phi query = evalZ3 $ do
+checkQuery smtopts phi query =
+  evalZ3With (if smtUseArrayTheory smtopts then Nothing else Just QF_UFBV) stdOpts $ do
   reset
   t0 <- startTimer
   encData <- initPhiEncoding pnfPhi alphabet maxDepth
   maybeProgData <- case query of
     SatQuery {} -> return Nothing
-    MiniProcQuery prog -> Just <$> initProgEncoding encData prog
+    MiniProcQuery prog -> Just <$> initProgEncoding (smtUseArrayTheory smtopts) encData prog
   initTime <- stopTimer t0 $ isJust maybeProgData
   if smtComplete smtopts
     then completeCheck encData maybeProgData initTime 0 1 minLength
@@ -158,7 +162,10 @@ checkQuery smtopts phi query = evalZ3 $ do
                                , smtTimeCheck = checkTime1
                                , smtTimeModel = 0
                                }
-            Z3.Undef -> error "Z3 unexpectedly reported Undef"
+            Z3.Undef -> do
+              solverDump <- solverToString
+              liftIO $ writeFile ("solver_dump.smt2") solverDump
+              return $ error "Z3 unexpectedly reported Undef"
             Z3.Sat -> do
               when (smtVerbose smtopts) . liftIO . print
                 =<< queryTableau encData to Nothing =<< solverGetModel
@@ -1079,35 +1086,109 @@ assertPrune fastPrune encData maybeProgData x
       Just progData -> do
         pcx <- mkApp1 (zPc progData) xLit
         samePc <- mkEq pcx =<< mkApp1 (zPc progData) yLit
-        let eqVar (vf, _) = do
-              vx <- mkApp1 vf xLit
-              vy <- mkApp1 vf yLit
-              mkEq vx vy
-        sameVars <- mkAndWith eqVar $ V.toList $ zSVarFunVec progData
+        sameVars <- mkAndWith (\varEnc -> mkVarCopy varEnc varEnc xLit yLit)
+                    $ V.toList $ zVarEncVec progData
         mkAnd [samePc, sameVars]
 
 
 data ProgData = ProgData { zProg       :: MP.Program
                          , zLocSort    :: Sort
                          , zPc         :: FuncDecl
-                         , zSVarFunVec :: Vector (FuncDecl, Sort)
+                         , zVarEncVec  :: Vector VarEncoder
                          , zLowerState :: MP.LowerState
                          , zFin        :: [Word]
                          }
 
-initProgEncoding :: EncData -> MP.Program -> Z3 (ProgData)
-initProgEncoding encData prog = do
+data VarEncoder = VarEncoder { zVarFun     :: FuncDecl
+                             , zScalarSort :: Sort
+                             , zVarData    :: VarEncData
+                             }
+data VarEncData = Scalar
+                | ArrayTheory { zAIdxSort :: Sort }
+                | UFArray { zVarType   :: MP.Type
+                          , zUFIdxSort :: Sort
+                          }
+
+mkVarEncoder :: Bool -> EncData -> MP.Variable -> Z3 VarEncoder
+mkVarEncoder useArrays encData var = do
+  let ty = MP.varType var
+      vname = T.unpack $ MP.varName var
+      nodeSort = zNodeSort encData
+      logBase2Sup x = finiteBitSize x - countLeadingZeros x
+  scalarSort <- mkBvSort $ MP.typeWidth ty
+  if | MP.isScalar ty -> do
+         varFunc <- mkFreshFuncDecl vname [nodeSort] scalarSort
+         return $ VarEncoder { zVarFun = varFunc, zScalarSort = scalarSort, zVarData = Scalar }
+     | useArrays -> do
+         idxSort <- mkBvSort $ logBase2Sup (max 1 $ MP.arraySize ty - 1)
+         arrSort <- mkArraySort idxSort scalarSort
+         varFunc <- mkFreshFuncDecl vname [nodeSort] arrSort
+         return $ VarEncoder { zVarFun = varFunc
+                             , zScalarSort = scalarSort
+                             , zVarData = ArrayTheory { zAIdxSort = idxSort }
+                             }
+     | otherwise -> do
+         idxSort <- mkBvSort $ logBase2Sup (max 1 $ MP.arraySize ty - 1)
+         varFunc <- mkFreshFuncDecl vname [nodeSort, idxSort] scalarSort
+         return $ VarEncoder { zVarFun = varFunc
+                             , zScalarSort = scalarSort
+                             , zVarData = UFArray { zVarType = ty
+                                                  , zUFIdxSort = idxSort
+                                                  }
+                             }
+
+assignUFArrayIf :: VarEncoder -> (AST -> Z3 AST) -> (AST -> AST -> Z3 AST) -> AST -> Z3 AST
+assignUFArrayIf varEnc mkRhs mkIf xLit =
+  let varData = zVarData varEnc
+      elemEq i = do
+        iLit <- mkUnsignedInt i $ zUFIdxSort varData
+        vx <- mkApp (zVarFun varEnc) [xLit, iLit]
+        mkIf iLit =<< mkEq vx =<< mkRhs iLit
+  in mkAndWith elemEq [0..((fromIntegral (MP.arraySize $ zVarType varData) :: Word) - 1)]
+
+assignUFArray :: VarEncoder -> (AST -> Z3 AST) -> AST -> Z3 AST
+assignUFArray varEnc mkRhs xLit = assignUFArrayIf varEnc mkRhs (\_ ast -> return ast) xLit
+
+mkInit0Var :: VarEncoder -> AST -> Z3 AST
+mkInit0Var varEnc xLit = do
+  val0 <- mkUnsignedInt 0 $ zScalarSort varEnc
+  case zVarData varEnc of
+    Scalar -> mkEq val0 =<< mkApp1 (zVarFun varEnc) xLit
+    ArrayTheory idxSort -> do
+      arr0 <- mkConstArray idxSort val0
+      mkEq arr0 =<< mkApp1 (zVarFun varEnc) xLit
+    UFArray {} -> assignUFArray varEnc (const $ return val0) xLit
+
+mkInit0 :: Vector VarEncoder -> [MP.Variable] -> AST -> Z3 AST
+mkInit0 varEncVec vars xLit =
+  mkAndWith (\v -> mkInit0Var (varEncVec V.! MP.varId v) xLit) vars
+
+mkVarCopy :: VarEncoder -> VarEncoder -> AST -> AST -> Z3 AST
+mkVarCopy xVarEnc yVarEnc xLit yLit =
+  let xVarFun = zVarFun xVarEnc
+      yVarFun = zVarFun yVarEnc
+      simpleAssign = do
+        vx <- mkApp1 xVarFun xLit
+        vy <- mkApp1 yVarFun yLit
+        mkEq vx vy
+  in case zVarData xVarEnc of
+    Scalar -> simpleAssign
+    ArrayTheory {} -> simpleAssign
+    UFArray {} -> assignUFArray xVarEnc (\iLit -> mkApp yVarFun [yLit, iLit]) xLit
+
+initProgEncoding :: Bool -> EncData -> MP.Program -> Z3 ProgData
+initProgEncoding useArrays encData prog = do
   let (lowerState, ini, fin) = MP.sksToExtendedOpa False (MP.pSks prog)
       nodeSort = zNodeSort encData
   locSortSymbol <- mkStringSymbol "LocSort"
   locSort <- mkFiniteDomainSort locSortSymbol $ fromIntegral $ MP.lsSid lowerState
   -- Uninterpreted functions
   pc <- mkFreshFuncDecl "pc" [nodeSort] locSort
-  sVarFunVec <- mkVarFunctions
+  varEncVec <- mkVarFunctions
   let progData = ProgData { zProg = prog
                           , zLocSort = locSort
                           , zPc = pc
-                          , zSVarFunVec = sVarFunVec
+                          , zVarEncVec = varEncVec
                           , zLowerState = lowerState
                           , zFin = fin
                           }
@@ -1120,8 +1201,8 @@ initProgEncoding encData prog = do
                       ) ini
   -- Initialize variables
   nodeBot <- mkUnsignedInt64 0 nodeSort
-  assert =<< mkInit0 sVarFunVec allVariables nodeBot
-  assert =<< mkInit0 sVarFunVec allVariables node1
+  assert =<< mkInit0 varEncVec allVariables nodeBot
+  assert =<< mkInit0 varEncVec allVariables node1
   return progData
   where
     allScalars = S.toList (MP.pGlobalScalars prog) ++ S.toList (MP.pLocalScalars prog)
@@ -1130,38 +1211,9 @@ initProgEncoding encData prog = do
     mkVarFunctions =
       let varMap = M.fromListWith (\v _ -> error $ "Repeated var ID " ++ show (MP.varId v))
             $ map (\v -> (MP.varId v, v)) allVariables
-          logBase2Sup x = finiteBitSize x - countLeadingZeros x
-          mkSVarFun vid = do
-            let var = varMap M.! vid
-                ty = MP.varType var
-            scalarSort <- mkBvSort $ MP.typeWidth ty
-            varSort <- if MP.isScalar ty
-                       then return scalarSort
-                       else do
-              idxSort <- mkBvSort $ logBase2Sup (max 1 $ MP.arraySize ty - 1)
-              mkArraySort idxSort scalarSort
-            varFunc <- mkFreshFuncDecl (T.unpack $ MP.varName var) [zNodeSort encData] varSort
-            return (varFunc, varSort)
+      in V.generateM (M.size varMap) (mkVarEncoder useArrays encData . (varMap M.!))
 
-      in V.generateM (M.size varMap) mkSVarFun
-
-mkInit0 :: Vector (FuncDecl, Sort) -> [MP.Variable] -> AST -> Z3 AST
-mkInit0 sVarFunVec vars xLit = mkAndWith init0 vars
-  where init0 v | MP.isScalar $ MP.varType v = do
-                    let (vFunc, s) = sVarFunVec V.! MP.varId v
-                    val0 <- mkUnsignedInt 0 s
-                    vx <- mkApp1 vFunc xLit
-                    mkEq vx val0
-                | otherwise = do
-                    let (vFunc, s) = sVarFunVec V.! MP.varId v
-                    idxSort <- getArraySortDomain s
-                    elemSort <- getArraySortRange s
-                    val0 <- mkUnsignedInt 0 elemSort
-                    arr0 <- mkConstArray idxSort val0
-                    vx <- mkApp1 vFunc xLit
-                    mkEq vx arr0
-
-assertProgEncoding :: EncData -> ProgData -> Word64 -> Word64-> Z3 ()
+assertProgEncoding :: EncData -> ProgData -> Word64 -> Word64 -> Z3 ()
 assertProgEncoding encData progData from to = do
   -- start ∀x (...)
   -- x < k
@@ -1203,7 +1255,7 @@ assertProgEncoding encData progData from to = do
       mkTransition (l1, (il, MP.States dt)) = do
         let nodeSort = zNodeSort encData
             gamma = zGamma encData
-            sVarFunVec = zSVarFunVec progData
+            varEncVec = zVarEncVec progData
             locSort = zLocSort progData
             pc = zPc progData
         xLit <- mkUnsignedInt64 x nodeSort
@@ -1225,11 +1277,11 @@ assertProgEncoding encData progData from to = do
         let assertExprProp (scope, expr, exprS) = do
               gammaExprx <- mkApp gamma [exprS, xLit]
               if isNothing scope || fromJust scope == MP.ilFunction il
-                then mkIff gammaExprx =<< evalBoolExpr sVarFunVec expr xLit
+                then mkIff gammaExprx =<< evalBoolExpr varEncVec expr xLit
                 else mkNot gammaExprx
         exprProps <- mkAndWith assertExprProp exprPropMap
         -- ACTION(x, _, a)
-        action <- mkAction sVarFunVec x Nothing $ MP.ilAction il
+        action <- mkAction varEncVec x Nothing $ MP.ilAction il
         -- g|x ∧ pc(x + 1) = l2
         targets <- mkOrWith (\(g, l2) -> do
                                 -- pc(x + 1) = l2
@@ -1239,7 +1291,7 @@ assertProgEncoding encData progData from to = do
                                 case g of
                                   MP.NoGuard -> return nextPc
                                   MP.Guard e -> do
-                                    guard <- evalBoolExpr sVarFunVec e xp1
+                                    guard <- evalBoolExpr varEncVec e xp1
                                     mkAnd [guard, nextPc]
                             ) dt
         mkAnd [pcXEqL1, structXEqil, inputProps, action, exprProps, targets]
@@ -1249,7 +1301,7 @@ assertProgEncoding encData progData from to = do
       mkOrWith mkTransition $ M.toList lsDelta where
       mkTransition ((l1, ls), (act, MP.States dt)) = do
         let nodeSort = zNodeSort encData
-            sVarFunVec = zSVarFunVec progData
+            varEncVec = zVarEncVec progData
             locSort = zLocSort progData
             pc = zPc progData
         xLit <- mkUnsignedInt64 x nodeSort
@@ -1264,7 +1316,7 @@ assertProgEncoding encData progData from to = do
         pcStackX <- mkApp1 pc stackX
         pcStackXEqLs <- mkEq pcStackX lsLit
         -- ACTION(x, stack(x), a)
-        action <- mkAction sVarFunVec x (Just stackX) act
+        action <- mkAction varEncVec x (Just stackX) act
         -- g|x ∧ pc(x + 1) = l2
         targets <- mkOrWith (\(g, l2) -> do
                                 -- pc(x + 1) = l2
@@ -1274,73 +1326,96 @@ assertProgEncoding encData progData from to = do
                                 case g of
                                   MP.NoGuard -> return nextPc
                                   MP.Guard e -> do
-                                    guard <- evalBoolExpr sVarFunVec e xp1
+                                    guard <- evalBoolExpr varEncVec e xp1
                                     mkAnd [guard, nextPc]
                             ) dt
         mkAnd [pcXEqL1, pcStackXEqLs, action, targets]
 
-    mkAction :: Vector (FuncDecl, Sort) -> Word64 -> Maybe AST -> MP.Action -> Z3 AST
-    mkAction sVarFunVec x poppedNode action = do
+    mkAction :: Vector VarEncoder -> Word64 -> Maybe AST -> MP.Action -> Z3 AST
+    mkAction varEncVec x poppedNode action = do
       let nodeSort = zNodeSort encData
       xLit <- mkUnsignedInt64 x nodeSort
       xp1 <- mkUnsignedInt64 (x + 1) nodeSort
       let propvals :: [MP.Variable] -> Z3 AST
           propvals except =
             let excSet = S.fromList $ map MP.varId except
-            in mkAnd =<< V.ifoldM (\rest i (vf, _) -> if i `S.member` excSet
+            in mkAnd =<< V.ifoldM (\rest i varEnc -> if i `S.member` excSet
                                     then return rest
-                                    else do
-                                      vfx <- mkApp1 vf xLit
-                                      vfxp1 <- mkApp1 vf xp1
-                                      vfxEqVfxp1 <- mkEq vfx vfxp1
-                                      return $ vfxEqVfxp1:rest
-                                  ) [] sVarFunVec
+                                    else (:rest) <$> mkVarCopy varEnc varEnc xLit xp1
+                                  ) [] varEncVec
+
+          mkArrayStore arrVar idxExpr maybeRhs = do
+            let varEnc = varEncVec V.! MP.varId arrVar
+                varFun = zVarFun varEnc
+            evalIdx <- evalExpr varEncVec idxExpr xLit
+            castIdx <- castArrayIndex varEnc evalIdx
+            case zVarData varEnc of
+              ArrayTheory {} -> do
+                evalRhs <- case maybeRhs of
+                  Just rhs -> evalExpr varEncVec rhs xLit
+                  Nothing -> mkFreshConst (T.unpack $ MP.varName arrVar) $ zScalarSort varEnc
+                lhsx <- mkApp1 varFun xLit
+                lhsXp1 <- mkApp1 varFun xp1
+                mkEq lhsXp1 =<< mkStore lhsx castIdx evalRhs
+              UFArray {} -> do
+                propRest <- assignUFArrayIf varEnc
+                            (\iLit -> mkApp varFun [xp1, iLit])
+                            (\iLit eq -> do
+                                iLitNeq <- mkNot =<< mkEq iLit castIdx
+                                mkImplies iLitNeq eq
+                            )
+                            xLit
+                case maybeRhs of
+                  Just rhs -> do
+                    evalRhs <- evalExpr varEncVec rhs xLit
+                    idxEq <- mkEq evalRhs =<< mkApp varFun [xp1, castIdx]
+                    mkAnd [idxEq, propRest]
+                  Nothing -> return propRest
+              Scalar -> error "Unexpected scalar variable."
+
       case action of
         MP.Noop -> propvals []
         MP.Assign (MP.LScalar lhs) rhs -> do
+          let varEnc = varEncVec V.! MP.varId lhs
           -- Do assignment
-          evalRhs <- evalExpr sVarFunVec rhs xLit
-          lhsXp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId lhs) xp1
+          evalRhs <- evalExpr varEncVec rhs xLit
+          lhsXp1 <- mkApp1 (zVarFun varEnc) xp1
           lhsXp1EqRhs <- mkEq lhsXp1 evalRhs
           -- Propagate all remaining variables
           propagate <- propvals [lhs]
           mkAnd [lhsXp1EqRhs, propagate]
         MP.Assign (MP.LArray var ie) rhs -> do
-          let (arrFun, arrSort) = sVarFunVec V.! MP.varId var
-          evalRhs <- evalExpr sVarFunVec rhs xLit
-          evalIdx <- evalExpr sVarFunVec ie xLit
-          castIdx <- castArrayIndex arrSort evalIdx
-          lhsx <- mkApp1 arrFun xLit
-          lhsXp1 <- mkApp1 arrFun xp1
-          lhsXp1EqRhs <- mkEq lhsXp1 =<< mkStore lhsx castIdx evalRhs
+          arrayStore <- mkArrayStore var ie $ Just rhs
           propagate <- propvals [var]
-          mkAnd [lhsXp1EqRhs, propagate]
+          mkAnd [arrayStore, propagate]
         MP.Nondet (MP.LScalar var) -> propvals [var]
         MP.Nondet (MP.LArray var ie) -> do
-          let (arrFun, arrSort) = sVarFunVec V.! MP.varId var
-          elemSort <- getArraySortRange arrSort
-          ndElem <- mkFreshConst (T.unpack $ MP.varName var) elemSort
-          evalIdx <- evalExpr sVarFunVec ie xLit
-          castIdx <- castArrayIndex arrSort evalIdx
-          lhsx <- mkApp1 arrFun xLit
-          lhsXp1 <- mkApp1 arrFun xp1
-          lhsXp1EqNd <- mkEq lhsXp1 =<< mkStore lhsx castIdx ndElem
+          arrayStore <- mkArrayStore var ie Nothing
           propagate <- propvals [var]
-          mkAnd [lhsXp1EqNd, propagate]
+          mkAnd [arrayStore, propagate]
         MP.CallOp fname fargs aargs -> do
           -- Assign parameters
-          let assign (farg, aarg) = do
-                fxp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId (getFargVar farg)) xp1
-                evalAarg <- case aarg of
-                  MP.ActualVal e      -> evalExpr sVarFunVec e xLit
-                  MP.ActualValRes var -> mkApp1 (fst $ sVarFunVec V.! MP.varId var) xLit
-                mkEq fxp1 evalAarg
+          let assign (farg, aarg) =
+                let fVarEnc = varEncVec V.! MP.varId (getFargVar farg)
+                in case zVarData fVarEnc of
+                  Scalar -> do
+                    fxp1 <- mkApp1 (zVarFun fVarEnc) xp1
+                    evalAarg <- case aarg of
+                      MP.ActualVal e      -> evalExpr varEncVec e xLit
+                      MP.ActualValRes var -> mkApp1 (zVarFun $ varEncVec V.! MP.varId var) xLit
+                    mkEq fxp1 evalAarg
+                  _ -> let avar = case aarg of
+                             MP.ActualVal (MP.Term var) -> var
+                             MP.ActualValRes var -> var
+                             _ -> error "Non-array expression passed as actual array parameter."
+                           aVarEnc = varEncVec V.! MP.varId avar
+                       in mkVarCopy fVarEnc aVarEnc xLit xp1
           params <- mkAndWith assign $ zip fargs aargs
           -- Initialize to 0 all remaining local variables
           let sk = fnameSksMap M.! fname
               locals = S.toList (MP.skScalars sk) ++ S.toList (MP.skArrays sk)
               remLocals = locals \\ map getFargVar fargs
-          initLocals <- mkInit0 sVarFunVec remLocals xp1
+          initLocals <- mkInit0 varEncVec remLocals xp1
           -- Propagate all remaining variables
           propagate <- propvals locals
           mkAnd [params, initLocals, propagate]
@@ -1348,20 +1423,14 @@ assertProgEncoding encData progData from to = do
           -- Assign result parameters
           let resArgs = map (\(MP.ValueResult r, MP.ActualValRes t) -> (r, t))
                 $ filter (isValRes . fst) $ zip fargs aargs
-              assign (r, t) = do
-                txp1 <- mkApp1 (fst $ sVarFunVec V.! MP.varId t) xp1
-                rx <- mkApp1 (fst $ sVarFunVec V.! MP.varId r) xLit
-                mkEq txp1 rx
+              assign (r, t) = mkVarCopy (varEncVec V.! MP.varId r) (varEncVec V.! MP.varId t) xLit xp1
           params <- mkAndWith assign resArgs
           -- Restore remaining local variables (they may be overlapping if fname is recursive)
           let sk = fnameSksMap M.! fname
               locals = S.toList (MP.skScalars sk) ++ S.toList (MP.skArrays sk)
               remLocals = locals \\ map snd resArgs
-              restore s = do
-                let sFunc = fst $ sVarFunVec V.! MP.varId s
-                sxp1 <- mkApp1 sFunc xp1
-                sPopped <- mkApp1 sFunc $ fromJust poppedNode
-                mkEq sxp1 sPopped
+              restore s = let sVarEnc = varEncVec V.! MP.varId s
+                          in mkVarCopy sVarEnc sVarEnc xp1 $ fromJust poppedNode
           restoreLocals <- mkAndWith restore remLocals
           -- Propagate all remaining variables
           propagate <- propvals $ map snd resArgs ++ remLocals
@@ -1372,23 +1441,29 @@ assertProgEncoding encData progData from to = do
             isValRes _ = False
             fnameSksMap = M.fromList . map (\sk -> (MP.skName sk, sk)) . MP.pSks $ zProg progData
 
-    evalBoolExpr :: Vector (FuncDecl, Sort) -> MP.Expr -> AST -> Z3 AST
-    evalBoolExpr sVarFunVec g xLit = do
+    evalBoolExpr :: Vector VarEncoder -> MP.Expr -> AST -> Z3 AST
+    evalBoolExpr varEncVec g xLit = do
       bitSort <- mkBvSort 1
       true <- mkUnsignedInt 1 bitSort
-      bvg <- mkBvredor =<< evalExpr sVarFunVec g xLit
+      bvg <- mkBvredor =<< evalExpr varEncVec g xLit
       mkEq bvg true
 
-    evalExpr :: Vector (FuncDecl, Sort) -> MP.Expr -> AST -> Z3 AST
-    evalExpr sVarFunVec expr x = go expr where
+    evalExpr :: Vector VarEncoder -> MP.Expr -> AST -> Z3 AST
+    evalExpr varEncVec expr x = go expr where
       go e = case e of
         MP.Literal val        -> mkBitvector (BV.size val) (BV.nat val)
-        MP.Term var           -> mkApp1 (fst $ sVarFunVec V.! MP.varId var) x
+        MP.Term var           -> let fv = zVarFun $ varEncVec V.! MP.varId var
+                                 in mkApp1 fv x
         MP.ArrayAccess var ie -> do
-          let (arrFun, arrSort) = sVarFunVec V.! MP.varId var
-          arr <- mkApp1 arrFun x
-          evalIdx <- go ie
-          mkSelect arr =<< castArrayIndex arrSort evalIdx
+          let varEnc = varEncVec V.! MP.varId var
+              varFun = zVarFun varEnc
+          castIdx <- castArrayIndex varEnc =<< go ie
+          case zVarData varEnc of
+            ArrayTheory {} -> do
+              arr <- mkApp1 varFun x
+              mkSelect arr castIdx
+            UFArray {} -> mkApp varFun [x, castIdx]
+            Scalar -> error "Unexpected scalar variable."
         MP.Not b              -> mkBvnot =<< mkBvredor =<< go b
         MP.And b1 b2          -> do
           b1x <- mkBvredor =<< go b1
@@ -1425,9 +1500,12 @@ assertProgEncoding encData progData from to = do
         false <- mkUnsignedInt 0 bitSort
         mkIte b true false
 
-    castArrayIndex :: Sort -> AST -> Z3 AST
-    castArrayIndex arrSort evalIdx = do
-      idxWidth <- getBvSortSize =<< getArraySortDomain arrSort
+    castArrayIndex :: VarEncoder -> AST -> Z3 AST
+    castArrayIndex varEnc evalIdx = do
+      idxWidth <- getBvSortSize $ case zVarData varEnc of
+        ArrayTheory idxSort -> idxSort
+        UFArray _ idxSort -> idxSort
+        Scalar -> error "Unexpected scalar variable."
       evalIdxWidth <- getBvSortSize =<< getSort evalIdx
       let idxDiff = idxWidth - evalIdxWidth
       if idxDiff < 0
