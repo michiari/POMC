@@ -558,7 +558,7 @@ solveSCCQuery dMustReachPop varMap@(m, newAdded, sccMembers, _) globals precFun 
         oviRes <- oviWithHints defaultOVISettingsDouble uEqMap unsolvedVars
         rCertified <- oviToRationalWithHints defaultOVISettingsDouble uEqMap oviRes unsolvedVars
         unless rCertified $ error "cannot deduce a rational certificate for this semiconf"
-        unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bound on the termination probabilities"
+        unless (oviSuccess oviRes || rCertified) $ error "OVI was not successful in computing an upper bound on the termination probabilities"
 
         -- actual updates
         forM_ unsolvedVars $ \varKey -> do
