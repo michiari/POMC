@@ -521,7 +521,7 @@ solveSCCQuery dMustReachPop varMap@(m, newAdded, sccMembers, _) globals precFun 
             | otherwise -> error "Maximum tolerance reaced when solving SCC"
           _ -> error "Undefinite result when checking an SCC"
       --
-      iterEps = min defaultTolerance $ currentEps * currentEps
+      iterEps = min defaultTolerance currentEps
       --
       updateUpperBoundsZ3 unsolvedVars = do 
         startUpper <- startTimer
