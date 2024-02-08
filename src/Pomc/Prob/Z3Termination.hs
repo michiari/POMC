@@ -77,9 +77,6 @@ mkMul1 = mkOp1 mkMul
 extractUpperAst :: AST -> Z3 AST
 extractUpperAst ast = do
   isAlgebraic <- isAlgebraicNumber ast
-  DBG.traceShowM =<< getAstKind ast
-  DBG.traceShowM =<< isAlgebraicNumber ast
-  DBG.traceM =<< astToString ast
   if isAlgebraic
     then getAlgebraicNumberUpper ast 5
     else return ast
