@@ -5,7 +5,7 @@
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Test.TestProbTermination (tests) where
+module Pomc.Test.TestProbTermination (tests, checkApproxResult) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
