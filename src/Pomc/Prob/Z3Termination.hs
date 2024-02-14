@@ -38,8 +38,6 @@ import qualified Data.Map as GeneralMap
 import qualified Data.HashTable.IO as HT
 import Data.Maybe(fromJust, isJust, isNothing)
 import qualified Data.Vector.Mutable as MV
-import Data.Vector (Vector, (!))
-import qualified Data.Vector as V
 import Data.Ratio (approxRational)
 
 

@@ -64,7 +64,6 @@ import Control.Monad(unless, when, foldM, forM_, forM)
 
 import Data.Maybe
 import Data.Hashable(Hashable)
-
 import Data.Bifunctor(first)
 
 import qualified Data.HashTable.ST.Basic as BH
@@ -72,9 +71,9 @@ import qualified Data.HashTable.Class as BC
 import qualified Data.HashTable.IO as HT
 
 import qualified Data.Vector.Mutable as MV
-import GHC.IO (stToIO, liftIO)
+import GHC.IO (stToIO)
 
-import Data.IORef (IORef, newIORef, modifyIORef, modifyIORef', readIORef, writeIORef, modifyIORef')
+import Data.IORef (IORef, newIORef, modifyIORef, modifyIORef', readIORef, modifyIORef')
 import Data.Ratio (approxRational)
 
 import qualified Debug.Trace as DBG
@@ -254,7 +253,6 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
         -- dest semiconf has been visited, but with a set of sat formulae that does not subsume the current ones
         BH.insert (visited globals) (decode dest) augmentedPathSatSet
         reach globals delta dest augmentedPathSatSet
-
 
 --- compute weigths of a support transition 
 freezeSuppEnds :: GRobals RealWorld state -> IO (Vector (Set (StateId state)))
@@ -494,7 +492,6 @@ encode newAdded globals sIdGen delta supports (q,g) rightContext = do
             encodeShift newAdded globals sIdGen delta supports q g qState (semiconfId, rightContext)
 
         | precRel == Just Take = do
-            --when (rightContext < 0) $ error $ "Reached a pop with unconsistent left context: "
             distr <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p, prob_)) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
             let e = Map.findWithDefault 0 rightContext (Map.fromList distr)
             addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational e
@@ -585,7 +582,6 @@ encodeShift newAdded globals sIdGen delta supports _ g qState (semiconfId, right
         (key, alreadyEncoded) <- lookupVar newAdded globals (decode dest)  rightContext
         return $ ( if alreadyEncoded then new_vars else dest:new_vars
                 ,(prob_, key):terms)
-
   in do
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaShift delta) qState
     (unencoded_vars, terms) <- foldM shiftEnc ([], []) newStates

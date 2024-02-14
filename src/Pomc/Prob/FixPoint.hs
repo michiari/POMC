@@ -72,7 +72,6 @@ mapEqMapPop f eqMap = liftIO $ do
 addFixpEq :: MonadIO m => EqMap n -> VarKey -> FixpEq n -> m ()
 addFixpEq eqMap varKey eq = liftIO $ HT.insert eqMap varKey eq
 
--- careful: lVars are not necessarily live
 toLiveEqMapWithHints :: (MonadIO m, Fractional n) => EqMap n -> [VarKey] -> m (LEqSys n)
 toLiveEqMapWithHints eqMap lVars = liftIO $ do
   leqMap <- MV.unsafeNew (length lVars)

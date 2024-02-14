@@ -39,8 +39,6 @@ import Control.Monad.ST (ST)
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 import Data.Maybe (fromJust, isNothing)
 
-import qualified Debug.Trace as DBG
-
 import Data.Hashable (Hashable)
 import qualified Data.HashTable.ST.Basic as BH
 -- a basic open-addressing hashtable using linear probing

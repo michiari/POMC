@@ -27,7 +27,6 @@ import qualified Data.HashTable.IO as HT
 import qualified Data.HashTable.ST.Basic as BHT
 import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
--- import qualified Numeric.Rounded as R
 
 import Witch.Instances (realFloatToRational)
 
