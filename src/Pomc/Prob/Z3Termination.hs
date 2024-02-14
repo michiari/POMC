@@ -38,14 +38,15 @@ import qualified Data.Map as GeneralMap
 import qualified Data.HashTable.IO as HT
 import Data.Maybe(fromJust, isJust, isNothing)
 import qualified Data.Vector.Mutable as MV
+import Data.Vector((!))
+import qualified Data.Vector as V
 import Data.Ratio (approxRational)
 
-
 import Z3.Monad
-import Data.IORef (IORef, newIORef, modifyIORef, modifyIORef', readIORef, writeIORef)
+import Data.IORef (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 
 import qualified Debug.Trace as DBG
-import Data.STRef (STRef, readSTRef, modifySTRef')
+import Data.STRef (STRef, modifySTRef')
 
 -- a map Key: (gnId GraphNode, getId StateId) - value : Z3 variables (represented as ASTs)
 -- each Z3 variable represents [[q,b | p ]]
@@ -95,7 +96,7 @@ encode :: (Eq state, Hashable state, Show state)
       => [(Int, Int)]
       -> VarMap
       -> (EqMap EqMapNumbersType, EqMap EqMapNumbersType)
-      -> SupportGraph RealWorld state
+      -> SupportGraph state
       -> EncPrecFunc
       -> (AST -> AST -> Z3 AST)
       -> Bool
@@ -104,8 +105,8 @@ encode [] _ _ _ _ _ _ = return ()
 encode ((gnId_, rightContext):unencoded) varMap@(m, _, _, _) (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 = do
   let varKey = (gnId_, rightContext)
   var <- liftIO $ fromJust <$> HT.lookup m varKey
-  gn <- liftIO $ MV.unsafeRead graph gnId_
-  let (q,g) = semiconf gn
+  let gn = graph ! gnId_
+      (q,g) = semiconf gn
       qLabel = getLabel q
       precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
       cases
@@ -135,7 +136,7 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _, _, _) (lowerEqMap, upperE
 
 -- encoding helpers --
 encodePush :: (Eq state, Hashable state, Show state)
-           => SupportGraph RealWorld state
+           => SupportGraph state
            -> VarMap
            -> (EqMap EqMapNumbersType, EqMap EqMapNumbersType)
            -> (AST -> AST -> Z3 AST)
@@ -146,8 +147,8 @@ encodePush :: (Eq state, Hashable state, Show state)
            -> Z3 [(Int, Int)]
 encodePush graph varMap@(m, newAdded, _, _) (lowerEqMap, upperEqMap) mkComp  gn varKey@(_, rightContext) var useZ3 =
   let closeSummaries pushGn (currs, newVars, terms) e = do
-        supportGn <- liftIO $ MV.unsafeRead graph (to e)
-        let varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
+        let supportGn = graph ! (to e)
+            varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
         maybeTerms <- mapM (lookupVar varMap (lowerEqMap, upperEqMap)) varsIds
         let newUnencoded = [(gnId__, rightContext_) | (Just (_, False), (gnId__, rightContext_)) <- zip maybeTerms varsIds]
                            ++ newVars
@@ -158,8 +159,7 @@ encodePush graph varMap@(m, newAdded, _, _) (lowerEqMap, upperEqMap) mkComp  gn 
           return (eq:currs, newUnencoded, varsIds:terms)
 
       pushEnc (currs, vars, terms) e = do
-        toGn <- liftIO $ MV.unsafeRead graph (to e)
-        (equations, unencodedVars, varTerms) <- foldM (closeSummaries toGn) ([], [], []) (supportEdges gn)
+        (equations, unencodedVars, varTerms) <- foldM (closeSummaries (graph ! to e)) ([], [], []) (supportEdges gn)
         if null equations
           then return (currs, unencodedVars ++ vars, terms)
           else do
@@ -238,8 +238,7 @@ type SuccessorsPopContexts = IntSet
 type PartialVarMap = (HT.BasicHashTable VarKey AST, Bool)
 
 data DeficientGlobals state = DeficientGlobals
-  { supportGraph :: SupportGraph RealWorld state
-  , sStack     :: IOStack Int
+  { sStack     :: IOStack Int
   , bStack     :: IOStack Int
   , iVector    :: MV.IOVector Int
   , successorsCntxs :: MV.IOVector SuccessorsPopContexts
@@ -253,10 +252,9 @@ data DeficientGlobals state = DeficientGlobals
   , stats :: STRef RealWorld Stats
   }
 
-
 -- requires: the initial semiconfiguration is at position 0 in the Support graph
 terminationQuerySCC :: (Eq state, Hashable state, Show state)
-                 => SupportGraph RealWorld state
+                 => SupportGraph state
                  -> EncPrecFunc
                  -> TermQuery
                  -> STRef RealWorld Stats
@@ -264,8 +262,8 @@ terminationQuerySCC :: (Eq state, Hashable state, Show state)
 terminationQuerySCC suppGraph precFun query oldStats = do
   newSS              <- liftIO ZS.new
   newBS              <- liftIO ZS.new
-  newIVec            <- liftIO $ MV.replicate (MV.length suppGraph) 0
-  newSuccessorsCntxs <- liftIO $ MV.replicate (MV.length suppGraph) IntSet.empty
+  newIVec            <- liftIO $ MV.replicate (V.length suppGraph) 0
+  newSuccessorsCntxs <- liftIO $ MV.replicate (V.length suppGraph) IntSet.empty
   emptyCannotReachPop <- liftIO $ newIORef IntSet.empty
   newMap <- liftIO HT.new
   newUpperEqMap <- liftIO HT.new
@@ -273,8 +271,7 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   emptyMustReachPop <- liftIO $ newIORef IntSet.empty
   newRewVarMap <- liftIO HT.new
   newEps <- liftIO $ newIORef defaultEps
-  let globals = DeficientGlobals { supportGraph = suppGraph
-                                , sStack = newSS
+  let globals = DeficientGlobals { sStack = newSS
                                 , bStack = newBS
                                 , iVector = newIVec
                                 , successorsCntxs = newSuccessorsCntxs
@@ -294,10 +291,10 @@ terminationQuerySCC suppGraph precFun query oldStats = do
         OVI -> (False, False)
         SMTWithHints -> (True, False)
         ExactSMTWithHints -> (True, True)
+      gn = suppGraph ! 0
 
-  gn <- liftIO $ MV.unsafeRead suppGraph 0
   addtoPath globals gn
-  (popCntx, isAST) <- dfs globals precFun (useZ3, exactEq) gn
+  (popCntx, isAST) <- dfs suppGraph globals precFun (useZ3, exactEq) gn
   unless (IntSet.null popCntx) $ error "the initial state cannot reach any pop"
 
   -- returning the computed values
@@ -346,24 +343,22 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   readResults query
 
 dfs :: (Eq state, Hashable state, Show state)
-    => DeficientGlobals state
+    => SupportGraph state
+    -> DeficientGlobals state
     -> EncPrecFunc
     -> (Bool, Bool)
     -> GraphNode state
     -> Z3 (SuccessorsPopContexts, Bool)
-dfs globals precFun (useZ3, exactEq) gn =
+dfs suppGraph globals precFun (useZ3, exactEq) gn =
   let cases nextNode iVal
-        | (iVal == 0) = addtoPath globals nextNode >> dfs globals precFun (useZ3, exactEq) nextNode
+        | (iVal == 0) = addtoPath globals nextNode >> dfs suppGraph globals precFun (useZ3, exactEq) nextNode
         | (iVal < 0)  = liftIO $ do
             popCntxs <-  MV.unsafeRead (successorsCntxs globals) (gnId nextNode)
             mrPop <- IntSet.member (gnId nextNode) <$> readIORef (mustReachPop globals)
             return (popCntxs, mrPop)
         | (iVal > 0)  = merge globals nextNode >> return (IntSet.empty, True)
         | otherwise = error "unreachable error"
-      follow e = do
-        node <- liftIO $ MV.unsafeRead (supportGraph globals) (to e)
-        iVal <- liftIO $ MV.unsafeRead (iVector globals) (to e)
-        cases node iVal
+      follow e = liftIO (MV.unsafeRead (iVector globals) (to e)) >>= cases (suppGraph ! to e)
   in do
     res <- forM (Set.toList $ internalEdges gn) follow
     let dPopCntxs = IntSet.unions (map fst res)
@@ -378,7 +373,7 @@ dfs globals precFun (useZ3, exactEq) gn =
           | not . Map.null $ popContexts gn = return (IntSet.fromList . Map.keys $ popContexts gn, True)
           | otherwise = return (dPopCntxs, dMustReachPop)
     (dActualPopCntxs, dActualMustReachPop) <- computeActualRes
-    createComponent globals gn (dActualPopCntxs, dActualMustReachPop) precFun (useZ3, exactEq)
+    createComponent suppGraph globals gn (dActualPopCntxs, dActualMustReachPop) precFun (useZ3, exactEq)
 
 
 -- helpers
@@ -396,13 +391,14 @@ merge globals gn = liftIO $ do
   ZS.popWhile_ (bStack globals) (iVal <)
 
 createComponent :: (Eq state, Hashable state, Show state)
-                => DeficientGlobals state
+                => SupportGraph state
+                -> DeficientGlobals state
                 -> GraphNode state
                 -> (SuccessorsPopContexts, Bool)
                 -> EncPrecFunc
                 -> (Bool,  Bool)
                 -> Z3 (SuccessorsPopContexts, Bool)
-createComponent globals gn (popContxs, dMustReachPop) precFun (useZ3, exactEq) = do
+createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, exactEq) = do
   topB <- liftIO $ ZS.peek $ bStack globals
   iVal <- liftIO $ MV.unsafeRead (iVector globals) (gnId gn)
   let (varMap, encodeInitial) = partialVarMap globals
@@ -427,20 +423,20 @@ createComponent globals gn (popContxs, dMustReachPop) precFun (useZ3, exactEq) =
         insertedVars <- map (snd . fromJust) <$> forM toEncode (lookupVar (varMap, newAdded, sccMembers, encodeInitial) (lEqMap, uEqMap))
         when (or insertedVars ) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
-        reset >> encode toEncode (varMap, newAdded, sccMembers, encodeInitial) (lowerEqMap globals, upperEqMap globals) (supportGraph globals) precFun mkComp useZ3
-        actualMustReachPop <- solveSCCQuery dMustReachPop (varMap, newAdded, sccMembers, encodeInitial) globals precFun (useZ3, exactEq)
-        when actualMustReachPop $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef (mustReachPop globals) $ IntSet.insert e
+        reset >> encode toEncode (varMap, newAdded, sccMembers, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
+        actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, newAdded, sccMembers, encodeInitial) globals precFun (useZ3, exactEq)
+        when actualMustReachPop $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef' (mustReachPop globals) $ IntSet.insert e
         return (popContxs, actualMustReachPop)
       doNotEncode poppedEdges = do
-        liftIO $ modifyIORef (cannotReachPop globals) $ IntSet.union (IntSet.fromList poppedEdges)
+        liftIO $ modifyIORef' (cannotReachPop globals) $ IntSet.union (IntSet.fromList poppedEdges)
         if gnId gn == 0 && encodeInitial
           then do -- for the initial semiconf, encode anyway
             newAdded <- liftIO HT.new
             var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
             liftIO $ HT.insert varMap (0, -1) var
             liftIO $ HT.insert newAdded (0, -1) var
-            reset >> encode [(0, -1)] (varMap, newAdded, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) (supportGraph globals) precFun mkComp useZ3
-            actualMustReachPop <- solveSCCQuery dMustReachPop (varMap, newAdded, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
+            reset >> encode [(0, -1)] (varMap, newAdded, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
+            actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, newAdded, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
             return (popContxs, actualMustReachPop)
           else return (popContxs, False)
       cases
@@ -451,11 +447,11 @@ createComponent globals gn (popContxs, dMustReachPop) precFun (useZ3, exactEq) =
 
 -- params:
 -- (var:: AST) = Z3 var associated with the initial semiconf
--- (graph :: SupportGraph RealWorld state :: ) = the graph
+-- (graph :: SupportGraph state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
 solveSCCQuery :: (Eq state, Hashable state, Show state)
-              => Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> (Bool, Bool) -> Z3 Bool
-solveSCCQuery dMustReachPop varMap@(m, newAdded, sccMembers, _) globals precFun (useZ3, exactEq) = do
+              => SupportGraph state -> Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> (Bool, Bool) -> Z3 Bool
+solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) globals precFun (useZ3, exactEq) = do
   liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
   liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCount = acc} -> s{largestSCCSemiconfsCount = max acc (IntSet.size sccMembers)}
   variables <- liftIO $ map fst <$> HT.toList newAdded
@@ -594,7 +590,7 @@ solveSCCQuery dMustReachPop varMap@(m, newAdded, sccMembers, _) globals precFun 
           forM_ (IntSet.toList sccMembers) $ \k -> do
               (_, alreadyEnc) <- lookupRewVar rVarMap k
               when alreadyEnc $ error "encoding a variable for a semiconf that has already been encoded"
-          reset >> encodeReward (IntSet.toList sccMembers) varMap rVarMap (supportGraph globals) precFun mkGe
+          reset >> encodeReward (IntSet.toList sccMembers) varMap rVarMap suppGraph precFun mkGe
           pastRes <- withModel (\model -> forM (IntSet.toList sccMembers) $ \k -> do
                                   var <- liftIO $ fromJust <$> HT.lookup rVarMap k
                                   evaluated <- fromJust <$> eval model var
@@ -634,15 +630,15 @@ encodeReward :: (Eq state, Hashable state, Show state)
       => [RewVarKey]
       -> VarMap
       -> RewVarMap
-      -> SupportGraph RealWorld state
+      -> SupportGraph state
       -> EncPrecFunc
       -> (AST -> AST -> Z3 AST)
       -> Z3 ()
 encodeReward [] _ _ _ _ _ = return ()
 encodeReward (gnId_:unencoded) varMap rewVarMap graph precFun mkComp = do
   rewVar <- liftIO $ fromJust <$> HT.lookup rewVarMap gnId_
-  gn <- liftIO $ MV.unsafeRead graph gnId_
-  let (q,g) = semiconf gn
+  let gn = graph ! gnId_
+      (q,g) = semiconf gn
       qLabel = getLabel q
       precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
       cases
@@ -664,7 +660,7 @@ encodeReward (gnId_:unencoded) varMap rewVarMap graph precFun mkComp = do
 
 -- encoding helpers --
 encodeRewPush :: (Eq state, Hashable state, Show state)
-           => SupportGraph RealWorld state
+           => SupportGraph state
            -> VarMap
            -> RewVarMap
            -> (AST -> AST -> Z3 AST)
@@ -673,7 +669,7 @@ encodeRewPush :: (Eq state, Hashable state, Show state)
            -> Z3 [RewVarKey]
 encodeRewPush graph (m, _, _ ,_) rewVarMap mkComp gn var =
   let closeSummaries pushGn (currs, unencoded_vars) e = do
-        supportGn <- liftIO $ MV.unsafeRead graph (to e)
+        let supportGn = graph ! (to e)
         maybeTermProb <- liftIO $ HT.lookup m (gnId pushGn, getId . fst . semiconf $ supportGn)
         if isNothing maybeTermProb
           then return (currs, unencoded_vars)
@@ -684,7 +680,7 @@ encodeRewPush graph (m, _, _ ,_) rewVarMap mkComp gn var =
                   ,  if alreadyEncoded then unencoded_vars else (gnId supportGn):unencoded_vars
                   )
       pushEnc (currs, vars) e = do
-        pushGn <- liftIO $ MV.unsafeRead graph (to e)
+        let pushGn = graph ! (to e)
         (pushVar, alreadyEncoded) <- lookupRewVar rewVarMap (gnId pushGn)
         (equations, unencoded_vars) <- foldM (closeSummaries pushGn) ([], []) (supportEdges gn)
         transition <- encodeTransition e =<< mkAdd (pushVar:equations)

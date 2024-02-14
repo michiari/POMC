@@ -1,5 +1,5 @@
 {- |
-   Module      : Pomc.Prob.SupportGraph
+   Module      : Pomc.Prob.PartialSupportGraph
    Copyright   : 2023 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
@@ -41,6 +41,8 @@ import Data.Maybe (fromJust, isNothing)
 
 import Data.Hashable (Hashable)
 import qualified Data.HashTable.ST.Basic as BH
+import Data.Vector (Vector)
+import qualified Data.Vector as V
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
@@ -73,7 +75,8 @@ instance  Ord (GraphNode state) where
   compare r q = compare ( gnId r) ( gnId q)
 
 -- the Support Graph computed by this module
-type SupportGraph s state = CM.CustoMap s (GraphNode state)
+type PartialSupportGraph s state = CM.CustoMap s (GraphNode state)
+type SupportGraph state = Vector (GraphNode state)
 
 -- the global variables in the algorithm
 data Globals s state = Globals
@@ -82,7 +85,7 @@ data Globals s state = Globals
   , graphMap   :: HashTable s (Int,Int,Int) Int
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds   :: STRef s (SetMap s (StateId state))
-  , graph      :: STRef s (SupportGraph s state)
+  , graph      :: STRef s (PartialSupportGraph s state)
   }
 
 buildGraph  :: (Eq state, Hashable state, Show state)
@@ -90,7 +93,7 @@ buildGraph  :: (Eq state, Hashable state, Show state)
         -> state -- initial state of the popa
         -> Label -- label of the initial state
         -> STRef s Stats
-        -> ST s (SupportGraph s state) -- returning a graph
+        -> ST s (SupportGraph state) -- returning a graph
 buildGraph probdelta i iLabel stats = do
   -- initialize the global variables
   newSig <- initSIdGen
@@ -117,7 +120,7 @@ buildGraph probdelta i iLabel stats = do
   statesCount <- sIdCount newSig
   modifySTRef' stats $ \s -> s{suppGraphLen = idx}
   modifySTRef' stats $ \s -> s{popaStatesCount = statesCount}
-  fmap (CM.take idx) $ readSTRef . graph $ globals
+  V.freeze . CM.take idx =<< (readSTRef . graph $ globals)
 
 -- requires: the initial state of the OPA is mapped to StateId with getId 0
 build :: (Eq state, Hashable state, Show state)
@@ -248,8 +251,7 @@ type MustReachPop = Bool
 type Arch = Int
 
 data DeficientGlobals s state = DeficientGlobals
-  { supportGraph :: SupportGraph s state
-  , sStack     :: GStack s Arch
+  { sStack     :: GStack s Arch
   , bStack     :: GStack s Int
   , iVector    :: MV.MVector s Int
   , canReachPop :: MV.MVector s CanReachPop
@@ -257,23 +259,23 @@ data DeficientGlobals s state = DeficientGlobals
   }
 
 -- perform the Gabow algorithm to determine semiconfs that cannot reach a pop
-asPendingSemiconfs :: Show state => SupportGraph s state -> ST s (IntSet, IntSet)
+asPendingSemiconfs :: Show state => Vector (GraphNode state) -> ST s (IntSet, IntSet)
 asPendingSemiconfs suppGraph = do
   newSS            <- GS.new
   newBS            <- GS.new
-  newIVec          <- MV.replicate (MV.length suppGraph) 0
-  newCanReachPop <- MV.replicate (MV.length suppGraph) False
-  newMustReachPop <- MV.replicate (MV.length suppGraph) False
-  let globals = DeficientGlobals { supportGraph = suppGraph
-                                 , sStack = newSS
+  newIVec          <- MV.replicate (V.length suppGraph) 0
+  newCanReachPop <- MV.replicate (V.length suppGraph) False
+  newMustReachPop <- MV.replicate (V.length suppGraph) False
+  let gn = suppGraph V.! 0 
+      globals = DeficientGlobals { sStack = newSS
                                  , bStack = newBS
                                  , iVector = newIVec
                                  , canReachPop = newCanReachPop
                                  , mustReachPop = newMustReachPop
                                  }
-  gn <- MV.unsafeRead suppGraph 0
+    
   addtoPath globals gn
-  _ <- dfs globals gn
+  _ <- dfs globals suppGraph gn
   let discardTrues acc _ True = acc
       discardTrues acc idx False = IntSet.insert idx acc
       discardFalses acc idx True = IntSet.insert idx acc
@@ -285,27 +287,25 @@ asPendingSemiconfs suppGraph = do
   return (cannotReachPops, mustReachPops)
 
 dfs :: Show state => DeficientGlobals s state
+    -> Vector (GraphNode state)
     -> GraphNode state
     -> ST s (CanReachPop, MustReachPop)
-dfs globals gn =
+dfs globals suppGraph gn =
   let cases nextNode iVal
-        | (iVal == 0) = addtoPath globals nextNode >> dfs globals nextNode
+        | (iVal == 0) = addtoPath globals nextNode >> dfs globals suppGraph nextNode
         | (iVal < 0)  = do
           crP <- MV.unsafeRead (canReachPop globals) (gnId nextNode)
           mrP <- MV.unsafeRead (mustReachPop globals) (gnId nextNode)
           return (crP, mrP)
         | (iVal > 0)  = merge globals nextNode >> return (False, False)
         | otherwise = error "unreachable error"
-      follow e = do
-        node <- MV.unsafeRead (supportGraph globals) (to e)
-        iVal <- MV.unsafeRead (iVector globals) (to e)
-        cases node iVal
+      follow e = MV.unsafeRead (iVector globals) (to e) >>= cases (suppGraph V.! (to e))
   in do
     res <- forM (Set.toList $ internalEdges gn) follow
     let dCanReachPop = any fst res
         dMustReachPop = dCanReachPop && all snd res
         computeActualCanReach
-          | not . Set.null $ supportEdges gn =  do 
+          | not . Set.null $ supportEdges gn =  do
             actualRes  <- forM (Set.toList $ supportEdges gn) follow
             return (any fst actualRes, dMustReachPop && all snd actualRes)
           | not . Map.null $ popContexts gn = return (True, True)

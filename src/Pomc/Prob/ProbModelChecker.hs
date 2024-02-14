@@ -140,12 +140,11 @@ terminationExplicit query popa =
   in do
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa) stats
-    scString <- stToIO $ CM.showMap sc
 
     (res, _) <- evalZ3With (chooseLogic $ solver query) stdOpts $ terminationQuerySCC sc precFunc query stats
     DBG.traceM $ "Computed termination probability: " ++ show res
     computedStats <- stToIO $ readSTRef stats
-    return (res, computedStats, scString)
+    return (res, computedStats, show sc)
 
 programTermination :: Solver -> Program -> IO (TermResult, Stats, String)
 programTermination solver prog =
@@ -166,11 +165,10 @@ programTermination solver prog =
   in do
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph pDelta initVs initLbl stats
-    scString <- stToIO $ CM.showMap sc
     (res, _) <- evalZ3With (chooseLogic solver) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery solver) stats
     DBG.traceM $ "Computed termination probabilities: " ++ show res
     computedStats <- stToIO $ readSTRef stats
-    return (res, computedStats, scString)
+    return (res, computedStats, show sc)
 
 -- QUALITATIVE MODEL CHECKING 
 -- is the probability that the POPA satisfies phi equal to 1?
@@ -213,12 +211,10 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
   in do
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
-    scString <- stToIO $ CM.showMap sc
-    DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
+    DBG.traceM $ "Length of the summary chain: " ++ show (V.length sc)
     (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (chooseLogic solver) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubMap
-        ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
-
+        ubVec =  V.generate (V.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
         cases i k
           | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
           | k < (1 - 100 * defaultRTolerance) = True
@@ -246,7 +242,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
 
     tGG <- stopTimer startGGTime almostSurely
 
-    return (almostSurely, computedStats { gGraphTime = tGG }, scString ++ show pendVector)
+    return (almostSurely, computedStats { gGraphTime = tGG }, show sc ++ show pendVector)
 
 qualitativeModelCheckProgram :: Solver
                              -> Formula ExprProp -- phi: input formula to check
@@ -364,11 +360,10 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
   in do
     stats <- stToIO $ newSTRef newStats
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
-    scString <- stToIO $ CM.showMap sc
-    DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
+    DBG.traceM $ "Length of the summary chain: " ++ show (V.length sc)
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
-        ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
+        ubVec =  V.generate (V.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
         cases i k
           | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
           | k < (1 - 100 * defaultRTolerance) = True
@@ -385,7 +380,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     tGG <- stopTimer startGGTime ub
     computedStats <- stToIO $ readSTRef stats
 
-    return ((ub, lb), computedStats { gGraphTime = tGG }, scString ++ show pendVector)
+    return ((ub, lb), computedStats { gGraphTime = tGG }, show sc ++ show pendVector)
 
 quantitativeModelCheckProgram :: Solver
                              -> Formula ExprProp -- phi: input formula to check
