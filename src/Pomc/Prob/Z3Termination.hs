@@ -518,7 +518,7 @@ solveSCCQuery dMustReachPop varMap@(m, newAdded, sccMembers, _) globals precFun 
         approxFracVec <- toRationalProbVecWithHints defaultEps approxVec unsolvedVars
 
         DBG.traceM "Asserting lower and upper bounds computed from value iteration, and getting a model"
-        model <- doAssert approxFracVec (min defaultTolerance $ currentEps * currentEps)
+        model <- doAssert approxFracVec (min defaultTolerance currentEps)
 
         -- actual updates
         augUnsolvedVars <- liftIO $ mapM (\k -> (k,) . fromJust <$> HT.lookup newAdded k) unsolvedVars

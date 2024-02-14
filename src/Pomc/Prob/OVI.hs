@@ -29,7 +29,7 @@ import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
 -- import qualified Numeric.Rounded as R
 
-import Witch.Instances(realFloatToRational)
+import Witch.Instances (realFloatToRational)
 
 import qualified Debug.Trace as DBG
 

@@ -1,37 +1,52 @@
 {- |
    Module      : Pomc.Test.TestProbQualMC
-   Copyright   : 2023 Francesco Pontiggia
+   Copyright   : 2024 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
 
-module Pomc.Test.TestProbQualMC(tests
-                               , symmetricRandomWalk
-                               , symmetricRandomWalk2
-                               , biasedRandomWalk
-                               , nonTerminating
-                               , maybeTerminating
-                               , loopySampling 
-                               ) where
+module Pomc.Test.TestProbQualMC ( tests
+                                , symmetricRandomWalk
+                                , symmetricRandomWalk2
+                                , biasedRandomWalk
+                                , nonTerminating
+                                , maybeTerminating
+                                , loopySampling
+                                ) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
 import Pomc.Test.EvalFormulas (TestCase, zipExpected, excludeIndices, probFormulas)
 import Pomc.Test.OPMs (stlV3Alphabet, makeInputSet)
-import Data.Maybe(fromJust, isJust)
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), qualitativeModelCheckExplicitGen)
-import Pomc.Prob.ProbUtils(Solver(..))
-
-import Data.Ratio((%))
+import Pomc.Prob.ProbUtils (Solver(..))
 
 tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Qualitative Tests" $
   [ testGroup "ProbModelChecking.hs Qualitative Tests OVI" $
-    map (\t -> t OVI) [biasedRandomWalkTests, nonTerminatingTests , maybeTerminatingTests, loopySamplingTests]
+    map (\t -> t OVI) 
+      [ biasedRandomWalkTests
+      , nonTerminatingTests
+      , maybeTerminatingTests
+      , loopySamplingTests
+      ]
   , testGroup "ProbModelChecking.hs Qualitative Tests SMTWithHints" $
-    map (\t -> t SMTWithHints) [biasedRandomWalkTests, nonTerminatingTests , maybeTerminatingTests, loopySamplingTests]
+    map (\t -> t SMTWithHints) 
+      [ biasedRandomWalkTests
+      , nonTerminatingTests
+      , maybeTerminatingTests
+      , loopySamplingTests
+      ]
   , testGroup "ProbModelChecking.hs Qualitative Tests ExactSMTWithHints" $
-    map (\t -> t ExactSMTWithHints) [symmetricRandomWalkTests, symmetricRandomWalk2Tests, biasedRandomWalkTests, nonTerminatingTests , maybeTerminatingTests, loopySamplingTests]
+    map (\t -> t ExactSMTWithHints) 
+      [ symmetricRandomWalkTests
+      , symmetricRandomWalk2Tests
+      , biasedRandomWalkTests
+      , nonTerminatingTests
+      , maybeTerminatingTests
+      , loopySamplingTests
+      ]
+
   ]
 
 type Prob = Rational
@@ -80,14 +95,14 @@ symmetricRandomWalk = ExplicitPopa
                         }
 
 expectedSymmetricRandomWalk :: [Bool]
-expectedSymmetricRandomWalk = [ True, True, True, True, 
-                                True , True, True, False, 
-                                False, True, False, True, 
+expectedSymmetricRandomWalk = [ True, True, True, True,
+                                True , True, True, False,
+                                False, True, False, True,
                                 True, False, False, True,
                                 False, True, True
                               ]
 
--- secondo version of Symmetric Random Walk                         
+-- second version of Symmetric Random Walk                         
 symmetricRandomWalk2Tests :: Solver -> TestTree
 symmetricRandomWalk2Tests solv = testGroup "Symmetric Random Walk 2 Tests" $
   map (makeTestCase symmetricRandomWalk2 solv) (zipExpected probFormulas expectedsymmetricRandomWalk2)
@@ -102,7 +117,7 @@ symmetricRandomWalk2 = ExplicitPopa
                         , (1, [(2, makeInputSet ["stm"],  0.5 :: Prob)])
                         , (1, [(3, makeInputSet ["stm"],  0.5 :: Prob)])
                         , (4, [(1, makeInputSet ["stm"],  1 :: Prob)])
-                        , (7, [(7, makeInputSet ["stm"], 1 :: Prob)])  
+                        , (7, [(7, makeInputSet ["stm"], 1 :: Prob)])
                         ]
                       , epopaDeltaShift =
                         [ (5, [(6, makeInputSet ["stm"],  1 :: Prob)])
@@ -111,15 +126,15 @@ symmetricRandomWalk2 = ExplicitPopa
                         [ (2, 1, [(4, makeInputSet ["call", "X"], 1 :: Prob)])
                         , (3, 1, [(5, makeInputSet ["ret", "X", "Y"], 1 :: Prob)])
                         , (6, 4, [(1, makeInputSet ["stm"], 1 :: Prob)])
-                        , (6, 0, [(7, makeInputSet ["stm"], 1 :: Prob)]) 
-                        , (7, 7, [(7, makeInputSet ["stm"], 1 :: Prob)])  
-                        ] 
-                      } 
+                        , (6, 0, [(7, makeInputSet ["stm"], 1 :: Prob)])
+                        , (7, 7, [(7, makeInputSet ["stm"], 1 :: Prob)])
+                        ]
+                      }
 
 expectedsymmetricRandomWalk2 :: [Bool]
-expectedsymmetricRandomWalk2 = [ True, True, True, True, 
-                                 True, True, True, True, 
-                                 False, True, False, True, 
+expectedsymmetricRandomWalk2 = [ True, True, True, True,
+                                 True, True, True, True,
+                                 False, True, False, True,
                                  True, False, False, True,
                                  False, True, True
                                ]
@@ -139,7 +154,7 @@ biasedRandomWalk = ExplicitPopa
                     , (1, [(2, makeInputSet ["stm"],  0.6 :: Prob)])
                     , (1, [(3, makeInputSet ["stm"],  0.4 :: Prob)])
                     , (4, [(1, makeInputSet ["stm"],  1 :: Prob)])
-                    , (7, [(7, makeInputSet ["stm"], 1 :: Prob)])  
+                    , (7, [(7, makeInputSet ["stm"], 1 :: Prob)])
                     ]
                   , epopaDeltaShift =
                     [ (5, [(6, makeInputSet ["stm"],  1 :: Prob)])
@@ -148,15 +163,15 @@ biasedRandomWalk = ExplicitPopa
                     [ (2, 1, [(4, makeInputSet ["call", "X"], 1 :: Prob)])
                     , (3, 1, [(5, makeInputSet ["ret", "X", "Y"], 1 :: Prob)])
                     , (6, 4, [(1, makeInputSet ["stm"], 1 :: Prob)])
-                    , (6, 0, [(7, makeInputSet ["stm"], 1 :: Prob)]) 
-                    , (7, 7, [(7, makeInputSet ["stm"], 1 :: Prob)])  
-                    ] 
-                  } 
+                    , (6, 0, [(7, makeInputSet ["stm"], 1 :: Prob)])
+                    , (7, 7, [(7, makeInputSet ["stm"], 1 :: Prob)])
+                    ]
+                  }
 
 expectedBiasedRandomWalk :: [Bool]
-expectedBiasedRandomWalk = [ True, True, False, False, 
-                             False, True, True, True, 
-                             False, False, False, True, 
+expectedBiasedRandomWalk = [ True, True, False, False,
+                             False, True, True, True,
+                             False, False, False, True,
                              True, False, False, False,
                              False, True, True
                            ]
@@ -177,17 +192,17 @@ nonTerminating = ExplicitPopa
                               (2, [(2, makeInputSet ["call", "X"],   1 :: Prob)])
                             ]
                         , epopaDeltaShift =
-                            [ 
+                            [
                             ]
                         , epopaDeltaPop =
-                            [   
+                            [
                             ]
                         }
 
 expectedNonTerminating :: [Bool]
-expectedNonTerminating = [ True, False, False, False, 
-                           False, True, True, False, 
-                           False, False, False, False, 
+expectedNonTerminating = [ True, False, False, False,
+                           False, True, True, False,
+                           False, False, False, False,
                            True, False, True, False,
                            True, False, True
                          ]
@@ -225,9 +240,9 @@ maybeTerminating = ExplicitPopa
                         }
 
 expectedMaybeTerminating :: [Bool]
-expectedMaybeTerminating = [ False, False, False, False, 
-                             False, False, True, False, 
-                             False, False, False, True, 
+expectedMaybeTerminating = [ False, False, False, False,
+                             False, False, True, False,
+                             False, False, False, True,
                              False, True, False, False,
                              False, True, False
                            ]
@@ -263,11 +278,9 @@ loopySampling = ExplicitPopa
                         }
 
 expectedLoopySampling :: [Bool]
-expectedLoopySampling = [ True, True, True, False, 
-                          False, False, True, False, 
-                          False, False, False, True, 
-                          True, True, True, True, 
+expectedLoopySampling = [ True, True, True, False,
+                          False, False, True, False,
+                          False, False, False, True,
+                          True, True, True, True,
                           False, True, True
                         ]
-
-
