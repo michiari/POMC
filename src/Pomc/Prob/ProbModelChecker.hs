@@ -215,7 +215,6 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
-    --DBG.traceM $ "Summary chain: " ++ scString
     (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (chooseLogic solver) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubMap
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
@@ -367,12 +366,6 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
     scString <- stToIO $ CM.showMap sc
     DBG.traceM $ "Length of the summary chain: " ++ show (MV.length sc)
-    --DBG.traceM $ "Summary chain: " ++ scString
-    {-
-    asPendSemiconfs <- stToIO $ asPendingSemiconfs sc
-    DBG.traceM $ "Computed the following asPending and asNotPending sets: " ++ show asPendSemiconfs
-    pendVector <- toBoolVec <$> evalZ3With (Just QF_LRA) stdOpts (terminationQuery sc precFunc asPendSemiconfs $ PendingQuery SMTWithHints)
-    -}
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
         ubVec =  V.generate (MV.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)

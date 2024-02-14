@@ -35,6 +35,10 @@ module Pomc.Prob.ProbUtils ( Prob
                            , toTermResult
                            , toLowerProb
                            , toUpperProb
+                           , extractUpperProb
+                           , extractUpperDouble
+                           , extractLowerProb
+                           , extractLowerDouble
                            , newStats
                            , debug
                            ) where
@@ -56,6 +60,8 @@ import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
 import Data.Map(Map)
+
+import Z3.Monad hiding (Solver)
 
 import qualified Debug.Trace as DBG
 
@@ -155,9 +161,7 @@ decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
 -- Strategy to use to compute the result
 -- SMTWithHints: compute a lower approximation of the solution
 --               with an iterative method and use it as a hint for the SMT solver
--- SMTCert: approximate the solution with an iterative method and ask the SMT solver
---          for a certificate within the given tolerance
-data Solver = SMTWithHints | OVI deriving (Eq, Show)
+data Solver = SMTWithHints | ExactSMTWithHints | OVI deriving (Eq, Show)
 
 defaultTolerance :: EqMapNumbersType
 defaultTolerance = 1e-5
@@ -211,6 +215,38 @@ toLowerProb r = error $ "cannot convert a non single probability result. Got ins
 toUpperProb :: TermResult -> Prob
 toUpperProb (ApproxSingleResult (_, ub)) = ub
 toUpperProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
+
+extractUpperAst :: AST -> Z3 AST
+extractUpperAst ast = do
+  isAlgebraic <- isAlgebraicNumber ast
+  --DBG.traceShowM =<< getAstKind ast
+  --DBG.traceShowM =<< isAlgebraicNumber ast
+  --DBG.traceM =<< astToString ast
+  if isAlgebraic
+    then getAlgebraicNumberUpper ast 5
+    else return ast
+
+extractUpperProb :: AST -> Z3 Prob
+extractUpperProb ast = extractUpperAst ast >>= getReal
+
+extractUpperDouble :: AST -> Z3 Double
+extractUpperDouble ast = extractUpperAst ast >>= getNumeralDouble
+
+extractLowerAst :: AST -> Z3 AST
+extractLowerAst ast = do
+  isAlgebraic <- isAlgebraicNumber ast
+  --DBG.traceShowM =<< getAstKind ast
+  --DBG.traceShowM =<< isAlgebraicNumber ast
+  --DBG.traceM =<< astToString ast
+  if isAlgebraic
+    then getAlgebraicNumberLower ast 5
+    else return ast
+
+extractLowerProb :: AST -> Z3 Prob
+extractLowerProb ast = extractUpperAst ast >>= getReal
+
+extractLowerDouble :: AST -> Z3 Double
+extractLowerDouble ast = extractUpperAst ast >>= getNumeralDouble
 
 data Stats = Stats { upperBoundTime :: Double
                    , pastTime :: Double

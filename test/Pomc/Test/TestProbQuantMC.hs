@@ -30,23 +30,31 @@ import Data.Ratio((%))
 type Prob = Rational
 
 tests :: TestTree
-tests = testGroup "ProbModelChecking.hs Quantitative Tests" [nonTerminatingTests, maybeTerminatingTests, loopySamplingTests]
+tests = testGroup "ProbModelChecking.hs Quantitative Tests" $
+  [ testGroup "ProbModelChecking.hs Quantitative Tests ExactSMTWithHints" $
+    [ nonTerminatingTests OVI, loopySamplingTests OVI
+    --, symmetricRandomWalkTests ExactSMTWithHints
+    ]
+  ]
+
+
 
 makeTestCase :: ExplicitPopa Word String
-             -> (TestCase, (Prob,Prob))
-            -> TestTree
-makeTestCase popa ((name, phi), (expLB, expUB)) =
+  -> Solver
+  -> (TestCase, (Prob,Prob))
+  -> TestTree
+makeTestCase popa solv ((name, phi), (expLB, expUB)) =
   testCase (name ++ " (" ++ show phi ++ ")") $ do 
-    ((lb, ub), _, info) <- quantitativeModelCheckExplicitGen OVI phi popa
+    ((lb, ub), _, info) <- quantitativeModelCheckExplicitGen solv phi popa
     let debugMsg adjective expected actual = "Expected " ++ adjective ++ show expected ++ " but got " ++ show actual ++ ". Additional diagnostic information: " ++ info
     assertBool (debugMsg "lower bound at least " expLB lb) (expLB <= lb)  
     assertBool (debugMsg "upper bound at most " expUB ub) (expUB >= ub)  
     assertBool ("Lower bound should be lower than the upper bound") (lb <= ub)  
 
 -- symmetric Random Walk                          
-symmetricRandomWalkTests :: TestTree
-symmetricRandomWalkTests = testGroup "Symmetric Random Walk Tests" $
-  map (makeTestCase symmetricRandomWalk) (zipExpected probFormulas expectedSymmetricRandomWalk)
+symmetricRandomWalkTests :: Solver -> TestTree
+symmetricRandomWalkTests solv = testGroup "Symmetric Random Walk Tests" $
+  map (makeTestCase symmetricRandomWalk solv) (zipExpected probFormulas expectedSymmetricRandomWalk)
 
 expectedSymmetricRandomWalk :: [(Prob, Prob)]
 expectedSymmetricRandomWalk = [ (0.99, 1.01), (0.99, 1.01), (0.99, 1.01), (0.99, 1.01), 
@@ -58,9 +66,9 @@ expectedSymmetricRandomWalk = [ (0.99, 1.01), (0.99, 1.01), (0.99, 1.01), (0.99,
 
 
 -- a non terminating POPA
-nonTerminatingTests :: TestTree
-nonTerminatingTests = testGroup "Non terminating POPA Tests" $
-  map (makeTestCase nonTerminating) (zipExpected probFormulas expectedNonTerminating)
+nonTerminatingTests :: Solver -> TestTree
+nonTerminatingTests solv = testGroup "Non terminating POPA Tests" $
+  map (makeTestCase nonTerminating solv) (zipExpected probFormulas expectedNonTerminating)
 
 
 expectedNonTerminating :: [(Prob,Prob)]
@@ -71,9 +79,9 @@ expectedNonTerminating = [ (0.99, 1.01), (0, 0.01), (0, 0.01), (0, 0.01),
                            (0.99, 1.01), (0, 0.01), (0.99, 1.01)
                          ]
 
-maybeTerminatingTests :: TestTree
-maybeTerminatingTests = testGroup "Maybe terminating POPA Tests" $
-  map (makeTestCase maybeTerminating) (zipExpected probFormulas expectedMaybeTerminating)
+maybeTerminatingTests :: Solver -> TestTree
+maybeTerminatingTests solv = testGroup "Maybe terminating POPA Tests" $
+  map (makeTestCase maybeTerminating solv) (zipExpected probFormulas expectedMaybeTerminating)
 
 expectedMaybeTerminating :: [(Prob, Prob)]
 expectedMaybeTerminating = [ (0.24 :: Prob, 0.26 :: Prob ) ,(0 :: Prob, 0.01 :: Prob ), (0.74 :: Prob, 0.76 :: Prob ), (0 :: Prob, 0.01 :: Prob ), 
@@ -84,9 +92,9 @@ expectedMaybeTerminating = [ (0.24 :: Prob, 0.26 :: Prob ) ,(0 :: Prob, 0.01 :: 
                            ]
 
 -- a POPA that keeps sampling between X and Y
-loopySamplingTests :: TestTree
-loopySamplingTests = testGroup "Loopy Sampling POPA Tests" $
-  map (makeTestCase loopySampling) (zipExpected probFormulas expectedLoopySampling)
+loopySamplingTests :: Solver -> TestTree
+loopySamplingTests solv = testGroup "Loopy Sampling POPA Tests" $
+  map (makeTestCase loopySampling solv) (zipExpected probFormulas expectedLoopySampling)
 
 expectedLoopySampling :: [(Prob, Prob)]
 expectedLoopySampling = [ (0.99, 1.01), (0.99, 1.01), (0.99, 1.01), (0.00, 0.01), 

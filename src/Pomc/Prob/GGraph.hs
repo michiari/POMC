@@ -78,7 +78,6 @@ import Z3.Monad
 import qualified Debug.Trace as DBG
 import GHC.IO (ioToST)
 import Data.IORef (newIORef, modifyIORef', readIORef)
-import Data.Scientific (Scientific)
 
 -- A data type for nodes in the augmented graph G
 data GNode = GNode
@@ -531,7 +530,6 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                           , bottomHSCCs = newFoundSCCs
                           }
 
-
   -- computing all the bottom SCCs of graph H
   phiInitialGNodesIdxs <- foldM (\acc idx -> do
     node <- MV.unsafeRead computedGraph idx
@@ -540,18 +538,15 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     if E.member (bitenc delta) phi . current . phiNode $ node
       then return (idx:acc)
       else return acc
-    )
-    []
-    [0.. (iniCount -1)]
+    ) [] [0.. (iniCount -1)]
 
   hSCCs <- Map.keysSet <$> readSTRef (bottomHSCCs hGlobals)
 
-  DBG.traceM $ "Computed qualitative model checking: "
-  bottomString <- show <$> readSTRef (bottomHSCCs hGlobals)
-  gString <- CM.showMap computedGraph
-
-  DBG.traceM gString
-  DBG.traceM bottomString
+  --DBG.traceM "Computed qualitative model checking..."
+  --bottomString <- show <$> readSTRef (bottomHSCCs hGlobals)
+  --gString <- CM.showMap computedGraph
+  --DBG.traceM gString
+  --DBG.traceM bottomString
 
   -- computing the probability of termination
   let isInH g = not . IntSet.null . IntSet.intersection hSCCs $ descSccs g
@@ -568,10 +563,6 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
   -- freezing makes coding easier
   freezedGGraph <- V.freeze computedGraph
   freezedSuppGraph <- V.freeze suppGraph
-
-  let boolVec = V.map isInH freezedGGraph
-
-  DBG.traceM $ show boolVec
 
   newlMap <- BH.new
   newlGroupedMap <- BH.new
@@ -592,11 +583,6 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       liftIO $ HT.mutate newuGroupedMap (graphNode g) (insert newuVar)
 
     DBG.traceM "Generated z3 vars for encoding (2)"
-    newMapString <- show <$> liftIO (HT.toList newlMap)
-    newGroupedMapString <- show <$> liftIO (HT.toList newlGroupedMap)
-
-    DBG.traceM $ "New map: " ++ newMapString
-    DBG.traceM $ "New grouped map: " ++ newGroupedMapString
 
     -- preparing the global variables for the computation of the fractions f
     freezedSuppEnds <- liftIO $ GR.freezeSuppEnds (grGlobals gGlobals)
@@ -629,82 +615,70 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
 
     DBG.traceM "Encoding conditions (2b) and (2c)"
     -- encodings (2b) and (2c)
-    (encs1) <- foldM
-      (\(acc) gNode ->
+    encs1 <- foldM
+      (\acc gNode ->
           if isInH gNode
             then do
-              (newEncs) <- encode globals (GR.sIdGen (grGlobals gGlobals)) freezedSuppEnds delta (newlMap, newuMap) freezedSuppGraph freezedGGraph (prec delta) isInH gNode pendProbsLowerBounds pendProbsUpperBounds lowerBounds upperBounds
+              (newEncs) <- encode globals (GR.sIdGen (grGlobals gGlobals)) freezedSuppEnds delta (newlMap, newuMap) freezedSuppGraph freezedGGraph (prec delta) isInH gNode pendProbsLowerBounds pendProbsUpperBounds
               return (newEncs ++ acc)
-            else return (acc)
-      )
-      []
-      freezedGGraph
+            else return acc
+      ) [] freezedGGraph
 
     DBG.traceM "Encoding conditions (2a)"
     -- encoding (2a)
     groupedlMaptoList <- liftIO (HT.toList newlGroupedMap)
-    encs2 <- foldM (\(acc) (_, vList) -> do
+    encs2 <- foldM (\acc (_, vList) -> do
         vSum <- mkAdd vList
         lConstr1 <- mkLe vSum =<< mkRational (1 :: Prob)
         lConstr2 <- mkGe vSum =<< mkRational (1 - defaultRTolerance)
         return (lConstr1:lConstr2:acc)
-      )
-      []
-      groupedlMaptoList
+      ) [] groupedlMaptoList
 
     groupeduMaptoList <- liftIO (HT.toList newuGroupedMap)
-    encs3 <- foldM (\(acc) (_, vList) -> do
-          vSum <- mkAdd vList
-          uConstr1 <- mkGe vSum =<< mkRational (1 :: Prob)
-          uConstr2 <- mkLe vSum =<< mkRational (1 + defaultRTolerance)
-          return (uConstr1:uConstr2:acc)
-        )
-        []
-        groupeduMaptoList
+    encs3 <- foldM (\acc (_, vList) -> do
+      vSum <- mkAdd vList
+      uConstr1 <- mkGe vSum =<< mkRational (1 :: Prob)
+      uConstr2 <- mkLe vSum =<< mkRational (1 + defaultRTolerance)
+      return (uConstr1:uConstr2:acc)
+      ) [] groupeduMaptoList
 
     -- computing a lower bound on the probability to satisfy the given property
     philVars <- liftIO $ foldM  (\acc idx ->
-        if isInH (freezedGGraph V.! idx)
-          then do
-            var <- fromJust <$> HT.lookup newlMap idx
-            return (var:acc)
-          else return acc
-        ) [] phiInitialGNodesIdxs
+      if isInH (freezedGGraph V.! idx)
+        then do
+          var <- fromJust <$> HT.lookup newlMap idx
+          return (var:acc)
+        else return acc
+      ) [] phiInitialGNodesIdxs
 
     phiuVars <- liftIO $ foldM  (\acc idx ->
-          if isInH (freezedGGraph V.! idx)
-            then do
-              var <- fromJust <$> HT.lookup newuMap idx
-              return (var:acc)
-            else return acc
-          ) [] phiInitialGNodesIdxs
+      if isInH (freezedGGraph V.! idx)
+        then do
+          var <- fromJust <$> HT.lookup newuMap idx
+          return (var:acc)
+        else return acc
+      ) [] phiInitialGNodesIdxs
 
     sumlVar <- mkAdd philVars
     sumuVar <- mkAdd phiuVars
 
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
-    DBG.traceM $ "Calling Z3..."
+    DBG.traceM "Calling Z3..."
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
-      mString <- modelToString model
-      DBG.traceM $ "Computed model(Lower and upper bound): " ++ mString
-      sumlEq <- astToString sumlVar
-      DBG.traceM $ "The probability of satisfying phi is given by sum: " ++ sumlEq
-      l <- astToString . fromJust =<< eval model sumlVar
-      u <- astToString . fromJust =<< eval model sumuVar
+      l <- extractLowerProb . fromJust =<< eval model sumlVar
+      u <- extractUpperProb . fromJust =<< eval model sumuVar
       DBG.traceM $ "Computed lower bound on the quantitative probability: " ++ show l
       DBG.traceM $ "Computed upper bound on the quantitative probability: " ++ show u
-      return $ (toRational (read (takeWhile (/= '?') l) :: Scientific), toRational (read (takeWhile (/= '?') u) :: Scientific)))
+      return (l, u))
 
     tSol <- stopTimer startSol ub
     liftIO $ stToIO $ modifySTRef' oldStats (\s -> s { quantSolTime = quantSolTime s + tSol})
 
     return (lb, ub)
 
-  -- helpers for the Z3 encoding
-
+-- helpers for the Z3 encoding
 -- every node of graph H is associated with a Z3 var
-type TypicalVarKey = Int
 type TypicalVarMap = HT.BasicHashTable Int AST
 
 
@@ -726,10 +700,8 @@ encode :: (Ord pstate, Hashable pstate, Show pstate)
       -> GNode
       -> Vector Prob
       -> Vector Prob
-      -> Map VarKey Prob
-      -> Map VarKey Prob
-      -> Z3 ([AST])
-encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB lowerBs upperBs = do
+      -> Z3 [AST]
+encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB =
   let gn = suppGraph V.! (graphNode gNode)
       (q,g) = semiconf gn
       qLabel = getLabel q
@@ -737,13 +709,13 @@ encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph 
       cases
         -- this case includes the initial push
         | isNothing g || precRel == Just Yield =
-            encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH gNode gn pendProbsLB pendProbsUB lowerBs upperBs
+            encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH gNode gn pendProbsLB pendProbsUB
 
         | precRel == Just Equal =
             encodeShift (lTypVarMap, uTypVarMap) gGraph isInH gNode gn pendProbsLB pendProbsUB
 
         | otherwise = fail "unexpected prec rel"
-  cases
+   in cases
 
 -- encoding helpers --
 encodePush :: (Ord pstate, Hashable pstate, Show pstate)
@@ -759,16 +731,13 @@ encodePush :: (Ord pstate, Hashable pstate, Show pstate)
   -> GraphNode pstate
   -> Vector Prob
   -> Vector Prob
-  -> Map VarKey Prob
-  -> Map VarKey Prob
-  -> Z3 ([AST])
-encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB lowerBs upperBs =
+  -> Z3 [AST]
+encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB =
   let fNodes = IntSet.toList . IntSet.filter (\idx -> isInH (gGraph V.! idx)) . Map.keysSet $ edges g
       pushEnc toIdx = do
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
         touVar <- liftIO $ fromJust <$> HT.lookup uTypVarMap toIdx
-        DBG.traceM $ "Encoding transition to " ++ show toIdx
-        -- a small trick to be refactored later (itneed a lot of boring refactoring...)
+        -- a small trick to be refactored later (it needs a lot of boring refactoring...)
         let toG =gGraph V.! toIdx
             maybePInternal = Set.lookupLE (Edge (graphNode toG) 0) $ internalEdges gn
             maybePSummary = Set.lookupLE (Edge (graphNode toG) 0) $ supportEdges gn
@@ -778,16 +747,12 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
                       normalizedLP = p * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
                       normalizedUP = p * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
                   in do
-                    DBG.traceM $ "It corresponds to a push transition"
                     lT <- encodeTransition [normalizedLP] tolVar
                     uT <- encodeTransition [normalizedUP] touVar
                     return (lT, uT)
 
               | isJust maybePSummary && to (fromJust maybePSummary) == (graphNode toG) =
                   let supportGn = suppGraph V.! (graphNode toG)
-                      supportState = getId . fst . semiconf $ supportGn
-                      --lP =  Set.foldl (+) 0 $ Set.map (\e -> (prob e) * (lowerBs GeneralMap.! (to e, supportState))) (internalEdges gn)
-                      --uP =  Set.foldl (+) 0 $ Set.map (\e -> (prob e) * (upperBs GeneralMap.! (to e, supportState))) (internalEdges gn)
                       leftContext = AugState (getState . fst . semiconf $ gn) (getLabel . fst . semiconf $ gn) (phiNode g)
                       rightContext = AugState (getState . fst . semiconf $ supportGn) (getLabel . fst . semiconf $ supportGn) (phiNode toG)
                       cDeltaPush (AugState q0 _ p0)  =  [ (AugState q1 lab p1, prob_) |
@@ -814,7 +779,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
                         , GR.consistentFilter = consistentFilter
                         }
                   in do
-                    DBG.traceM $ "It corresponds to a support transition - launching call to inner computation of fraction f"
+                    DBG.traceM $ "encountered a support transition - launching call to inner computation of fraction f for H node: " ++ show (gId g) ++ " to H node: " ++ show (gId toG)
                     (lW, uW) <- liftIO $ weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
                     let normalizedLW = lW * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
                         normalizedUW = uW * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
@@ -827,7 +792,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
 
   in do
     -- a little sanity check
-    unless (graphNode g == gnId gn) $ error "Encoding Push encountered a non consistent pair GNode - graphNode"
+    unless (graphNode g == gnId gn) $ error "Encoding Push corresponding to non consistent pair GNode - graphNode"
     transitions <- mapM pushEnc fNodes
     lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
     uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)

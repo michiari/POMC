@@ -208,7 +208,8 @@ oviWithHints settings eqMap lVars = liftIO $ do
   upperApprox <- copyVec lowerApprox
   evalUpperApprox <- newVecSameSize lowerApprox
   -- create system containing only live equations
-  leqSys <- toLiveEqMapWithHints eqMap lVars
+  leqSys <- toLiveEqMapWithHints eqMap lVars 
+  DBG.traceM $ "Identified " ++ show (MV.length leqSys) ++ " live variables..."
   -- create eigenVec and initialize it to 1
   -- we only use live equations for eigenVec to avoid too many 0 values
   eigenVec <- HT.newSized $ MV.length leqSys

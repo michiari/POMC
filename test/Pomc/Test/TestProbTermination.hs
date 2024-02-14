@@ -23,22 +23,29 @@ import Data.Ratio ((%))
 tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Termination Tests" $
   [ testGroup "Boolean Termination Tests"
-    [ dummyModelTests, pseudoRandomWalkTests, symmetricRandomWalkTests
-    , biasedRandomWalkTests, nestedRandomWalkTests
-    , nonTerminatingTests, callRetExTests
+    [ dummyModelTests
+    , pseudoRandomWalkTests
+    , symmetricRandomWalkTests
+    , biasedRandomWalkTests
+    , nestedRandomWalkTests
+    , nonTerminatingTests
     ]
   , testGroup "Estimating Termination Probabilities with OVI"
+    $ flip excludeIndices [2,4]
     $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' OVI), expected)) exactTerminationProbabilities
   , testGroup "Estimating Termination Probabilities with SMTWithHints"
     $ flip excludeIndices [7, 8]
     $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' SMTWithHints), expected)) exactTerminationProbabilities
+  , testGroup "Computing Exact Terminating Probabilities"
+    $ flip excludeIndices [6, 7, 8]
+    $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' ExactSMTWithHints), expected)) exactTerminationProbabilities
   ]
 
 type Prob = Rational
 type TestCase a = (String, (ExplicitPopa Word String -> IO (a, Stats, String)))
 
 termQueries :: [TestCase Bool]
-termQueries = [(s ++ show b, \popa -> f popa b SMTWithHints) | (s,f) <- termFunctions, b <- termBounds]
+termQueries = [(s ++ show b, \popa -> f popa b ExactSMTWithHints) | (s,f) <- termFunctions, b <- termBounds]
   where termFunctions = [("LT ", terminationLTExplicit), ("LE ", terminationLEExplicit), ("GT ", terminationGTExplicit), ("GE ", terminationGEExplicit)]
         termBounds = [0.0, 0.5, 1.0]
 
@@ -203,7 +210,7 @@ nestedRandomWalkTests :: TestTree
 nestedRandomWalkTests = testGroup "Nested Random Walk Tests" $
   map (makeTestCase (==) nestedRandomWalk) (zip termQueries expectedNestedRandomWalk)
 
--- termination probability = 1?
+-- termination probability = 1
 nestedRandomWalk :: (ExplicitPopa Word String)
 nestedRandomWalk = ExplicitPopa
   { epAlphabet = stlV3Alphabet

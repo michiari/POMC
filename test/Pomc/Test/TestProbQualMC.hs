@@ -25,27 +25,31 @@ import Pomc.Prob.ProbUtils(Solver(..))
 import Data.Ratio((%))
 
 tests :: TestTree
-tests = testGroup "ProbModelChecking.hs Qualitative Tests" [symmetricRandomWalkTests, 
-  symmetricRandomWalk2Tests
-  , biasedRandomWalkTests, nonTerminatingTests, maybeTerminatingTests
-  , loopySamplingTests
+tests = testGroup "ProbModelChecking.hs Qualitative Tests" $
+  [ testGroup "ProbModelChecking.hs Qualitative Tests OVI" $
+    map (\t -> t OVI) [biasedRandomWalkTests, nonTerminatingTests , maybeTerminatingTests, loopySamplingTests]
+  , testGroup "ProbModelChecking.hs Qualitative Tests SMTWithHints" $
+    map (\t -> t SMTWithHints) [biasedRandomWalkTests, nonTerminatingTests , maybeTerminatingTests, loopySamplingTests]
+  , testGroup "ProbModelChecking.hs Qualitative Tests ExactSMTWithHints" $
+    map (\t -> t ExactSMTWithHints) [symmetricRandomWalkTests, symmetricRandomWalk2Tests, biasedRandomWalkTests, nonTerminatingTests , maybeTerminatingTests, loopySamplingTests]
   ]
 
 type Prob = Rational
 
 makeTestCase :: ExplicitPopa Word String
+             -> Solver 
              -> (TestCase, Bool)
-            -> TestTree
-makeTestCase popa ((name, phi), expected) =
+              -> TestTree
+makeTestCase popa solv ((name, phi), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") $ do 
-    (res, _, info) <- qualitativeModelCheckExplicitGen OVI phi popa
+    (res, _, info) <- qualitativeModelCheckExplicitGen solv phi popa
     let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
     assertBool debugMsg (res == expected)  
   
 -- symmetric Random Walk                          
-symmetricRandomWalkTests :: TestTree
-symmetricRandomWalkTests = testGroup "Symmetric Random Walk Tests" $
-  map (makeTestCase symmetricRandomWalk) (zipExpected probFormulas expectedSymmetricRandomWalk)
+symmetricRandomWalkTests :: Solver -> TestTree
+symmetricRandomWalkTests solv = testGroup "Symmetric Random Walk Tests" $
+  map (makeTestCase symmetricRandomWalk solv) (zipExpected probFormulas expectedSymmetricRandomWalk)
 
 -- termination probability = 1
 symmetricRandomWalk :: (ExplicitPopa Word String)
@@ -84,9 +88,9 @@ expectedSymmetricRandomWalk = [ True, True, True, True,
                               ]
 
 -- secondo version of Symmetric Random Walk                         
-symmetricRandomWalk2Tests :: TestTree
-symmetricRandomWalk2Tests = testGroup "Symmetric Random Walk 2 Tests" $
-  map (makeTestCase symmetricRandomWalk2) (zipExpected probFormulas expectedsymmetricRandomWalk2)
+symmetricRandomWalk2Tests :: Solver -> TestTree
+symmetricRandomWalk2Tests solv = testGroup "Symmetric Random Walk 2 Tests" $
+  map (makeTestCase symmetricRandomWalk2 solv) (zipExpected probFormulas expectedsymmetricRandomWalk2)
 
 -- termination probability = 1
 symmetricRandomWalk2 :: (ExplicitPopa Word String)
@@ -121,9 +125,9 @@ expectedsymmetricRandomWalk2 = [ True, True, True, True,
                                ]
 
 -- biased Random Walk (same as symmetric, but with an unfair coin flip)                          
-biasedRandomWalkTests :: TestTree
-biasedRandomWalkTests = testGroup "Biased Random Walk Tests" $
-  map (makeTestCase biasedRandomWalk) (zipExpected probFormulas expectedBiasedRandomWalk)
+biasedRandomWalkTests :: Solver -> TestTree
+biasedRandomWalkTests solv = testGroup "Biased Random Walk Tests" $
+  map (makeTestCase biasedRandomWalk solv) (zipExpected probFormulas expectedBiasedRandomWalk)
 
 -- example 1: termination probability = 2/3
 biasedRandomWalk :: (ExplicitPopa Word String)
@@ -158,9 +162,9 @@ expectedBiasedRandomWalk = [ True, True, False, False,
                            ]
 
 -- a non terminating POPA
-nonTerminatingTests :: TestTree
-nonTerminatingTests = testGroup "Non terminating POPA Tests" $
-  map (makeTestCase nonTerminating) (zipExpected probFormulas expectedNonTerminating)
+nonTerminatingTests :: Solver -> TestTree
+nonTerminatingTests solv = testGroup "Non terminating POPA Tests" $
+  map (makeTestCase nonTerminating solv) (zipExpected probFormulas expectedNonTerminating)
 
 -- termination probability = 0
 nonTerminating :: (ExplicitPopa Word String)
@@ -189,9 +193,9 @@ expectedNonTerminating = [ True, False, False, False,
                          ]
 
 -- termination probability = 0.5
-maybeTerminatingTests :: TestTree
-maybeTerminatingTests = testGroup "Maybe terminating POPA Tests" $
-  map (makeTestCase maybeTerminating) (zipExpected probFormulas expectedMaybeTerminating)
+maybeTerminatingTests :: Solver -> TestTree
+maybeTerminatingTests solv = testGroup "Maybe terminating POPA Tests" $
+  map (makeTestCase maybeTerminating solv) (zipExpected probFormulas expectedMaybeTerminating)
 
 -- termination probability = 0
 maybeTerminating :: (ExplicitPopa Word String)
@@ -230,9 +234,9 @@ expectedMaybeTerminating = [ False, False, False, False,
 
 
 -- a POPA that keeps sampling between X and Y
-loopySamplingTests :: TestTree
-loopySamplingTests = testGroup "Loopy Sampling POPA Tests" $
-  map (makeTestCase loopySampling) (zipExpected probFormulas expectedLoopySampling)
+loopySamplingTests :: Solver -> TestTree
+loopySamplingTests solv = testGroup "Loopy Sampling POPA Tests" $
+  map (makeTestCase loopySampling solv) (zipExpected probFormulas expectedLoopySampling)
 
 -- termination probability = 0
 loopySampling :: (ExplicitPopa Word String)
