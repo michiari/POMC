@@ -18,6 +18,7 @@ import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 import Pomc.TimeUtils (timeFunApp, timeToString)
+import Pomc.LogUtils (LogLevel(..))
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
@@ -97,7 +98,9 @@ main = do
           return $ sum stringTimes + sum mcTimes
 
     ProgCheckRequest phis prog -> sum <$> forM phis
-      (runProg isOmega isExplicit (verbose pargs) (smt pargs) prog)
+      (runProg isOmega isExplicit logVerbosity (smt pargs) prog)
+      where logVerbosity | verbose pargs = Just LevelInfo
+                         | otherwise = Nothing
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")

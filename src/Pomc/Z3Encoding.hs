@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE TemplateHaskell #-}
 {- |
    Module      : Pomc.Z3Encoding
    Copyright   : 2020-2024 Michele Chiari
@@ -22,14 +23,15 @@ import Pomc.Prop (Prop(..))
 import Pomc.Potl (Dir(..), Formula(..), pnf, atomic)
 import Pomc.Prec (Prec(..), Alphabet, isComplete)
 import Pomc.TimeUtils (startTimer, stopTimer, timeAction, timeActionAcc)
+import Pomc.LogUtils (LogVerbosity, selectLogVerbosity)
 import qualified Pomc.MiniProc as MP
 
 import Z3.Monad hiding (Result(..))
 import qualified Z3.Monad as Z3
 
 import qualified Control.Exception as E
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad ((<=<), filterM, when)
+import Control.Monad ((<=<), filterM)
+import Control.Monad.Logger (MonadLogger, logInfo, logDebugSH)
 import Data.List ((\\), intercalate, singleton)
 import Data.Bits (finiteBitSize, countLeadingZeros)
 import Data.Map.Lazy (Map)
@@ -45,7 +47,7 @@ import qualified Data.Text as T
 -- import qualified Debug.Trace as DBG
 
 data SMTOpts = SMTOpts { smtMaxDepth       :: Word64
-                       , smtVerbose        :: Bool
+                       , smtVerbose        :: LogVerbosity
                        , smtComplete       :: Bool
                        , smtFastEmpty      :: Bool
                        , smtFastPrune      :: Bool
@@ -54,7 +56,7 @@ data SMTOpts = SMTOpts { smtMaxDepth       :: Word64
 
 defaultSmtOpts :: Word64 -> SMTOpts
 defaultSmtOpts maxDepth = SMTOpts { smtMaxDepth  = maxDepth
-                                  , smtVerbose   = False
+                                  , smtVerbose   = Nothing
                                   , smtComplete  = True
                                   , smtFastEmpty = True
                                   , smtFastPrune = False
@@ -70,11 +72,11 @@ data TableauNode = TableauNode { nodeGammaC :: [Formula MP.ExprProp]
                                , nodeIdx    :: Integer
                                } deriving Eq
 
-data SMTResult = SMTResult { smtStatus        :: SMTStatus
-                           , smtTableau       :: Maybe [TableauNode]
-                           , smtTimeAssert    :: Double
-                           , smtTimeCheck     :: Double
-                           , smtTimeModel     :: Double
+data SMTResult = SMTResult { smtStatus     :: SMTStatus
+                           , smtTableau    :: Maybe [TableauNode]
+                           , smtTimeAssert :: Double
+                           , smtTimeCheck  :: Double
+                           , smtTimeModel  :: Double
                            } deriving (Eq, Show)
 
 instance Show TableauNode where
@@ -86,8 +88,8 @@ instance Show TableauNode where
                                      ]) ++ ")"
 
 data Query = SatQuery { qAlphabet :: Alphabet MP.ExprProp }
-             | MiniProcQuery { qProg :: MP.Program }
-             deriving Show
+           | MiniProcQuery { qProg :: MP.Program }
+           deriving Show
 
 isSatisfiable :: SMTOpts
               -> Alphabet String
@@ -113,7 +115,9 @@ checkQuery :: SMTOpts
            -> Query
            -> IO SMTResult
 checkQuery smtopts phi query =
-  evalZ3With (if smtUseArrayTheory smtopts then Nothing else Just QF_UFBV) stdOpts $ do
+  evalZ3With (if smtUseArrayTheory smtopts then Nothing else Just QF_UFBV) stdOpts
+  $ selectLogVerbosity (smtVerbose smtopts)
+  $ do
   reset
   t0 <- startTimer
   encData <- initPhiEncoding pnfPhi alphabet maxDepth
@@ -131,7 +135,7 @@ checkQuery smtopts phi query =
       SatQuery a -> (1, a)
       MiniProcQuery _ -> (2, MP.miniProcAlphabet)
 
-    completeCheck :: (MonadFail z3, MonadZ3 z3)
+    completeCheck :: (MonadFail z3, MonadZ3 z3, MonadLogger z3)
                   => EncData -> Maybe ProgData
                   -> Double -> Double -> Word64 -> Word64
                   -> z3 SMTResult
@@ -143,7 +147,7 @@ checkQuery smtopts phi query =
                                          , smtTimeModel = 0
                                          }
       | otherwise = do
-          -- DBG.traceM $ "Checking prefixes of length k = " ++ show to
+          $(logInfo) $ T.pack $ "Checking prefixes of length k = " ++ show to
           t0 <- startTimer
           assertPhiEncoding encData from to
           case maybeProgData of
@@ -155,21 +159,16 @@ checkQuery smtopts phi query =
           (res1, checkTime1) <- timeActionAcc checkTime0 (== Z3.Sat) solverCheck
           case res1 of
             Z3.Unsat -> do
-              when (smtVerbose smtopts) . liftIO . putStrLn
-                $ "Unraveling is UNSAT (k = " ++ show to ++ ")"
+              $(logInfo) $ T.pack $ "Unraveling is UNSAT (k = " ++ show to ++ ")"
               return SMTResult { smtStatus = Unsat
                                , smtTableau = Nothing
                                , smtTimeAssert = assertTime1
                                , smtTimeCheck = checkTime1
                                , smtTimeModel = 0
                                }
-            Z3.Undef -> do
-              solverDump <- solverToString
-              liftIO $ writeFile ("solver_dump.smt2") solverDump
-              return $ error "Z3 unexpectedly reported Undef"
+            Z3.Undef -> error "Z3 unexpectedly reported Undef"
             Z3.Sat -> do
-              when (smtVerbose smtopts) . liftIO . print
-                =<< queryTableau encData to Nothing =<< solverGetModel
+              $(logDebugSH) =<< queryTableau encData to Nothing =<< solverGetModel
               -- DBG.traceM =<< showModel =<< solverGetModel
 
               t1 <- startTimer
@@ -183,8 +182,7 @@ checkQuery smtopts phi query =
                 $ solverCheckAssumptions (phiAssumptions ++ progAssumptions)
               case res2 of
                 Z3.Sat -> do
-                  when (smtVerbose smtopts) . liftIO . putStrLn
-                    $ "Assumptions are SAT (k = " ++ show to ++ ")"
+                  $(logInfo) $ T.pack $ "Assumptions are SAT (k = " ++ show to ++ ")"
                   t2 <- startTimer
                   model <- solverGetModel
                   tableau <- queryTableau encData to Nothing model
@@ -256,7 +254,7 @@ data EncData = EncData { zClos       :: [Formula MP.ExprProp]
                        , zPred       :: FuncDecl
                        }
 
-initPhiEncoding :: Formula MP.ExprProp -> Alphabet MP.ExprProp -> Word64 -> Z3 EncData
+initPhiEncoding :: MonadZ3 z3 => Formula MP.ExprProp -> Alphabet MP.ExprProp -> Word64 -> z3 EncData
 initPhiEncoding phi alphabet k = do
   -- Sorts
   boolSort <- mkBoolSort

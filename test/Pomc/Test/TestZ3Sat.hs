@@ -10,6 +10,7 @@ module Pomc.Test.TestZ3Sat ( tests, slowTests, benchs, isSupported ) where
 import Pomc.Test.EvalFormulas (TestCase, zip3Expected, formulas, ap)
 import Pomc.Test.OPMs (stlV2Alphabet)
 import Pomc.Z3Encoding (SMTOpts(..), isSatisfiable, SMTResult(..), SMTStatus(..))
+-- import Pomc.LogUtils (LogLevel(..))
 import Pomc.Potl (Formula(..), Dir(..))
 
 import Test.Tasty
@@ -47,7 +48,7 @@ makeTest ((name, phi), k, expected) =
         expected @=? sat)
   )
   where smtopts = SMTOpts { smtMaxDepth  = k
-                          , smtVerbose   = False
+                          , smtVerbose   = Nothing
                           , smtComplete  = True
                           , smtFastEmpty = True
                           , smtFastPrune = False

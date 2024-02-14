@@ -32,6 +32,7 @@ library:
   - Pomc.OpaGen
   - Pomc.MiniProc
   - Pomc.TimeUtils
+  - Pomc.LogUtils
   - Pomc.Z3Encoding
   ghc-options:
   - -Wall
@@ -53,6 +54,8 @@ library:
   - random
   - filepath
   - z3
+  - monad-logger
+  - mtl
 
 executables:
   pomc:
