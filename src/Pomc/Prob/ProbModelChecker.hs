@@ -27,24 +27,18 @@ import Pomc.Check(makeOpa, InitialsComputation(..))
 import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula)
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
-
 import qualified Pomc.Encoding as E
 
-import Pomc.Prob.SupportGraph(buildGraph)
-
+import Pomc.Prob.SupportGraph (buildGraph)
+import qualified Pomc.Prob.GGraph as GG
+import qualified Pomc.Prob.ProbEncoding as PE
 import Pomc.Prob.Z3Termination (terminationQuerySCC)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..), ExprProp)
 
-import qualified Pomc.Prob.GGraph as GG
-
-import qualified Pomc.Prob.ProbEncoding as PE
-
 import Data.Set (Set)
 import qualified Data.Set as Set
-
 import qualified Data.IntSet as IntSet
-
 import qualified Data.Map as Map
 
 import Data.Bifunctor(second)
@@ -135,10 +129,14 @@ terminationExplicit query popa =
 
     pDelta = Delta
             { bitenc = bitenc
+            , proBitenc = error "proBitenc used in pOPA termination"
             , prec = precFunc
             , deltaPush = popaDeltaPush
             , deltaShift = popaDeltaShift
             , deltaPop = popaDeltaPop
+            , phiDeltaPush = error "phiDeltaPush used in pOPA termination"
+            , phiDeltaShift = error "phiDeltaShift used in pOPA termination"
+            , phiDeltaPop = error "phiDeltaPop used in pOPA termination"
             }
   in do
     stats <- liftSTtoIO $ newSTRef newStats
@@ -161,10 +159,14 @@ programTermination solver prog =
       (initVs, initLbl) = popaInitial popa bitenc
       pDelta = Delta
                { bitenc = bitenc
+               , proBitenc = error "proBitenc used in program termination"
                , prec = precFunc
                , deltaPush = popaDeltaPush popa bitenc
                , deltaShift = popaDeltaShift popa bitenc
                , deltaPop = popaDeltaPop popa bitenc
+               , phiDeltaPush = error "phiDeltaPush used in program termination"
+               , phiDeltaShift = error "phiDeltaShift used in program termination"
+               , phiDeltaPop = error "phiDeltaPop used in program termination"
                }
 
   in do
