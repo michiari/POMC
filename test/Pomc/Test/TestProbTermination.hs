@@ -18,6 +18,8 @@ import Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   )
 
 import Pomc.Prob.ProbUtils (Solver(..), Stats)
+import Pomc.LogUtils (MonadLogger, LoggingT, selectLogVerbosity)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Ratio ((%))
 
 tests :: TestTree
@@ -42,9 +44,9 @@ tests = testGroup "ProbModelChecking.hs Termination Tests" $
   ]
 
 type Prob = Rational
-type TestCase a = (String, (ExplicitPopa Word String -> IO (a, Stats, String)))
+type TestCase m a = (String, (ExplicitPopa Word String -> m (a, Stats, String)))
 
-termQueries :: [TestCase Bool]
+termQueries :: (MonadIO m, MonadFail m, MonadLogger m) => [TestCase m Bool]
 termQueries = [(s ++ show b, \popa -> f popa b ExactSMTWithHints) | (s,f) <- termFunctions, b <- termBounds]
   where termFunctions = [("LT ", terminationLTExplicit), ("LE ", terminationLEExplicit), ("GT ", terminationGTExplicit), ("GE ", terminationGEExplicit)]
         termBounds = [0.0, 0.5, 1.0]
@@ -71,10 +73,10 @@ checkApproxResult (lb, ub) e = e - tol <= lb && lb <= ub && ub <= e + tol
 makeTestCase :: (Show a, Show b)
              => (a -> b -> Bool)
              -> (ExplicitPopa Word String)
-             -> (TestCase a, b)
+             -> (TestCase (LoggingT IO) a, b)
              -> TestTree
 makeTestCase consistent popa ((name, query), expected) = testCase name $ do
-  (res, _, info) <- query popa
+  (res, _, info) <- selectLogVerbosity Nothing $ query popa
   let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
   assertBool debugMsg (res `consistent` expected)
 

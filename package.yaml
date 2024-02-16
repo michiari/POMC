@@ -33,6 +33,7 @@ library:
   - Pomc.MiniProc
   - Pomc.MiniIR
   - Pomc.TimeUtils
+  - Pomc.LogUtils
   - Pomc.Prob.ProbModelChecker
   - Pomc.Prob.MiniProb
   - Pomc.Prob.ProbUtils
@@ -43,6 +44,7 @@ library:
   - bv
   - containers
   - mtl
+  - transformers
   - deepseq
   - megaparsec
   - parser-combinators
@@ -56,6 +58,7 @@ library:
   - z3
   - scientific
   - witch
+  - monad-logger
   # - rounded
 
 executables:

@@ -14,6 +14,7 @@ module Pomc.Prob.GGraph ( GNode(..)
 import Pomc.Prob.ProbUtils hiding (SIdGen)
 import Pomc.SatUtil(SIdGen, SatState(..))
 import Pomc.TimeUtils (startTimer, stopTimer)
+import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 import qualified Pomc.SatUtil as SU
 import Pomc.State(State(..), Input)
 import Pomc.Prec (Prec(..))
@@ -23,22 +24,14 @@ import Pomc.Check (EncPrecFunc)
 
 import Pomc.GStack(GStack)
 import qualified Pomc.GStack as GS
-
 import qualified Pomc.CustoMap as CM
-
 import qualified Pomc.Prob.GReach as GR
-
 import Pomc.Prob.SupportGraph(GraphNode(..), Edge(..), SupportGraph)
-
 import Pomc.Prob.ProbEncoding(ProbEncodedSet)
 import qualified Pomc.Prob.ProbEncoding as PE
-
 import qualified Pomc.IOSetMap as IOSM
-
 import qualified Pomc.IOStack as IOGS
-
 import qualified Pomc.Encoding as E
-
 import Pomc.Prob.FixPoint(VarKey)
 
 import Data.IntMap.Strict(IntMap)
@@ -58,10 +51,11 @@ import Data.Vector(Vector, (!))
 import qualified Data.Vector as V
 
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad(when, unless, forM_, foldM, forM)
-import Control.Monad.ST (ST, stToIO, RealWorld)
+import Control.Monad (when, unless, forM_, foldM, forM)
+import Control.Monad.ST (ST, RealWorld)
 
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
+import Data.IORef (newIORef)
 import Data.Maybe (fromJust, isNothing, isJust, mapMaybe)
 
 import GHC.Generics (Generic)
@@ -70,10 +64,9 @@ import qualified Data.HashTable.IO as HT
 import qualified Data.HashTable.ST.Basic as BH
 
 import Z3.Monad
+import Pomc.Z3T
 
-import qualified Debug.Trace as DBG
-import GHC.IO (ioToST)
-import Data.IORef (newIORef, modifyIORef', readIORef)
+-- import qualified Debug.Trace as DBG
 
 -- A data type for nodes in the augmented graph G
 data GNode = GNode
@@ -290,62 +283,64 @@ instance Ord HEdge where
 
 -- requires: the initial semiconfiguration has id 0
 -- pstate: a parametric type for states of the input popa
-qualitativeModelCheck :: (Ord pstate, Hashable pstate, Show pstate)
+qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate, Show pstate)
                       => DeltaWrapper pstate
                       -> Formula APType -- phi: input formula to check
                       -> [State] -- initial states of the phiOpa 
                       -> SupportGraph pstate
                       -> Vector Bool
-                      -> ST s Bool
+                      -> m Bool
 qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
   -- global data structures for constructing graph G
-  newIdSequence <- newSTRef (0 :: Int)
-  emptyGGraphMap <- BH.new
-  emptyGGraph <- CM.empty
-  emptyGRGlobals <-  GR.newGRobals
-  let gGlobals = GGlobals { idSeq = newIdSequence
-                            , ggraphMap = emptyGGraphMap
-                            , gGraph = emptyGGraph
-                            , grGlobals = emptyGRGlobals
-                          }
+  gGlobals <- liftSTtoIO $ do
+    newIdSequence <- newSTRef (0 :: Int)
+    emptyGGraphMap <- BH.new
+    emptyGGraph <- CM.empty
+    emptyGRGlobals <- GR.newGRobals
+    return GGlobals { idSeq = newIdSequence
+                    , ggraphMap = emptyGGraphMap
+                    , gGraph = emptyGGraph
+                    , grGlobals = emptyGRGlobals
+                    }
 
-  DBG.traceM "Building graph G..."
-  (gGraph_, iniCount) <- buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!)
+  logInfoN "Building graph G..."
+  (gGraph_, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!)
 
-  DBG.traceM "Analyzing graph G..."
+  logInfoN "Analyzing graph G..."
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
-  sccCounter <- newSTRef (-2 :: Int)
-  newSS         <- GS.new
-  newBS         <- GS.new
-  newFoundSCCs <- newSTRef Map.empty
-  let hGlobals = HGlobals { graph = gGraph_
-                          , sStack = newSS
-                          , bStack = newBS
-                          , cGabow = sccCounter
-                          , bottomHSCCs = newFoundSCCs
-                          }
-  (phiNodes, notPhiNodes) <- foldM
-    (\(pn, npn) i -> do
-      node <- MV.unsafeRead gGraph_ i
-      if E.member (bitenc delta) phi . current . phiNode $ node
-        then return (i:pn, npn)
-        else return (pn, i:npn)
-    ) ([],[]) [0.. (iniCount -1)]
+  liftSTtoIO $ do
+    sccCounter <- newSTRef (-2 :: Int)
+    newSS         <- GS.new
+    newBS         <- GS.new
+    newFoundSCCs <- newSTRef Map.empty
+    let hGlobals = HGlobals { graph = gGraph_
+                            , sStack = newSS
+                            , bStack = newBS
+                            , cGabow = sccCounter
+                            , bottomHSCCs = newFoundSCCs
+                            }
+    (phiNodes, notPhiNodes) <- foldM
+      (\(pn, npn) i -> do
+        node <- MV.unsafeRead gGraph_ i
+        if E.member (bitenc delta) phi . current . phiNode $ node
+          then return (i:pn, npn)
+          else return (pn, i:npn)
+      ) ([],[]) [0.. (iniCount -1)]
 
-  -- explore nodes where phi does not hold
-  forM_ notPhiNodes $ \i -> do
-    node <- MV.unsafeRead gGraph_ i
-    when (iValue node == 0) $
-      addtoPath hGlobals node (Internal (gId node)) >>= dfs suppGraph hGlobals delta (pendVector V.!) False >> return ()
-  -- explore nodes where phi does hold
-  forM_ phiNodes $ \i -> do
-    node <- MV.unsafeRead gGraph_ i
-    nullCandidates <- Map.null <$> readSTRef (bottomHSCCs hGlobals)
-    when (iValue node == 0 && not nullCandidates) $
-      addtoPath hGlobals node (Internal (gId node)) >>= dfs suppGraph hGlobals delta (pendVector V.!) True >> return ()
-  -- returning whether there is a bottom SCC in H reachable from a not Phi initial node
-  Map.null <$> readSTRef (bottomHSCCs hGlobals)
+    -- explore nodes where phi does not hold
+    forM_ notPhiNodes $ \i -> do
+      node <- MV.unsafeRead gGraph_ i
+      when (iValue node == 0) $
+        addtoPath hGlobals node (Internal (gId node)) >>= dfs suppGraph hGlobals delta (pendVector V.!) False >> return ()
+    -- explore nodes where phi does hold
+    forM_ phiNodes $ \i -> do
+      node <- MV.unsafeRead gGraph_ i
+      nullCandidates <- Map.null <$> readSTRef (bottomHSCCs hGlobals)
+      when (iValue node == 0 && not nullCandidates) $
+        addtoPath hGlobals node (Internal (gId node)) >>= dfs suppGraph hGlobals delta (pendVector V.!) True >> return ()
+    -- returning whether there is a bottom SCC in H reachable from a not Phi initial node
+    Map.null <$> readSTRef (bottomHSCCs hGlobals)
 
 dfs :: SupportGraph pstate
       -> HGlobals s pstate
@@ -472,59 +467,63 @@ isAccepting hGlobals delta sccEdges = do
 -- quantitative model checking --
 -- requires: the initial semiconfiguration has id 0
 -- pstate: a parametric type for states of the input popa
-quantitativeModelCheck :: (Ord pstate, Hashable pstate, Show pstate)
-                      => DeltaWrapper pstate
-                      -> Formula APType -- phi: input formula to check
-                      -> [State] -- initial states of the phiOpa 
-                      -> SupportGraph pstate
-                      -> IntSet
-                      -> Map VarKey Prob
-                      -> Map VarKey Prob
-                      -> STRef RealWorld Stats
-                      -> ST RealWorld (Prob, Prob)
+quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord pstate, Hashable pstate, Show pstate)
+                       => DeltaWrapper pstate
+                       -> Formula APType -- phi: input formula to check
+                       -> [State] -- initial states of the phiOpa
+                       -> SupportGraph pstate
+                       -> IntSet
+                       -> Map VarKey Prob
+                       -> Map VarKey Prob
+                       -> STRef RealWorld Stats
+                       -> m (Prob, Prob)
 quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds oldStats = do
   -- global data structures for constructing graph G
-  newIdSequence <- newSTRef (0 :: Int)
-  emptyGGraphMap <- BH.new
-  emptyGGraph <- CM.empty
-  emptyGRGlobals <-  GR.newGRobals
-  let gGlobals = GGlobals { idSeq = newIdSequence
-                            , ggraphMap = emptyGGraphMap
-                            , gGraph = emptyGGraph
-                            , grGlobals = emptyGRGlobals
-                          }
-  (computedGraph, iniCount) <- buildGGraph gGlobals delta phiInitials suppGraph (`IntSet.notMember` asTermSemiconfs)
+  gGlobals <- liftSTtoIO $ do
+    newIdSequence <- newSTRef (0 :: Int)
+    emptyGGraphMap <- BH.new
+    emptyGGraph <- CM.empty
+    emptyGRGlobals <- GR.newGRobals
+    return GGlobals { idSeq = newIdSequence
+                    , ggraphMap = emptyGGraphMap
+                    , gGraph = emptyGGraph
+                    , grGlobals = emptyGRGlobals
+                    }
+  (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (`IntSet.notMember` asTermSemiconfs)
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
-  sccCounter <- newSTRef (-2 :: Int)
-  newSS         <- GS.new
-  newBS         <- GS.new
-  newFoundSCCs <- newSTRef Map.empty
-  let hGlobals = HGlobals { graph = computedGraph
-                          , sStack = newSS
-                          , bStack = newBS
-                          , cGabow = sccCounter
-                          , bottomHSCCs = newFoundSCCs
-                          }
+  hGlobals <- liftSTtoIO $ do
+    sccCounter   <- newSTRef (-2 :: Int)
+    newSS        <- GS.new
+    newBS        <- GS.new
+    newFoundSCCs <- newSTRef Map.empty
+    return HGlobals { graph = computedGraph
+                    , sStack = newSS
+                    , bStack = newBS
+                    , cGabow = sccCounter
+                    , bottomHSCCs = newFoundSCCs
+                    }
 
   -- computing all the bottom SCCs of graph H
   phiInitialGNodesIdxs <- foldM (\acc idx -> do
-    node <- MV.unsafeRead computedGraph idx
-    when (iValue node == 0) $
-      addtoPath hGlobals node (Internal (gId node)) >>= dfs suppGraph hGlobals delta (`IntSet.notMember` asTermSemiconfs) False >> return ()
+    node <- liftSTtoIO $ MV.unsafeRead computedGraph idx
+    when (iValue node == 0) $ liftSTtoIO $ do
+      addedNode <- addtoPath hGlobals node (Internal (gId node))
+      _ <- dfs suppGraph hGlobals delta (`IntSet.notMember` asTermSemiconfs) False addedNode
+      return ()
     if E.member (bitenc delta) phi . current . phiNode $ node
       then return (idx:acc)
       else return acc
     ) [] [0.. (iniCount -1)]
 
-  hSCCs <- Map.keysSet <$> readSTRef (bottomHSCCs hGlobals)
-  freezedGGraph <- V.freeze computedGraph
+  hSCCs <- liftSTtoIO $ Map.keysSet <$> readSTRef (bottomHSCCs hGlobals)
+  freezedGGraph <- liftSTtoIO $ V.freeze computedGraph
 
-  DBG.traceM "Computed qualitative model checking..."
-  --bottomString <- show <$> readSTRef (bottomHSCCs hGlobals)
-  --gString <- CM.showMap computedGraph
-  --DBG.traceM gString
-  --DBG.traceM bottomString
+  logInfoN "Computed qualitative model checking..."
+  -- bottomString <- show <$> readSTRef (bottomHSCCs hGlobals)
+  -- gString <- CM.showMap computedGraph
+  -- logDebugN gString
+  -- logDebugN bottomString
 
   -- computing the probability of termination
   let isInH g = not . IntSet.null . IntSet.intersection hSCCs $ descSccs g
@@ -537,13 +536,12 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       insert var Nothing         = (Just [var], ())
       insert var (Just old_vars) = (Just (var:old_vars), ())
 
-  newlMap <- BH.new
-  newlGroupedMap <- BH.new
-  newuMap <- BH.new
-  newuGroupedMap <- BH.new
-
-  ioToST $ evalZ3With (Just QF_LRA) stdOpts $ do
+  evalZ3TWith (Just QF_LRA) stdOpts $ do
     -- generate all variables and add them to two hashtables
+    newlMap <- liftSTtoIO $ BH.new
+    newlGroupedMap <- liftSTtoIO $ BH.new
+    newuMap <- liftSTtoIO $ BH.new
+    newuGroupedMap <- liftSTtoIO $ BH.new
     forM_ freezedGGraph $ \g -> when (isInH g) $ do
       newlVar <- mkFreshRealVar (show (gId g) ++ "L")
       newuVar <- mkFreshRealVar (show (gId g) ++ "U")
@@ -552,45 +550,45 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       liftIO $ HT.mutate newlGroupedMap (graphNode g) (insert newlVar)
       liftIO $ HT.mutate newuGroupedMap (graphNode g) (insert newuVar)
 
-    DBG.traceM "Generated z3 vars for encoding (2)"
+    logInfoN "Generated z3 vars for encoding (2)"
 
     -- preparing the global variables for the computation of the fractions f
     freezedSuppEnds <- liftIO $ GR.freezeSuppEnds (grGlobals gGlobals)
 
-    newIdSeq <- liftIO $ newIORef 0
-    newGraphMap <-  liftIO HT.new
-    newFVarMap <- liftIO IOSM.empty
-    newSStack <- liftIO IOGS.new
-    newBStack <- liftIO IOGS.new
-    newIVector <- liftIO HT.new
-    newScntxs <- liftIO HT.new
-    newCannotReachPop <- liftIO $ newIORef IntSet.empty
-    newLowerEqMap <- liftIO HT.new
-    newUpperEqMap <- liftIO HT.new
-    newEps <- liftIO $ newIORef defaultTolerance
+    globals <- liftIO $ do
+      newIdSeq <- newIORef 0
+      newGraphMap <- HT.new
+      newFVarMap <- IOSM.empty
+      newSStack <- IOGS.new
+      newBStack <- IOGS.new
+      newIVector <- HT.new
+      newScntxs <- HT.new
+      newCannotReachPop <- newIORef IntSet.empty
+      newLowerEqMap <- HT.new
+      newUpperEqMap <- HT.new
+      newEps <- newIORef defaultTolerance
+      return GR.WeightedGRobals { GR.idSeq = newIdSeq
+                                , GR.graphMap = newGraphMap
+                                , GR.varMap  = newFVarMap
+                                , GR.sStack = newSStack
+                                , GR.bStack = newBStack
+                                , GR.iVector = newIVector
+                                , GR.successorsCntxs = newScntxs
+                                , GR.cannotReachPop = newCannotReachPop
+                                , GR.lowerEqMap = newLowerEqMap
+                                , GR.upperEqMap = newUpperEqMap
+                                , GR.actualEps = newEps
+                                , GR.stats = oldStats
+                                }
 
-    let globals = GR.WeightedGRobals { GR.idSeq = newIdSeq
-                                     , GR.graphMap = newGraphMap
-                                     , GR.varMap  = newFVarMap
-                                     , GR.sStack = newSStack
-                                     , GR.bStack = newBStack
-                                     , GR.iVector = newIVector
-                                     , GR.successorsCntxs = newScntxs
-                                     , GR.cannotReachPop = newCannotReachPop
-                                     , GR.lowerEqMap = newLowerEqMap
-                                     , GR.upperEqMap = newUpperEqMap
-                                     , GR.actualEps = newEps
-                                     , GR.stats = oldStats
-                                     }
-
-    DBG.traceM "Encoding conditions (2b) and (2c)"
+    logInfoN "Encoding conditions (2b) and (2c)"
     -- encodings (2b) and (2c)
     encs1 <- concat <$> mapM
       (\gNode -> encode
         globals (GR.sIdGen (grGlobals gGlobals)) freezedSuppEnds delta (newlMap, newuMap) suppGraph freezedGGraph (prec delta) isInH gNode pendProbsLowerBounds pendProbsUpperBounds
       ) (V.filter isInH freezedGGraph)
 
-    DBG.traceM "Encoding conditions (2a)"
+    logInfoN "Encoding conditions (2a)"
     -- encoding (2a)
     groupedlMaptoList <- liftIO (HT.toList newlGroupedMap)
     encs2 <- foldM (\acc (_, vList) -> do
@@ -617,16 +615,16 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
 
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
-    DBG.traceM "Calling Z3..."
+    logInfoN "Calling Z3..."
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
       l <- extractLowerProb . fromJust =<< eval model sumlVar
       u <- extractUpperProb . fromJust =<< eval model sumuVar
-      DBG.traceM $ "Computed lower bound on the quantitative probability: " ++ show l
-      DBG.traceM $ "Computed upper bound on the quantitative probability: " ++ show u
+      logInfoN $ "Computed lower bound on the quantitative probability: " ++ show l
+      logInfoN $ "Computed upper bound on the quantitative probability: " ++ show u
       return (l, u))
 
     tSol <- stopTimer startSol ub
-    liftIO $ stToIO $ modifySTRef' oldStats (\s -> s { quantSolTime = quantSolTime s + tSol})
+    liftSTtoIO $ modifySTRef' oldStats (\s -> s { quantSolTime = quantSolTime s + tSol})
 
     return (lb, ub)
 
@@ -635,12 +633,12 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
 type TypicalVarMap = HT.BasicHashTable Int AST
 
 
-encodeTransition :: [Prob] -> AST -> Z3 AST
+encodeTransition :: MonadZ3 z3 => [Prob] -> AST -> z3 AST
 encodeTransition probs toVar = do
   normalizedProbs <- mapM mkRational probs
   mkMul $ normalizedProbs ++ [toVar]
 
-encode :: (Ord pstate, Hashable pstate, Show pstate)
+encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
       => GR.WeightedGRobals (AugState pstate)
       -> SIdGen RealWorld (AugState pstate)
       -> Vector (Set(SU.StateId (AugState pstate)))
@@ -653,7 +651,7 @@ encode :: (Ord pstate, Hashable pstate, Show pstate)
       -> GNode
       -> Vector Prob
       -> Vector Prob
-      -> Z3 [AST]
+      -> z3 [AST]
 encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB =
   let gn = suppGraph ! graphNode gNode
       (q,g) = semiconf gn
@@ -671,7 +669,7 @@ encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph 
    in cases
 
 -- encoding helpers --
-encodePush :: (Ord pstate, Hashable pstate, Show pstate)
+encodePush :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
   => GR.WeightedGRobals (AugState pstate)
   -> SIdGen RealWorld (AugState pstate)
   -> Vector (Set(SU.StateId (AugState pstate)))
@@ -684,7 +682,7 @@ encodePush :: (Ord pstate, Hashable pstate, Show pstate)
   -> GraphNode pstate
   -> Vector Prob
   -> Vector Prob
-  -> Z3 [AST]
+  -> z3 [AST]
 encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB =
   let fNodes = IntSet.toList . IntSet.filter (\idx -> isInH (gGraph V.! idx)) . Map.keysSet $ edges g
       pushEnc toIdx = do
@@ -729,8 +727,8 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
               , GR.consistentFilter = consistentFilter
               }
             encodeSupportTrans = do
-              DBG.traceM $ "encountered a support transition - launching call to inner computation of fraction f for H node: " ++ show (gId g) ++ " to H node: " ++ show (gId toG)
-              (lW, uW) <- liftIO $ GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
+              logDebugN $ "encountered a support transition - launching call to inner computation of fraction f for H node: " ++ show (gId g) ++ " to H node: " ++ show (gId toG)
+              (lW, uW) <- GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
               let normalizedLW = lW * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
                   normalizedUW = uW * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
               lT <- encodeTransition [normalizedLW] tolVar
@@ -742,10 +740,8 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
                   pushEncs <- encodePushTrans
                   suppEncs <- encodeSupportTrans
                   return (pushEncs ++ suppEncs)
-
               | isJust maybePPush && to (fromJust maybePPush) == (graphNode toG) = encodePushTrans
               | isJust maybePSupport && to (fromJust maybePSupport) == (graphNode toG) = encodeSupportTrans
-
               | otherwise = error "there must be at least one edge in the support graph associated with this edge in graph H"
         cases
 
@@ -759,9 +755,9 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
     uEq <- mkLe uvar =<< mkAdd (map snd . concat $ transitions)
     -- debugging
     eqString <- astToString lEq
-    DBG.traceM $ "Asserting Push/Support equation (lower bound): " ++ eqString
+    logDebugN $ "Asserting Push/Support equation (lower bound): " ++ eqString
     eqString <- astToString uEq
-    DBG.traceM $ "Asserting Push/Support equation (upper bound): " ++ eqString
+    logDebugN $ "Asserting Push/Support equation (upper bound): " ++ eqString
     -- it's greater than zero for sure!
     lgtZero <- mkGt lvar =<< mkRational (0 :: Prob)
     ugtZero <- mkGt uvar =<< mkRational (0 :: Prob)
@@ -771,14 +767,15 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
     return [lEq, lgtZero, lleqOne, uEq, ugtZero, uleqOne, soundness]
 
 
-encodeShift :: (TypicalVarMap, TypicalVarMap)
-  -> Vector GNode
-  -> (GNode -> Bool)
-  -> GNode
-  -> GraphNode pstate
-  -> Vector Prob
-  -> Vector Prob
-  -> Z3 ([AST])
+encodeShift :: (MonadZ3 z3, MonadLogger z3)
+            => (TypicalVarMap, TypicalVarMap)
+            -> Vector GNode
+            -> (GNode -> Bool)
+            -> GNode
+            -> GraphNode pstate
+            -> Vector Prob
+            -> Vector Prob
+            -> z3 ([AST])
 encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
   let fNodes = IntSet.toList . IntSet.filter (\idx -> isInH (gGraph V.! idx)) . Map.keysSet $ edges g
       shiftEnc toIdx = do
@@ -803,9 +800,9 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
   uEq <- mkLe uvar =<< mkAdd (map snd transitions)
   -- debugging
   eqString <- astToString lEq
-  DBG.traceM $ "Asserting Shift equation (lower bound): " ++ eqString
+  logDebugN $ "Asserting Shift equation (lower bound): " ++ eqString
   eqString <- astToString uEq
-  DBG.traceM $ "Asserting Shift equation (upper bound): " ++ eqString
+  logDebugN $ "Asserting Shift equation (upper bound): " ++ eqString
   -- it's greater than zero for sure!
   lgtZero <- mkGt lvar =<< mkRational (0 :: Prob)
   ugtZero <- mkGt uvar =<< mkRational (0 :: Prob)

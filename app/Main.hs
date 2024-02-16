@@ -17,6 +17,7 @@ import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 import Pomc.TimeUtils (timeAction, timeFunApp, timeToString)
+import Pomc.LogUtils (LogLevel(..), selectLogVerbosity)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
@@ -39,6 +40,7 @@ data PomcArgs = PomcArgs
   { finite :: Bool
   , infinite :: Bool
   , noovi :: Bool
+  , verbose :: Int
   , fileName :: FilePath
   } deriving (Data,Typeable,Show,Eq)
 
@@ -47,6 +49,7 @@ pomcArgs = PomcArgs
   { finite = False &= help "Use finite-word semantics"
   , infinite = False &= help "Use infinite-word (omega) semantics (default)"
   , noovi = False &= help "Use z3 instead of Optimistic Value Iteration for probabilistic model checking"
+  , verbose = 0 &= help "Print more info about model checking progress. 0 = no logging (default), 1 = show info, 2 = debug mode"
   , fileName = def &= args &= typFile -- &= help "Input file"
   }
   &= summary "POMC v2.1.0"
@@ -64,6 +67,10 @@ main = do
       probSolver | noovi pargs = SMTWithHints
                  | otherwise = OVI
       fname = fileName pargs
+      logLevel = case verbose pargs of
+        0 -> Nothing
+        1 -> Just LevelInfo
+        _ -> Just LevelDebug
 
   fcontent <- readFile fname
   prepcontent <- preprocess fname fcontent
@@ -86,9 +93,9 @@ main = do
       return $ sum stringTimes + sum mcTimes
 
     ProgCheckRequest phis prog -> sum <$> forM phis (runProg isOmega prog)
-    ProbTermRequest _ prog -> runProbTerm probSolver prog
-    ProbCheckRequest phi prog False -> runQualProbCheck probSolver phi prog
-    ProbCheckRequest phi prog True -> runQuantProbCheck probSolver phi prog
+    ProbTermRequest _ prog -> runProbTerm logLevel probSolver prog
+    ProbCheckRequest phi prog False -> runQualProbCheck logLevel probSolver phi prog
+    ProbCheckRequest phi prog True -> runQuantProbCheck logLevel probSolver phi prog
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
@@ -124,20 +131,22 @@ main = do
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
-    runProbTerm solver prog = do
+    runProbTerm logLevel solver prog = do
       putStr (concat [ "\nProbabilistic Termination Checking\nQuery: ApproxSingleQuery ", show solver
                      , "\nResult:  "
                      ])
-      ((tres, _, _), time) <- timeAction fst3 $ programTermination solver prog
+      ((tres, _, _), time) <- timeAction fst3 $ selectLogVerbosity logLevel
+        $ programTermination solver prog
       putStr $ show tres
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
-    runQualProbCheck solver phi prog = do
+    runQualProbCheck logLevel solver phi prog = do
       putStr (concat [ "\nQualitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, stats, _), time) <- timeAction fst3 $ qualitativeModelCheckProgram solver phi prog
+      ((tres, stats, _), time) <- timeAction fst3 $ selectLogVerbosity logLevel
+        $ qualitativeModelCheckProgram solver phi prog
       putStr $ show tres
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "
@@ -153,11 +162,12 @@ main = do
                        ])
       return time
 
-    runQuantProbCheck solver phi prog = do
+    runQuantProbCheck logLevel solver phi prog = do
       putStr (concat [ "\nQuantitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, stats, _), time) <- timeAction fst3 $ quantitativeModelCheckProgram solver phi prog
+      ((tres, stats, _), time) <- timeAction fst3 $ selectLogVerbosity logLevel
+        $ quantitativeModelCheckProgram solver phi prog
       putStr $ show tres
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "

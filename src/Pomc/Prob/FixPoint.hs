@@ -41,8 +41,6 @@ import qualified Data.HashTable.ST.Basic as BHT
 import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
 
-import qualified Debug.Trace as DBG
-
 type VarKey = (Int, Int)
 
 data FixpEq n = PushEq [(Prob, VarKey, VarKey)]
