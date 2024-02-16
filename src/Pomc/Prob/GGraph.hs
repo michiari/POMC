@@ -160,24 +160,23 @@ build :: (Ord pstate, Hashable pstate, Show pstate)
           -> (Int -> Bool) -- is a semiconf pending?
           -> (GraphNode pstate, State) -- current GNode
           -> ST s ()
-build gglobals delta suppGraph isPending (gn, p) = do
-  let
-    (q,g) = semiconf gn
-    precRel = (prec delta) (fst . fromJust $ g) (getLabel q)
-    cases
-      -- a sanity check
-      | getLabel q /= E.extractInput (bitenc delta) (current p) = error "inconsistent GNode when building the G Graph"
+build gglobals delta suppGraph isPending (gn, p) =
+  let (q,g) = semiconf gn
+      precRel = (prec delta) (fst . fromJust $ g) (getLabel q)
+      cases
+        -- a sanity check
+        | getLabel q /= E.extractInput (bitenc delta) (current p) = error "inconsistent GNode when building the G Graph"
 
-      -- this case includes the initial push
-      | (isNothing g) || precRel == Just Yield =
-        buildPush gglobals delta suppGraph isPending (gn,p)
+        -- this case includes the initial push
+        | (isNothing g) || precRel == Just Yield =
+          buildPush gglobals delta suppGraph isPending (gn,p)
 
-      | precRel == Just Equal =
-        buildShift gglobals delta suppGraph isPending (gn, p)
+        | precRel == Just Equal =
+          buildShift gglobals delta suppGraph isPending (gn, p)
 
-      | precRel == Just Take = error $ "a pop transition cannot be reached in the augmented graph of pending semiconfs, as it terminates almost surely" ++ show gn
-      | otherwise = return ()
-  cases
+        | precRel == Just Take = error $ "a pop transition cannot be reached in the augmented graph of pending semiconfs, as it terminates almost surely" ++ show gn
+        | otherwise = return ()
+  in cases
 
 
 buildPush :: (Ord pstate, Hashable pstate, Show pstate)
@@ -691,55 +690,61 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
       pushEnc toIdx = do
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
         touVar <- liftIO $ fromJust <$> HT.lookup uTypVarMap toIdx
-        -- a small trick to be refactored later (it needs a lot of boring refactoring...)
-        let toG =gGraph ! toIdx
-            maybePInternal = Set.lookupLE (Edge (graphNode toG) 0) $ internalEdges gn
-            maybePSummary = Set.lookupLE (Edge (graphNode toG) 0) $ supportEdges gn
+        let toG = gGraph ! toIdx
+            -- push edges in the support Graph
+            maybePPush = Set.lookupLE (Edge (graphNode toG) 0) $ internalEdges gn
+            probPush = prob $ fromJust maybePPush
+            normalizedLProbPush = probPush * (pendProbsLB ! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
+            normalizedUProbPush = probPush * (pendProbsUB ! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
+            encodePushTrans = do
+              lT <- encodeTransition [normalizedLProbPush] tolVar
+              uT <- encodeTransition [normalizedUProbPush] touVar
+              return [(lT, uT)]
+            -- supports edges in the Support Graph
+            maybePSupport = Set.lookupLE (Edge (graphNode toG) 0) $ supportEdges gn
+            supportGn = suppGraph V.! (graphNode toG)
+            leftContext = AugState (getState . fst . semiconf $ gn) (getLabel . fst . semiconf $ gn) (phiNode g)
+            rightContext = AugState (getState . fst . semiconf $ supportGn) (getLabel . fst . semiconf $ supportGn) (phiNode toG)
+            cDeltaPush (AugState q0 _ p0)  =  [ (AugState q1 lab p1, prob_) |
+                                  (q1, lab, prob_) <- (deltaPush delta) q0
+                                , p1 <- (phiDeltaPush delta) p0
+                                ]
+            cDeltaShift (AugState q0 _ p0) =  [ (AugState q1 lab p1, prob_) |
+                                  (q1, lab, prob_) <- (deltaShift delta) q0
+                                , p1 <- (phiDeltaShift delta) p0
+                                ]
+            cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ (AugState q2 lab p2, prob_) |
+                                                    (q2, lab, prob_) <- (deltaPop delta) q0 q1
+                                                  , p2 <- (phiDeltaPop delta) p0 p1
+                                                  ]
+
+            consistentFilter (AugState _ lab p0) = lab == E.extractInput (bitenc delta) (current p0)
+            cDelta = GR.Delta
+              { GR.bitenc = bitenc delta
+              , GR.proBitenc = proBitenc delta
+              , GR.prec   = prec delta
+              , GR.deltaPush = cDeltaPush
+              , GR.deltaShift = cDeltaShift
+              , GR.deltaPop = cDeltaPop
+              , GR.consistentFilter = consistentFilter
+              }
+            encodeSupportTrans = do
+              DBG.traceM $ "encountered a support transition - launching call to inner computation of fraction f for H node: " ++ show (gId g) ++ " to H node: " ++ show (gId toG)
+              (lW, uW) <- liftIO $ GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
+              let normalizedLW = lW * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
+                  normalizedUW = uW * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
+              lT <- encodeTransition [normalizedLW] tolVar
+              uT <- encodeTransition [normalizedUW] touVar
+              return [(lT, uT)]
             cases
-              | isJust maybePInternal && to (fromJust maybePInternal) == (graphNode toG) =
-                  let p = (prob $ fromJust maybePInternal)
-                      normalizedLP = p * (pendProbsLB ! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
-                      normalizedUP = p * (pendProbsUB ! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
-                  in do
-                    lT <- encodeTransition [normalizedLP] tolVar
-                    uT <- encodeTransition [normalizedUP] touVar
-                    return (lT, uT)
+              | isJust maybePPush && to (fromJust maybePPush) == (graphNode toG) &&
+                isJust maybePSupport && to (fromJust maybePSupport) == (graphNode toG) = do
+                  pushEncs <- encodePushTrans
+                  suppEncs <- encodeSupportTrans
+                  return (pushEncs ++ suppEncs)
 
-              | isJust maybePSummary && to (fromJust maybePSummary) == (graphNode toG) =
-                  let supportGn = suppGraph V.! (graphNode toG)
-                      leftContext = AugState (getState . fst . semiconf $ gn) (getLabel . fst . semiconf $ gn) (phiNode g)
-                      rightContext = AugState (getState . fst . semiconf $ supportGn) (getLabel . fst . semiconf $ supportGn) (phiNode toG)
-                      cDeltaPush (AugState q0 _ p0)  =  [ (AugState q1 lab p1, prob_) |
-                                            (q1, lab, prob_) <- (deltaPush delta) q0
-                                          , p1 <- (phiDeltaPush delta) p0
-                                          ]
-                      cDeltaShift (AugState q0 _ p0) =  [ (AugState q1 lab p1, prob_) |
-                                            (q1, lab, prob_) <- (deltaShift delta) q0
-                                          , p1 <- (phiDeltaShift delta) p0
-                                          ]
-                      cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ (AugState q2 lab p2, prob_) |
-                                                             (q2, lab, prob_) <- (deltaPop delta) q0 q1
-                                                           , p2 <- (phiDeltaPop delta) p0 p1
-                                                           ]
-
-                      consistentFilter (AugState _ lab p0) = lab == E.extractInput (bitenc delta) (current p0)
-                      cDelta = GR.Delta
-                        { GR.bitenc = bitenc delta
-                        , GR.proBitenc = proBitenc delta
-                        , GR.prec   = prec delta
-                        , GR.deltaPush = cDeltaPush
-                        , GR.deltaShift = cDeltaShift
-                        , GR.deltaPop = cDeltaPop
-                        , GR.consistentFilter = consistentFilter
-                        }
-                  in do
-                    DBG.traceM $ "encountered a support transition - launching call to inner computation of fraction f for H node: " ++ show (gId g) ++ " to H node: " ++ show (gId toG)
-                    (lW, uW) <- liftIO $ GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
-                    let normalizedLW = lW * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
-                        normalizedUW = uW * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
-                    lT <- encodeTransition [normalizedLW] tolVar
-                    uT <- encodeTransition [normalizedUW] touVar
-                    return (lT, uT)
+              | isJust maybePPush && to (fromJust maybePPush) == (graphNode toG) = encodePushTrans
+              | isJust maybePSupport && to (fromJust maybePSupport) == (graphNode toG) = encodeSupportTrans
 
               | otherwise = error "there must be at least one edge in the support graph associated with this edge in graph H"
         cases
@@ -750,8 +755,8 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
     transitions <- mapM pushEnc fNodes
     lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
     uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
-    lEq <- mkGe lvar =<< mkAdd (map fst transitions)
-    uEq <- mkLe uvar =<< mkAdd (map snd transitions)
+    lEq <- mkGe lvar =<< mkAdd (map fst . concat $ transitions)
+    uEq <- mkLe uvar =<< mkAdd (map snd . concat $ transitions)
     -- debugging
     eqString <- astToString lEq
     DBG.traceM $ "Asserting Push/Support equation (lower bound): " ++ eqString
@@ -763,7 +768,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
     lleqOne <- mkLe lvar =<< mkRational (1 :: Prob)
     uleqOne <- mkLe uvar =<< mkRational (1 :: Prob)
     soundness <- mkLe lvar uvar
-    return ([lEq, lgtZero, lleqOne, uEq, ugtZero, uleqOne, soundness])
+    return [lEq, lgtZero, lleqOne, uEq, ugtZero, uleqOne, soundness]
 
 
 encodeShift :: (TypicalVarMap, TypicalVarMap)

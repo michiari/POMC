@@ -525,7 +525,7 @@ encodePush newAdded globals sIdGen delta supports q g qState (semiconfId, rightC
       pushEnc (vars, terms) (p, prob_) =
         let dest = (p, Just (qProps, q)) in do
           (unencoded_vars, varTerms) <- foldM (closeSupports dest) ([], []) suppEnds
-          return $ (unencoded_vars ++ vars, (map (\[v1, v2] -> (prob_, v1, v2)) varTerms):terms)
+          return (unencoded_vars ++ vars, (map (\[v1, v2] -> (prob_, v1, v2)) varTerms):terms)
 
   in do
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
