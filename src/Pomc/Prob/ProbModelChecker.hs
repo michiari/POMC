@@ -28,12 +28,11 @@ import Pomc.Potl (Formula(..), getProps, normalize)
 import Pomc.Check(makeOpa, InitialsComputation(..))
 import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula)
 import Pomc.TimeUtils (startTimer, stopTimer)
+import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 
 import qualified Pomc.Encoding as E
 
-import Pomc.Prob.SupportGraph(buildGraph, asPendingSemiconfs)
-
-import qualified Pomc.CustoMap as CM
+import Pomc.Prob.SupportGraph(buildGraph)
 
 import Pomc.Prob.Z3Termination (terminationQuerySCC)
 import Pomc.Prob.ProbUtils
@@ -54,15 +53,17 @@ import Data.Bifunctor(second)
 
 import Data.Hashable (Hashable)
 import Control.Monad.ST (stToIO)
+import Control.Monad.IO.Class (MonadIO(liftIO))
 
-import Z3.Monad (evalZ3With, Logic(..))
+import Pomc.Z3T
+import Z3.Monad (Logic(..))
 import Z3.Opts
 
-import qualified Debug.Trace as DBG
 import qualified Data.Vector as V
-import qualified Data.Vector.Mutable as MV
 import Data.STRef (newSTRef, readSTRef)
 import Numeric (showEFloat)
+
+-- import qualified Debug.Trace as DBG
 
 -- TODO: add normalize RichDistr to optimize the encoding
 -- note that non normalized encodings are at the moment (16.11.23) correctly handled by the termination algorithms
@@ -81,27 +82,32 @@ data ExplicitPopa s a = ExplicitPopa
 -- TERMINATION
 -- is the probability to terminate respectively <, <=, >=, > than the given probability?
 -- (the return String is a debugging message for developing purposes)
-terminationLTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> Solver -> IO (Bool, Stats, String)
+terminationLTExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
+                      => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
 terminationLTExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Lt bound solv) popa
 
-terminationLEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> Solver -> IO (Bool, Stats, String)
+terminationLEExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
+                      => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
 terminationLEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Le bound solv) popa
 
-terminationGTExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> Solver -> IO (Bool, Stats, String)
+terminationGTExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
+                      => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
 terminationGTExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Gt bound solv) popa
 
-terminationGEExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Prob -> Solver -> IO (Bool, Stats, String)
+terminationGEExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
+                      => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
 terminationGEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Ge bound solv) popa
 
 -- what is the probability that the input POPA terminates?
-terminationApproxExplicit :: (Ord s, Hashable s, Show s, Ord a) => ExplicitPopa s a -> Solver -> IO ((Prob, Prob), Stats, String)
+terminationApproxExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
+                          => ExplicitPopa s a -> Solver -> m ((Prob, Prob), Stats, String)
 terminationApproxExplicit popa solv = (\(ApproxSingleResult res, s, str) -> (res, s, str)) <$> terminationExplicit (ApproxSingleQuery solv) popa
 
 -- handling the termination query
-terminationExplicit :: (Ord s, Hashable s, Show s, Ord a)
+terminationExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
                     => TermQuery
                     -> ExplicitPopa s a
-                    -> IO (TermResult, Stats, String)
+                    -> m (TermResult, Stats, String)
 terminationExplicit query popa =
   let
     (sls, prec) = epAlphabet popa
@@ -138,15 +144,17 @@ terminationExplicit query popa =
             , deltaPop = popaDeltaPop
             }
   in do
-    stats <- stToIO $ newSTRef newStats
-    sc <- stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd .  epInitial $ popa) stats
+    stats <- liftIO . stToIO $ newSTRef newStats
+    sc <- liftIO . stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
 
-    (res, _) <- evalZ3With (chooseLogic $ solver query) stdOpts $ terminationQuerySCC sc precFunc query stats
-    DBG.traceM $ "Computed termination probability: " ++ show res
-    computedStats <- stToIO $ readSTRef stats
+    (res, _) <- evalZ3TWith (chooseLogic $ solver query) stdOpts
+      $ terminationQuerySCC sc precFunc query stats
+    logInfoN $ "Computed termination probability: " ++ show res
+    computedStats <- liftIO . stToIO $ readSTRef stats
     return (res, computedStats, show sc)
 
-programTermination :: Solver -> Program -> IO (TermResult, Stats, String)
+programTermination :: (MonadIO m, MonadFail m, MonadLogger m)
+                   => Solver -> Program -> m (TermResult, Stats, String)
 programTermination solver prog =
   let (_, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
@@ -163,24 +171,25 @@ programTermination solver prog =
                }
 
   in do
-    stats <- stToIO $ newSTRef newStats
-    sc <- stToIO $ buildGraph pDelta initVs initLbl stats
-    (res, _) <- evalZ3With (chooseLogic solver) stdOpts $ terminationQuerySCC sc precFunc (ApproxSingleQuery solver) stats
-    DBG.traceM $ "Computed termination probabilities: " ++ show res
-    computedStats <- stToIO $ readSTRef stats
+    stats <- liftIO . stToIO $ newSTRef newStats
+    sc <- liftIO . stToIO $ buildGraph pDelta initVs initLbl stats
+    (res, _) <- evalZ3TWith (chooseLogic solver) stdOpts
+      $ terminationQuerySCC sc precFunc (ApproxSingleQuery solver) stats
+    logInfoN $ "Computed termination probabilities: " ++ show res
+    computedStats <- liftIO . stToIO $ readSTRef stats
     return (res, computedStats, show sc)
 
--- QUALITATIVE MODEL CHECKING 
+-- QUALITATIVE MODEL CHECKING
 -- is the probability that the POPA satisfies phi equal to 1?
-qualitativeModelCheck :: (Ord s, Hashable s, Show s)
-                            => Solver
-                            -> Formula APType -- input formula to check
-                            -> Alphabet APType -- structural OP alphabet
-                            -> (E.BitEncoding -> (s, Label)) -- POPA initial states
-                            -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
-                            -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
-                            -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
-                            -> IO (Bool, Stats, String)
+qualitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s)
+                      => Solver
+                      -> Formula APType -- input formula to check
+                      -> Alphabet APType -- structural OP alphabet
+                      -> (E.BitEncoding -> (s, Label)) -- POPA initial states
+                      -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
+                      -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
+                      -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
+                      -> m (Bool, Stats, String)
 qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
@@ -209,23 +218,27 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       , phiDeltaPop = phiDeltaPop
       }
   in do
-    stats <- stToIO $ newSTRef newStats
-    sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
-    DBG.traceM $ "Length of the summary chain: " ++ show (V.length sc)
-    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3With (chooseLogic solver) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
+    stats <- liftIO . stToIO $ newSTRef newStats
+    sc <- liftIO . stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
+    logInfoN $ "Length of the summary chain: " ++ show (V.length sc)
+    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solver) stdOpts
+      $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubMap
         ubVec =  V.generate (V.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
         cases i k
-          | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
+          | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs =
+            -- inconsistent result
+            error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k
           | k < (1 - 100 * defaultRTolerance) = True
           | IntSet.member i mustReachPopIdxs = False
-          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST." -- inconclusive result
+          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k
+                        ++ " but it is not certified to be PAST." -- inconclusive result
         pendVector = V.imap cases ubVec
-    DBG.traceM $ "Computed termination probabilities: " ++ show ubVec
-    DBG.traceM $ "Pending Vector: " ++ show pendVector
-    DBG.traceM "Conclusive analysis!"
-    computedStats <- stToIO $ readSTRef stats
-    DBG.traceM $ "Stats so far: " ++ concat [
+    logDebugN $ "Computed termination probabilities: " ++ show ubVec
+    logDebugN $ "Pending Vector: " ++ show pendVector
+    logInfoN "Conclusive analysis!"
+    computedStats <- liftIO . stToIO $ readSTRef stats
+    logInfoN $ "Stats so far: " ++ concat [
         "Times: "
       , showEFloat (Just 4) (upperBoundTime computedStats) " s (upper bounds), "
       , showEFloat (Just 4) (pastTime computedStats) " s (PAST certificates), "
@@ -238,27 +251,28 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       ]
 
     startGGTime <- startTimer
-    almostSurely <- stToIO $ GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
+    almostSurely <- GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
 
     tGG <- stopTimer startGGTime almostSurely
 
     return (almostSurely, computedStats { gGraphTime = tGG }, show sc ++ show pendVector)
 
-qualitativeModelCheckProgram :: Solver
+qualitativeModelCheckProgram :: (MonadIO m, MonadFail m, MonadLogger m)
+                             => Solver
                              -> Formula ExprProp -- phi: input formula to check
                              -> Program -- input program
-                             -> IO (Bool, Stats, String)
+                             -> m (Bool, Stats, String)
 qualitativeModelCheckProgram solver phi prog =
   let
     (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
   in qualitativeModelCheck solver transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
-qualitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
-                    => Solver
-                    -> Formula APType -- phi: input formula to check
-                    -> ExplicitPopa s APType -- input OPA
-                    -> IO (Bool, Stats, String)
+qualitativeModelCheckExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s)
+                              => Solver
+                              -> Formula APType -- phi: input formula to check
+                              -> ExplicitPopa s APType -- input OPA
+                              -> m (Bool, Stats, String)
 qualitativeModelCheckExplicit solver phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
@@ -287,11 +301,11 @@ qualitativeModelCheckExplicit solver phi popa =
   in qualitativeModelCheck solver phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
 
 
-qualitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
-                              => Solver
-                              -> Formula a -- phi: input formula to check
-                              -> ExplicitPopa s a -- input OPA
-                              -> IO (Bool, Stats, String)
+qualitativeModelCheckExplicitGen :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
+                                 => Solver
+                                 -> Formula a -- phi: input formula to check
+                                 -> ExplicitPopa s a -- input OPA
+                                 -> m (Bool, Stats, String)
 qualitativeModelCheckExplicitGen solver phi popa =
   let
     (sls, prec) = epAlphabet popa
@@ -320,15 +334,15 @@ qualitativeModelCheckExplicitGen solver phi popa =
 
 -- QUANTITATIVE MODEL CHECKING
 -- is the probability that the POPA satisfies phi equal to 1?
-quantitativeModelCheck :: (Ord s, Hashable s, Show s)
-                            => Solver
-                            -> Formula APType -- input formula to check
-                            -> Alphabet APType -- structural OP alphabet
-                            -> (E.BitEncoding -> (s, Label)) -- POPA initial states
-                            -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
-                            -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
-                            -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
-                            -> IO ((Prob,Prob), Stats, String)
+quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s)
+                       => Solver
+                       -> Formula APType -- input formula to check
+                       -> Alphabet APType -- structural OP alphabet
+                       -> (E.BitEncoding -> (s, Label)) -- POPA initial states
+                       -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
+                       -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
+                       -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
+                       -> m ((Prob,Prob), Stats, String)
 quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
     (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
@@ -358,45 +372,50 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
       }
 
   in do
-    stats <- stToIO $ newSTRef newStats
-    sc <- stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
-    DBG.traceM $ "Length of the summary chain: " ++ show (V.length sc)
-    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3With (Just QF_LRA) stdOpts $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
+    stats <- liftIO . stToIO $ newSTRef newStats
+    sc <- liftIO . stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
+    logInfoN $ "Length of the summary chain: " ++ show (V.length sc)
+    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
+      $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
         ubVec =  V.generate (V.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
         cases i k
-          | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs = error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k -- inconsistent result
+          | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs =
+            -- inconsistent result
+            error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k
           | k < (1 - 100 * defaultRTolerance) = True
           | IntSet.member i mustReachPopIdxs = False
-          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k ++ " but it is not certified to be PAST." -- inconclusive result
+          | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k
+                        ++ " but it is not certified to be PAST." -- inconclusive result
         pendVector = V.imap cases ubVec
-    DBG.traceM $ "Computed upper bounds on termination probabilities: " ++ show ubVec
-    DBG.traceM $ "Pending Upper Bounds Vector: " ++ show pendVector
-    DBG.traceM "Conclusive analysis!"
+    logInfoN $ "Computed upper bounds on termination probabilities: " ++ show ubVec
+    logDebugN $ "Pending Upper Bounds Vector: " ++ show pendVector
+    logInfoN "Conclusive analysis!"
 
     startGGTime <- startTimer
-    (ub, lb) <- stToIO $ GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs stats
+    (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs stats
 
     tGG <- stopTimer startGGTime ub
-    computedStats <- stToIO $ readSTRef stats
+    computedStats <- liftIO . stToIO $ readSTRef stats
 
     return ((ub, lb), computedStats { gGraphTime = tGG }, show sc ++ show pendVector)
 
-quantitativeModelCheckProgram :: Solver
-                             -> Formula ExprProp -- phi: input formula to check
-                             -> Program -- input program
-                             -> IO ((Prob, Prob), Stats, String)
+quantitativeModelCheckProgram :: (MonadIO m, MonadFail m, MonadLogger m)
+                              => Solver
+                              -> Formula ExprProp -- phi: input formula to check
+                              -> Program -- input program
+                              -> m ((Prob, Prob), Stats, String)
 quantitativeModelCheckProgram solver phi prog =
   let
     (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
   in quantitativeModelCheck solver transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
-quantitativeModelCheckExplicit :: (Ord s, Hashable s, Show s)
-                    => Solver
-                    -> Formula APType -- phi: input formula to check
-                    -> ExplicitPopa s APType -- input OPA
-                    -> IO ((Prob,Prob), Stats, String)
+quantitativeModelCheckExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s)
+                               => Solver
+                               -> Formula APType -- phi: input formula to check
+                               -> ExplicitPopa s APType -- input OPA
+                               -> m ((Prob,Prob), Stats, String)
 quantitativeModelCheckExplicit solver phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
@@ -425,11 +444,11 @@ quantitativeModelCheckExplicit solver phi popa =
   in quantitativeModelCheck solver phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
 
 
-quantitativeModelCheckExplicitGen :: (Ord s, Hashable s, Show s, Ord a)
-                              => Solver
-                              -> Formula a -- phi: input formula to check
-                              -> ExplicitPopa s a -- input OPA
-                              -> IO ((Prob, Prob), Stats, String)
+quantitativeModelCheckExplicitGen :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
+                                  => Solver
+                                  -> Formula a -- phi: input formula to check
+                                  -> ExplicitPopa s a -- input OPA
+                                  -> m ((Prob, Prob), Stats, String)
 quantitativeModelCheckExplicitGen solver phi popa =
   let
     (sls, prec) = epAlphabet popa

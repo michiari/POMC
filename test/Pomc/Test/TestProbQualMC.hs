@@ -20,25 +20,26 @@ import Pomc.Test.EvalFormulas (TestCase, zipExpected, excludeIndices, probFormul
 import Pomc.Test.OPMs (stlV3Alphabet, makeInputSet)
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), qualitativeModelCheckExplicitGen)
 import Pomc.Prob.ProbUtils (Solver(..))
+import Pomc.LogUtils (selectLogVerbosity)
 
 tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Qualitative Tests" $
   [ testGroup "ProbModelChecking.hs Qualitative Tests OVI" $
-    map (\t -> t OVI) 
+    map (\t -> t OVI)
       [ biasedRandomWalkTests
       , nonTerminatingTests
       , maybeTerminatingTests
       , loopySamplingTests
       ]
   , testGroup "ProbModelChecking.hs Qualitative Tests SMTWithHints" $
-    map (\t -> t SMTWithHints) 
+    map (\t -> t SMTWithHints)
       [ biasedRandomWalkTests
       , nonTerminatingTests
       , maybeTerminatingTests
       , loopySamplingTests
       ]
   , testGroup "ProbModelChecking.hs Qualitative Tests ExactSMTWithHints" $
-    map (\t -> t ExactSMTWithHints) 
+    map (\t -> t ExactSMTWithHints)
       [ symmetricRandomWalkTests
       , symmetricRandomWalk2Tests
       , biasedRandomWalkTests
@@ -52,16 +53,16 @@ tests = testGroup "ProbModelChecking.hs Qualitative Tests" $
 type Prob = Rational
 
 makeTestCase :: ExplicitPopa Word String
-             -> Solver 
+             -> Solver
              -> (TestCase, Bool)
-              -> TestTree
+             -> TestTree
 makeTestCase popa solv ((name, phi), expected) =
-  testCase (name ++ " (" ++ show phi ++ ")") $ do 
-    (res, _, info) <- qualitativeModelCheckExplicitGen solv phi popa
+  testCase (name ++ " (" ++ show phi ++ ")") $ do
+    (res, _, info) <- selectLogVerbosity Nothing $ qualitativeModelCheckExplicitGen solv phi popa
     let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
-    assertBool debugMsg (res == expected)  
-  
--- symmetric Random Walk                          
+    assertBool debugMsg (res == expected)
+
+-- symmetric Random Walk
 symmetricRandomWalkTests :: Solver -> TestTree
 symmetricRandomWalkTests solv = testGroup "Symmetric Random Walk Tests" $
   map (makeTestCase symmetricRandomWalk solv) (zipExpected probFormulas expectedSymmetricRandomWalk)
@@ -102,7 +103,7 @@ expectedSymmetricRandomWalk = [ True, True, True, True,
                                 False, True, True
                               ]
 
--- second version of Symmetric Random Walk                         
+-- second version of Symmetric Random Walk
 symmetricRandomWalk2Tests :: Solver -> TestTree
 symmetricRandomWalk2Tests solv = testGroup "Symmetric Random Walk 2 Tests" $
   map (makeTestCase symmetricRandomWalk2 solv) (zipExpected probFormulas expectedsymmetricRandomWalk2)
@@ -139,7 +140,7 @@ expectedsymmetricRandomWalk2 = [ True, True, True, True,
                                  False, True, True
                                ]
 
--- biased Random Walk (same as symmetric, but with an unfair coin flip)                          
+-- biased Random Walk (same as symmetric, but with an unfair coin flip)
 biasedRandomWalkTests :: Solver -> TestTree
 biasedRandomWalkTests solv = testGroup "Biased Random Walk Tests" $
   map (makeTestCase biasedRandomWalk solv) (zipExpected probFormulas expectedBiasedRandomWalk)

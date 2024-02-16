@@ -11,9 +11,9 @@ module Pomc.Test.TestMiniProb (tests) where
 import Pomc.Test.EvalFormulas (excludeIndices)
 import Pomc.Test.TestProbTermination (checkApproxResult)
 import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
-import Pomc.Prob.ProbUtils (Solver(..), TermResult(..))
+import Pomc.Prob.ProbUtils (Prob, Solver(..), TermResult(..))
 import Pomc.Prob.ProbModelChecker (programTermination)
-import Pomc.Prob.ProbUtils (Prob)
+import Pomc.LogUtils (selectLogVerbosity)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -46,7 +46,8 @@ makeParseTest progSource (name, phi, solver, expected) =
       pcreq <- case parse (checkRequestP <* eof) name $ filecont f of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                  Right pcreq     -> return pcreq
-      (ApproxSingleResult tres, _, dbginfo) <- programTermination solver (pcreqMiniProc pcreq)
+      (ApproxSingleResult tres, _, dbginfo) <- selectLogVerbosity Nothing
+        $ programTermination solver (pcreqMiniProc pcreq)
       assertBool dbginfo (tres `checkApproxResult` expected)
 
 basicSMTWithHintsTests :: TestTree

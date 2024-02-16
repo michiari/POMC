@@ -17,6 +17,7 @@ module Pomc.Prob.OVI ( oviWithHints
 
 import Pomc.Prob.ProbUtils (Prob)
 import Pomc.Prob.FixPoint
+import Pomc.LogUtils (MonadLogger, logDebugN)
 
 import Data.Ratio ((%), approxRational)
 import Data.Maybe (fromJust, isJust)
@@ -29,8 +30,6 @@ import Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as MV
 
 import Witch.Instances (realFloatToRational)
-
-import qualified Debug.Trace as DBG
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviMaxKleeneIters :: Int
@@ -162,57 +161,60 @@ jacobiTimesX leqSys v checkVec = liftIO $ MV.generateM (MV.length leqSys)
             return [Lin coeff key]
             else return []
 
-powerIterate :: (MonadIO m, Fractional n, Ord n, Show n)
+powerIterate :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
              => n -> Int -> PolyVector n -> ProbVec n -> m n
 powerIterate eps maxIters matrix eigenVec = do
   oldEigenVec <- copyVec eigenVec
-  let go eigenVal 0 = DBG.traceM "Power iterations exhausted!" >> return eigenVal
+  let go eigenVal 0 = logDebugN "Power iterations exhausted!" >> return eigenVal
       go _ iters = do
         _ <- evalPolySys matrix (\p _ _ -> p) oldEigenVec eigenVec
         -- get approximate largest eigenvalue as the maxNorm
-        eigenVal <- HT.foldM (\oldMax (_, v) -> return $ max oldMax v) 0 eigenVec
+        eigenVal <- liftIO $ HT.foldM (\oldMax (_, v) -> return $ max oldMax v) 0 eigenVec
         -- normalize eigenVec on the largest eigenValue
         -- FIXME: iterate on matrix because I don't know if I can modify a HT while iterating on it
-        MV.mapM_ (\(k, _) -> HT.mutate eigenVec k (\(Just v) -> (Just $ v / eigenVal, v))) matrix
+        liftIO $ MV.mapM_ (\(k, _) -> HT.mutate eigenVec k (\(Just v) -> (Just $ v / eigenVal, v))) matrix
         -- check absolute error
-        stop <- HT.foldM (\chk (k, nv) -> do
-                             ov <- fromJust <$> HT.lookup oldEigenVec k
-                             return $ chk && abs (ov - nv) <= eps
-                         ) True eigenVec
+        stop <- liftIO $ HT.foldM (\chk (k, nv) -> do
+                                      ov <- fromJust <$> HT.lookup oldEigenVec k
+                                      return $ chk && abs (ov - nv) <= eps
+                                  ) True eigenVec
         if stop
-          then DBG.traceM ("Power iteration converged after " ++ show (maxIters - iters) ++ " iterations. Eigenvalue: " ++ show eigenVal)
-               >> return eigenVal
+          then do
+          logDebugN $ concat
+            [ "Power iteration converged after ", show (maxIters - iters)
+            , " iterations. Eigenvalue: ", show eigenVal
+            ]
+          return eigenVal
           else do
-          HT.mapM_ (\(k, v) -> HT.insert oldEigenVec k v) eigenVec
+          liftIO $ HT.mapM_ (\(k, v) -> HT.insert oldEigenVec k v) eigenVec
           go eigenVal (iters - 1)
-  liftIO $ go 0 maxIters
+  go 0 maxIters
 
 
-computeEigen :: (MonadIO m, Fractional n, Ord n, Show n)
+computeEigen :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
              => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> m n
-computeEigen leqSys eps maxIters lowerApprox eigenVec = liftIO $ do
+computeEigen leqSys eps maxIters lowerApprox eigenVec = do
   matrix <- jacobiTimesX leqSys lowerApprox eigenVec
-  --DBG.traceShowM =<< V.freeze matrix
   eigenVal <- powerIterate eps maxIters matrix eigenVec -- modifies eigenVec in-place
   return $ eigenVal - 1 -- -1 because we added the identity matrix
 
 
-oviWithHints :: (MonadIO m, Fractional n, Ord n, Show n)
+oviWithHints :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
     => OVISettings n -> EqMap n -> [(Int,Int)] -> m (OVIResult n)
-oviWithHints settings eqMap lVars = liftIO $ do
-  s <- stToIO $ BHT.size eqMap
-  DBG.traceM $ "Starting OVI on a system with " ++ show s ++ " variables..."
+oviWithHints settings eqMap lVars = do
+  s <- liftIO . stToIO $ BHT.size eqMap
+  logDebugN $ "Starting OVI on a system with " ++ show s ++ " variables..."
   lowerApprox <- zeroVec eqMap
   -- initialize upperApprox with lowerApprox, so we copy non-alive variable values
   upperApprox <- copyVec lowerApprox
   evalUpperApprox <- newVecSameSize lowerApprox
   -- create system containing only live equations
-  leqSys <- toLiveEqMapWithHints eqMap lVars 
-  DBG.traceM $ "Identified " ++ show (MV.length leqSys) ++ " live variables..."
+  leqSys <- toLiveEqMapWithHints eqMap lVars
+  logDebugN $ "Identified " ++ show (MV.length leqSys) ++ " live variables..."
   -- create eigenVec and initialize it to 1
   -- we only use live equations for eigenVec to avoid too many 0 values
-  eigenVec <- HT.newSized $ MV.length leqSys
-  MV.forM_ leqSys (\(k, _) -> HT.insert eigenVec k 1)
+  eigenVec <- liftIO $ HT.newSized $ MV.length leqSys
+  liftIO $ MV.forM_ leqSys (\(k, _) -> HT.insert eigenVec k 1)
   let
     go _ _ 0 = return OVIResult { oviSuccess  = False
                                 , oviIters = oviMaxIters settings
@@ -221,13 +223,13 @@ oviWithHints settings eqMap lVars = liftIO $ do
                                 }
     go kleeneEps powerIterEps maxIters = do
       let currentIter = oviMaxIters settings - maxIters
-      DBG.traceM $ "Starting OVI iteration " ++ show currentIter
+      logDebugN $ "Starting OVI iteration " ++ show currentIter
 
       approxFixpFrom leqSys kleeneEps (oviMaxKleeneIters settings) lowerApprox
       -- DBG.traceShowM =<< (liftIO $ HT.toList lowerApprox)
       eigenVal <- computeEigen leqSys powerIterEps (oviMaxPowerIters settings)
                   lowerApprox eigenVec -- modifies eigenVec
-      DBG.traceM $ "The eigenvalue is " ++ show eigenVal
+      logDebugN $ "The eigenvalue is " ++ show eigenVal
 
       let guessAndCheckInductive 0 = return False
           guessAndCheckInductive maxGuesses = do
@@ -235,7 +237,7 @@ oviWithHints settings eqMap lVars = liftIO $ do
                 scaleFactor = oviPowerIterEps settings *
                   (oviDampingFactor settings)^currentGuess
             -- upperApprox <- lowerApprox + eigenVal * scaleFactor
-            HT.mapM_
+            liftIO $ HT.mapM_
               (\(k, l) -> do
                   maybeEigenV <- HT.lookup eigenVec k
                   when (isJust maybeEigenV) $
@@ -248,17 +250,17 @@ oviWithHints settings eqMap lVars = liftIO $ do
                   -- prev && 1 / (oldV - newV) >= 0
                   -- prev && (1-eps)*newV + eps <= oldV
             inductive <- evalEqSys leqSys check upperApprox evalUpperApprox
-            DBG.traceM $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
+            logDebugN $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
             if inductive
               then return True
               else guessAndCheckInductive (maxGuesses - 1)
       inductive <- guessAndCheckInductive (currentIter + 1)
 
-      DBG.traceM $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
+      logDebugN $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
         ++ show inductive
       if inductive
         then do
-        MV.forM_ leqSys (\(k, _) -> HT.mutate upperApprox k (\(Just v) -> (Just $ v * 1.00001, v)))
+        liftIO $ MV.forM_ leqSys (\(k, _) -> HT.mutate upperApprox k (\(Just v) -> (Just $ v * 1.00001, v)))
         return OVIResult { oviSuccess  = True
                          , oviIters = oviMaxIters settings - maxIters
                          , oviLowerBound = lowerApprox
@@ -271,13 +273,13 @@ oviWithHints settings eqMap lVars = liftIO $ do
 
   go (oviKleeneEps settings) (oviPowerIterEps settings) (oviMaxIters settings)
 
-oviToRationalWithHints :: (MonadIO m, Ord n, RealFrac n, Show n, RealFloat n)
-              => OVISettings n -> EqMap n -> OVIResult n -> [(Int,Int)] -> m Bool
-oviToRationalWithHints settings eqMap oviRes lVars = liftIO $ do
+oviToRationalWithHints :: (MonadIO m, MonadLogger m, Ord n, RealFrac n, Show n, RealFloat n)
+                       => OVISettings n -> EqMap n -> OVIResult n -> [(Int,Int)] -> m Bool
+oviToRationalWithHints settings eqMap oviRes lVars = do
   let eps = oviRationalApproxEps settings
       fracEps = toRational eps
       -- two solutions for approximating the floating point upper bound with rational values
-      f1 p = case realFloatToRational p of 
+      f1 p = case realFloatToRational p of
         (Right v) -> v
         (Left exc) -> error $ "error when converting to rational upper bound " ++ show p ++ " - " ++ show exc
       f2 p = approxRational p eps
@@ -289,30 +291,29 @@ oviToRationalWithHints settings eqMap oviRes lVars = liftIO $ do
   rleqSys <- toLiveEqMapWithHints reqMap lVars
   -- Convert upper bound to rational
   rub <- mapVec f1 $ oviUpperBound oviRes
-  srub <- HT.newSized =<< stToIO (BHT.size rub)
+  srub <- liftIO $ HT.newSized =<< stToIO (BHT.size rub)
   let checkWithKInd _ _ _  0 = return False
       checkWithKInd showF rleqSys srub kIters  = do
         -- Evaluate equation system
         inductive <- evalEqSys rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
 
-        DBG.traceM $ "Is the rational approximation inductive? " ++ show inductive
+        logDebugN $ "Is the rational approximation inductive? " ++ show inductive
         if inductive
           then return inductive
           else do
-          DBG.traceM $ "Trying with k-induction with function " ++ showF  ++ ", remaining iterations: " ++ show kIters
-          HT.mapM_ (\(k, sv) -> do
-                       v <- fromJust <$> HT.lookup rub k
-                       HT.insert rub k (min v sv) 
-                   ) srub
-          checkWithKInd showF rleqSys srub (kIters - 1) 
+          logDebugN $ "Trying with k-induction with function " ++ showF  ++ ", remaining iterations: " ++ show kIters
+          liftIO $ HT.mapM_ (\(k, sv) -> do
+                                v <- fromJust <$> HT.lookup rub k
+                                HT.insert rub k (min v sv)
+                            ) srub
+          checkWithKInd showF rleqSys srub (kIters - 1)
   success <- checkWithKInd showF1 rleqSys srub $ oviMaxKIndIters settings
-  if success 
+  if success
     then return success
-    else do 
+    else do
       reqMap <- mapEqMapPop f2 eqMap
       rleqSys <- toLiveEqMapWithHints reqMap lVars
       -- Convert upper bound to rational
       rub <- mapVec f2eps $ oviUpperBound oviRes
-      srub <- HT.newSized =<< stToIO (BHT.size rub)
+      srub <- liftIO $ HT.newSized =<< stToIO (BHT.size rub)
       checkWithKInd showF2 rleqSys srub $ oviMaxKIndIters settings
-

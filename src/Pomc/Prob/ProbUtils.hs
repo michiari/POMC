@@ -216,7 +216,7 @@ toUpperProb :: TermResult -> Prob
 toUpperProb (ApproxSingleResult (_, ub)) = ub
 toUpperProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
 
-extractUpperAst :: AST -> Z3 AST
+extractUpperAst :: MonadZ3 z3 => AST -> z3 AST
 extractUpperAst ast = do
   isAlgebraic <- isAlgebraicNumber ast
   --DBG.traceShowM =<< getAstKind ast
@@ -226,13 +226,13 @@ extractUpperAst ast = do
     then getAlgebraicNumberUpper ast 5
     else return ast
 
-extractUpperProb :: AST -> Z3 Prob
+extractUpperProb :: MonadZ3 z3 => AST -> z3 Prob
 extractUpperProb ast = extractUpperAst ast >>= getReal
 
-extractUpperDouble :: AST -> Z3 Double
+extractUpperDouble :: MonadZ3 z3 => AST -> z3 Double
 extractUpperDouble ast = extractUpperAst ast >>= getNumeralDouble
 
-extractLowerAst :: AST -> Z3 AST
+extractLowerAst :: MonadZ3 z3 => AST -> z3 AST
 extractLowerAst ast = do
   isAlgebraic <- isAlgebraicNumber ast
   --DBG.traceShowM =<< getAstKind ast
@@ -242,10 +242,10 @@ extractLowerAst ast = do
     then getAlgebraicNumberLower ast 5
     else return ast
 
-extractLowerProb :: AST -> Z3 Prob
+extractLowerProb :: MonadZ3 z3 => AST -> z3 Prob
 extractLowerProb ast = extractUpperAst ast >>= getReal
 
-extractLowerDouble :: AST -> Z3 Double
+extractLowerDouble :: MonadZ3 z3 => AST -> z3 Double
 extractLowerDouble ast = extractUpperAst ast >>= getNumeralDouble
 
 data Stats = Stats { upperBoundTime :: Double
