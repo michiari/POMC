@@ -52,7 +52,7 @@ import qualified Data.Vector as V
 
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad (when, unless, forM_, foldM, forM)
-import Control.Monad.ST (ST, stToIO, RealWorld)
+import Control.Monad.ST (ST, RealWorld)
 
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 import Data.IORef (newIORef)
@@ -293,7 +293,7 @@ qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate,
                       -> m Bool
 qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
   -- global data structures for constructing graph G
-  gGlobals <- liftIO . stToIO $ do
+  gGlobals <- liftSTtoIO $ do
     newIdSequence <- newSTRef (0 :: Int)
     emptyGGraphMap <- BH.new
     emptyGGraph <- CM.empty
@@ -305,12 +305,12 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
                     }
 
   logInfoN "Building graph G..."
-  (gGraph_, iniCount) <- liftIO . stToIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!)
+  (gGraph_, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!)
 
   logInfoN "Analyzing graph G..."
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
-  liftIO . stToIO $ do
+  liftSTtoIO $ do
     sccCounter <- newSTRef (-2 :: Int)
     newSS         <- GS.new
     newBS         <- GS.new
@@ -480,7 +480,7 @@ quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord pstate, Ha
                        -> m (Prob, Prob)
 quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds oldStats = do
   -- global data structures for constructing graph G
-  gGlobals <- liftIO . stToIO $ do
+  gGlobals <- liftSTtoIO $ do
     newIdSequence <- newSTRef (0 :: Int)
     emptyGGraphMap <- BH.new
     emptyGGraph <- CM.empty
@@ -490,10 +490,10 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                     , gGraph = emptyGGraph
                     , grGlobals = emptyGRGlobals
                     }
-  (computedGraph, iniCount) <- liftIO . stToIO $ buildGGraph gGlobals delta phiInitials suppGraph (`IntSet.notMember` asTermSemiconfs)
+  (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (`IntSet.notMember` asTermSemiconfs)
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
-  hGlobals <- liftIO . stToIO $ do
+  hGlobals <- liftSTtoIO $ do
     sccCounter   <- newSTRef (-2 :: Int)
     newSS        <- GS.new
     newBS        <- GS.new
@@ -507,8 +507,8 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
 
   -- computing all the bottom SCCs of graph H
   phiInitialGNodesIdxs <- foldM (\acc idx -> do
-    node <- liftIO . stToIO $ MV.unsafeRead computedGraph idx
-    when (iValue node == 0) $ liftIO . stToIO $ do
+    node <- liftSTtoIO $ MV.unsafeRead computedGraph idx
+    when (iValue node == 0) $ liftSTtoIO $ do
       addedNode <- addtoPath hGlobals node (Internal (gId node))
       _ <- dfs suppGraph hGlobals delta (`IntSet.notMember` asTermSemiconfs) False addedNode
       return ()
@@ -517,8 +517,8 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       else return acc
     ) [] [0.. (iniCount -1)]
 
-  hSCCs <- liftIO . stToIO $ Map.keysSet <$> readSTRef (bottomHSCCs hGlobals)
-  freezedGGraph <- liftIO . stToIO $ V.freeze computedGraph
+  hSCCs <- liftSTtoIO $ Map.keysSet <$> readSTRef (bottomHSCCs hGlobals)
+  freezedGGraph <- liftSTtoIO $ V.freeze computedGraph
 
   logInfoN "Computed qualitative model checking..."
   -- bottomString <- show <$> readSTRef (bottomHSCCs hGlobals)
@@ -537,13 +537,12 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       insert var Nothing         = (Just [var], ())
       insert var (Just old_vars) = (Just (var:old_vars), ())
 
-  newlMap <- liftIO . stToIO $ BH.new
-  newlGroupedMap <- liftIO . stToIO $ BH.new
-  newuMap <- liftIO . stToIO $ BH.new
-  newuGroupedMap <- liftIO . stToIO $ BH.new
-
   evalZ3TWith (Just QF_LRA) stdOpts $ do
     -- generate all variables and add them to two hashtables
+    newlMap <- liftSTtoIO $ BH.new
+    newlGroupedMap <- liftSTtoIO $ BH.new
+    newuMap <- liftSTtoIO $ BH.new
+    newuGroupedMap <- liftSTtoIO $ BH.new
     forM_ freezedGGraph $ \g -> when (isInH g) $ do
       newlVar <- mkFreshRealVar (show (gId g) ++ "L")
       newuVar <- mkFreshRealVar (show (gId g) ++ "U")
@@ -557,31 +556,31 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     -- preparing the global variables for the computation of the fractions f
     freezedSuppEnds <- liftIO $ GR.freezeSuppEnds (grGlobals gGlobals)
 
-    newIdSeq <- liftIO $ newIORef 0
-    newGraphMap <-  liftIO HT.new
-    newFVarMap <- liftIO IOSM.empty
-    newSStack <- liftIO IOGS.new
-    newBStack <- liftIO IOGS.new
-    newIVector <- liftIO HT.new
-    newScntxs <- liftIO HT.new
-    newCannotReachPop <- liftIO $ newIORef IntSet.empty
-    newLowerEqMap <- liftIO HT.new
-    newUpperEqMap <- liftIO HT.new
-    newEps <- liftIO $ newIORef defaultTolerance
-
-    let globals = GR.WeightedGRobals { GR.idSeq = newIdSeq
-                                     , GR.graphMap = newGraphMap
-                                     , GR.varMap  = newFVarMap
-                                     , GR.sStack = newSStack
-                                     , GR.bStack = newBStack
-                                     , GR.iVector = newIVector
-                                     , GR.successorsCntxs = newScntxs
-                                     , GR.cannotReachPop = newCannotReachPop
-                                     , GR.lowerEqMap = newLowerEqMap
-                                     , GR.upperEqMap = newUpperEqMap
-                                     , GR.actualEps = newEps
-                                     , GR.stats = oldStats
-                                     }
+    globals <- liftIO $ do
+      newIdSeq <- newIORef 0
+      newGraphMap <- HT.new
+      newFVarMap <- IOSM.empty
+      newSStack <- IOGS.new
+      newBStack <- IOGS.new
+      newIVector <- HT.new
+      newScntxs <- HT.new
+      newCannotReachPop <- newIORef IntSet.empty
+      newLowerEqMap <- HT.new
+      newUpperEqMap <- HT.new
+      newEps <- newIORef defaultTolerance
+      return GR.WeightedGRobals { GR.idSeq = newIdSeq
+                                , GR.graphMap = newGraphMap
+                                , GR.varMap  = newFVarMap
+                                , GR.sStack = newSStack
+                                , GR.bStack = newBStack
+                                , GR.iVector = newIVector
+                                , GR.successorsCntxs = newScntxs
+                                , GR.cannotReachPop = newCannotReachPop
+                                , GR.lowerEqMap = newLowerEqMap
+                                , GR.upperEqMap = newUpperEqMap
+                                , GR.actualEps = newEps
+                                , GR.stats = oldStats
+                                }
 
     logInfoN "Encoding conditions (2b) and (2c)"
     -- encodings (2b) and (2c)
@@ -626,7 +625,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       return (l, u))
 
     tSol <- stopTimer startSol ub
-    liftIO $ stToIO $ modifySTRef' oldStats (\s -> s { quantSolTime = quantSolTime s + tSol})
+    liftSTtoIO $ modifySTRef' oldStats (\s -> s { quantSolTime = quantSolTime s + tSol})
 
     return (lb, ub)
 

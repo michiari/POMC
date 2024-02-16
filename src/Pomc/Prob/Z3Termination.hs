@@ -27,7 +27,8 @@ import qualified Pomc.IOStack as ZS
 
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad (foldM, unless, when, forM_, forM)
-import Control.Monad.ST (RealWorld, stToIO)
+import Control.Monad.ST (RealWorld)
+import Pomc.Z3T (liftSTtoIO)
 
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
@@ -456,8 +457,8 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
 solveSCCQuery :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)
               => SupportGraph state -> Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> (Bool, Bool) -> z3 Bool
 solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) globals precFun (useZ3, exactEq) = do
-  liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
-  liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCount = acc} -> s{largestSCCSemiconfsCount = max acc (IntSet.size sccMembers)}
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCount = acc} -> s{largestSCCSemiconfsCount = max acc (IntSet.size sccMembers)}
   variables <- liftIO $ map fst <$> HT.toList newAdded
   logDebugN $ "New variables of this SCC: " ++ show variables
   currentEps <- liftIO $ readIORef (eps globals)
@@ -476,7 +477,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
           updateUpperBoundsOVI unsolvedVars
       updateLowerBound unsolvedVars = do
         -- updating lower bounds
-        liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquations = acc} -> s{nonTrivialEquations = acc + length unsolvedVars}
+        liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquations = acc} -> s{nonTrivialEquations = acc + length unsolvedVars}
         approxVec <- approxFixpWithHints lEqMap defaultEps defaultMaxIters unsolvedVars
         forM_ unsolvedVars $ \varKey -> do
           liftIO (HT.lookup lEqMap varKey) >>= \case
@@ -533,7 +534,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
                 return ((varKey, pDouble):acc))
           [] augUnsolvedVars
         tUpper <- stopTimer startUpper $ null upperBound
-        liftIO $ stToIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
+        liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
       --
       updateUpperBoundsOVI unsolvedVars = do
         startUpper <- startTimer
@@ -559,7 +560,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
           [] unsolvedVars
 
         tUpper <- stopTimer startUpper $ null upperBound
-        liftIO $ stToIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
+        liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
 
   -- preprocessing phase
   _ <- preprocessApproxFixpWithHints lEqMap defaultEps (3 * IntSet.size sccMembers) variables
@@ -570,7 +571,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
 
   -- lEqMap and uEqMap should be the same here
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
-  liftIO $ stToIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars) }
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars) }
 
   -- find bounds for this SCC
   cases unsolvedVars
@@ -611,7 +612,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
             _ -> error "undefined result when running the PAST certificate"
 
           tPast <- stopTimer startPast pastRes
-          liftIO $ stToIO $ modifySTRef' (stats globals) (\s -> s { pastTime = pastTime s + tPast })
+          liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { pastTime = pastTime s + tPast })
           return pastRes
   pASTCertCases
 

@@ -144,13 +144,13 @@ terminationExplicit query popa =
             , deltaPop = popaDeltaPop
             }
   in do
-    stats <- liftIO . stToIO $ newSTRef newStats
-    sc <- liftIO . stToIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
+    stats <- liftSTtoIO $ newSTRef newStats
+    sc <- liftSTtoIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
 
     (res, _) <- evalZ3TWith (chooseLogic $ solver query) stdOpts
       $ terminationQuerySCC sc precFunc query stats
     logInfoN $ "Computed termination probability: " ++ show res
-    computedStats <- liftIO . stToIO $ readSTRef stats
+    computedStats <- liftSTtoIO $ readSTRef stats
     return (res, computedStats, show sc)
 
 programTermination :: (MonadIO m, MonadFail m, MonadLogger m)
@@ -171,12 +171,12 @@ programTermination solver prog =
                }
 
   in do
-    stats <- liftIO . stToIO $ newSTRef newStats
-    sc <- liftIO . stToIO $ buildGraph pDelta initVs initLbl stats
+    stats <- liftSTtoIO $ newSTRef newStats
+    sc <- liftSTtoIO $ buildGraph pDelta initVs initLbl stats
     (res, _) <- evalZ3TWith (chooseLogic solver) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxSingleQuery solver) stats
     logInfoN $ "Computed termination probabilities: " ++ show res
-    computedStats <- liftIO . stToIO $ readSTRef stats
+    computedStats <- liftSTtoIO $ readSTRef stats
     return (res, computedStats, show sc)
 
 -- QUALITATIVE MODEL CHECKING
@@ -218,8 +218,8 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       , phiDeltaPop = phiDeltaPop
       }
   in do
-    stats <- liftIO . stToIO $ newSTRef newStats
-    sc <- liftIO . stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
+    stats <- liftSTtoIO $ newSTRef newStats
+    sc <- liftSTtoIO $ buildGraph wrapper (fst initial) (snd initial) stats
     logInfoN $ "Length of the summary chain: " ++ show (V.length sc)
     (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solver) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
@@ -237,7 +237,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     logDebugN $ "Computed termination probabilities: " ++ show ubVec
     logDebugN $ "Pending Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
-    computedStats <- liftIO . stToIO $ readSTRef stats
+    computedStats <- liftSTtoIO $ readSTRef stats
     logInfoN $ "Stats so far: " ++ concat [
         "Times: "
       , showEFloat (Just 4) (upperBoundTime computedStats) " s (upper bounds), "
@@ -372,8 +372,8 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
       }
 
   in do
-    stats <- liftIO . stToIO $ newSTRef newStats
-    sc <- liftIO . stToIO $ buildGraph wrapper (fst initial) (snd initial) stats
+    stats <- liftSTtoIO $ newSTRef newStats
+    sc <- liftSTtoIO $ buildGraph wrapper (fst initial) (snd initial) stats
     logInfoN $ "Length of the summary chain: " ++ show (V.length sc)
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
@@ -396,7 +396,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs stats
 
     tGG <- stopTimer startGGTime ub
-    computedStats <- liftIO . stToIO $ readSTRef stats
+    computedStats <- liftSTtoIO $ readSTRef stats
 
     return ((ub, lb), computedStats { gGraphTime = tGG }, show sc ++ show pendVector)
 

@@ -21,6 +21,7 @@ import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..))
 import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProbEncodedSet, ProBitencoding)
 import qualified Pomc.Prob.ProbEncoding as PE
+import Pomc.Z3T (liftSTtoIO)
 
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
@@ -234,7 +235,7 @@ reachTransition :: (SatState state, Eq state, Hashable state, Show state)
                  => GRobals s state
                  -> Delta state
                  -> Maybe ProbEncodedSet -- the SatSet established on the path so far
-                 -> Maybe ProbEncodedSet -- the SatSet of the edge (Nothing if it is not a Support edge)        
+                 -> Maybe ProbEncodedSet -- the SatSet of the edge (Nothing if it is not a Support edge)
                  -> (StateId state, Stack state) -- to semiconf
                  -> ST s ()
 reachTransition globals delta pathSatSet mSuppSatSet dest =
@@ -256,7 +257,7 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
         BH.insert (visited globals) (decode dest) augmentedPathSatSet
         reach globals delta dest augmentedPathSatSet
 
---- compute weigths of a support transition 
+--- compute weigths of a support transition
 freezeSuppEnds :: GRobals RealWorld state -> IO (Vector (Set (StateId state)))
 freezeSuppEnds globals = stToIO $ do
   computedSuppEnds <- readSTRef (suppEnds globals)
@@ -288,9 +289,9 @@ weightQuerySCC :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable 
                -> state -- target state
                -> m (Prob, Prob)
 weightQuerySCC globals sIdGen delta supports current target = do
-  q <- liftIO . stToIO $ wrapState sIdGen current
+  q <- liftSTtoIO $ wrapState sIdGen current
   let semiconf = (q, Nothing)
-  targetState <- liftIO . stToIO $ wrapState sIdGen target
+  targetState <- liftSTtoIO $ wrapState sIdGen target
   maybeSemiconfId <- liftIO $ HT.lookup (graphMap globals) (decode semiconf)
 
   actualId <- case maybeSemiconfId of
@@ -338,7 +339,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
 
         -- this case includes the initial push
         | (isNothing g) || (precRel == Just Yield && (consistentFilter delta) qState) = do
-          newPushStates <- liftIO . stToIO $ wrapStates sIdGen $ map fst $ (deltaPush delta) qState
+          newPushStates <- liftSTtoIO $ wrapStates sIdGen $ map fst $ (deltaPush delta) qState
           forM_ newPushStates (\p -> follow (p, Just (qProps, q))) -- discard the result
           let newSupportStates = Set.toList $ fromJust $ (supports V.!? (getId q)) <|> (Just Set.empty)
           if isNothing g
@@ -346,11 +347,11 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
             else IntSet.unions <$> forM newSupportStates (\p -> follow (p, g))
 
         | precRel == Just Equal && (consistentFilter delta) qState = do
-          newShiftStates <- liftIO . stToIO $ wrapStates sIdGen $ map fst $ (deltaShift delta) qState
+          newShiftStates <- liftSTtoIO $ wrapStates sIdGen $ map fst $ (deltaShift delta) qState
           IntSet.unions <$> forM newShiftStates (\p -> follow (p, Just (qProps, snd . fromJust $ g)))
 
         | precRel == Just Take = IntSet.fromList <$>
-            mapM (\(unwrapped, _) -> do p <- liftIO . stToIO $ wrapState sIdGen unwrapped; return (getId p)) ((deltaPop delta) qState (getState . snd . fromJust $ g))
+            mapM (\(unwrapped, _) -> do p <- liftSTtoIO $ wrapState sIdGen unwrapped; return (getId p)) ((deltaPop delta) qState (getState . snd . fromJust $ g))
 
         | otherwise = return IntSet.empty
 
@@ -611,7 +612,7 @@ solveSCCQuery sccMembers newAdded globals = do
   _ <- preprocessApproxFixpWithHints lEqMap iterEps (2 * sccLen) variables
   (_, unsolvedVars) <- preprocessApproxFixpWithHints uEqMap iterEps (2 * sccLen) variables
 
-  -- lEqMap and uEqMap should be the same here 
+  -- lEqMap and uEqMap should be the same here
   unless (null unsolvedVars) $ do
     startWeights <- startTimer
 
@@ -624,7 +625,7 @@ solveSCCQuery sccMembers newAdded globals = do
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
 
     tWeights <- stopTimer startWeights rCertified
-    liftIO . stToIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
+    liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
 
     -- updating lower bounds
     approxVec <- approxFixpWithHints lEqMap iterEps defaultMaxIters unsolvedVars
