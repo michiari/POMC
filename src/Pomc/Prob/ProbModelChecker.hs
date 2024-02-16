@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric, CPP #-}
-
 {- |
    Module      : Pomc.Prob.ProbModelChecker
    Copyright   : 2023 Francesco Pontiggia
@@ -52,8 +50,7 @@ import qualified Data.Map as Map
 import Data.Bifunctor(second)
 
 import Data.Hashable (Hashable)
-import Control.Monad.ST (stToIO)
-import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad.IO.Class (MonadIO)
 
 import Pomc.Z3T
 import Z3.Monad (Logic(..))
@@ -370,7 +367,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
       , phiDeltaShift = phiShift
       , phiDeltaPop = phiDeltaPop
       }
-
+ 
   in do
     stats <- liftSTtoIO $ newSTRef newStats
     sc <- liftSTtoIO $ buildGraph wrapper (fst initial) (snd initial) stats
