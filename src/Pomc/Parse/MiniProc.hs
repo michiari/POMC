@@ -32,6 +32,7 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
 import qualified Data.BitVector as BV
+import Math.NumberTheory.Logarithms (integerLog2)
 
 type TypedValue = (IntValue, Type)
 data TypedExpr = TLiteral TypedValue
@@ -147,10 +148,14 @@ literalP :: Parser TypedValue
 literalP = boolLiteralP <|> intLiteralP
   where intLiteralP = L.lexeme spaceP $ do
           value <- L.signed spaceP (L.lexeme spaceP L.decimal) :: Parser Integer
-          ty <- intTypeP
-          if value < 0 && not (isSigned ty)
-            then fail "Negative literal declared unsigned"
-            else return (BV.bitVec (typeWidth ty) value, ty)
+          let minWidth = integerLog2 (max 1 $ abs value) + 1 + fromEnum (value < 0)
+          maybeTy <- optional intTypeP
+          ty <- case maybeTy of
+            Just mty | value < 0 && not (isSigned mty) -> fail "Negative literal declared unsigned"
+                     | typeWidth mty < minWidth -> fail "Integer literal type width is too small"
+                     | otherwise -> return mty
+            Nothing -> return $ if value < 0 then SInt minWidth else UInt minWidth
+          return (BV.bitVec (typeWidth ty) value, ty)
 
 variableP :: Maybe (Map Text Variable) -> Parser Variable
 variableP (Just varmap) = identifierP >>= variableLookup
@@ -268,9 +273,11 @@ nondetP varmap = try $ do
   return $ Nondeterministic lhs
 
 assOrCatP :: Map Text Variable -> Parser Statement
-assOrCatP varmap = try $ do
-  lhs <- lValueP varmap
-  _ <- symbolP "="
+assOrCatP varmap = do
+  lhs <- try $ do
+    trylhs <- lValueP varmap
+    _ <- symbolP "="
+    return trylhs
   firstExpr <- teP
   maybeCat <- optional $ some ((,) <$> probLitP <*> teP)
   _ <- symbolP ";"
