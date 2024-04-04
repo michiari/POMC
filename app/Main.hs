@@ -44,6 +44,7 @@ data PomcArgs = PomcArgs
   , infinite :: Bool
   , explicit :: Bool
   , smt      :: Word64
+  , smt_use_array_theory :: Bool
   , fileName :: FilePath
   , verbose  :: Bool
   } deriving (Data, Typeable, Show, Eq)
@@ -54,6 +55,7 @@ pomcArgs = PomcArgs
   , infinite = False &= help "Use infinite-word (omega) semantics (default)"
   , explicit = False &= help "Use the explicit-state model checking engine (default)"
   , smt = 0 &= help "Use the SMT-based model checking engine, specifying the maximum trace length"
+  , smt_use_array_theory = False &= help "Encode arrays using the SMT theory of arrays (generally slower) instead of uninterpreted functions. Defaults to false."
   , fileName = def &= args &= typFile -- &= help "Input file"
   , verbose = False &= help "Print more info about model checking progress (currently only works with --smt)"
   }
@@ -98,7 +100,7 @@ main = do
           return $ sum stringTimes + sum mcTimes
 
     ProgCheckRequest phis prog -> sum <$> forM phis
-      (runProg isOmega isExplicit logVerbosity (smt pargs) prog)
+      (runProg isOmega isExplicit logVerbosity (smt pargs) (smt_use_array_theory pargs) prog)
       where logVerbosity | verbose pargs = Just LevelInfo
                          | otherwise = Nothing
 
@@ -126,7 +128,7 @@ main = do
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
 
-    runProg isOmega True _ _ prog phi = do
+    runProg isOmega True _ _ _ prog phi = do
       putStr (concat [ "\nModel Checking\nFormula: ", show phi
                      , "\nResult:  "
                      ])
@@ -135,9 +137,11 @@ main = do
       unless (sat || isOmega) $ putStr $ "\nCounterexample: " ++ showPrettyTrace "..." show trace
       putStrLn (concat ["\nElapsed time: ", timeToString time])
       return time
-    runProg False False isVerbose maxDepth prog phi = do
+    runProg False False isVerbose maxDepth smtUseArrayTheory prog phi = do
       putStrLn $ "\nSMT-based Model Checking\nFormula: " ++ show phi
-      smtres <- Z3.modelCheckProgram ((Z3.defaultSmtOpts maxDepth) { Z3.smtVerbose = isVerbose })
+      smtres <- Z3.modelCheckProgram ((Z3.defaultSmtOpts maxDepth) { Z3.smtVerbose = isVerbose
+                                                                   , Z3.smtUseArrayTheory = smtUseArrayTheory
+                                                                   })
                 phi prog
       putStr $ "Result:  " ++ show (Z3.smtStatus smtres)
       when (Z3.smtStatus smtres == Z3.Unsat)
@@ -150,7 +154,7 @@ main = do
                         , ")"
                         ]
       return time
-    runProg True False _ _ _ _ =
+    runProg True False _ _ _ _ _ =
       error "Infinite-word model checking not yet supported in SMT mode."
 
     addEndPrec precRels = noEndPR
