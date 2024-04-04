@@ -2,7 +2,11 @@
 
 ## Latest
 
+- Add SMT-based model checking engine (only for finite-word model checking)
 - MiniProc expressions can now be embedded in POTL formulas as atomic propositions
+- Better logging infrastructure
+- Bug fixes and performance improvements
+- More tests and benchmarks
 
 
 ## v2.1.0 (2023/03/08)
