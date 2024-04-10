@@ -1,5 +1,5 @@
 probabilistic query: qualitative;
-formula = G ((call And alice And [|p == 4u3]) --> ~ (XNu obs));
+formula = G ((call And alice And [|p == 4u4]) --> ~ (XNu obs));
 
 program:
 u4 p;
