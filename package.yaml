@@ -57,6 +57,7 @@ library:
   - filepath
   - z3
   - scientific
+  - integer-logarithms
   - witch
   - monad-logger
   # - rounded
