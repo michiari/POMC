@@ -176,12 +176,12 @@ encodePush graph varMap@(m, newAdded, _, _) (lowerEqMap, upperEqMap) mkComp  gn 
   in do
     (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
     -- logDebugN $ show varKey ++ " = PushEq " ++ show terms
-    let emptyPush = null (concat terms)
+    let emptyPush = all null terms
         pushEq |  emptyPush = PopEq 0
                | otherwise = PushEq $ concat terms
     when useZ3 $ if emptyPush
         then do
-          solvedVar <- mkRealNum 0
+          solvedVar <- mkRealNum (0 :: Rational)
           liftIO $ HT.insert m varKey solvedVar
           eq <- mkEq var solvedVar
           assert eq
@@ -190,7 +190,6 @@ encodePush graph varMap@(m, newAdded, _, _) (lowerEqMap, upperEqMap) mkComp  gn 
           --eqString <- astToString eq
           -- logDebugN $ "Asserting Push equation: " ++ eqString
           assert eq
-          assert =<< mkGe var =<< mkRealNum 0
 
     when emptyPush $ liftIO $ HT.delete newAdded varKey
     addFixpEq upperEqMap varKey pushEq
@@ -224,7 +223,6 @@ encodeShift varMap (lowerEqMap, upperEqMap) mkComp gn varKey@(_, rightContext) v
       --eqString <- astToString eq
       -- logDebugN $ "Asserting Shift equation: " ++ eqString
       assert eq
-      assert =<< mkGe var =<< mkRealNum (0 :: Rational)
 
     -- logDebugN $ show varKey ++ " = ShiftEq " ++ show terms
     let shiftEq | null terms = error "shift semiconfs should go somewhere!"

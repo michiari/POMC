@@ -1,5 +1,5 @@
 {- |
-   Module      : Pomc.Prob.PartialSupportGraph
+   Module      : Pomc.Prob.SupportGraph
    Copyright   : 2023 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
