@@ -1,0 +1,27 @@
+/* Example from Katoen's lecture on "Verification of Probabilistic Programs", TU Wien 2022:
+f1 := gf [0.5] f1 := pir;
+f2 := pir;
+s := f1 [0.5] s = f2;
+observe (s = pir)
+Reference: Henk Tijms, Understanding Probability: Chance Rules in Everyday Life, Cambridge University Press, 2004.
+*/ 
+
+probabilistic query: quantitative;
+formula = F (ret And main And [| f1 == 1u1]);
+
+program:
+u1 f1;
+u1 f2;
+u1 s;
+// encoding: gf = 0, pir = 1;
+main() {
+  query exp();
+  // res is which cafè they have gone to
+}
+
+exp() {
+    f1 = 0u1 {1u2 : 2u2} 1u1;
+    f2 = 1u1;
+    s = f1 {1u2 : 2u2} f2;
+    observe s == 1u1;
+}
