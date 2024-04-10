@@ -54,6 +54,7 @@ import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData)
+import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
@@ -62,8 +63,6 @@ import qualified Data.HashTable.Class as H
 import Data.Map(Map)
 
 import Z3.Monad hiding (Solver)
-
-import qualified Debug.Trace as DBG
 
 type Prob = Rational
 type EqMapNumbersType = Double
@@ -173,7 +172,6 @@ defaultRTolerance = 1e-5
 -- CompQuery asks whether the probability to terminate is <, <=, >, >= than the given probability depending on Comp
 -- ApproxQuery requires to approximate the termination probabilities of all semiconfs of the support graph
 -- ApproxTermination requires to approximate just the overall termination probability of the given popa
--- Pending requires to compute the ids of pending semiconfs, i.e. those that have a positive probability of non terminating
 data TermQuery = CompQuery Comp Prob Solver
                | ApproxAllQuery Solver
                | ApproxSingleQuery Solver
@@ -194,8 +192,6 @@ solver (ApproxSingleQuery s) = s
 -- different possible results of a termination query
 -- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 
 -- ApproxSingleResult represents the approximate probability to terminate of the popa 
--- PendingResult represents whether a semiconf is pending (i.e. it has positive probability to non terminate) for all semiconfs of the popa
--- by convention, 
 data TermResult = TermSat | TermUnsat | ApproxAllResult (Map (Int,Int) Prob, Map (Int,Int) Prob) | ApproxSingleResult (Prob, Prob)
   deriving (Show, Eq, Generic, NFData)
 
@@ -216,37 +212,39 @@ toUpperProb :: TermResult -> Prob
 toUpperProb (ApproxSingleResult (_, ub)) = ub
 toUpperProb r = error $ "cannot convert a non single probability result. Got instead: " ++ show r
 
-extractUpperAst :: MonadZ3 z3 => AST -> z3 AST
+extractUpperAst :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 AST
 extractUpperAst ast = do
   isAlgebraic <- isAlgebraicNumber ast
-  --DBG.traceShowM =<< getAstKind ast
-  --DBG.traceShowM =<< isAlgebraicNumber ast
-  --DBG.traceM =<< astToString ast
+  logDebugN . show =<< getAstKind ast
+  logDebugN . show =<< isAlgebraicNumber ast
+  logDebugN . show =<< isNumeralAst ast
+  logDebugN . show =<< astToString ast
   if isAlgebraic
     then getAlgebraicNumberUpper ast 5
     else return ast
 
-extractUpperProb :: MonadZ3 z3 => AST -> z3 Prob
+extractUpperProb :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 Prob
 extractUpperProb ast = extractUpperAst ast >>= getReal
 
-extractUpperDouble :: MonadZ3 z3 => AST -> z3 Double
+extractUpperDouble :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 Double
 extractUpperDouble ast = extractUpperAst ast >>= getNumeralDouble
 
-extractLowerAst :: MonadZ3 z3 => AST -> z3 AST
+extractLowerAst :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 AST
 extractLowerAst ast = do
   isAlgebraic <- isAlgebraicNumber ast
-  --DBG.traceShowM =<< getAstKind ast
-  --DBG.traceShowM =<< isAlgebraicNumber ast
-  --DBG.traceM =<< astToString ast
+  logDebugN . show =<< getAstKind ast
+  logDebugN . show =<< isAlgebraicNumber ast
+  logDebugN . show =<< isNumeralAst ast
+  logDebugN . show =<< astToString ast
   if isAlgebraic
     then getAlgebraicNumberLower ast 5
     else return ast
 
-extractLowerProb :: MonadZ3 z3 => AST -> z3 Prob
-extractLowerProb ast = extractUpperAst ast >>= getReal
+extractLowerProb :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 Prob
+extractLowerProb ast = extractLowerAst ast >>= getReal
 
-extractLowerDouble :: MonadZ3 z3 => AST -> z3 Double
-extractLowerDouble ast = extractUpperAst ast >>= getNumeralDouble
+extractLowerDouble :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 Double
+extractLowerDouble ast = extractLowerAst ast >>= getNumeralDouble
 
 data Stats = Stats { upperBoundTime :: Double
                    , pastTime :: Double
