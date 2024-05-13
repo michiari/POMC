@@ -214,7 +214,7 @@ addPopContext globals from prob_ rightContext =
   let
     -- we use insertWith + because the input distribution might not be normalized - i.e., there might be duplicate pop transitions
     insertContext g@GraphNode{popContexts= cntxs} =g{popContexts = Map.insertWith (+) (getId rightContext) prob_ cntxs}
-  in BH.lookup (graphMap globals) (decode from) >>= CM.modify (graph globals) (insertContext) . fromJust
+  in BH.lookup (graphMap globals) (decode from) >>= CM.modify (graph globals) insertContext . fromJust
 
 -- decomposing a transition to a new semiconfiguration
 buildTransition :: (Eq state, Hashable state, Show state)

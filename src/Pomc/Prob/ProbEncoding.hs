@@ -45,9 +45,9 @@ makeProBitEncoding cl isPhiFinal_ =
 
 -- an empty EncodedSet
 empty :: ProBitencoding -> ProbEncodedSet
-empty omegabitenc = E.empty (bitenc omegabitenc)
+empty probitenc = E.empty (bitenc probitenc)
 
--- an empty EncodedSet
+-- Is the Encoded set null?
 null :: ProbEncodedSet -> Bool
 null = E.null
 
@@ -64,7 +64,7 @@ unions l = foldl' union (head l) (tail l)
 
 -- encode a satState into the formulae for which this state is final
 encodeSatState :: (SatState state) => ProBitencoding -> state -> ProbEncodedSet
-encodeSatState omegabitenc s = E.suchThat (bitenc omegabitenc) (\f -> (isPhiFinal omegabitenc) f (getSatState s))
+encodeSatState probitenc s = E.suchThat (bitenc probitenc) (\f -> (isPhiFinal probitenc) f (getSatState s))
 
 subsumes :: ProbEncodedSet -> ProbEncodedSet -> Bool
 subsumes eset1 eset2 = E.union eset1 eset2 == eset1

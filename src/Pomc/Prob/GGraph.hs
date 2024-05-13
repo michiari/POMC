@@ -641,7 +641,7 @@ encodeTransition probs toVar = do
 encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
       => GR.WeightedGRobals (AugState pstate)
       -> SIdGen RealWorld (AugState pstate)
-      -> Vector (Set(SU.StateId (AugState pstate)))
+      -> Vector (Set (SU.StateId (AugState pstate)))
       -> DeltaWrapper pstate
       -> (TypicalVarMap, TypicalVarMap)
       -> SupportGraph pstate
@@ -775,7 +775,7 @@ encodeShift :: (MonadZ3 z3, MonadLogger z3)
             -> GraphNode pstate
             -> Vector Prob
             -> Vector Prob
-            -> z3 ([AST])
+            -> z3 [AST]
 encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
   let fNodes = IntSet.toList . IntSet.filter (\idx -> isInH (gGraph V.! idx)) . Map.keysSet $ edges g
       shiftEnc toIdx = do
@@ -809,7 +809,7 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
   lleqOne <- mkLe lvar =<< mkRational (1 :: Prob)
   uleqOne <- mkLe uvar =<< mkRational (1 :: Prob)
   soundness <- mkLe lvar uvar
-  return ([lEq, lgtZero, lleqOne, uEq, ugtZero, uleqOne, soundness])
+  return [lEq, lgtZero, lleqOne, uEq, ugtZero, uleqOne, soundness]
 
 
 
