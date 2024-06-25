@@ -372,12 +372,12 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
  
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    sc <- liftSTtoIO $ buildGraph wrapper (fst initial) (snd initial) stats
-    logInfoN $ "Length of the summary chain: " ++ show (V.length sc)
+    supportChain <- liftSTtoIO $ buildGraph wrapper (fst initial) (snd initial) stats
+    logInfoN $ "Length of the Support Chain chain: " ++ show (V.length supportChain)
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
-      $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
+      $ terminationQuerySCC supportChain precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
-        ubVec =  V.generate (V.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
+        ubVec =  V.generate (V.length supportChain) (\idx -> Map.findWithDefault 0 idx ubTermMap)
         cases i k
           | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs =
             -- inconsistent result
@@ -392,12 +392,12 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     logInfoN "Conclusive analysis!"
 
     startGGTime <- startTimer
-    (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials sc mustReachPopIdxs lbProbs ubProbs stats
+    (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain mustReachPopIdxs lbProbs ubProbs stats
 
     tGG <- stopTimer startGGTime ub
     computedStats <- liftSTtoIO $ readSTRef stats
 
-    return ((ub, lb), computedStats { gGraphTime = tGG }, show sc ++ show pendVector)
+    return ((ub, lb), computedStats { gGraphTime = tGG }, show supportChain ++ show pendVector)
 
 quantitativeModelCheckProgram :: (MonadIO m, MonadFail m, MonadLogger m)
                               => Solver
