@@ -35,7 +35,7 @@ main (){
 
 }
 
-sampleAction(u2 current_player, u2 &row_choice, u2&column_choice) {
+sampleAction(u2 current_player, u2 &row_choice, u2 &column_choice) {
     bool another_turn;
     u2 other_player;
     u2 otherPlayerRowChoice, otherPlayerColumnChoice; 
@@ -62,7 +62,7 @@ sampleAction(u2 current_player, u2 &row_choice, u2&column_choice) {
     // observing according to the utility of the outcome
     expected_utility(current_player);
 
-    // returning row_choice and column_choice - the choice of the players
+    // returning row_choice and column_choice - the choice of the player
 }
 
 
