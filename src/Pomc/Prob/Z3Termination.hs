@@ -233,7 +233,7 @@ encodeShift varMap (lowerEqMap, upperEqMap) mkComp gn varKey@(_, rightContext) v
 -- end
 
 ---------------------------------------------------------------------------------------------------
--- compute the exact termination probabilities, but do it with a backward analysis for every SCC --
+-- compute termination probabilities, but do it with a backward analysis for every SCC --
 ---------------------------------------------------------------------------------------------------
 
 type SuccessorsPopContexts = IntSet
@@ -246,7 +246,6 @@ data DeficientGlobals state = DeficientGlobals
   , iVector    :: MV.IOVector Int
   , successorsCntxs :: MV.IOVector SuccessorsPopContexts
   , mustReachPop :: IORef IntSet
-  , cannotReachPop :: IORef IntSet
   , partialVarMap :: PartialVarMap
   , rewVarMap :: RewVarMap
   , upperEqMap :: EqMap EqMapNumbersType
@@ -267,7 +266,6 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   newBS              <- liftIO ZS.new
   newIVec            <- liftIO $ MV.replicate (V.length suppGraph) 0
   newSuccessorsCntxs <- liftIO $ MV.replicate (V.length suppGraph) IntSet.empty
-  emptyCannotReachPop <- liftIO $ newIORef IntSet.empty
   newMap <- liftIO HT.new
   newUpperEqMap <- liftIO HT.new
   newLowerEqMap <- liftIO HT.new
@@ -279,7 +277,6 @@ terminationQuerySCC suppGraph precFun query oldStats = do
                                 , iVector = newIVec
                                 , successorsCntxs = newSuccessorsCntxs
                                 , mustReachPop = emptyMustReachPop
-                                , cannotReachPop = emptyCannotReachPop
                                 , partialVarMap = (newMap, encodeInitialSemiconf query)
                                 , rewVarMap = newRewVarMap
                                 , upperEqMap = newUpperEqMap
@@ -430,8 +427,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
         actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, newAdded, sccMembers, encodeInitial) globals precFun (useZ3, exactEq)
         when actualMustReachPop $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef' (mustReachPop globals) $ IntSet.insert e
         return (popContxs, actualMustReachPop)
-      doNotEncode poppedEdges = do
-        liftIO $ modifyIORef' (cannotReachPop globals) $ IntSet.union (IntSet.fromList poppedEdges)
+      doNotEncode = do
         if gnId gn == 0 && encodeInitial
           then do -- for the initial semiconf, encode anyway
             newAdded <- liftIO HT.new
@@ -445,7 +441,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
       cases
         | iVal /= topB = return (popContxs, dMustReachPop)
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
-        | otherwise = createC >>= doNotEncode -- cannot reach a pop
+        | otherwise = createC >> doNotEncode -- cannot reach a pop
   cases
 
 -- params:
@@ -567,7 +563,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
     pAST <- mkRealNum (p :: Double)
     liftIO $ HT.insert m varKey pAST
 
-  -- lEqMap and uEqMap should be the same here
+  -- lEqMap and uEqMap have the same number of unsolved equations
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars) }
 
