@@ -525,7 +525,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
   -- logDebugN gString
   -- logDebugN bottomString
 
-  -- computing the probability of termination
+  -- computing the probability of satisfying the temporal formula
   let isInH g = not . IntSet.null . IntSet.intersection hSCCs $ descSccs g
       lowerBoundsMap = Map.fromListWith (+) . map (\(k, p) -> (fst k, p)) . GeneralMap.toList $ lowerBounds
       upperBoundsMap = Map.fromListWith (+) . map (\(k, p) -> (fst k, p)) . GeneralMap.toList $ upperBounds
@@ -563,7 +563,6 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       newBStack <- IOGS.new
       newIVector <- HT.new
       newScntxs <- HT.new
-      newCannotReachPop <- newIORef IntSet.empty
       newLowerEqMap <- HT.new
       newUpperEqMap <- HT.new
       newEps <- newIORef defaultTolerance
@@ -574,7 +573,6 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                                 , GR.bStack = newBStack
                                 , GR.iVector = newIVector
                                 , GR.successorsCntxs = newScntxs
-                                , GR.cannotReachPop = newCannotReachPop
                                 , GR.lowerEqMap = newLowerEqMap
                                 , GR.upperEqMap = newUpperEqMap
                                 , GR.actualEps = newEps
@@ -589,7 +587,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       ) (V.filter isInH freezedGGraph)
 
     logInfoN "Encoding conditions (2a)"
-    -- encoding (2a)
+    -- encoding (2a) for lower bounds
     groupedlMaptoList <- liftIO (HT.toList newlGroupedMap)
     encs2 <- foldM (\acc (_, vList) -> do
         vSum <- mkAdd vList
@@ -598,6 +596,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
         return (lConstr1:lConstr2:acc)
       ) [] groupedlMaptoList
 
+    -- encoding (2a) for upper bounds
     groupeduMaptoList <- liftIO (HT.toList newuGroupedMap)
     encs3 <- foldM (\acc (_, vList) -> do
       vSum <- mkAdd vList
@@ -615,7 +614,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
 
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
-    logInfoN "Calling Z3..."
+    logInfoN "Calling Z3 to solve quantitative model checking..."
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
       l <- extractLowerProb . fromJust =<< eval model sumlVar
       u <- extractUpperProb . fromJust =<< eval model sumuVar

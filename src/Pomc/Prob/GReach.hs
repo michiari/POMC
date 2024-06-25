@@ -273,7 +273,6 @@ data WeightedGRobals state = WeightedGRobals
   , bStack     :: IOStack Int
   , iVector    :: HT.BasicHashTable Int Int
   , successorsCntxs :: HT.BasicHashTable Int IntSet
-  , cannotReachPop :: IORef IntSet
   , upperEqMap :: EqMap EqMapNumbersType
   , lowerEqMap :: EqMap EqMapNumbersType
   , actualEps :: IORef EqMapNumbersType
@@ -297,7 +296,7 @@ weightQuerySCC globals sIdGen delta supports current target = do
   actualId <- case maybeSemiconfId of
     Just scId -> do
       liftIO $ encodeInitialPush globals sIdGen delta q Nothing scId (getId targetState)
-      solveSCCQuery [scId] (Set.singleton (scId, -1)) globals
+      solveSCCQuery (Set.singleton (scId, -1), IntSet.singleton scId) globals
       return scId
     Nothing -> do
       newId <- liftIO $ freshIOPosId (idSeq globals)
@@ -371,28 +370,23 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
     popContxs <- transitionCases
     createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, target)
 
-lookupVar :: IORef (Set (Int,Int)) -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO ((Int,Int), Bool)
-lookupVar newAdded globals decoded rightContext = do
+lookupVar :: (IORef (Set (Int,Int)), IntSet) -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO (Maybe ((Int,Int), Bool))
+lookupVar (newAdded, sccMembers) globals decoded rightContext = do
   maybeId <- HT.lookup (graphMap globals) decoded
   when (isNothing maybeId) $ error $ "future semiconfs should have been already visited and inserted in the hashtable: " ++ show decoded
   let id_ = fromJust maybeId
       varKey = (id_, rightContext)
       (_, a,b) = decoded
   when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system"
-  asPendingIdxes <- readIORef (cannotReachPop globals)
-  if IntSet.member id_ asPendingIdxes
-    then do
-      addFixpEq (lowerEqMap globals) varKey (PopEq 0)
-      addFixpEq (upperEqMap globals) varKey (PopEq 0)
-      return (varKey, True)
-    else do
-    previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
-    if previouslyVisited
-      then return (varKey, True)
-      else do
-        IOSM.insert (varMap globals) id_ rightContext
-        modifyIORef' newAdded (Set.insert (id_,rightContext))
-        return (varKey, False)
+  previouslyVisited <- IOSM.member (varMap globals) id_ rightContext
+  let cases
+          | previouslyVisited = return $ Just (varKey, True)
+          | IntSet.notMember id_ sccMembers = return Nothing
+          | otherwise = do
+              IOSM.insert (varMap globals) id_ rightContext
+              modifyIORef' newAdded (Set.insert (id_,rightContext))
+              return $ Just (varKey, False)
+  cases
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
 lookupIValue globals semiconfId = do
@@ -453,19 +447,19 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
           return (s, actualId)
       doEncode poppedSemiconfs = do
         newAdded <- liftIO $ newIORef Set.empty
-        let to_be_encoded = [(s, semiconfId_, rc) | (s, semiconfId_) <- poppedSemiconfs, rc <- IntSet.toList popContxs]
-        insertedVars <- liftIO $ map snd <$> forM to_be_encoded (\(s, _, rc) -> lookupVar newAdded globals (decode s) rc)
+        let toEncode = [(s, semiconfId_, rc) | (s, semiconfId_) <- poppedSemiconfs, rc <- IntSet.toList popContxs]
+            sccMembers = IntSet.fromList . map snd $ poppedSemiconfs
+        insertedVars <- liftIO $ map (snd . fromJust) <$> forM toEncode (\(s, _, rc) -> lookupVar (newAdded, sccMembers) globals (decode s) rc)
         when (or insertedVars) $ error "inserting a variable that has already been encoded"
-        liftIO $ forM_ to_be_encoded $ \(s, _, rc) -> encode newAdded globals sIdGen delta supports s rc
+        liftIO $ forM_ toEncode $ \(s, _, rc) -> encode (newAdded, sccMembers) globals sIdGen delta supports s rc
         newAddedSet <- liftIO $ readIORef newAdded
-        solveSCCQuery (map snd poppedSemiconfs) newAddedSet globals
+        solveSCCQuery (newAddedSet, sccMembers) globals
         return popContxs
       doNotEncode poppedSemiconfs = do
-        liftIO $ modifyIORef (cannotReachPop globals) $ IntSet.union (IntSet.fromList $ map snd poppedSemiconfs)
         isInitial <- liftIO $ (== 0) <$> IOGS.size (sStack globals)
         when isInitial $ do -- for the initial semiconf, encode anyway
           liftIO $ encodeInitialPush globals sIdGen delta q g semiconfId target
-          solveSCCQuery (map snd poppedSemiconfs) (Set.singleton (semiconfId, -1)) globals
+          solveSCCQuery (Set.singleton (semiconfId, -1), IntSet.singleton semiconfId) globals
         return popContxs
       cases
         | iVal /= topB = return popContxs
@@ -476,7 +470,7 @@ createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, targe
 
 -- encode = generate the set of equation for pairs (semiconf, rightContext) to determine fraction f
 encode :: (SatState state, Eq state, Hashable state, Show state)
-  => IORef (Set (Int,Int))
+  => (IORef (Set (Int,Int)), IntSet)
   -> WeightedGRobals state
   -> SIdGen RealWorld state
   -> Delta state
@@ -484,7 +478,7 @@ encode :: (SatState state, Eq state, Hashable state, Show state)
   -> (StateId state, Stack state)
   -> Int
   -> IO ()
-encode newAdded globals sIdGen delta supports (q,g) rightContext = do
+encode (newAdded, sccMembers) globals sIdGen delta supports (q,g) rightContext = do
   semiconfId <- fromJust <$> HT.lookup (graphMap globals) (decode (q,g))
   let qState = getState q
       qProps = getStateProps (bitenc delta) qState
@@ -492,10 +486,10 @@ encode newAdded globals sIdGen delta supports (q,g) rightContext = do
       cases
 
         | precRel == Just Yield =
-            encodePush newAdded globals sIdGen delta supports q g qState (semiconfId, rightContext)
+            encodePush (newAdded, sccMembers) globals sIdGen delta supports q g qState (semiconfId, rightContext)
 
         | precRel == Just Equal =
-            encodeShift newAdded globals sIdGen delta supports q g qState (semiconfId, rightContext)
+            encodeShift (newAdded, sccMembers) globals sIdGen delta supports q g qState (semiconfId, rightContext)
 
         | precRel == Just Take = do
             distr <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p, prob_)) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
@@ -508,7 +502,7 @@ encode newAdded globals sIdGen delta supports (q,g) rightContext = do
   cases
 
 encodePush :: (SatState state, Eq state, Hashable state, Show state)
-  => IORef (Set (Int,Int))
+  => (IORef (Set (Int,Int)), IntSet)
   -> WeightedGRobals state
   -> SIdGen RealWorld state
   -> Delta state
@@ -518,28 +512,36 @@ encodePush :: (SatState state, Eq state, Hashable state, Show state)
   -> state
   -> (Int, Int)
   -> IO ()
-encodePush newAdded globals sIdGen delta supports q g qState (semiconfId, rightContext) =
+encodePush (newAdded, sccMembers) globals sIdGen delta supports q g qState (semiconfId, rightContext) =
   let suppEnds = fromJust $ (supports V.!? getId q) <|> (Just Set.empty)
       qProps = getStateProps (bitenc delta) qState
-      closeSupports pushDest (unencoded_vars, terms) suppId =
+      closeSupports pushDest (unencodedVars, terms) suppId =
         let suppDest = (suppId, g)
             varsList = [(pushDest, getId suppId), (suppDest, rightContext)]
         in do
-          vars <- mapM (\(sc, rc) -> lookupVar newAdded globals (decode sc) rc) varsList
-          return ( (map fst . filter (not . snd) $ zip varsList (map snd vars)) ++ unencoded_vars ,(map fst vars):terms)
+          maybeTerms <- mapM (\(sc, rc) -> lookupVar (newAdded, sccMembers) globals (decode sc) rc) varsList
+          let newUnencoded = [ semiconf | (semiconf, Just (_, False)) <- zip varsList maybeTerms]
+                           ++ unencodedVars
+          if any isNothing maybeTerms
+            then return (newUnencoded, terms)
+            else return (newUnencoded, map (fst . fromJust) maybeTerms:terms)
 
-      pushEnc (vars, terms) (p, prob_) =
+      pushEnc (newVars, terms) (p, prob_) =
         let dest = (p, Just (qProps, q)) in do
-          (unencoded_vars, varTerms) <- foldM (closeSupports dest) ([], []) suppEnds
-          return (unencoded_vars ++ vars, (map (\[v1, v2] -> (prob_, v1, v2)) varTerms):terms)
+          (unencodedVars, varTerms) <- foldM (closeSupports dest) ([], []) suppEnds
+          return (unencodedVars ++ newVars, (map (\[v1, v2] -> (prob_, v1, v2)) varTerms):terms)
 
   in do
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
-    (unencoded_vars, terms) <- foldM pushEnc ([], []) newStates
-    addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PushEq $ concat terms
-    addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PushEq $ concat terms
+    (unencodedVars, terms) <- foldM pushEnc ([], []) newStates
+    let emptyPush = all null terms
+        pushEq | emptyPush = PopEq 0
+               | otherwise = PushEq $ concat terms
+    when emptyPush $ modifyIORef' newAdded (Set.delete (semiconfId, rightContext))
+    addFixpEq (lowerEqMap globals) (semiconfId, rightContext) pushEq
+    addFixpEq (upperEqMap globals) (semiconfId, rightContext) pushEq
     -- logDebugN $ "Encoding Push: " ++ show terms
-    forM_ unencoded_vars $ \(sc, rc) -> encode newAdded globals sIdGen delta supports sc rc
+    forM_ unencodedVars $ \(sc, rc) -> encode (newAdded, sccMembers) globals sIdGen delta supports sc rc
 
 encodeInitialPush :: (SatState state, Eq state, Hashable state, Show state)
     => WeightedGRobals state
@@ -571,7 +573,7 @@ encodeInitialPush globals sIdGen delta q _ semiconfId suppId  =
       addFixpEq (upperEqMap globals) (-1, -1) $ PopEq (1 :: Double)
 
 encodeShift :: (SatState state, Eq state, Hashable state, Show state)
-  => IORef (Set (Int,Int))
+  => (IORef (Set (Int,Int)), IntSet)
   -> WeightedGRobals state
   -> SIdGen RealWorld state
   -> Delta state
@@ -581,26 +583,32 @@ encodeShift :: (SatState state, Eq state, Hashable state, Show state)
   -> state
   -> (Int, Int)
   -> IO ()
-encodeShift newAdded globals sIdGen delta supports _ g qState (semiconfId, rightContext) =
+encodeShift (newAdded, sccMembers) globals sIdGen delta supports _ g qState (semiconfId, rightContext) =
   let qProps = getStateProps (bitenc delta) qState
-      shiftEnc (new_vars, terms) (p, prob_) = do
+      shiftEnc (newVars, terms) (p, prob_) = do
         let dest = (p, Just (qProps, snd . fromJust $ g))
-        (key, alreadyEncoded) <- lookupVar newAdded globals (decode dest)  rightContext
-        return $ ( if alreadyEncoded then new_vars else dest:new_vars
-                ,(prob_, key):terms)
+        maybeTerm <- lookupVar (newAdded, sccMembers) globals (decode dest) rightContext
+        if isNothing maybeTerm
+          then return (newVars, terms)
+          else let 
+            (varKey, alreadyEncoded) = fromJust maybeTerm
+            newUnencoded = if alreadyEncoded then newVars else dest:newVars
+          in return ( newUnencoded,(prob_, varKey):terms)
   in do
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaShift delta) qState
-    (unencoded_vars, terms) <- foldM shiftEnc ([], []) newStates
-    addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ ShiftEq terms
-    addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ ShiftEq terms
+    (unencodedVars, terms) <- foldM shiftEnc ([], []) newStates
+    let shiftEq | null terms = error "shift semiconfs should go somewhere!"
+                | otherwise = ShiftEq terms
+    addFixpEq (lowerEqMap globals) (semiconfId, rightContext) shiftEq
+    addFixpEq (upperEqMap globals) (semiconfId, rightContext) shiftEq
     -- logDebugN $ "Encoding shift: " ++ show (semiconfId, rightContext) ++ " = ShiftEq " ++ show terms
-    forM_ unencoded_vars $ \sc -> encode newAdded globals sIdGen delta supports sc rightContext
+    forM_ unencodedVars $ \sc -> encode (newAdded, sccMembers) globals sIdGen delta supports sc rightContext
 
 solveSCCQuery :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
-              => [Int] -> Set (Int,Int) -> WeightedGRobals state -> m ()
-solveSCCQuery sccMembers newAdded globals = do
+              => (Set (Int,Int), IntSet) -> WeightedGRobals state -> m ()
+solveSCCQuery (newAdded, sccMembers) globals = do
   let variables = Set.toList newAdded
-      sccLen = length sccMembers
+      sccLen = IntSet.size sccMembers
       epsVar = actualEps globals
       lEqMap = lowerEqMap globals
       uEqMap = upperEqMap globals
