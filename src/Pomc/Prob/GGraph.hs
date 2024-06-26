@@ -32,7 +32,7 @@ import qualified Pomc.Prob.ProbEncoding as PE
 import qualified Pomc.IOSetMap as IOSM
 import qualified Pomc.IOStack as IOGS
 import qualified Pomc.Encoding as E
-import Pomc.Prob.FixPoint(VarKey)
+import Pomc.Prob.FixPoint(VarKey, eqSystemSize)
 
 import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
@@ -615,6 +615,9 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
     logInfoN "Calling Z3 to solve quantitative model checking..."
+    eqSystemSizeL <- eqSystemSize (GR.lowerEqMap globals)
+    eqSystemSizeU <- eqSystemSize (GR.upperEqMap globals)
+    logInfoN $ "Equations stored in memory to compute weights: " ++ show (eqSystemSizeL + eqSystemSizeU)
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
       l <- extractLowerProb . fromJust =<< eval model sumlVar
       u <- extractUpperProb . fromJust =<< eval model sumuVar

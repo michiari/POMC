@@ -26,6 +26,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , defaultMaxIters
                           , toRationalProbVecWithHints
                           , preprocessApproxFixpWithHints
+                          , eqSystemSize
                           ) where
 
 import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
@@ -200,3 +201,6 @@ toRationalProbVecWithHints :: (MonadIO m, RealFrac n) => n -> ProbVec n -> [VarK
 toRationalProbVecWithHints eps probVec lVars =
   liftIO $ forM lVars $ \lVar -> (\p -> (lVar, approxRational (p - eps) eps)) . fromJust <$> HT.lookup probVec lVar
 -- p - eps is to prevent approxRational from producing a result > p
+
+eqSystemSize :: (MonadIO m, RealFrac n) => EqMap n -> m Int 
+eqSystemSize = liftIO . stToIO . BHT.size
