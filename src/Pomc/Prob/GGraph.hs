@@ -632,10 +632,12 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
 type TypicalVarMap = HT.BasicHashTable Int AST
 
 
-encodeTransition :: MonadZ3 z3 => [Prob] -> AST -> z3 AST
-encodeTransition probs toVar = do
-  normalizedProbs <- mapM mkRational probs
-  mkMul $ normalizedProbs ++ [toVar]
+encodeTransition :: MonadZ3 z3 => [Prob] -> [Prob] -> AST -> z3 AST
+encodeTransition probsMul probsDiv toVar = do
+  astProbsMul <- mapM mkRational probsMul
+  astProbsDiv <- mkAdd =<< mapM mkRational probsDiv
+  numerator <- mkMul $ astProbsMul ++ [toVar]
+  mkDiv numerator astProbsDiv
 
 encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
       => GR.WeightedGRobals (AugState pstate)
@@ -691,11 +693,9 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
             -- push edges in the support Graph
             maybePPush = Set.lookupLE (Edge (graphNode toG) 0) $ internalEdges gn
             probPush = prob $ fromJust maybePPush
-            normalizedLProbPush = probPush * (pendProbsLB ! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
-            normalizedUProbPush = probPush * (pendProbsUB ! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
             encodePushTrans = do
-              lT <- encodeTransition [normalizedLProbPush] tolVar
-              uT <- encodeTransition [normalizedUProbPush] touVar
+              lT <- encodeTransition [probPush, pendProbsLB ! (graphNode toG)] [pendProbsUB V.! (graphNode g)] tolVar
+              uT <- encodeTransition [probPush, pendProbsUB ! (graphNode toG)] [pendProbsLB V.! (graphNode g)] touVar
               return [(lT, uT)]
             -- supports edges in the Support Graph
             maybePSupport = Set.lookupLE (Edge (graphNode toG) 0) $ supportEdges gn
@@ -728,10 +728,8 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
             encodeSupportTrans = do
               logDebugN $ "encountered a support transition - launching call to inner computation of fraction f for H node: " ++ show (gId g) ++ " to H node: " ++ show (gId toG)
               (lW, uW) <- GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
-              let normalizedLW = lW * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
-                  normalizedUW = uW * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
-              lT <- encodeTransition [normalizedLW] tolVar
-              uT <- encodeTransition [normalizedUW] touVar
+              lT <- encodeTransition [lW, pendProbsLB V.! (graphNode toG)] [pendProbsUB V.! (graphNode g)] tolVar
+              uT <- encodeTransition [uW, pendProbsUB V.! (graphNode toG)] [pendProbsLB V.! (graphNode g)] touVar
               return [(lT, uT)]
             cases
               | isJust maybePPush && to (fromJust maybePPush) == (graphNode toG) &&
@@ -783,10 +781,8 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
         -- a small trick to be refactored later
         let toG = gGraph V.! toIdx
             p = prob . fromJust . Set.lookupLE (Edge (graphNode toG) 0) $ internalEdges gn
-            normalizedLP = p * (pendProbsLB V.! (graphNode toG)) / ( pendProbsUB V.! (graphNode g))
-            normalizedUP = p * (pendProbsUB V.! (graphNode toG)) / ( pendProbsLB V.! (graphNode g))
-        lT<- encodeTransition [normalizedLP] tolVar
-        uT <- encodeTransition [normalizedUP] touVar
+        lT <- encodeTransition [p, pendProbsLB V.! (graphNode toG)] [pendProbsUB V.! (graphNode g)] tolVar
+        uT <- encodeTransition [p, pendProbsUB V.! (graphNode toG)] [pendProbsLB V.! (graphNode g)] touVar
         return (lT, uT)
 
   in do
