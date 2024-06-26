@@ -620,8 +620,13 @@ solveSCCQuery (newAdded, sccMembers) globals = do
   _ <- preprocessApproxFixpWithHints lEqMap iterEps (2 * sccLen) variables
   (_, unsolvedVars) <- preprocessApproxFixpWithHints uEqMap iterEps (2 * sccLen) variables
 
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCountQuant = acc} -> s{largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
+
   -- lEqMap and uEqMap should be the same here
   unless (null unsolvedVars) $ do
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsQuant = acc} -> s{nonTrivialEquationsQuant = acc + length unsolvedVars}
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCountQuant = acc } -> s{ largestSCCEqsCountQuant = max acc (length unsolvedVars) }
     startWeights <- startTimer
 
     logInfoN "Running OVI to solve the equation system"

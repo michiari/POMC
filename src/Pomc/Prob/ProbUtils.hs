@@ -257,10 +257,15 @@ data Stats = Stats { upperBoundTime :: Double
                    , largestSCCSemiconfsCount :: Int
                    , largestSCCEqsCount :: Int
                    , gGraphTime :: Double
+                   -- quantitative model checking OVI stats
+                   , nonTrivialEquationsQuant :: Int
+                   , sccCountQuant :: Int
+                   , largestSCCSemiconfsCountQuant :: Int
+                   , largestSCCEqsCountQuant :: Int
                    }
 
 newStats :: Stats
-newStats = Stats 0 0 0 0 0 0 0 0 0 0 0
+newStats = Stats 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
 debug :: String -> a -> a
 --debug = DBG.trace

@@ -182,6 +182,10 @@ main = do
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
                        , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
+                       , "\nNon-trivial equations solved for quant mc: ", show $ nonTrivialEquationsQuant stats
+                       , "\nSCC count in quant mc weight computation: ", show $ sccCountQuant stats
+                       , "\nSize of the largest SCC in quant mc weight computation: ", show $ largestSCCSemiconfsCountQuant stats
+                       , "\nLargest number of equations in an SCC in quant mc weight computation: ", show $ largestSCCEqsCountQuant stats
                        ])
       return time
 
