@@ -564,6 +564,8 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       newIVector <- HT.new
       newScntxs <- HT.new
       newLowerEqMap <- HT.new
+      newLowerLiveVars <- newIORef Set.empty
+      newUpperLiveVars <- newIORef Set.empty
       newUpperEqMap <- HT.new
       newEps <- newIORef defaultTolerance
       return GR.WeightedGRobals { GR.idSeq = newIdSeq
@@ -573,8 +575,8 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                                 , GR.bStack = newBStack
                                 , GR.iVector = newIVector
                                 , GR.successorsCntxs = newScntxs
-                                , GR.lowerEqMap = newLowerEqMap
-                                , GR.upperEqMap = newUpperEqMap
+                                , GR.lowerEqMap = (newLowerEqMap, newLowerLiveVars)
+                                , GR.upperEqMap = (newUpperEqMap, newUpperLiveVars)
                                 , GR.actualEps = newEps
                                 , GR.stats = oldStats
                                 }

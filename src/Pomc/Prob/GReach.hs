@@ -28,7 +28,7 @@ import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 import Pomc.Encoding (BitEncoding)
 import Pomc.Prec (Prec(..))
 import Pomc.Check(EncPrecFunc)
-import Pomc.Prob.OVI (oviWithHints, oviToRationalWithHints, defaultOVISettingsDouble, OVIResult(..))
+import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
 
 import Pomc.SatUtil
 
@@ -273,8 +273,8 @@ data WeightedGRobals state = WeightedGRobals
   , bStack     :: IOStack Int
   , iVector    :: HT.BasicHashTable Int Int
   , successorsCntxs :: HT.BasicHashTable Int IntSet
-  , upperEqMap :: EqMap EqMapNumbersType
-  , lowerEqMap :: EqMap EqMapNumbersType
+  , upperEqMap :: AugEqMap EqMapNumbersType
+  , lowerEqMap :: AugEqMap EqMapNumbersType
   , actualEps :: IORef EqMapNumbersType
   , stats :: STRef RealWorld Stats
   }
@@ -307,13 +307,13 @@ weightQuerySCC globals sIdGen delta supports current target = do
 
   -- returning the computed values
   eps <- liftIO $ readIORef (actualEps globals)
-  lb <- liftIO $ (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (lowerEqMap globals) (actualId, -1)
-  ub <- liftIO $ (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (upperEqMap globals) (actualId, -1)
+  lb <- liftIO $ (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> HT.lookup (fst $ lowerEqMap globals) (actualId, -1)
+  ub <- liftIO $ (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> HT.lookup (fst $ upperEqMap globals) (actualId, -1)
   -- cleaning the hashtable
-  liftIO $ HT.delete (lowerEqMap globals) (actualId, -1)
-  liftIO $ HT.delete (upperEqMap globals) (actualId, -1)
-  liftIO $ HT.delete (lowerEqMap globals) (-1, -1)
-  liftIO $ HT.delete (upperEqMap globals) (-1, -1)
+  liftIO $ deleteFixpEq (lowerEqMap globals) (actualId, -1)
+  liftIO $ deleteFixpEq (upperEqMap globals) (actualId, -1)
+  liftIO $ deleteFixpEq (lowerEqMap globals) (-1, -1)
+  liftIO $ deleteFixpEq (upperEqMap globals) (-1, -1)
   logDebugN $ "Returning weights: " ++ show (lb, ub)
   when (lb > ub || lb > 1 || ub > 1.3) $ error "unsound bounds on weight for this summary transition"
   return (lb, ub)
@@ -617,8 +617,8 @@ solveSCCQuery (newAdded, sccMembers) globals = do
   let iterEps = min defaultEps $ currentEps * currentEps
 
   -- preprocessing to solve variables that do not need ovi
-  _ <- preprocessApproxFixpWithHints lEqMap iterEps (2 * sccLen) variables
-  (_, unsolvedVars) <- preprocessApproxFixpWithHints uEqMap iterEps (2 * sccLen) variables
+  _ <- preprocessApproxFixp lEqMap iterEps (2 * sccLen)
+  (_, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (2 * sccLen)
 
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCountQuant = acc} -> s{largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
@@ -629,10 +629,10 @@ solveSCCQuery (newAdded, sccMembers) globals = do
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCountQuant = acc } -> s{ largestSCCEqsCountQuant = max acc (length unsolvedVars) }
     startWeights <- startTimer
 
-    logInfoN "Running OVI to solve the equation system"
-    oviRes <- oviWithHints defaultOVISettingsDouble uEqMap unsolvedVars
+    logInfoN "Running OVI to compute an upper bound to the equation system"
+    oviRes <- ovi defaultOVISettingsDouble uEqMap
 
-    rCertified <- oviToRationalWithHints defaultOVISettingsDouble uEqMap oviRes unsolvedVars
+    rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
     unless rCertified $ error "cannot deduce a rational certificate for this SCC when computing fraction f"
 
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
@@ -641,16 +641,16 @@ solveSCCQuery (newAdded, sccMembers) globals = do
     liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
 
     -- updating lower bounds
-    approxVec <- approxFixpWithHints lEqMap iterEps defaultMaxIters unsolvedVars
+    approxVec <- approxFixp lEqMap iterEps defaultMaxIters
     forM_ unsolvedVars $ \varKey -> liftIO $ do
-      HT.lookup lEqMap varKey >>= \case
+      HT.lookup (fst lEqMap) varKey >>= \case
           Just (PopEq _) -> error "trying to update a dead variable"
           _ -> do
             p <- fromJust <$> HT.lookup approxVec varKey
             addFixpEq lEqMap varKey (PopEq p)
 
     -- updating upper bounds
-    upperBound <- liftIO $ foldM (\acc varKey -> HT.lookup uEqMap varKey >>= \case
+    upperBound <- liftIO $ foldM (\acc varKey -> HT.lookup (fst uEqMap) varKey >>= \case
           Just (PopEq _) -> error "trying to update a variable that is already dead"
           _ -> do
             p <- fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
