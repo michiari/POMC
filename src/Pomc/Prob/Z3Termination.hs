@@ -55,7 +55,7 @@ import Data.STRef (STRef, modifySTRef')
 -- each Z3 variable represents [[q,b | p ]]
 -- where q,b is the semiconfiguration associated with the graphNode of the key
 -- and p is the state associated with the StateId of the key
-type VarMap = (HT.BasicHashTable VarKey AST, HT.BasicHashTable VarKey AST, IntSet, Bool)
+type VarMap = (HT.BasicHashTable VarKey AST, IntSet, Bool)
 
 --helpers
 encodeTransition :: MonadZ3 z3 => Edge -> AST -> z3 AST
@@ -77,7 +77,7 @@ mkMul1 = mkOp1 mkMul
 lookupVar :: MonadZ3 z3
           => VarMap -> (AugEqMap EqMapNumbersType, AugEqMap EqMapNumbersType) -> VarKey
           -> z3 (Maybe (AST, Bool))
-lookupVar (varMap, newAdded, sccMembers, encodeInitial) (leqMap, uEqMap) key = do
+lookupVar (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) key = do
   maybeVar <- liftIO $ HT.lookup varMap key
   let cases
         | isJust maybeVar = return $ Just (fromJust maybeVar, True)
@@ -91,7 +91,6 @@ lookupVar (varMap, newAdded, sccMembers, encodeInitial) (leqMap, uEqMap) key = d
         | otherwise = do -- it might happen that we discover new variables, in case of cycles that keep pushing
             var <- mkFreshRealVar $ show key
             liftIO $ HT.insert varMap key var
-            liftIO $ HT.insert newAdded key var
             return $ Just (var, False)
   cases
 
@@ -107,7 +106,7 @@ encode :: (MonadZ3 z3, MonadFail z3, Eq state, Hashable state, Show state)
        -> Bool
        -> z3 ()
 encode [] _ _ _ _ _ _ = return ()
-encode ((gnId_, rightContext):unencoded) varMap@(m, _, _, _) (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 = do
+encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 = do
   let varKey = (gnId_, rightContext)
   var <- liftIO $ fromJust <$> HT.lookup m varKey
   let gn = graph ! gnId_
@@ -150,7 +149,7 @@ encodePush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
            -> AST
            -> Bool
            -> z3 [(Int, Int)]
-encodePush graph varMap@(m, newAdded, _, _) (lowerEqMap, upperEqMap) mkComp  gn varKey@(_, rightContext) var useZ3 =
+encodePush graph varMap@(m, _, _) (lowerEqMap, upperEqMap) mkComp  gn varKey@(_, rightContext) var useZ3 =
   let closeSummaries pushGn (currs, newVars, terms) e = do
         let supportGn = graph ! (to e)
             varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
@@ -191,7 +190,6 @@ encodePush graph varMap@(m, newAdded, _, _) (lowerEqMap, upperEqMap) mkComp  gn 
           -- logDebugN $ "Asserting Push equation: " ++ eqString
           assert eq
 
-    when emptyPush $ liftIO $ HT.delete newAdded varKey
     addFixpEq upperEqMap varKey pushEq
     addFixpEq lowerEqMap varKey pushEq
     return unencoded_vars
@@ -419,25 +417,22 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
           liftIO $ MV.unsafeWrite (successorsCntxs globals) e popContxs
         return poppedEdges
       doEncode poppedEdges  = do
-        newAdded <- liftIO HT.new
         let toEncode = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
             sccMembers = IntSet.fromList poppedEdges
-        insertedVars <- map (snd . fromJust) <$> forM toEncode (lookupVar (varMap, newAdded, sccMembers, encodeInitial) (lEqMap, uEqMap))
+        insertedVars <- map (snd . fromJust) <$> forM toEncode (lookupVar (varMap, sccMembers, encodeInitial) (lEqMap, uEqMap))
         when (or insertedVars ) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
-        reset >> encode toEncode (varMap, newAdded, sccMembers, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
-        actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, newAdded, sccMembers, encodeInitial) globals precFun (useZ3, exactEq)
+        reset >> encode toEncode (varMap, sccMembers, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
+        actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, sccMembers, encodeInitial) globals precFun (useZ3, exactEq)
         when actualMustReachPop $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef' (mustReachPop globals) $ IntSet.insert e
         return (popContxs, actualMustReachPop)
       doNotEncode = do
         if gnId gn == 0 && encodeInitial
           then do -- for the initial semiconf, encode anyway
-            newAdded <- liftIO HT.new
             var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
             liftIO $ HT.insert varMap (0, -1) var
-            liftIO $ HT.insert newAdded (0, -1) var
-            reset >> encode [(0, -1)] (varMap, newAdded, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
-            actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, newAdded, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
+            reset >> encode [(0, -1)] (varMap, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
+            actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
             return (popContxs, actualMustReachPop)
           else return (popContxs, False)
       cases
@@ -452,43 +447,31 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
 solveSCCQuery :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)
               => SupportGraph state -> Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> (Bool, Bool) -> z3 Bool
-solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) globals precFun (useZ3, exactEq) = do
+solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun (useZ3, exactEq) = do
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCount = acc} -> s{largestSCCSemiconfsCount = max acc (IntSet.size sccMembers)}
-  variables <- liftIO $ map fst <$> HT.toList newAdded
-  logDebugN $ "New variables of this SCC: " ++ show variables
+  --logDebugN $ "New variables of this SCC: " ++ show variables
   currentEps <- liftIO $ readIORef (eps globals)
 
   let lEqMap = lowerEqMap globals
       uEqMap = upperEqMap globals
       rVarMap = rewVarMap globals
       augTolerance = 100 * defaultTolerance
+      sccLen = IntSet.size sccMembers
       cases unsolvedVars
-        | null unsolvedVars = logDebugN "No equation system has to be solved here, just propagated all the values."
-        | useZ3 = do
-            updateLowerBound unsolvedVars
-            updateUpperBoundsZ3 unsolvedVars
-        | otherwise = do
-          updateLowerBound unsolvedVars
-          updateUpperBoundsOVI unsolvedVars
-      updateLowerBound unsolvedVars = do
+        | null unsolvedVars = logDebugN "No equation system has to be solved here, just propagated all the values." >> return []
+        | useZ3 = updateLowerBound >> updateUpperBoundsZ3
+        | otherwise = updateLowerBound >> updateUpperBoundsOVI
+      updateLowerBound = do
         -- updating lower bounds
-        liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquations = acc} -> s{nonTrivialEquations = acc + length unsolvedVars}
         approxVec <- approxFixp lEqMap defaultEps defaultMaxIters
-        forM_ unsolvedVars $ \varKey -> do
-          liftIO (HT.lookup (fst lEqMap) varKey) >>= \case
-              Just (PopEq _) -> error "trying to update a variable that is already dead"
-              _ -> do
-                p <- liftIO $ fromJust <$> HT.lookup approxVec varKey
-                addFixpEq lEqMap varKey (PopEq p)
+        liftIO $ HT.mapM_ (\(varKey, p) -> addFixpEq lEqMap varKey (PopEq p)) approxVec
       --
       doAssert approxFracVec currentEps = do
         push -- create a backtracking point
         epsReal <- mkRealNum currentEps
 
-        forM_ approxFracVec (\(varKey, pRational) -> liftIO (HT.lookup (fst uEqMap) varKey) >>= \case
-          Just (PopEq _) -> error "trying to update a variable that is already dead"
-          _ -> do
+        forM_ approxFracVec (\(varKey, pRational) -> do
             var <- liftIO $ fromJust <$> HT.lookup m varKey
             pReal <- mkRealNum pRational
             assert =<< mkGe var pReal
@@ -506,7 +489,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
             | otherwise -> error "Maximum tolerance reached when solving SCC"
           _ -> error "Undefinite result when checking an SCC"
       --
-      updateUpperBoundsZ3 unsolvedVars = do
+      updateUpperBoundsZ3 = do
         startUpper <- startTimer
         logDebugN "Approximating via Value Iteration + z3"
         approxVec <- approxFixp uEqMap defaultEps defaultMaxIters
@@ -516,23 +499,20 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
         model <- doAssert approxFracVec (min defaultTolerance currentEps)
 
         -- actual updates
-        augUnsolvedVars <- liftIO $ mapM (\k -> (k,) . fromJust <$> HT.lookup newAdded k) unsolvedVars
-        forM_ augUnsolvedVars $ \(varKey, varAST) -> do
+        upperBound <- liftIO (HT.toList approxVec) >>= foldM (\acc (varKey, _) -> do
+          varAST <- liftIO $ fromJust <$> HT.lookup m varKey
           ubAST <- fromJust <$> eval model varAST
+          pDouble <- extractUpperDouble ubAST
           liftIO $ HT.insert m varKey ubAST
+          addFixpEq uEqMap varKey (PopEq pDouble)
+          return ((varKey, pDouble):acc)
+          ) []
 
-        upperBound <- foldM (\acc (varKey, varAST) -> do
-          liftIO (HT.lookup (fst uEqMap) varKey) >>= \case
-              Just (PopEq _) -> error "trying to update a variable that is already dead"
-              _ -> do
-                pDouble <- extractUpperDouble . fromJust =<< eval model varAST
-                addFixpEq uEqMap varKey (PopEq pDouble)
-                return ((varKey, pDouble):acc))
-          [] augUnsolvedVars
-        tUpper <- stopTimer startUpper $ null upperBound
+        tUpper <- stopTimer startUpper $True
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
+        return upperBound
       --
-      updateUpperBoundsOVI unsolvedVars = do
+      updateUpperBoundsOVI = do
         startUpper <- startTimer
         logDebugN "Using OVI to update upper bounds"
         oviRes <- ovi defaultOVISettingsDouble uEqMap
@@ -541,26 +521,20 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
         unless (oviSuccess oviRes || rCertified) $ error "OVI was not successful in computing an upper bound on the termination probabilities"
 
         -- actual updates
-        forM_ unsolvedVars $ \varKey -> do
-          ub <- liftIO $ min (1 :: Double) . fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
+        liftIO (HT.toList $ oviUpperBound oviRes) >>= mapM_ ( \(varKey, p) -> do
+          let ub = min (1 :: Double) p
           ubAST <- mkRealNum ub
           liftIO $ HT.insert m varKey ubAST
+          addFixpEq uEqMap varKey (PopEq p)
+          ) 
 
-        upperBound <- foldM (\acc varKey -> do
-          liftIO (HT.lookup (fst uEqMap) varKey) >>= \case
-              Just (PopEq _) -> error "trying to update a variable that is already dead"
-              _ -> do
-                p <- liftIO $ fromJust <$> HT.lookup (oviUpperBound oviRes) varKey
-                addFixpEq uEqMap varKey (PopEq p)
-                return ((varKey, p): acc))
-          [] unsolvedVars
-
-        tUpper <- stopTimer startUpper $ null upperBound
+        tUpper <- stopTimer startUpper True
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
+        liftIO $ HT.toList (oviUpperBound oviRes)
 
   -- preprocessing phase
-  _ <- preprocessApproxFixp lEqMap defaultEps (3 * IntSet.size sccMembers)
-  (updatedUpperVars, unsolvedVars) <- preprocessApproxFixp uEqMap defaultEps (3 * IntSet.size sccMembers)
+  _ <- preprocessApproxFixp lEqMap defaultEps (2 * sccLen)
+  (updatedUpperVars, unsolvedVars) <- preprocessApproxFixp uEqMap defaultEps (2 * sccLen)
   forM_ updatedUpperVars $ \(varKey, p) -> do
     pAST <- mkRealNum (p :: Double)
     liftIO $ HT.insert m varKey pAST
@@ -568,11 +542,12 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
   -- lEqMap and uEqMap have the same number of unsolved equations
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars) }
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquations = acc} -> s{nonTrivialEquations = acc + length unsolvedVars}
+
 
   -- find bounds for this SCC
-  cases unsolvedVars
-  upperBound <- liftIO $ forM variables $ \k -> do PopEq u <- fromJust <$> HT.lookup (fst uEqMap) k; return (k,u)
-  let upperBoundsTermProbs = Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ upperBound
+  upperBound <- cases unsolvedVars
+  let upperBoundsTermProbs = Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ (upperBound ++ updatedUpperVars)
   let upperBounds = GeneralMap.fromList upperBound
   logDebugN $ unlines
     [ "Computed upper bounds: " ++ show upperBounds
@@ -584,10 +559,12 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
   -- computing the PAST certificate (if needed)
   let nonASTprobs = all (\(_,ub) -> ub < 1 - augTolerance) (Map.toList upperBoundsTermProbs)
       aSTprobs = all (\(_,ub) -> ub > 1 - augTolerance) (Map.toList upperBoundsTermProbs)
+      exactASTprobs = all (\(_,ub) -> ub > 1 - defaultTolerance) (Map.toList upperBoundsTermProbs)
       pASTCertCases
-        | not dMustReachPop && not nonASTprobs = error "Descendants are not PAST but this SCC has termination upper bound equal to 1"
+        | null unsolvedVars = return dMustReachPop -- just propagating
+        | exactEq = return exactASTprobs
+        | not dMustReachPop && aSTprobs = error "Descendants are not PAST but this SCC has termination upper bound equal to 1"
         | nonASTprobs = logDebugN "The upper bound is enough to prove non AST" >> return False
-        | null unsolvedVars || exactEq = return True
         | otherwise = do
           startPast <- startTimer
           forM_ (IntSet.toList sccMembers) $ \k -> do
@@ -599,9 +576,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m, newAdded, sccMembers, _) global
                                   evaluated <- fromJust <$> eval model var
                                   liftIO $ HT.insert rVarMap k evaluated
                               ) >>= \case
-            (Unsat, _) -> do
-              unless nonASTprobs $ error "fail to prove PAST when some semiconfs have upper bounds on their termination equal to 1"
-              logDebugN "PAST certification failed!" >> return False
+            (Unsat, _) -> error "fail to prove PAST when some semiconfs have upper bounds on their termination equal to 1"
             (Sat, _) -> do
               unless aSTprobs $ error "Found a PAST certificate for non AST SCC!!"
               logDebugN "PAST certification succeeded!" >> return True
@@ -670,7 +645,7 @@ encodeRewPush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
               -> GraphNode state
               -> AST
               -> z3 [RewVarKey]
-encodeRewPush graph (m, _, _ ,_) rewVarMap mkComp gn var =
+encodeRewPush graph (m, _ ,_) rewVarMap mkComp gn var =
   let closeSummaries pushGn (currs, unencoded_vars) e = do
         let supportGn = graph ! (to e)
         maybeTermProb <- liftIO $ HT.lookup m (gnId pushGn, getId . fst . semiconf $ supportGn)

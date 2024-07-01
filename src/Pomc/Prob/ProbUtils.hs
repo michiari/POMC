@@ -232,10 +232,10 @@ extractUpperDouble ast = extractUpperAst ast >>= getNumeralDouble
 extractLowerAst :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 AST
 extractLowerAst ast = do
   isAlgebraic <- isAlgebraicNumber ast
-  logDebugN . show =<< getAstKind ast
-  logDebugN . show =<< isAlgebraicNumber ast
-  logDebugN . show =<< isNumeralAst ast
-  logDebugN . show =<< astToString ast
+  logDebugN . ("AST kind: " ++) . show =<< getAstKind ast
+  logDebugN . ("Is it an algebraic number: " ++) . show =<< isAlgebraicNumber ast
+  logDebugN . ("Is it a numeral number: " ++) . show =<< isNumeralAst ast
+  logDebugN . ("AST string representation: " ++) . show =<< astToString ast
   if isAlgebraic
     then getAlgebraicNumberLower ast 5
     else return ast
@@ -248,6 +248,7 @@ extractLowerDouble ast = extractLowerAst ast >>= getNumeralDouble
 
 data Stats = Stats { upperBoundTime :: Double
                    , pastTime :: Double
+                   , gGraphTime :: Double
                    , quantWeightTime :: Double
                    , quantSolTime :: Double
                    , suppGraphLen :: Int
@@ -256,7 +257,6 @@ data Stats = Stats { upperBoundTime :: Double
                    , sccCount :: Int
                    , largestSCCSemiconfsCount :: Int
                    , largestSCCEqsCount :: Int
-                   , gGraphTime :: Double
                    -- quantitative model checking OVI stats
                    , nonTrivialEquationsQuant :: Int
                    , sccCountQuant :: Int
