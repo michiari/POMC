@@ -32,7 +32,7 @@ young() {
 
 elder(bool &casualty) {
   bool get_vaccine;
-  bool inner_casualty;
+  bool innerCasualty;
   u3 y, e;
 
   y = 0u3 {1u2 : 2u2} 1u3;
@@ -47,7 +47,7 @@ elder(bool &casualty) {
   }
 
   while (e > 0u3) {
-    query elder(inner_casualty);
+    query elder(innerCasualty);
     e = e - 1u3;
   }
 
