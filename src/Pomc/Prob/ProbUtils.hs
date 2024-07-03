@@ -215,10 +215,10 @@ toUpperProb r = error $ "cannot convert a non single probability result. Got ins
 extractUpperAst :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 AST
 extractUpperAst ast = do
   isAlgebraic <- isAlgebraicNumber ast
-  logDebugN . show =<< getAstKind ast
-  logDebugN . show =<< isAlgebraicNumber ast
-  logDebugN . show =<< isNumeralAst ast
-  logDebugN . show =<< astToString ast
+  logDebugN . ("AST kind: " ++) . show =<< getAstKind ast
+  logDebugN . ("Is it an algebraic number: " ++) . show =<< isAlgebraicNumber ast
+  logDebugN . ("Is it a numeral number: " ++) . show =<< isNumeralAst ast
+  logDebugN . ("AST string representation: " ++) . show =<< astToString ast
   if isAlgebraic
     then getAlgebraicNumberUpper ast 5
     else return ast
