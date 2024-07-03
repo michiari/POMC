@@ -20,8 +20,8 @@ import Pomc.Prob.FixPoint
 import Pomc.LogUtils (MonadLogger, logDebugN)
 
 import Data.Ratio ((%), approxRational)
-import Data.Maybe (fromJust, isJust)
-import Control.Monad (forM, when)
+import Data.Maybe (fromJust)
+import Control.Monad (forM)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST (stToIO)
 import qualified Data.HashTable.IO as HT
@@ -32,7 +32,6 @@ import qualified Data.Vector.Mutable as MV
 import Witch.Instances (realFloatToRational)
 import Data.IORef (readIORef)
 import qualified Data.Set as Set
-import Data.Scientific (toRealFloat)
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviMaxKleeneIters :: Int
@@ -207,8 +206,8 @@ computeEigen augEqMap leqSys eps maxIters lowerApprox eigenVec = do
 ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
     => OVISettings n -> AugEqMap n -> m (OVIResult n)
 ovi settings augEqMap@(eqMap, _) = do
-  s <- liftIO . stToIO $ BHT.size eqMap
-  logDebugN $ "Starting OVI on a system with " ++ show s ++ " variables..."
+  s <- liftIO $ MV.length <$> readIORef eqMap
+  logDebugN $ "Starting OVI on a system with " ++ show s ++ " semiconfigurations... (cannot compute anymore easily the number of variables)"
   lowerApprox <- zeroLiveVec augEqMap
   -- initialize upperApprox with lowerApprox, so we copy non-alive variable values
   upperApprox <- copyVec lowerApprox
@@ -288,7 +287,6 @@ oviToRational settings augEqMap@(_, _) oviRes = do
       f2eps p = approxRational (p + eps) eps
       showF1 = "realFloatToRational"
       showF2 = "approxRational + eps"
-
 
   rleqSys <- toLiveEqMap augEqMap
   -- Convert upper bound to rational

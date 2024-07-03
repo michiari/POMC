@@ -48,6 +48,7 @@ import Z3.Monad
 import Data.IORef (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 
 import Data.STRef (STRef, modifySTRef')
+import qualified Pomc.IOMapMap as MM
 
 -- import qualified Debug.Trace as DBG
 
@@ -265,8 +266,8 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   newIVec            <- liftIO $ MV.replicate (V.length suppGraph) 0
   newSuccessorsCntxs <- liftIO $ MV.replicate (V.length suppGraph) IntSet.empty
   newMap <- liftIO HT.new
-  newUpperEqMap <- liftIO HT.new
-  newLowerEqMap <- liftIO HT.new
+  newUpperEqMap <- liftIO $ MM.empty
+  newLowerEqMap <- liftIO $ MM.empty
   newLowerLiveVars <- liftIO $ newIORef Set.empty
   newUpperLiveVars <- liftIO $ newIORef Set.empty
   emptyMustReachPop <- liftIO $ newIORef IntSet.empty
@@ -309,36 +310,36 @@ terminationQuerySCC suppGraph precFun query oldStats = do
         upperProbRationalMap <- GeneralMap.fromList <$> (mapM (\(varKey, varAST) -> do
             pRational <- extractUpperProb varAST
             return (varKey, pRational)) =<< liftIO (HT.toList newMap))
-        lowerProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newLowerEqMap)
+        lowerProbMap <- liftIO $ GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newLowerEqMap
         let lowerProbRationalMap = GeneralMap.map (\v -> approxRational (v - actualEps) actualEps) lowerProbMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
       readResults (ApproxSingleQuery SMTWithHints) = do
         ub <- if isAST then return 1 else extractUpperProb . fromJust =<< liftIO (HT.lookup newMap (0,-1))
-        lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
+        lb <- if isAST then return 1 else liftIO $ (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap 0 (-1)
         return (ApproxSingleResult (lb, ub), mustReachPopIdxs)
       readResults (CompQuery comp bound SMTWithHints) = do
         ub <- if isAST then return 1 else extractUpperProb . fromJust =<< liftIO (HT.lookup newMap (0,-1))
         logInfoN $ "Computed upper bound: " ++ show ub
-        lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
+        lb <- if isAST then return 1 else liftIO $  (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap 0 (-1)
         logInfoN $ "Computed lower bound: " ++ show lb
         logInfoN $ "Comparing: " ++ show comp ++ " " ++ show bound
         return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
       readResults (ApproxAllQuery ExactSMTWithHints) = readResults (ApproxAllQuery SMTWithHints)
       readResults (ApproxSingleQuery ExactSMTWithHints) = readResults (ApproxSingleQuery SMTWithHints)
       readResults (CompQuery comp bound ExactSMTWithHints) = readResults (CompQuery comp bound SMTWithHints)
-      readResults (ApproxAllQuery OVI) = do
-        upperProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newUpperEqMap)
+      readResults (ApproxAllQuery OVI) = liftIO $ do
+        upperProbMap <- GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newUpperEqMap
         let upperProbRationalMap = GeneralMap.map (\v -> approxRational (v + actualEps) actualEps) upperProbMap
-        lowerProbMap <- GeneralMap.fromList . map (\(k, PopEq d) -> (k, d)) <$> liftIO (HT.toList newLowerEqMap)
+        lowerProbMap <- GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newLowerEqMap
         let lowerProbRationalMap = GeneralMap.map (\v -> approxRational (v - actualEps) actualEps) lowerProbMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
-      readResults (ApproxSingleQuery OVI) = do
-        ub <- if isAST then return 1 else (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newUpperEqMap (0,-1))
-        lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
+      readResults (ApproxSingleQuery OVI) = liftIO $ do
+        ub <- if isAST then return 1 else (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> MM.lookupValue newUpperEqMap  0 (-1)
+        lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap  0 (-1)
         return (ApproxSingleResult (lb, ub), mustReachPopIdxs)
-      readResults (CompQuery comp bound OVI) = do
-        ub <- if isAST then return 1 else (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newUpperEqMap (0,-1))
-        lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> liftIO (HT.lookup newLowerEqMap (0,-1))
+      readResults (CompQuery comp bound OVI) = liftIO $ do
+        ub <- if isAST then return 1 else (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> MM.lookupValue newUpperEqMap  0 (-1)
+        lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap  0 (-1)
         return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
   readResults query
 

@@ -29,10 +29,9 @@ import qualified Pomc.Prob.GReach as GR
 import Pomc.Prob.SupportGraph(GraphNode(..), Edge(..), SupportGraph)
 import Pomc.Prob.ProbEncoding(ProbEncodedSet)
 import qualified Pomc.Prob.ProbEncoding as PE
-import qualified Pomc.IOSetMap as IOSM
 import qualified Pomc.IOStack as IOGS
 import qualified Pomc.Encoding as E
-import Pomc.Prob.FixPoint(VarKey, eqSystemSize)
+import Pomc.Prob.FixPoint(VarKey)
 
 import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
@@ -65,6 +64,7 @@ import qualified Data.HashTable.ST.Basic as BH
 
 import Z3.Monad
 import Pomc.Z3T
+import qualified Pomc.IOMapMap as MM
 
 -- import qualified Debug.Trace as DBG
 
@@ -558,19 +558,17 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     globals <- liftIO $ do
       newIdSeq <- newIORef 0
       newGraphMap <- HT.new
-      newFVarMap <- IOSM.empty
       newSStack <- IOGS.new
       newBStack <- IOGS.new
       newIVector <- HT.new
       newScntxs <- HT.new
-      newLowerEqMap <- HT.new
+      newLowerEqMap <- MM.empty
+      newUpperEqMap <- MM.empty
       newLowerLiveVars <- newIORef Set.empty
       newUpperLiveVars <- newIORef Set.empty
-      newUpperEqMap <- HT.new
       newEps <- newIORef defaultTolerance
       return GR.WeightedGRobals { GR.idSeq = newIdSeq
                                 , GR.graphMap = newGraphMap
-                                , GR.varMap  = newFVarMap
                                 , GR.sStack = newSStack
                                 , GR.bStack = newBStack
                                 , GR.iVector = newIVector
@@ -617,9 +615,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
     logInfoN "Calling Z3 to solve quantitative model checking..."
-    eqSystemSizeL <- eqSystemSize (GR.lowerEqMap globals)
-    eqSystemSizeU <- eqSystemSize (GR.upperEqMap globals)
-    logInfoN $ "Equations stored in memory to compute weights: " ++ show (eqSystemSizeL + eqSystemSizeU)
+    logInfoN "In the new implementation it is too expensive to compute the number of stored equations"
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
       l <- extractLowerProb . fromJust =<< eval model sumlVar
       u <- extractUpperProb . fromJust =<< eval model sumuVar
