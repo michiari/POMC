@@ -89,11 +89,10 @@ def exec_bench(fname, args):
 
     time_match = time_pattern.search(raw_stdout)
     mem_match = mem_pattern.search(raw_stderr)
-    result_match = result_pattern.findall(raw_stdout)
+    result_match = result_pattern.search(raw_stdout)
     quant_result_match = quant_result_pattern.search(raw_stdout)
     states_match = states_pattern.search(raw_out)
     ub_match = ub_pattern.search(raw_out)
-    print(f"ub match: {ub_match}")
     past_match = past_pattern.search(raw_out)
     gg_match = gg_pattern.search(raw_stdout)
     memgc_match = memgc_pattern.search(raw_stderr)
