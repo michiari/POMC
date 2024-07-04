@@ -251,7 +251,6 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
 
     startGGTime <- startTimer
     almostSurely <- GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc pendVector
-
     tGG <- stopTimer startGGTime almostSurely
 
     return (almostSurely, computedStats { gGraphTime = tGG }, show sc ++ show pendVector)
@@ -391,13 +390,9 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     logDebugN $ "Pending Upper Bounds Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
 
-    startGGTime <- startTimer
     (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain mustReachPopIdxs lbProbs ubProbs stats
-
-    tGG <- stopTimer startGGTime ub
     computedStats <- liftSTtoIO $ readSTRef stats
-
-    return ((ub, lb), computedStats { gGraphTime = tGG }, show supportChain ++ show pendVector)
+    return ((ub, lb), computedStats, show supportChain ++ show pendVector)
 
 quantitativeModelCheckProgram :: (MonadIO m, MonadFail m, MonadLogger m)
                               => Solver

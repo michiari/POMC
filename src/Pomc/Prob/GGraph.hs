@@ -478,6 +478,7 @@ quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord pstate, Ha
                        -> STRef RealWorld Stats
                        -> m (Prob, Prob)
 quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds oldStats = do
+  startGGTime <- startTimer
   -- global data structures for constructing graph G
   gGlobals <- liftSTtoIO $ do
     newIdSequence <- newSTRef (0 :: Int)
@@ -520,6 +521,9 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
   freezedGGraph <- liftSTtoIO $ V.freeze computedGraph
 
   logInfoN "Computed qualitative model checking..."
+  tGG <- stopTimer startGGTime hSCCs
+  liftSTtoIO $ modifySTRef' oldStats (\s -> s {gGraphTime = tGG })
+
   -- bottomString <- show <$> readSTRef (bottomHSCCs hGlobals)
   -- gString <- CM.showMap computedGraph
   -- logDebugN gString

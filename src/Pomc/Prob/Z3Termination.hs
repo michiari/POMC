@@ -509,7 +509,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
           return ((varKey, pDouble):acc)
           ) []
 
-        tUpper <- stopTimer startUpper $True
+        tUpper <- stopTimer startUpper upperBound
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
         return upperBound
       --
