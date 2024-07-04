@@ -13,15 +13,22 @@ import csv
 time_pattern = re.compile(r"Total elapsed time: .+ \(([0-9]+\.[0-9]+e[\+\-0-9]+) s\)")
 mem_pattern = re.compile(r"Max memory used \(KB\): ([0-9]+)")
 result_pattern = re.compile(r"Result:  ((True)|(False))")
+quant_result_pattern = re.compile(r"Result:  (\([0-9]+ % [0-9]+\,[0-9]+ % [0-9]+\))")
 states_pattern = re.compile(r"Input (OPA|pOPA) state count: ([0-9]+)")
 supp_pattern = re.compile(r"Support graph size: ([0-9]+)")
 eqs_pattern = re.compile(r"Non-trivial equations solved for termination probabilities: ([0-9]+)")
 sccs_pattern = re.compile(r"SCC count in the support graph: ([0-9]+)")
 maxscc_pattern = re.compile(r"Size of the largest SCC in the support graph: ([0-9]+)")
 maxeqs_pattern = re.compile(r"Largest number of equations in an SCC in the Support Graph: ([0-9]+)")
+quant_eqs_pattern = re.compile(r"Non-trivial equations solved for quant mc: ([0-9]+)")
+quant_sccs_pattern = re.compile(r"SCC count in quant mc weight computation: ([0-9]+)")
+quant_maxscc_pattern = re.compile(r"Size of the largest SCC in quant mc weight computation: ([0-9]+)")
+quant_maxeqs_pattern = re.compile(r"Largest number of equations in an SCC in quant mc weight computation: ([0-9]+)")
 ub_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(upper bounds\)")
 past_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(PAST certificates\)")
 gg_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(graph analysis\)")
+quant_OVI_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(weights for quant MC\)")
+quant_eqs_time_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(eq system for quant MC\)")
 memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
 
@@ -82,9 +89,11 @@ def exec_bench(fname, args):
 
     time_match = time_pattern.search(raw_stdout)
     mem_match = mem_pattern.search(raw_stderr)
-    result_match = [r[0] for r in result_pattern.findall(raw_stdout)]
+    result_match = result_pattern.findall(raw_stdout)
+    quant_result_match = quant_result_pattern.search(raw_stdout)
     states_match = states_pattern.search(raw_out)
     ub_match = ub_pattern.search(raw_out)
+    print(f"ub match: {ub_match}")
     past_match = past_pattern.search(raw_out)
     gg_match = gg_pattern.search(raw_stdout)
     memgc_match = memgc_pattern.search(raw_stderr)
@@ -93,6 +102,13 @@ def exec_bench(fname, args):
     sccs_match = sccs_pattern.search(raw_out)
     maxscc_match = maxscc_pattern.search(raw_out)
     maxeqs_match = maxeqs_pattern.search(raw_out)
+    quant_eqs_match = quant_eqs_pattern.search(raw_out)
+    quant_sccs_match = quant_sccs_pattern.search(raw_out)
+    quant_maxscc_match = quant_maxscc_pattern.search(raw_out)
+    quant_maxeqs_match = quant_maxeqs_pattern.search(raw_out)
+    quant_OVI_match = quant_OVI_pattern.search(raw_out)
+    quant_eqs_time_match = quant_eqs_time_pattern.search(raw_out)
+
     check_match = lambda m, groupno=1, err=-1: m.group(groupno) if m else err
     record = {
         'time': float(check_match(time_match)),
@@ -107,14 +123,20 @@ def exec_bench(fname, args):
         'sccs': int(check_match(sccs_match)),
         'maxscc': int(check_match(maxscc_match)),
         'maxeqs': int(check_match(maxeqs_match)),
+        'quant_eqs': int(check_match(quant_eqs_match)),
+        'quant_sccs': int(check_match(quant_sccs_match)),
+        'quant_maxscc': int(check_match(quant_maxscc_match)),
+        'quant_maxeqs': int(check_match(quant_maxeqs_match)),
+        'quant_OVI_time': float(check_match(quant_OVI_match)),
+        'quant_eqs_time': float(check_match(quant_eqs_time_match)),
     }
     if raw_res.returncode != 0:
         if raw_res.returncode == -9:
-            return record | { 'result': 'TO' }
+            return record | { 'result': 'TO', 'quant_result': 'TO'}
         elif raw_res.returncode == 137:
-            return record | { 'result': 'OOM' }
-        return record | { 'result': 'Error {:d}'.format(raw_res.returncode) }
-    return record | { 'result': result_match[0] }
+            return record | { 'result': 'OOM', 'quant_result': 'OOM' }
+        return record | { 'result': 'Error {:d}'.format(raw_res.returncode),  'quant_result': '-' }
+    return record | { 'result': check_match(result_match),  'quant_result': check_match(quant_result_match) }
 
 def iter_bench(fname, args):
     get_column = lambda rows, i: [r[i] for r in rows]
@@ -125,15 +147,22 @@ def iter_bench(fname, args):
         'ub_time': statistics.mean(get_column(results, 'ub_time')),
         'past_time': statistics.mean(get_column(results, 'past_time')),
         'gg_time': statistics.mean(get_column(results, 'gg_time')),
+        'quant_OVI_time' : statistics.mean(get_column(results, 'quant_OVI_time')),
+        'quant_eqs_time' : statistics.mean(get_column(results, 'quant_eqs_time')),
         'mem_tot': statistics.mean(get_column(results, 'mem_tot')),
         'mem_gc': statistics.mean(get_column(results, 'mem_gc'))/(2**10),
         'result': results[0]['result'],
+        'quant_result': results[0]['quant_result'],
         'states': results[0]['states'],
         'supp_size': results[0]['supp_size'],
         'eqs': results[0]['eqs'],
         'sccs': results[0]['sccs'],
         'maxscc': results[0]['maxscc'],
         'maxeqs': results[0]['maxeqs'],
+        'quant_eqs': results[0]['quant_eqs'],
+        'quant_sccs': results[0]['quant_sccs'],
+        'quant_maxscc': results[0]['quant_maxscc'],
+        'quant_maxeqs': results[0]['quant_maxeqs'],
     }
 
 def exec_all(fnames, args):

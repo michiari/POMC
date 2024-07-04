@@ -7,10 +7,10 @@ import csv
 
 
 def pretty_print(results, csvfile):
-    key_list = ['name', 'states', 'supp_size', 'eqs', 'sccs', 'maxscc', 'maxeqs', 'ub_time', 'past_time', 'gg_time', 'time', 'mem_tot', 'result']
+    key_list = ['name', 'states', 'supp_size', 'eqs', 'sccs', 'maxscc', 'maxeqs', 'quant_eqs', 'quant_sccs', 'quant_maxscc', 'quant_maxeqs', 'ub_time', 'past_time', 'gg_time', 'quant_OVI_time', 'quant_eqs_time', 'time', 'mem_tot', 'result', 'quant_result']
     results_matrix = to_list(results, list(map(lambda k: (k,  lambda x: x), key_list)))
 
-    header = ["Name", "|Q_A|", "|SG|", "|f|", "#SCC", "|SCC|max", "|f(SCC)|max", "UB Time (s)", "PAST Time (s)", "G Time (s)", "Time (s)", "Memory (KiB)", "Holds AS"]
+    header = ["Name", "|Q_A|", "|SG|", "|f|", "#SCC", "|SCC|max", "|f(SCC)|max", "|f|(quant)", "#SCC(quant)", "|SCC|max(quant)", "|f(SCC)|max(quant)", "UB Time (s)", "PAST Time (s)", "G Time (s)", "quant OVI (s)", "quant Eqs (s)", "Time (s)", "Memory (KiB)", "Holds AS", "Prob"]
 
     print(tabulate(results_matrix, headers=header))
 

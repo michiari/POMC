@@ -171,11 +171,11 @@ main = do
       putStr $ show tres
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "
-                       , showEFloat (Just 4) (upperBoundTime stats) " (upper bounds), "
-                       , showEFloat (Just 4) (pastTime stats) " (PAST certificates), "
+                       , showEFloat (Just 4) (upperBoundTime stats) " s (upper bounds), "
+                       , showEFloat (Just 4) (pastTime stats) " s (PAST certificates), "
                        , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis),"
-                       , showEFloat (Just 4) (quantWeightTime stats) " (weights for quant MC),"
-                       , showEFloat (Just 4) (quantSolTime stats) " (eq system for quant MC)."
+                       , showEFloat (Just 4) (quantWeightTime stats) " s (weights for quant MC),"
+                       , showEFloat (Just 4) (quantSolTime stats) " s (eq system for quant MC)."
                        , "\nInput pOPA state count: ", show $ popaStatesCount stats
                        , "\nSupport graph size: ", show $ suppGraphLen stats
                        , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations stats
