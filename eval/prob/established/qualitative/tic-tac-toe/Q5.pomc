@@ -9,8 +9,8 @@ u2 final_winner;
 
 /*  
     0 = non assigned
-    1 = circle (player 0)
-    2 = cross (player 1)
+    1 = circle (player 1)
+    2 = cross (player 2)
     Initial Condition: 
     |   | O |   |
     | O | X | X |
