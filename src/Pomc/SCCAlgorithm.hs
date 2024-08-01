@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.SCCAlgorithm
-   Copyright   : 2021-2023 Francesco Pontiggia
+   Copyright   : 2021-2024 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}

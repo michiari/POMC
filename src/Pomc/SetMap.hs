@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.SetMap
-   Copyright   : 2021-2023 Michele Chiari
+   Copyright   : 2021-2024 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari, Francesco Pontiggia
 -}

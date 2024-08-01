@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Test.TestSat
-   Copyright   : 2021-23 Michele Chiari
+   Copyright   : 2021-2024 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

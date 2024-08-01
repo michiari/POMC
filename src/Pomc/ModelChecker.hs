@@ -2,7 +2,7 @@
 
 {- |
    Module      : Pomc.ModelChecker
-   Copyright   : 2020-2023 Michele Chiari
+   Copyright   : 2020-2024 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

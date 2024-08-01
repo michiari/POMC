@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.OmegaEncoding
-   Copyright   : 2023 Francesco Pontiggia
+   Copyright   : 2023-2024 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
