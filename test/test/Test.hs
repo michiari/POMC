@@ -14,6 +14,8 @@ import qualified Pomc.Test.TestMC       (tests, slowTests)
 import qualified Pomc.Test.TestMP       (tests)
 import qualified Pomc.Test.TestSatOmega (tests, slowTests)
 import qualified Pomc.Test.TestMCOmega  (tests, slowTests)
+import qualified Pomc.Test.TestZ3Sat    (tests, slowTests)
+import qualified Pomc.Test.TestZ3MC     (tests, slowTests)
 
 main :: IO ()
 main = defaultMain tests
@@ -30,6 +32,8 @@ normalTests = testGroup "Normal Tests"
   , Pomc.Test.TestMP.tests
   , Pomc.Test.TestSatOmega.tests
   , Pomc.Test.TestMCOmega.tests
+  , Pomc.Test.TestZ3Sat.tests
+  , Pomc.Test.TestZ3MC.tests
   ]
 
 slowTests :: TestTree
@@ -38,4 +42,6 @@ slowTests = testGroup "Slow Tests"
   , Pomc.Test.TestMC.slowTests
   , Pomc.Test.TestSatOmega.slowTests
   , Pomc.Test.TestMCOmega.slowTests
+  , Pomc.Test.TestZ3Sat.slowTests
+  , Pomc.Test.TestZ3MC.slowTests
   ]

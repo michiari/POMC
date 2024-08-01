@@ -25,16 +25,15 @@
 \maketitle
 
 \begin{abstract}
-POMC is an implementation of the automaton construction for formulas
-of Precedence-Oriented Temporal Logic (POTL), and the model checking
-procedure thereof.
+POMC is a model checker that models procedural programs as pushdown automata
+and checks them against formulas of Precedence-Oriented Temporal Logic (POTL).
 This document is a reference guide to its input and output formats,
 and also describes at a high level its architecture and source code.
 \end{abstract}
 
 \section{Introduction}
 
-Precedence-Oriented Temporal Logic (POTL) \cite{ChiariMP21} is a novel temporal
+Precedence-Oriented Temporal Logic (POTL) \cite{ChiariMP21} is a temporal
 logic formalism based on the family of Operator Precedence Languages (OPL),
 a subclass of deterministic context-free languages.
 POTL is strictly more expressive than LTL and other temporal logics based
@@ -48,27 +47,31 @@ because the latter may only be one-to-one.
 POTL can be applied to the specification of several kinds of requirements
 on procedural programs with exceptions.
 
-Besides some results concerning its expressiveness,
-we introduced an automata-based model checking procedure for POTL.
+POMC contains two different model checking engines for POTL.
+The explicit-state engine employs an automata-based model checking procedure for POTL.
 This procedure consists in building an Operator Precedence Automaton (OPA),
 the class of pushdown automata that identifies OPL,
 accepting the language denoted by a given POTL formula.
 The size of the generated automaton is exponential in the length of the formula,
 which is asymptotically comparable with other linear-time temporal logic
 formalisms such as LTL, CaRet, and NWTL.
-
-POMC is a tool that implements the automaton construction
-for POTL, and a model checking procedure for it.
 Given a POTL formula $\varphi$ and an input OPA modeling some system,
 POMC builds the OPA equivalent to $\neg \varphi$, computes its intersection
 with the input OPA, and checks the emptiness of the resulting OPA.
 Both the OPA construction and the intersection are done on-the-fly.
+The explicit-state engine has been implemented
+for the infinite-word case too, using $\omega$OPBA instead of OPA.
+
+POMC also contains a SMT-based model checking engine for POTL formulas.
+It consists of a bounded SMT encoding of a tree-shaped tableau for POTL.
+The tableau is complete: is the provided bound is sufficiently large,
+both truth and falseness of a formula can be proved.
+For the time being, this engine only supports finite-word model checking.
+
 POMC also supports providing input models in MiniProc,
 a simple procedural programming language with exceptions.
 MiniProc programs are automatically translated into equivalent OPA.
-
-All steps of the model checking process have been implemented
-for the infinite-word case too, using $\omega$OPBA instead of OPA.
+The SMT-based engine only supports MiniProc programs as inputs.
 
 We used POMC to prove some interesting properties of programs which we
 modeled both as OPA and MiniProc programs. Such experiments are contained in
@@ -90,6 +93,8 @@ Finally, Section~\ref{sec:sources} contains a high-level description of the sour
 
 POMC has been developed in the Haskell programming language,
 and packaged with the Haskell Tool Stack\footnote{\url{https://www.haskellstack.org/}}.
+It requires the development files for the Z3 Theorem Prover library to be built
+(package \verb|libz3-dev| on Debian-based systems).
 POMC can be built from sources by typing the following commands in a shell:
 \begin{verbatim}
 $ cd ~/path/to/POMC-sources
@@ -98,12 +103,21 @@ $ stack build
 \end{verbatim}
 Then, POMC can be executed on an input file \verb|file.pomc| as follows:
 \begin{verbatim}
-$ stack exec pomc -- file.pomc
+$ stack exec -- pomc file.pomc
 \end{verbatim}
 
 By default, POMC will perform infinite-word model checking.
 The optional arguments \verb|--finite| and \verb|--infinite|
 can be used to control this behavior manually.
+POMC uses the explicit-state engine by default.
+To use the SMT engine, use the flag \verb|--smt=k|,
+where \verb|k| is a positive integer indicating the maximum length of the encoding.
+For the time being, it can only be used together with \verb|--finite|.
+So for instance, to check an input file with the SMT-based engine type:
+\begin{verbatim}
+$ stack exec -- pomc --finite --smt=200 file.pomc
+\end{verbatim}
+Type \verb|stack exec -- pomc --help| to see all available command-line options.
 
 Directory \verb|eval| contains several POMC input files. Such files
 contain POTL formulas and OPA to be checked against them. For more
@@ -116,7 +130,8 @@ a summary of the resources used by POMC.
 It must be executed with a subdirectory of \verb|~/path/to/POMC-sources|
 as its working directory.
 If invoked with no arguments, it executes POMC on all input files in the current
-working directory with the infinite-word semantics. E.g.,
+working directory with the infinite-word semantics and explicit-state engine.
+E.g.,
 \begin{verbatim}
 $ cd ~/path/to/POMC-sources/eval
 $ ./mcbench.py opa-cav
@@ -131,6 +146,8 @@ $ ./mcbench.py 1-generic-small.pomc 2-generic-medium.pomc
 executes POMC on files \verb|1-generic-small.pomc| and \verb|2-generic-medium.pomc|.
 \texttt{mcbench.py} can be invoked with the following optional flags:
 \begin{description}
+\item[\texttt{-s, -{}-smt <\#k>}]
+  Use the SMT engine with the given value of \verb|k|
 \item[\texttt{-f, -{}-finite}]
   Only check finite execution traces (infinite-word model checking is the default)
 \item[\texttt{-i, -{}-iters <\#iters>}]
@@ -142,8 +159,14 @@ executes POMC on files \verb|1-generic-small.pomc| and \verb|2-generic-medium.po
   If you provide a value greater than 1, make sure you have
   enough CPU cores on your machine.
   (Default: 1)
+\item[\texttt{-t, -{}-timeout <timeout>}]
+  Timeout for benchmarks in seconds
+\item[\texttt{-M, -{}-max-mem <limit>}]
+  Memory limit for benchmark in MiB
 \item[\texttt{-m, -{}-ms}]
   Output time in milliseconds instead of seconds.
+\item[\texttt{-{}-csv <file>}]
+  Write results in CSV format in the given file
 \item[\texttt{-v, -{}-verbose <level>}]
   Verbosity level can be 0 (no additional info),
   1 (print POMC output, e.g.\ counterexamples), or
@@ -193,7 +216,9 @@ POMC takes in input plain text files of two possible formats.
 \subsection{Providing input models as OPA}
 
 The first input format contains a requirement specification in terms of a list of
-POTL formulas, and an OPA to be checked against them:
+POTL formulas, and an OPA to be checked against them.
+This format is only supported by the explicit-state engine.
+An input file must be as follows:
 \begin{verbatim}
 formulas = FORMULA [, FORMULA ...] ;
 prec = SL PR SL [, SL PR SL ...] ;
@@ -377,17 +402,17 @@ PROGRAM
 The syntax of MiniProc programs is reported in Figure~\ref{fig:miniproc-syntax}.
 \begin{figure}
 \begin{verbatim}
-PROGRAM := [DECL; ...] FUNCTION [FUNCTION ...]
-DECL := TYPE IDENTIFIER [, IDENTIFIER ...]
+PROGRAM := <DECL; ...> FUNCTION <FUNCTION ...>
+DECL := TYPE IDENTIFIER <, IDENTIFIER ...>
 TYPE := bool | uINT | sINT | uINT[INT] | sINT[INT]
-FUNCTION := IDENTIFIER ([FARG, ...]) { [DECL; ...] STMT; [STMT; ...] }
+FUNCTION := IDENTIFIER (<FARG, ...>) { <DECL; ...> STMT; <STMT; ...> }
 FARG := TYPE IDENTIFIER | TYPE & IDENTIFIER
 STMT := LVALUE = BEXPR
       | LVALUE = *
-      | while (GUARD) { [STMT; ...] }
-      | if (GUARD) { [STMT; ...] } else { [STMT; ...] }
-      | try { [STMT; ...] } catch { [STMT; ...] }
-      | IDENTIFIER([EXPR, ...])
+      | while (GUARD) { <STMT; ...> }
+      | if (GUARD) { <STMT; ...> } else { <STMT; ...> }
+      | try { <STMT; ...> } catch { <STMT; ...> }
+      | IDENTIFIER(<EXPR, ...>)
       | throw
 GUARD := * | EXPR
 LVALUE := IDENTIFIER | IDENTIFIER[EXPR]
@@ -398,13 +423,13 @@ COMP := == | != | < | <= | > | >=
 IEXPR := IEXPR + PEXPR | IEXPR - PEXPR | PEXPR
 PEXPR := PEXPR * ITERM | PEXPR / ITERM | ITERM
 ITERM := !ITERM | (EXPR) | IDENTIFIER | IDENTIFIER[EXPR] | LITERAL
-LITERAL := [+|-] INT[u|s]INT | true | false
+LITERAL := <+|-> INTuINT | <+|-> INTsINT | true | false
 \end{verbatim}
 \caption{MiniProc syntax.}
 \label{fig:miniproc-syntax}
 \end{figure}
 In the definition, non-terminal symbols are uppercase, and keywords lowercase.
-Parts surrounded by square brackets are optional, and ellipses mean that the enclosing
+Parts surrounded by angle brackets are optional, and ellipses mean that the enclosing
 group can be repeated zero or more times.
 An \texttt{IDENTIFIER} is any sequence of letters, numbers, or characters `\texttt{.}',
 `\texttt{:}' and `\texttt{\_}', starting with a letter or an underscore.
@@ -511,6 +536,7 @@ In this section we report the results of some experiments
 provided in the \texttt{eval} directory.
 The experiments were executed on a laptop with a 2.2 GHz Intel processor
 and 15 GiB of RAM, running Ubuntu GNU/Linux 20.04.
+Here we only report results with the explicit-state engine.
 
 These are only a few of the experiments shipped with this repository,
 and this section is intended to provide a sample of them,
@@ -738,6 +764,7 @@ only if all formulas are verified, False if at least one of them is not.
 The source code of POMC is contained in the \texttt{src/Pomc} directory.
 We describe the contents of each file below.
 \begin{description}
+\item[Parse] This directory contains the parser for input files.
 \item[Check.hs] This file contains the data structures and functions
   that implement the translation of POTL formulas into OPA.
   The \texttt{check} and \texttt{fastcheck} functions build the OPA
@@ -750,9 +777,9 @@ We describe the contents of each file below.
   memory-efficient form in Check.hs.
 \item[GStack.hs] contains a custom implementation of a LIFO stack
   for the $\omega$OPBA emptiness algorithms.
+\item[LogUtils.hs] contains some logging-related functions.
 \item[MaybeMap.hs] contains another helper data structure for the emptiness algorithms.
 \item[MiniProc.hs] contains code that translates MiniProc programs into OPA.
-\item[MiniProcParse.hs] contains a parser for MiniProc programs.
 \item[ModelChecker.hs] contains the model checking launcher functions,
   and a data structure to represent the input OPA to be checked explicitly.
   It calls \texttt{makeOpa} to translate the negation of the specification
@@ -762,7 +789,6 @@ We describe the contents of each file below.
 \item[Opa.hs] contains an implementation of OPA, which is used to test
   string acceptance.
 \item[OpaGen.hs] contains a simple automated OPA generator (still experimental).
-\item[Parse.hs] contains a parser for POMC input files.
 \item[Potl.hs] defines the datatype for POTL formulas.
 \item[Prec.hs] defines the data type for precedence relations.
 \item[Prop.hs] defines the data type for atomic propositions.
@@ -779,8 +805,9 @@ We describe the contents of each file below.
   connected components in $\omega$OPBA employed for the emptiness check.
 \item[SetMap.hs] contains another helper data structure for satisfiability.
 \item[State.hs] contains the data type used to represent OPA states.
+\item[TimeUtils.hs] contains functions used to measure time.
 \item[TripleHashTable.hs] contains a hash table used in the emptiness check.
-\item[Util.hs] contains various functions used in other parts of the code.
+\item[Z3Encoding.hs] contains the SMT-based engine.
 \end{description}
 
 The \texttt{test} directory contains regression tests based on the HUnit

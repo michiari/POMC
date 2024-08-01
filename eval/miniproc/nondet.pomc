@@ -1,0 +1,10 @@
+formulas = ~ T;
+
+program:
+main() {
+  u32 x;
+  x = *;
+  if (x < 4294967295u32) {
+    main();
+  } else {}
+}

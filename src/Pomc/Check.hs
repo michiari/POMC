@@ -82,34 +82,45 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
       where exprs = [HBack Down f, AuxBack Down h, AuxBack Down f]
     hsuExpr g h = [HBack Up (HSince Up g h), Not $ HBack Up (HSince Up g h)]
 
-    closList f = case f of
-      T               -> [f, Not f]
-      Atomic _        -> [f, Not f]
-      Not g           -> closList g
-      Or g h          -> [f, Not f] ++ closList g ++ closList h
-      And g h         -> [f, Not f] ++ closList g ++ closList h
-      Xor g h         -> [f, Not f] ++ closList g ++ closList h
-      Implies g h     -> [f, Not f] ++ closList g ++ closList h
-      Iff g h         -> [f, Not f] ++ closList g ++ closList h
-      PNext _ g       -> [f, Not f] ++ closList g
-      PBack _ g       -> [f, Not f] ++ closList g
-      XNext _ g       -> [f, Not f] ++ closList g
-      XBack Down g    -> [f, Not f] ++ closList g
-      XBack Up g      -> [f, Not f] ++ closList g ++ xbuExpr g
-      HNext Down g    -> [f, Not f] ++ closList g ++ hndExpr g
-      HNext Up g      -> [f, Not f] ++ closList g
-      HBack Down g    -> [f, Not f] ++ closList g ++ hbdExpr g
-      HBack Up g      -> [f, Not f] ++ closList g
-      Until dir g h   -> [f, Not f] ++ closList g ++ closList h ++ untilExpr dir g h
-      Since Down g h  -> [f, Not f] ++ closList g ++ closList h ++ sinceDownExpr g h
-      Since Up g h    -> [f, Not f] ++ closList g ++ closList h ++ sinceUpExpr g h
-      HUntil Down g h -> [f, Not f] ++ closList g ++ closList h ++ hudExpr f g h
-      HUntil Up g h   -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
-      HSince Down g h -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr f g h
-      HSince Up g h   -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
-      Eventually g    -> [f, Not f] ++ closList g
-      AuxBack _ g     -> [f, Not f] ++ closList g
-      Always _        -> error "Always formulas must be transformed to Eventually formulas."
+    closList f =
+      case f of
+        T               -> [f, Not f]
+        Atomic _        -> [f, Not f]
+        Not g           -> closList g
+        Or g h          -> [f, Not f] ++ closList g ++ closList h
+        And g h         -> [f, Not f] ++ closList g ++ closList h
+        Xor g h         -> [f, Not f] ++ closList g ++ closList h
+        Implies g h     -> [f, Not f] ++ closList g ++ closList h
+        Iff g h         -> [f, Not f] ++ closList g ++ closList h
+        PNext _ g       -> [f, Not f] ++ closList g
+        PBack _ g       -> [f, Not f] ++ closList g
+        XNext _ g       -> [f, Not f] ++ closList g
+        XBack Down g    -> [f, Not f] ++ closList g
+        XBack Up g      -> [f, Not f] ++ closList g ++ xbuExpr g
+        HNext Down g    -> [f, Not f] ++ closList g ++ hndExpr g
+        HNext Up g      -> [f, Not f] ++ closList g
+        HBack Down g    -> [f, Not f] ++ closList g ++ hbdExpr g
+        HBack Up g      -> [f, Not f] ++ closList g
+        Until dir g h   -> [f, Not f] ++ closList g ++ closList h ++ untilExpr dir g h
+        Since Down g h  -> [f, Not f] ++ closList g ++ closList h ++ sinceDownExpr g h
+        Since Up g h    -> [f, Not f] ++ closList g ++ closList h ++ sinceUpExpr g h
+        HUntil Down g h -> [f, Not f] ++ closList g ++ closList h ++ hudExpr f g h
+        HUntil Up g h   -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
+        HSince Down g h -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr f g h
+        HSince Up g h   -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
+        Eventually g    -> [f, Not f] ++ closList g
+        AuxBack _ g     -> [f, Not f] ++ closList g
+        Always _        -> error "Always formulas must be transformed to Eventually formulas."
+        WPNext _ _      -> error "Weak operators not supported in explicit-state model checking."
+        WXNext _ _      -> error "Weak operators not supported in explicit-state model checking."
+        Release _ _ _   -> error "Weak operators not supported in explicit-state model checking."
+        HRelease _ _ _  -> error "Weak operators not supported in explicit-state model checking."
+        Next _          -> error "LTL Next not supported in explicit-state model checking."
+        WNext _         -> error "Weak operators not supported in explicit-state model checking."
+        Back _          -> error "LTL Back not supported in explicit-state model checking."
+        WBack _         -> error "Weak operators not supported in explicit-state model checking."
+        Once _          -> error "LTL Once not supported in explicit-state model checking."
+        Historically _  -> error "LTL Historically not supported in explicit-state model checking."
 
 
 -- given a formula closure, generate a bitEncoding

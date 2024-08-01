@@ -47,11 +47,13 @@ makeTest ((name, phi), expected) =
   )
 
 normalTestCases :: [(TestCase, Bool)]
-normalTestCases = excludeIndices allTestCases [18, 41] ++ [xNextNoEqual]
+normalTestCases = excludeIndices allTestCases [18, 41, 42] ++ [nestedXNext, xNextNoEqual]
 
 slowTestCases :: [(TestCase, Bool)]
 slowTestCases = [ allTestCases !! 18
                 , allTestCases !! 41
+                , allTestCases !! 42
+                , andXNext
                 ]
 
 allTestCases :: [(TestCase, Bool)]
@@ -79,6 +81,18 @@ expectedRes =
   , True, True, True, True       -- until_exc
   , True, True, True             -- until_misc
   ]
+
+nestedXNext :: (TestCase, Bool)
+nestedXNext = (("Nested XNexts"
+               , XNext Down $ XNext Down $ XNext Down $ XNext Down $ ap "call")
+              , True
+              )
+
+andXNext :: (TestCase, Bool)
+andXNext = (("Conjoined XNexts"
+            , XNext Down (ap "call") `And` XNext Up (ap "exc") `And` XNext Down (ap "p") `And` XNext Down (ap "q") `And` XNext Down (ap "w") `And` XNext Down (ap "r"))
+           , False
+           )
 
 -- This formula being unsatisfiable proves that
 -- XBack Down T `And` Not (XBack Up T)

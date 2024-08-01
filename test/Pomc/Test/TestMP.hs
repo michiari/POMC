@@ -6,7 +6,26 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.Test.TestMP (tests, benchs) where
+module Pomc.Test.TestMP ( tests, benchs
+
+                        , sasMPSource
+                        , noHanSource
+                        , simpleThenSource
+                        , simpleElseSource
+                        , simpleWhileSource
+                        , exprsSource
+                        , u8Arith1Src
+                        , u8Arith2Src
+                        , arithCastsSrc
+                        , nondetSrc
+                        , arraySrc
+                        , arrayLoopSrc
+                        , localTestsSrc
+                        , argTestsSrc
+                        , exprPropTestsSrc
+                        , testHierDSrc
+                        , testHierUSrc
+                        ) where
 
 import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
 import Pomc.Parse.MiniProc (programP, TypedProp(..), untypeExprFormula)
@@ -36,6 +55,7 @@ tests = testGroup "MiniProc Tests" [ sasEvalTests
                                    , stackTests
                                    , intTests
                                    , exprPropTests
+                                   , testHierD, testHierU
                                    ]
 
 sasEvalTests :: TestTree
@@ -1568,4 +1588,95 @@ pB(u8 &r, u8 s, u8[2] &t, u8 &x) {
   t[1u8] = 4u8;
   x = 42u8;
 }
+|]
+
+
+testHierD :: TestTree
+testHierD = testGroup "Tests for Hierarchical Down Operators"
+  $ map (makeTestCase testHierDSrc)
+  [ (("Equal, strong", HNext Down $ ap "han"), False)
+  , (("Single next sat, strong", PNext Down $ PNext Down $ HNext Down $ ap "pb"), True)
+  , (("Single next unsat, strong", PNext Down $ PNext Down $ HNext Down $ ap "pc"), False)
+  , (("Two nexts sat, strong", PNext Down $ PNext Down $ HNext Down $ HNext Down $ ap "pc"), True)
+  , (("Two nexts unsat, strong", PNext Down $ PNext Down $ HNext Down $ HNext Down $ ap "pb"), False)
+  , (("Many nexts unsat, strong", PNext Down $ PNext Down $ HNext Down $ HNext Down $ HNext Down $ HNext Down $ ap "pd"), False)
+  , (("HUntil equal", HUntil Down T $ ap "call"), False)
+  , (("HUntil sat, trivial", PNext Down $ PNext Down $ HUntil Down T $ ap "pa"), True)
+  , (("HUntil sat", PNext Down $ PNext Down $ HUntil Down T $ ap "pc"), True)
+  , (("HUntil unsat", PNext Down $ PNext Down $ HUntil Down (Not $ ap "pa") $ ap "pd"), False)
+  , (("HUntil HNext rhs sat", PNext Down $ PNext Down $ HUntil Down T $ HNext Down $ ap "pc"), True)
+  , (("HUntil HNext lhs sat", PNext Down $ PNext Down $ HUntil Down (HNext Down $ Not $ ap "pa") $ ap "pc"), True)
+  , (("Nested HUntil sat", PNext Down $ PNext Down $ HUntil Down T $ HUntil Down (Not $ ap "pa") $ ap "pc"), True)
+  ]
+
+testHierDSrc :: T.Text
+testHierDSrc = T.pack [r|
+main() {
+  try {
+    pa();
+  } catch { }
+}
+
+pa() {
+  pb();
+}
+
+pb() {
+  pnull();
+  pc();
+}
+
+pc() {
+  pd();
+}
+
+pd() {
+  if (*) {
+    pd();
+  } else {
+    throw;
+  }
+}
+
+pnull() { }
+|]
+
+testHierU :: TestTree
+testHierU = testGroup "Tests for Hierarchical Up Operators"
+  $ map (makeTestCase testHierUSrc)
+  [ (("Equal, strong", HNext Up $ ap "call"), False)
+  , (("Single next sat, strong", PNext Down $ PNext Down $ PNext Up $ HNext Up $ ap "pc"), True)
+  , (("Single next unsat, strong", PNext Down $ PNext Down $ PNext Up $ HNext Up $ ap "pa"), False)
+  , (("Two nexts sat, strong", PNext Down $ PNext Down $ PNext Up $ HNext Up $ HNext Up $ ap "pd"), True)
+  , (("Two nexts unsat, strong", PNext Down $ PNext Down $ PNext Up $ HNext Up $ HNext Up $ ap "pa"), False)
+  , (("Many nexts unsat, strong", PNext Down $ PNext Down $ PNext Up $ HNext Up $ HNext Up $ HNext Up $ HNext Up $ ap "pe"), False)
+  , (("HUntil equal", HUntil Up T $ ap "call"), False)
+  , (("HUntil sat, trivial", PNext Down $ PNext Down $ PNext Up $ HUntil Up T $ ap "pb"), True)
+  , (("HUntil sat", PNext Down $ PNext Down $ PNext Up $ HUntil Up T $ ap "pe"), True)
+  , (("HUntil unsat", PNext Down $ PNext Down $ PNext Up $ HUntil Up (Not $ ap "pc") $ ap "pe"), False)
+  , (("HUntil HNext rhs sat", PNext Down $ PNext Down $ PNext Up $ HUntil Up T $ HNext Up $ ap "pe"), True)
+  , (("HUntil HNext lhs sat", PNext Down $ PNext Down $ PNext Up $ HUntil Up (HNext Up $ Not $ ap "pb") $ ap "pe"), True)
+  , (("Nested HUntil sat", PNext Down $ PNext Down $ PNext Up $ HUntil Up T $ HUntil Up (Not $ ap "pc") $ ap "pe"), True)
+  ]
+
+testHierUSrc :: T.Text
+testHierUSrc = T.pack [r|
+main() {
+  pa();
+  pb();
+  pc();
+  pd();
+  pe();
+  while (*) {
+    pe();
+  }
+}
+
+pa() { }
+pb() { }
+pc() {
+  pe();
+}
+pd() { }
+pe() { }
 |]

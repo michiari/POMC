@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2020 Davide Bergamaschi and Michele Chiari
+Copyright (c) 2020-2024 Michele Chiari, Francesco Pontiggia, and Davide Bergamaschi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

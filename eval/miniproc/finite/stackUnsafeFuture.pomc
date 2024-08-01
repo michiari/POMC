@@ -1,0 +1,131 @@
+formulas = G ([|modified] --> ~(XNu exc Or PNu exc)),
+           G (call And ("Stack::push" Or "Stack::pop") --> ~ (T HUd [|modified])),
+           G ((call And ("Stack::push" Or "Stack::pop") And XNd ret) --> ~ (T Ud (han And "Stack" And (~han Ud ("T" And PNu exc)))));
+
+program:
+bool modified;
+u8 vsize, vused;
+u8[4] v;
+
+main() {
+  u8 a;
+  modified = false;
+
+  Stack::Stack();
+
+  a = *;
+  Stack::push(a);
+
+  modified = false;
+  Stack::pop(a);
+
+  modified = false;
+  Stack::push(42u8);
+
+  modified = false;
+  // T::Tcp();
+
+  Stack::~Stack();
+  T::~T();
+}
+
+Stack::Stack() {
+  vsize = 2u8;
+  vused = 0u8;
+  T::operator_new(vsize);
+}
+
+Stack::~Stack() {
+  T::operator_delete();
+}
+
+Stack::Stackcp() {
+  Stack::NewCopy(vsize, vsize);
+}
+
+Stack::operator=() {
+  if (*) {
+    Stack::NewCopy(vsize, vsize);
+    T::operator_delete();
+  } else {}
+}
+
+Stack::push(u8 t) {
+  u8 x;
+  if (vused == vsize) {
+    Stack::NewCopy(vsize, vsize + 2u8);
+    T::operator_delete();
+    vsize = vsize + 2u8;
+  } else {}
+  T::operator=(t, x);
+  v[vused] = x; // TODO: allow array access in ref parameter
+  modified = true;
+  vused = vused + 1u8;
+}
+
+Stack::pop(u8 &topv) {
+  if (vused == 0u8) {
+    throw;
+  } else {
+    vused = vused - 1u8;
+    modified = true;
+    T::Tcp(v[vused], topv);
+  }
+}
+
+Stack::NewCopy(u8 srcsize, u8 dstsize) {
+  T::operator_new(dstsize);
+  try {
+    std::copy(srcsize);
+  } catch {
+    T::operator_delete();
+    throw;
+  }
+}
+
+T::T(u8 &val) {
+  if (*) {
+    throw;
+  } else {
+    val = 0u8;
+  }
+}
+
+T::Tcp(u8 src, u8 &dst) {
+  T::operator=(src, dst);
+}
+
+T::operator_new(u8 size) {
+  u8 i, x;
+  if (*) {
+    throw;
+  } else {
+    i = 0u8;
+    while (i < size) {
+      T::T(x);
+      v[i] = x; // TODO: allow array access in ref parameter
+      i = i + 1u8;
+    }
+  }
+}
+
+T::operator=(u8 src, u8 &dst) {
+  if (*) {
+    throw;
+  } else {
+    dst = src;
+  }
+}
+
+T::operator_delete() {}
+T::~T() {}
+
+std::copy(u8 end) {
+  u8 i, x;
+  i = 0u8;
+  while (i < end) {
+    T::operator=(v[i], x);
+    v[i] = x; // TODO: allow array access in ref parameter
+    i = i + 1u8;
+  }
+}
