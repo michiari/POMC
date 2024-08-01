@@ -135,9 +135,6 @@ instance (Show a) => Show (Formula a) where
 instance Hashable Dir
 instance Hashable a => Hashable (Formula a)
 
-instance NFData (Formula a) where
-  rnf formula = formula `seq` ()
-
 instance Functor Formula where
   fmap func f = case f of
     T                -> T
