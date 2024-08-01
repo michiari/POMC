@@ -7,6 +7,9 @@ POTL is a temporal logic capable of expressing context-free specifications, part
 
 ## Build
 
+POMC requires the [Z3 Theorem Prover](https://github.com/Z3Prover/z3)'s library development files to be built (package `libz3-dev` on Debian-based systems).
+The current version of POMC has been tested with Z3 4.8.12.
+
 POMC has been packaged with the [Haskell Tool Stack](https://www.haskellstack.org/).
 To build it, after cloning the repository just type the following commands in a terminal:
 ```
