@@ -9,6 +9,8 @@ module Pomc.Check ( fastcheck
                   , fastcheckGen
                   , EncPrecFunc
                   , makeOpa
+                  , makeBitEncoding
+                  , isNotTrivialOmega
                   ) where
 
 import Pomc.Prop (Prop(..))
@@ -1453,6 +1455,12 @@ isFinal :: BitEncoding ->  Formula APType -> State  -> Bool
 isFinal bitenc _   s@(FState {}) = isFinalF bitenc s
 isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
 
+isNotTrivialOmega :: Formula APType -> Bool
+isNotTrivialOmega (XNext _ _) = True 
+isNotTrivialOmega (Until _ _ _) = True 
+isNotTrivialOmega (Eventually _) = True
+isNotTrivialOmega _ = False
+
 -- determine whether a state is final for a formula, for the omega case
 isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
 isFinalW bitenc phi@(XNext Down g) s =
@@ -1468,7 +1476,7 @@ isFinalW bitenc phi@(Until Up _ h) s =
   && ((not $ E.member bitenc phi (current s)) || E.member bitenc h (current s))
 isFinalW bitenc phi@(Eventually g) s =
   (E.member bitenc g (current s)) || (not $ E.member bitenc phi (current s))
-isFinalW _ _ _ = True
+isFinalW _ _ _ = error "called isFinalOmega on a formula for which trivially every state is final"
 
 -- given a BitEncoding and a state, determine whether the state is final
 isFinalF :: BitEncoding -> State -> Bool

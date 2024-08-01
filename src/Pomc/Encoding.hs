@@ -19,6 +19,7 @@ module Pomc.Encoding ( EncodedSet
                      , generateFormulas
                      , powerSet
                      , Pomc.Encoding.null
+                     , Pomc.Encoding.all
                      , member
                      , Pomc.Encoding.any
                      , Pomc.Encoding.filter
@@ -45,7 +46,6 @@ import Data.Bits (Bits(..))
 import Data.BitVector (BitVector)
 import qualified Data.BitVector as BV
 import Data.Hashable
-import Control.DeepSeq (NFData(..))
 import Control.Monad (foldM)
 
 type EncodedSet = EncodedAtom
@@ -72,9 +72,6 @@ newBitEncoding fetch_ index_ width_ propBits_ =
 
 -- an encoded atom is just a bitset
 newtype EncodedAtom = EncodedAtom BitVector deriving (Eq, Ord, Show)
-
-instance NFData EncodedAtom where
-  rnf (EncodedAtom vect) = vect `seq` ()
 
 instance Hashable EncodedAtom where
   hashWithSalt salt (EncodedAtom bv) = hashWithSalt salt $ BV.nat bv
@@ -108,6 +105,7 @@ empty :: BitEncoding -> EncodedAtom
 empty bitenc = EncodedAtom . BV.zeros $ width bitenc
 {-# INLINABLE empty #-}
 
+
 -- generate the powerset of the Formula parts of EncodedAtoms
 -- must be concatenated with an encoded Input to make an entire EncodedAtom
 generateFormulas :: BitEncoding -> [EncodedAtom]
@@ -127,6 +125,10 @@ powerSet bitenc fs =
 null :: EncodedAtom -> Bool
 null (EncodedAtom bv) = bv == BV.nil
 {-# INLINE null #-}
+
+-- test whether all bits are set in the given EncodedAtom
+all :: EncodedAtom -> Bool
+all (EncodedAtom bv) = bv == BV.ones (BV.size bv)
 
 -- test whether a Formula is part of an EncodedAtom
 member :: BitEncoding -> Formula APType -> EncodedAtom -> Bool

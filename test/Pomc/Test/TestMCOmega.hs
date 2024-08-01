@@ -19,7 +19,7 @@ tests = testGroup "ModelChecking.hs Omega Tests" [ sasEvalTests, lREvalTests
                                                  , inspectionTest, overflowTest
                                                  , jensenTests, jensenFullTests
                                                  , stackExcTests, stackExcSwapTests
-                                                 , xnextdRegressionTests
+                                                 , xnextdRegressionTests, dummySupportsTest
                                                  ]
 
 sasEvalTests :: TestTree
@@ -30,7 +30,7 @@ sasEvalTests = testGroup "SAS OPA MC Omega Eval Tests" $
 lREvalTests :: TestTree
 lREvalTests = testGroup "LargerRec OPA MC Omega Eval Tests" $
   map (makeTestCase largerRec) (zipExpected lRFormulas expectedLargerRecEval)
-  where lRFormulas = excludeIndices formulas [18, 22, 33, 38, 44]
+  where lRFormulas = excludeIndices formulas [33, 38, 44]
 
 makeTestCase :: ExplicitOpa Word String
              -> (TestCase, Bool)
@@ -160,7 +160,7 @@ expectedLargerRecEval =
   [ True,  False, False, False, False, False
   , False, True,  False, False, False, False
   , False, False, False, False, False, False
-  , False, False, False, False -- base_tests
+  , False, False, False, False, False, False -- base_tests
   , False, False, False, False, False -- chain_next
   , False, False, False, False        -- contains_exc
   , False, False, False, False        -- empty_frame
@@ -857,9 +857,29 @@ sasSlowTests = testGroup "SAS OPA MC Omega Slow Tests" $
 
 lRSlowTests :: TestTree
 lRSlowTests = testGroup "LargerRec OPA MC Omega Slow Tests" $
-  map (makeTestCase largerRec) [ (formulas !! 18, False)
-                               , (formulas !! 22, False)
-                               , (formulas !! 33, True)
+  map (makeTestCase largerRec) [ (formulas !! 33, True)
                                , (formulas !! 38, True)
                                , (formulas !! 44, False)
                                ]
+
+dummySupportsTest :: TestTree
+dummySupportsTest = testGroup "Dummy Support OPA MC Omega Eval Tests" $
+  [makeTestCase dummySupportOPA (("Support states are needed to find an accepting cycle", Not T), False)]
+
+
+dummySupportOPA :: ExplicitOpa Word String
+dummySupportOPA = ExplicitOpa
+            { eoAlphabet = stlV2Alphabet
+            , eoInitials = [0]
+            , eoFinals = [1]
+            , eoDeltaPush =
+                [ (0, makeInputSet ["call"],   [1,2])
+                ]
+            , eoDeltaShift =
+                [ (1, makeInputSet ["ret"],         [3])
+                , (2, makeInputSet ["ret"], [3])
+                ]
+            , eoDeltaPop =
+                [ (3, 0, [0])
+                ]
+            }

@@ -26,8 +26,6 @@ import qualified Data.Set as S
 import GHC.Generics (Generic)
 import Data.Hashable
 
-import Control.DeepSeq (NFData(..), deepseq)
-
 type Input = EncodedSet
 type Atom = EncodedSet
 
@@ -63,11 +61,6 @@ instance Show State where
                                 "\n, X=: " ++ show xe ++
                                 "\n, XR: " ++ show xr ++
                                 "\n}"
-
--- to allow parallelism
-instance NFData State where
-  rnf (FState curr pend _ _ _) = curr `deepseq` pend `deepseq` ()
-  rnf (WState curr pend instack _ _ _) = curr `deepseq` pend `deepseq` instack `deepseq` ()
 
 showPendCombs :: Set (EncodedSet, Bool, Bool, Bool) -> String
 showPendCombs = unlines . map show . S.toList

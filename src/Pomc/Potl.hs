@@ -29,7 +29,6 @@ module Pomc.Potl ( Dir(..)
 import Pomc.Prop (Prop(..))
 import Data.List (nub, uncons)
 import GHC.Generics (Generic)
-import Control.DeepSeq (NFData(..))
 
 import Data.Hashable
 
@@ -415,3 +414,4 @@ pnf f = case f of
   Not (Once g)            -> Historically (pnf $ Not g)
   Not (Historically g)    -> Once (pnf $ Not g)
   Not (AuxBack _dir _g)   -> error "Negated auxiliary operators cannot be normalized."
+

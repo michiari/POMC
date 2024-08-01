@@ -28,6 +28,7 @@ import qualified Pomc.Satisfiability as Sat (Delta(..))
 import Pomc.PropConv (APType, PropConv(..), convProps, encodeFormula)
 import qualified Pomc.Encoding as E
 import Pomc.MiniProc (Program, VarState, ExprProp, programToOpa)
+import qualified Pomc.OmegaEncoding as OE
 #ifndef NDEBUG
 import Pomc.Satisfiability (toInputTrace, showTrace)
 import qualified Debug.Trace as DBG
@@ -43,8 +44,6 @@ import qualified Data.HashMap.Strict as Map
 import GHC.Generics (Generic)
 import Data.Hashable
 
-import Control.DeepSeq(NFData(..), deepseq)
-
 data ExplicitOpa s a = ExplicitOpa
   { eoAlphabet :: Alphabet a -- OP alphabet
   , eoInitials   :: [s] -- initial states of the OPA
@@ -56,9 +55,6 @@ data ExplicitOpa s a = ExplicitOpa
 
 -- a specific type for the model checker state: the parametric s is for the input OPA, the second field is for the generated opa from the input formula
 data MCState s = MCState s State deriving (Generic, Eq, Show, Ord)
-
-instance NFData (MCState s) where
-  rnf (MCState _ s2) = s2 `deepseq` ()
 
 instance Hashable s => Hashable (MCState s)
 
@@ -112,9 +108,7 @@ modelCheck isOmega phi alphabet inputFilter stateFilter
     -- new isFinal function for the cartesian product:
     -- both underlying opas must be in an acceptance state
     cIsFinal (MCState q p) = opaIsFinal q && phiIsFinal T p
-    cIsFinalOmega states =
-      (any (\(MCState q _) -> opaIsFinal q) states) &&
-      (all (\f -> (any (\(MCState _ p) -> phiIsFinal f p) states)) cl)
+    obe = OE.makeOmegaBitEncoding cl (\(MCState q _) -> opaIsFinal q) phiIsFinal
 
     cDeltaPush (MCState q p) b =
       cartesianFilter (stateFilter bitenc) (opaDeltaPush bitenc q b) (phiDeltaPush p Nothing)
@@ -130,7 +124,7 @@ modelCheck isOmega phi alphabet inputFilter stateFilter
              , Sat.deltaPop = cDeltaPop
              }
     (sat, trace) = if isOmega
-                   then isEmptyOmega cDelta cInitials cIsFinalOmega
+                   then isEmptyOmega cDelta cInitials obe
                    else isEmpty cDelta cInitials cIsFinal
 #ifndef NDEBUG
   in DBG.trace (showTrace bitenc pconv trace)
