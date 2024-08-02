@@ -32,4 +32,10 @@ stack exec -- pomc file.pomc
 
 ## Publications
 
+Main reference for the explicit-state model checker:
+
 1. Chiari, M., Mandrioli, D., Pontiggia, F., & Pradella, M. (2023). A model checker for operator precedence languages. ACM Transactions on Programming Languages and Systems, 45(3), 1-66. [doi:10.1145/3608443](https://doi.org/10.1145/3608443)
+
+Reference for the SMT-based model checker:
+
+2. Chiari, M., Geatti, L., Gigante, N., & Pradella, M. (2024). SMT-Based Symbolic Model-Checking for Operator Precedence Languages. CAV 2024. LNCS, 14681, 387-408. Springer, Cham. [doi:10.1007/978-3-031-65627-9_19](https://doi.org/10.1007/978-3-031-65627-9_19)

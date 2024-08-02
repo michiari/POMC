@@ -10,7 +10,9 @@
 \usepackage{multirow}
 \usepackage{rotating}
 \usepackage{subcaption}
+\usepackage[numbers]{natbib}
 \usepackage[colorlinks]{hyperref}
+\usepackage{doi}
 
 \usepackage{todonotes}
 
@@ -63,7 +65,7 @@ The explicit-state engine has been implemented
 for the infinite-word case too, using $\omega$OPBA instead of OPA.
 
 POMC also contains a SMT-based model checking engine for POTL formulas.
-It consists of a bounded SMT encoding of a tree-shaped tableau for POTL.
+It consists of a bounded SMT encoding of a tree-shaped tableau for POTL~\cite{ChiariGGP24}.
 The tableau is complete: is the provided bound is sufficiently large,
 both truth and falseness of a formula can be proved.
 For the time being, this engine only supports finite-word model checking.
@@ -827,7 +829,7 @@ and to Francesco Pontiggia for implementing the model checking algorithms
 for infinite words and performance optimizations.
 
 
-\bibliographystyle{abbrv}
+\bibliographystyle{abbrvnat}
 \bibliography{pomc}
 
 \appendix
