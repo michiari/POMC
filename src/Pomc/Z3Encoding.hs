@@ -992,8 +992,8 @@ mkPhiAssumptions True encData k = do
                                                _ -> False
                                            ) clos
         mkImplies anyHier =<< mkNot =<< mkPending encData k x
-  forall <- mkForallNodes [1..k] forallRules
-  return [noNextk, forall]
+  forAll <- mkForallNodes [1..k] forallRules
+  return [noNextk, forAll]
   where
     mkAnyGammagx :: MonadZ3 z3 => Word64 -> [Formula MP.ExprProp] -> z3 AST
     mkAnyGammagx x gs = do

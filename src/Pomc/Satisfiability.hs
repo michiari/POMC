@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Satisfiability
-   Copyright   : 2020-2024 Michele Chiari
+   Copyright   : 2020-2024 Michele Chiari, Francesco Pontiggia
    License     : MIT
    Maintainer  : Michele Chiari
 -}
@@ -43,7 +43,7 @@ import Data.IntMap.Strict(IntMap)
 -- We need to be able to update the saved encodedset to expand it
 data SuppContext v = SuppContext {getContext :: v, satset :: OmegaEncodedSet}
 
-instance (Eq v) => Eq (SuppContext v) where 
+instance (Eq v) => Eq (SuppContext v) where
   p == q = (getContext p) == (getContext q)
 
 instance (Ord v) => Ord (SuppContext v) where
@@ -261,7 +261,7 @@ isEmptyOmega delta initialOpbaStates obitenc = (not $
                emptySuppEnds <- SM.empty
                initialsId <- wrapStates newSig initialOpbaStates
                initials <- V.mapM (\sId -> return (sId, Nothing)) initialsId
-               gr <- newGraph initials obitenc 
+               gr <- newGraph initials obitenc
                let globals = WGlobals { sIdGen = newSig
                                       , wsuppStarts = emptySuppStarts
                                       , wSuppEnds = emptySuppEnds
@@ -317,14 +317,14 @@ collapsePhase (_, newInitials) initials globals delta =
 
 reachOmega :: (SatState state, Ord state, Hashable state, Show state)
                => Globals s state
-               -> Delta state 
+               -> Delta state
                -> (StateId state, Stack state)
                -> OmegaEncodedSet
                -> ST.ST s Bool
 reachOmega globals delta  (q,g) pathSatSet = do
   let qState = getState q
       precRel = (prec delta) (fst . fromJust $ g) (current . getSatState $ qState)
-      cases 
+      cases
         | (isNothing g) || precRel == Just Yield =
           reachOmegaPush globals delta (q,g) qState pathSatSet
 
@@ -374,7 +374,7 @@ reachOmegaShift :: (SatState state, Ord state, Hashable state, Show state)
 reachOmegaShift globals delta (_,g) qState tracesatSet =
   let qProps = getStateProps (bitenc delta) qState
       doShift True _ = return True
-      doShift False p = 
+      doShift False p =
         reachTransition globals delta (p, Just (qProps, (snd . fromJust $ g))) (Just tracesatSet) Nothing
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
@@ -408,10 +408,10 @@ reachTransition :: (SatState state, Ord state, Hashable state, Show state)
                  -> Maybe OmegaEncodedSet
                  -> Maybe OmegaEncodedSet
                  -> ST s Bool
-reachTransition globals delta to_semiconf pathSatSet edgeSatSet = 
+reachTransition globals delta to_semiconf pathSatSet edgeSatSet =
   let execute (Explore ss) = reachOmega globals delta to_semiconf ss
       execute AlreadyContracted = return False
-      execute Success = return True 
+      execute Success = return True
   in execute =<< updateSCCs (graph globals) to_semiconf pathSatSet edgeSatSet
 
 -------------------------------------------------------------
