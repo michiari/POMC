@@ -1,0 +1,7 @@
+name,states,supp_size,eqs,sccs,maxscc,maxeqs,quant_eqs,quant_sccs,quant_maxscc,quant_maxeqs,ub_time,past_time,gg_time,quant_OVI_time,quant_eqs_time,time,mem_tot,result,quant_result
+prob/established/qualitative/tic-tac-toe/Q1.pomc,1780,2541,248,2479,2,36,-1,-1,-1,-1,0.0252,0.224714,0.207332,-1.0,-1.0,0.876338,80377.6,True,-1
+prob/established/qualitative/tic-tac-toe/Q2.pomc,1780,2541,248,2479,2,36,-1,-1,-1,-1,0.025674,0.223438,217.99,-1.0,-1.0,218.66400000000002,11400422.4,True,-1
+prob/established/qualitative/tic-tac-toe/Q4.pomc,1780,2541,248,2479,2,36,-1,-1,-1,-1,0.0234328,0.215484,452.39,-1.0,-1.0,453.04,19194446.4,True,-1
+prob/established/qualitative/tic-tac-toe/Q5.pomc,1780,2541,248,2479,2,36,-1,-1,-1,-1,0.0228266,0.217164,23.6556,-1.0,-1.0,24.309,1660343.2,True,-1
+prob/established/qualitative/tic-tac-toe/Q10.pomc,1780,2541,248,2479,2,36,-1,-1,-1,-1,0.0262724,0.223468,4.21476,-1.0,-1.0,4.88176,465535.2,False,-1
+prob/established/qualitative/tic-tac-toe/Q11.pomc,1780,2541,248,2479,2,36,-1,-1,-1,-1,0.0247852,0.21157800000000002,4.10192,-1.0,-1.0,4.74544,483944.8,True,-1

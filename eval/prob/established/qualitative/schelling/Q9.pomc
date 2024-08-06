@@ -1,5 +1,5 @@
-probabilistic query: quantitative;
-formula = ~ ((~ obs) Ud (call And Bob And XNu obs));
+probabilistic query: qualitative;
+formula = F (ret And main And [main|res == 1u1]);
 
 program:
 u4 p;
