@@ -540,7 +540,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
     pAST <- mkRealNum (p :: Double)
     liftIO $ HT.insert m varKey pAST
 
-  -- lEqMap and uEqMap have the same number of unsolved equations
+  -- lEqMap and uEqMap have the same unsolved equations
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars) }
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquations = acc} -> s{nonTrivialEquations = acc + length unsolvedVars}

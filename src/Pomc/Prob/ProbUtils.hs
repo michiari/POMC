@@ -38,7 +38,6 @@ module Pomc.Prob.ProbUtils ( Prob
                            , extractUpperProb
                            , extractUpperDouble
                            , extractLowerProb
-                           , extractLowerDouble
                            , newStats
                            , debug
                            ) where
@@ -219,6 +218,7 @@ extractUpperAst ast = do
   logDebugN . ("Is it an algebraic number: " ++) . show =<< isAlgebraicNumber ast
   logDebugN . ("Is it a numeral number: " ++) . show =<< isNumeralAst ast
   logDebugN . ("AST string representation: " ++) . show =<< astToString ast
+  logDebugN . show =<< getVersion
   if isAlgebraic
     then getAlgebraicNumberUpper ast 5
     else return ast
@@ -236,15 +236,13 @@ extractLowerAst ast = do
   logDebugN . ("Is it an algebraic number: " ++) . show =<< isAlgebraicNumber ast
   logDebugN . ("Is it a numeral number: " ++) . show =<< isNumeralAst ast
   logDebugN . ("AST string representation: " ++) . show =<< astToString ast
+  logDebugN . show =<< getVersion
   if isAlgebraic
     then getAlgebraicNumberLower ast 5
     else return ast
 
 extractLowerProb :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 Prob
 extractLowerProb ast = extractLowerAst ast >>= getReal
-
-extractLowerDouble :: (MonadLogger z3, MonadZ3 z3) => AST -> z3 Double
-extractLowerDouble ast = extractLowerAst ast >>= getNumeralDouble
 
 data Stats = Stats { upperBoundTime :: Double
                    , pastTime :: Double

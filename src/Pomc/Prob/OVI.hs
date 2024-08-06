@@ -207,7 +207,7 @@ ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
     => OVISettings n -> AugEqMap n -> m (OVIResult n)
 ovi settings augEqMap@(eqMap, _) = do
   s <- liftIO $ MV.length <$> readIORef eqMap
-  logDebugN $ "Starting OVI on a system with " ++ show s ++ " semiconfigurations... (cannot compute anymore easily the number of variables)"
+  logDebugN $ "Starting OVI on a system with " ++ show s ++ " semiconfigurations..."
   lowerApprox <- zeroLiveVec augEqMap
   -- initialize upperApprox with lowerApprox, so we copy non-alive variable values
   upperApprox <- copyVec lowerApprox
