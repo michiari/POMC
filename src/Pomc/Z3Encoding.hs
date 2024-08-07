@@ -263,7 +263,7 @@ initPhiEncoding phi alphabet k = do
   (sSort, fConstMap) <- mkSSort
   -- Uninterpreted functions
   gamma  <- mkFreshFuncDecl "gamma" [sSort, nodeSort] boolSort
-  sigma  <- mkFreshFuncDecl "sigma" [sSort] boolSort -- TODO: try & remove sigma
+  sigma  <- mkFreshFuncDecl "sigma" [sSort] boolSort
   struct <- mkFreshFuncDecl "struct" [nodeSort] sSort
   smb    <- mkFreshFuncDecl "smb" [nodeSort] sSort
   yield  <- mkFreshFuncDecl "yield" [sSort, sSort] boolSort
@@ -398,62 +398,53 @@ mkEndTerm encData x = do
 
 assertPhiEncoding :: MonadZ3 z3 => EncData -> Word64 -> Word64 -> z3 ()
 assertPhiEncoding encData from to = do
-  let yield = zYield encData
+  let clos = zClos encData
+      yield = zYield encData
       equal = zEqual encData
       take = zTake encData
       nodeSort = zNodeSort encData
   -- start ∀x (...)
-  -- x <= k
-  let mkTermRules x = do
+  -- Rules with x <= k (centered on x)
+  let leqRules = filter (not . null . fst)
+                 [ ([g | g@(XNext _ _) <- clos], mkXnext)
+                 , ([g | g@(WXNext _ _) <- clos], mkWxnext)
+                 , ([g | g@(HUntil Up T T) <- clos], mkHuaux)
+                 ]
+      mkLeqRules x = do
         xLit <- mkUnsignedInt64 x nodeSort
         checkPushx <- mkCheckPrec encData yield xLit
         checkPopx <- mkCheckPrec encData take xLit
         -- PhiAxiom
         phiAxiom <- mkPhiAxiomsForall xLit
-        -- xnextx
-        popxImpliesXnextx <- mkImplies checkPopx =<< mkXnext x
-        -- wxnextx
-        popxImpliesWxnextx <- mkImplies checkPopx =<< mkWxnext x
-        -- huaux
-        huauxx <- mkHuaux x checkPushx checkPopx
         endx <- mkEndTerm encData xLit
         conflictx <- mkConflict xLit
-        mkAnd [ phiAxiom
-              , popxImpliesXnextx, popxImpliesWxnextx
-              , huauxx
-              , endx, conflictx
-              ]
-  assert =<< mkForallNodes [(max 1 from)..to] mkTermRules
+        leqRulesx <- mapM (\(allFs, mkRule) -> mkRule allFs x checkPushx checkPopx) leqRules
+        mkAnd $ [phiAxiom, endx, conflictx] ++ leqRulesx
+  assert =<< mkForallNodes [(max 1 from)..to] mkLeqRules
 
-  -- x < k
-  let mkTransitions x = do
+  -- Rules with x < k (centered on x-1)
+  let ltRules = filter (not . null . fst)
+                [ ([g | g@(PNext _ _) <- clos] ++ [g | g@(WPNext _ _) <- clos], mkPnext)
+                , ([g | g@(HNext Up _) <- clos], mkHnextu)
+                , ([g | g@(HNext Down _) <- clos], mkHnextd)
+                , ([g | g@(WHNext Up _) <- clos], mkWhnextu)
+                , ([g | g@(WHNext Down _) <- clos], mkWhnextd)
+                , ([g | g@(HUntil Down T T) <- clos], mkHdaux)
+                ]
+      mkLtRules x = do
         xLit <- mkUnsignedInt64 x nodeSort
         checkPushx <- mkCheckPrec encData yield xLit
         checkShiftx <- mkCheckPrec encData equal xLit
         checkPopx <- mkCheckPrec encData take xLit
-        inputx <- mkOr [checkPushx, checkShiftx]
         -- push(x) → PUSH(x)
         pushxImpliesPushx <- mkImplies checkPushx =<< mkPush x
         -- shift(x) → SHIFT(x)
         shiftxImpliesShiftx <- mkImplies checkShiftx =<< mkShift x
         -- pop(x) → POP(x)
         popxImpliesPopx <- mkImplies checkPopx =<< mkPop x
-        -- pnextx
-        inputxImpliesPnextx <- mkImplies inputx =<< mkPnext x
-        -- hnextu
-        hnextux <- mkHnextu x checkPushx checkPopx
-        -- hnextd
-        hnextdx <- mkHnextd x checkPopx
-        -- whnextu
-        whnextux <- mkWhnextu x checkPopx
-        -- whnextd
-        whnextdx <- mkWhnextd x checkPopx
-        -- hdaux
-        hdauxx <- mkHdaux x checkPopx
-        mkAnd [ pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx
-              , inputxImpliesPnextx, hnextux, hnextdx, whnextux, whnextdx, hdauxx
-              ]
-  assert =<< mkForallNodes [((max 2 from) - 1)..(to - 1)] mkTransitions
+        ltRulesx <- mapM (\(allFs, mkRule) -> mkRule allFs x checkPushx checkShiftx checkPopx) ltRules
+        mkAnd $ [pushxImpliesPushx, shiftxImpliesShiftx, popxImpliesPopx] ++ ltRulesx
+  assert =<< mkForallNodes [((max 2 from) - 1)..(to - 1)] mkLtRules
   -- end ∀x (...)
   where
     mkPhiAxiomsForall :: MonadZ3 z3 => AST -> z3 AST
@@ -481,8 +472,8 @@ assertPhiEncoding encData from to = do
       mkOrWith singleSl structClos
 
     -- PNEXT(x) ∧ WPNEXT(x)
-    mkPnext :: MonadZ3 z3 => Word64 -> z3 AST
-    mkPnext x = do
+    mkPnext :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> AST -> z3 AST
+    mkPnext _ x checkPushx checkShiftx _ = do
       let clos = zClos encData
           fConstMap = zFConstMap encData
           gamma = zGamma encData
@@ -517,11 +508,12 @@ assertPhiEncoding encData from to = do
             mkImplies gammagxAndNotStructPrec gammahxp1
       wpnextDown <- mkAndWith (wpnextPrec $ zTake encData) [(g, arg) | g@(WPNext Down arg) <- clos]
       wpnextUp <- mkAndWith (wpnextPrec $ zYield encData) [(g, arg) | g@(WPNext Up arg) <- clos]
-      mkAnd [pnextDown, pnextUp, wpnextDown, wpnextUp]
+      inputx <- mkOr [checkPushx, checkShiftx]
+      mkImplies inputx =<< mkAnd [pnextDown, pnextUp, wpnextDown, wpnextUp]
 
     -- XNEXT(x)
-    mkXnext :: MonadZ3 z3 => Word64 -> z3 AST
-    mkXnext x = do
+    mkXnext :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> z3 AST
+    mkXnext allXnext x _ checkPopx = do
       let nodeSort = zNodeSort encData
           struct = zStruct encData
           stack = zStack encData
@@ -558,10 +550,10 @@ assertPhiEncoding encData from to = do
                   mkImplies gammagy exists
                 xnextSat _ = error "XNext formula expected."
 
-            allSat <- mkAndWith xnextSat [g | g@(XNext _ _) <- zClos encData]
+            allSat <- mkAndWith xnextSat allXnext
             mkImplies ySuppClosed allSat
 
-      mkForallNodes [1..(x-1)] allXnextSat
+      mkImplies checkPopx =<< mkForallNodes [1..(x-1)] allXnextSat
 
     {- Iff version of mkWxnext
     mkWxnext2 :: Word64 -> Z3 AST
@@ -607,8 +599,8 @@ assertPhiEncoding encData from to = do
       mkForallNodes [1..x] allXnextSat
     -}
 
-    mkWxnext :: MonadZ3 z3 => Word64 -> z3 AST
-    mkWxnext x = do
+    mkWxnext :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> z3 AST
+    mkWxnext allWxnext x _ checkPopx = do
       let struct = zStruct encData
       xLit <- mkUnsignedInt64 x $ zNodeSort encData
       structx <- mkApp1 struct xLit
@@ -624,12 +616,10 @@ assertPhiEncoding encData from to = do
             gammagctxxAndOrPrec <- mkAnd [gammagctxx, orPrec]
             xnfArgx <- groundxnf encData arg xLit
             mkImplies gammagctxxAndOrPrec xnfArgx
-      mkAndWith wxnextSat [g | g@(WXNext _ _) <- zClos encData]
+      mkImplies checkPopx =<< mkAndWith wxnextSat allWxnext
 
-    mkHnextu :: MonadZ3 z3 => Word64 -> AST -> AST -> z3 AST
-    mkHnextu x checkPushx checkPopx =
-      let allHnu = [g | g@(HNext Up _) <- zClos encData]
-      in enableIf (not $ null allHnu) $ do
+    mkHnextu :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> AST -> z3 AST
+    mkHnextu allHnu x checkPushx _ checkPopx = do
         let nodeSort = zNodeSort encData
         xLit <- mkUnsignedInt64 x nodeSort
         stackx <- mkApp1 (zStack encData) xLit
@@ -645,10 +635,8 @@ assertPhiEncoding encData from to = do
         hucond <- mkHUCond x checkPushx checkPopx allHnu
         mkAnd [popxImplies, hucond]
 
-    mkWhnextu :: MonadZ3 z3 => Word64 -> AST -> z3 AST
-    mkWhnextu x checkPopx =
-      let allWhnu = [g | g@(WHNext Up _) <- zClos encData]
-      in enableIf (not $ null allWhnu) $ do
+    mkWhnextu :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> AST -> z3 AST
+    mkWhnextu allWhnu x _ _ checkPopx = do
         let nodeSort = zNodeSort encData
             yield = zYield encData
             pred = zPred encData
@@ -674,10 +662,8 @@ assertPhiEncoding encData from to = do
         allWhnextuSat <- mkImplies implLhs =<< mkAndWith whnextuSat allWhnu
         mkAnd [predxEqxm1, allWhnextuSat]
 
-    mkHnextd :: MonadZ3 z3 => Word64 -> AST -> z3 AST
-    mkHnextd x checkPopx =
-      let allHnd = [g | g@(HNext Down _) <- zClos encData]
-      in enableIf (not $ null allHnd) $ do
+    mkHnextd :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> AST -> z3 AST
+    mkHnextd allHnd x _ _ checkPopx = do
         let nodeSort = zNodeSort encData
             ctx = zCtx encData
             take = zTake encData
@@ -697,10 +683,8 @@ assertPhiEncoding encData from to = do
         hdcond <- mkHDCond x checkPopx allHnd
         mkAnd [popImpl, hdcond]
 
-    mkWhnextd :: MonadZ3 z3 => Word64 -> AST -> z3 AST
-    mkWhnextd x checkPopx =
-      let allWhnd = [g | g@(WHNext Down _) <- zClos encData]
-      in enableIf (not $ null allWhnd) $ do
+    mkWhnextd :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> AST -> z3 AST
+    mkWhnextd allWhnd x _ _ checkPopx = do
         let nodeSort = zNodeSort encData
             ctx = zCtx encData
             take = zTake encData
@@ -718,8 +702,8 @@ assertPhiEncoding encData from to = do
               mkImplies gammagCtxx xnfArgCtxxm1
         mkImplies lhs =<< mkAndWith whnextdSat allWhnd
 
-    mkHuaux :: MonadZ3 z3 => Word64 -> AST -> AST -> z3 AST
-    mkHuaux x checkPushx checkPopx = enableIf (HUntil Up T T `elem` zClos encData) $ do
+    mkHuaux :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> z3 AST
+    mkHuaux _ x checkPushx checkPopx = do
       let nodeSort = zNodeSort encData
       xm1 <- mkUnsignedInt64 (x - 1) nodeSort
       checkPopxm1 <- mkCheckPrec encData (zTake encData) xm1
@@ -733,8 +717,8 @@ assertPhiEncoding encData from to = do
       impliesHuaux <- mkImplies whenNotPop huaux
       mkAnd [huauxImplies, impliesHuaux]
 
-    mkHdaux :: MonadZ3 z3 => Word64 -> AST -> z3 AST
-    mkHdaux x checkPopx = enableIf (HUntil Down T T `elem` zClos encData) $ do
+    mkHdaux :: MonadZ3 z3 => [Formula MP.ExprProp] -> Word64 -> AST -> AST -> AST -> z3 AST
+    mkHdaux _ x _ _ checkPopx = do
       let nodeSort = zNodeSort encData
       xLit <- mkUnsignedInt64 x nodeSort
       ctxx <- mkApp1 (zCtx encData) xLit
@@ -1546,10 +1530,6 @@ mkForallNodes nodes predGen = mkAndWith predGen nodes
 
 mkExistsNodes :: MonadZ3 z3 => [Word64] -> (Word64 -> z3 AST) -> z3 AST
 mkExistsNodes nodes predGen = mkOrWith predGen nodes
-
-enableIf :: MonadZ3 z3 => Bool -> z3 AST -> z3 AST
-enableIf False _ = mkTrue
-enableIf True m = m
 
 closure :: Alphabet MP.ExprProp -> Formula MP.ExprProp
         -> ([Formula MP.ExprProp], [Formula MP.ExprProp])
