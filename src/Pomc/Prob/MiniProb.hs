@@ -33,7 +33,8 @@ import qualified Data.Set as S
 import Data.Maybe (fromJust)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-import Control.Monad.State.Lazy (State, runState, get, gets, modify, when, foldM)
+import Control.Monad.State.Lazy (State, runState, get, gets, modify)
+import Control.Monad (when, foldM)
 
 import qualified Debug.Trace as DBG
 
