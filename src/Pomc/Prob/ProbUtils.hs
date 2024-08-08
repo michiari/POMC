@@ -218,7 +218,6 @@ extractUpperAst ast = do
   logDebugN . ("Is it an algebraic number: " ++) . show =<< isAlgebraicNumber ast
   logDebugN . ("Is it a numeral number: " ++) . show =<< isNumeralAst ast
   logDebugN . ("AST string representation: " ++) . show =<< astToString ast
-  logDebugN . show =<< getVersion
   if isAlgebraic
     then getAlgebraicNumberUpper ast 5
     else return ast
@@ -236,7 +235,6 @@ extractLowerAst ast = do
   logDebugN . ("Is it an algebraic number: " ++) . show =<< isAlgebraicNumber ast
   logDebugN . ("Is it a numeral number: " ++) . show =<< isNumeralAst ast
   logDebugN . ("AST string representation: " ++) . show =<< astToString ast
-  logDebugN . show =<< getVersion
   if isAlgebraic
     then getAlgebraicNumberLower ast 5
     else return ast
