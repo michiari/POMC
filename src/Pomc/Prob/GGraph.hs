@@ -305,7 +305,7 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
 
   logInfoN "Building graph G..."
   (gGraph_, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!)
-
+  logInfoN $ "Graph G has " ++ show (MV.length gGraph_) ++ " nodes."
   logInfoN "Analyzing graph G..."
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
