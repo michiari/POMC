@@ -106,11 +106,11 @@ type PolyVector n = IOVector (VarKey, Polynomial2 n)
 evalMonomial :: (MonadIO m, Num n) => AugEqMap n -> Monomial2 n -> ProbVec n -> m n
 evalMonomial augEqMap m v = liftIO $ case m of
   Quad c k1 k2 -> do
-    v1 <- lookupValue augEqMap id v k1
-    v2 <- lookupValue augEqMap id v k2
+    v1 <- lookupValue augEqMap v k1
+    v2 <- lookupValue augEqMap v k2
     return $ c * v1 * v2
   Lin c k1 -> do
-    v1 <- lookupValue augEqMap id v k1
+    v1 <- lookupValue augEqMap v k1
     return $ c * v1
   Const c -> return c
 
@@ -252,7 +252,7 @@ ovi settings augEqMap@(eqMap, _) = do
             let check prev newV oldV = prev && newV <= oldV
                   -- prev && 1 / (oldV - newV) >= 0
                   -- prev && (1-eps)*newV + eps <= oldV
-            inductive <- evalEqSys augEqMap id leqSys check upperApprox evalUpperApprox
+            inductive <- evalEqSys augEqMap leqSys check upperApprox evalUpperApprox
             logDebugN $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
             if inductive
               then return True
@@ -295,7 +295,7 @@ oviToRational settings augEqMap@(_, _) oviRes = do
   let checkWithKInd _ _ _ _  0 = return False
       checkWithKInd showF f rleqSys srub kIters  = do
         -- Evaluate equation system
-        inductive <- evalEqSys augEqMap f rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
+        inductive <- evalEqSysWithF augEqMap f rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
 
         logDebugN $ "Is the rational approximation inductive? " ++ show inductive
         if inductive

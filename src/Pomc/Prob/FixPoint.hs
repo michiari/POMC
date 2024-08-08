@@ -22,6 +22,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , zeroLiveVec
                           , lookupValue
                           , evalEqSys
+                          , evalEqSysWithF
                           , approxFixpFrom
                           , approxFixp
                           , defaultEps
@@ -125,27 +126,50 @@ zeroLiveVec (eqMap, lEqs) = liftIO $ do
                _ -> HT.insert probVec k 0
   return probVec
 
-lookupValue :: MonadIO m => AugEqMap k -> (k -> n) -> ProbVec n -> VarKey ->  m n
-lookupValue (eqMap, lEqs) f probV k = liftIO $ do
+lookupValueWithF :: MonadIO m => AugEqMap k -> (k -> n) -> ProbVec n -> VarKey ->  m n
+lookupValueWithF (eqMap, lEqs) f probV k = liftIO $ do
   lVars <- readIORef lEqs
   if Set.member k lVars
     then fromJust <$> HT.lookup probV k
     else f . (\(PopEq n) -> n) . fromJust <$> uncurry (MM.lookupValue eqMap) k
 
+lookupValue :: MonadIO m => AugEqMap n -> ProbVec n -> VarKey ->  m n
+lookupValue (eqMap, lEqs) probV k = liftIO $ do
+  lVars <- readIORef lEqs
+  if Set.member k lVars
+    then fromJust <$> HT.lookup probV k
+    else  (\(PopEq n) -> n) . fromJust <$> uncurry (MM.lookupValue eqMap) k
 
-evalEqSys :: (MonadIO m, Ord n, Fractional n, Ord k, Fractional k)
-          => AugEqMap k -> (k -> n) -> LEqSys n -> (Bool -> n -> n -> Bool) -> ProbVec n -> ProbVec n -> m Bool
-evalEqSys (eqMap, lEqs) f leqMap checkRes src dst = liftIO $ MV.foldM' evalEq True leqMap where
+
+evalEqSys :: (MonadIO m, Ord n, Fractional n)
+          => AugEqMap n -> LEqSys n -> (Bool -> n -> n -> Bool) -> ProbVec n -> ProbVec n -> m Bool
+evalEqSys (eqMap, lEqs) leqMap checkRes src dst = liftIO $ MV.foldM' evalEq True leqMap where
   evalEq prevCheck (key, eq) = do
     oldV <- fromJust <$> HT.lookup src key
     newV <- case eq of
       PushLEq terms -> sum <$> mapM
         (\(p, k1, k2) -> do
-            v1 <- lookupValue (eqMap, lEqs) f src k1
-            v2 <- lookupValue (eqMap, lEqs) f src k2
+            v1 <- lookupValue (eqMap, lEqs) src k1
+            v2 <- lookupValue (eqMap, lEqs) src k2
             return $ p * v1 * v2
         ) terms
-      ShiftLEq terms -> sum <$> mapM (\(p, k) -> (p *) <$> lookupValue (eqMap, lEqs) f src k) terms
+      ShiftLEq terms -> sum <$> mapM (\(p, k) -> (p *) <$> lookupValue (eqMap, lEqs) src k) terms
+    HT.insert dst key newV
+    return $ checkRes prevCheck newV oldV
+
+evalEqSysWithF :: (MonadIO m, Ord n, Fractional n, Ord k, Fractional k)
+          => AugEqMap k -> (k -> n) -> LEqSys n -> (Bool -> n -> n -> Bool) -> ProbVec n -> ProbVec n -> m Bool
+evalEqSysWithF (eqMap, lEqs) f leqMap checkRes src dst = liftIO $ MV.foldM' evalEq True leqMap where
+  evalEq prevCheck (key, eq) = do
+    oldV <- fromJust <$> HT.lookup src key
+    newV <- case eq of
+      PushLEq terms -> sum <$> mapM
+        (\(p, k1, k2) -> do
+            v1 <- lookupValueWithF (eqMap, lEqs) f src k1
+            v2 <- lookupValueWithF (eqMap, lEqs) f src k2
+            return $ p * v1 * v2
+        ) terms
+      ShiftLEq terms -> sum <$> mapM (\(p, k) -> (p *) <$> lookupValueWithF (eqMap, lEqs) f src k) terms
     HT.insert dst key newV
     return $ checkRes prevCheck newV oldV
 
@@ -158,7 +182,7 @@ approxFixpFrom augEqMap leqMap eps maxIters probVec
       let checkIter leqEps newV oldV =
             -- leqEps && newV - oldV <= eps -- absolute error
             leqEps && (newV == 0 || (newV - oldV) / newV <= eps) -- relative error
-      lessThanEps <- evalEqSys augEqMap id leqMap checkIter probVec probVec
+      lessThanEps <- evalEqSys augEqMap leqMap checkIter probVec probVec
       unless lessThanEps $ approxFixpFrom augEqMap leqMap eps (maxIters - 1) probVec
 
 -- determine variables for which zero is a fixpoint
