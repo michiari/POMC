@@ -36,6 +36,7 @@ packages:
 extra-deps:
   - git: git@github.com:michiari/haskell-z3.git
     commit: 493a6574eaad539028fd0fa2ec8d86c14e4d9528
+  - strict-containers-0.2.1
   # - rounded-1.1.1
   # - hgmp-0.1.2.1 # Needs CFLAGS=-Wno-error
   # - long-double-0.1.1.1

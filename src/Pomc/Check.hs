@@ -29,7 +29,8 @@ import qualified Data.Set as S
 import qualified Data.Vector as V
 
 import Data.List (foldl', sortOn, (\\))
-import qualified Data.HashMap.Strict as M
+-- a Map that is really strict
+import qualified Data.Strict.Map as M
 import Control.Monad (guard)
 
 import qualified Data.Sequence as SQ
