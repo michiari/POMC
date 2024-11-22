@@ -341,6 +341,11 @@ terminationQuerySCC suppGraph precFun query oldStats = do
         ub <- if isAST then return 1 else (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> MM.lookupValue newUpperEqMap  0 (-1)
         lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap  0 (-1)
         return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
+
+  lowerVars <- liftIO $ MM.foldMaps newLowerEqMap
+  upperVars <- liftIO $ MM.foldMaps newUpperEqMap
+  logInfoN $ "Number of variables for lower bound: " ++ show (GeneralMap.size lowerVars)
+  logInfoN $ "\nNumber of variables for upper bound: " ++ show (GeneralMap.size upperVars)
   readResults query
 
 dfs :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)

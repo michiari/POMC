@@ -102,7 +102,7 @@ instance SatState (AugState s) where
   getSatState (AugState _ _ p) = p
   {-# INLINABLE getSatState #-}
 
-  -- always promote the phi state
+  -- always promote the label
   getStateProps _ (AugState _ lab _) = lab
   {-# INLINABLE getStateProps #-}
 
