@@ -2,7 +2,7 @@ var bob = function(depth) {
   var prior_bob = sample(Bernoulli({p: 0.55}));
   if (depth > 0) {
     var alice_choice = sample(Infer(
-      {method: 'rejection', incremental : true},
+      {method: 'enumerate'},
       function () {return alice(depth)}));
     condition(prior_bob == alice_choice);
   } else {}
@@ -12,14 +12,14 @@ var bob = function(depth) {
 var alice = function(depth) {
   var prior_alice = sample(Bernoulli({p: 0.55}));
   var bob_choice = sample(Infer(
-    {method: 'rejection', incremental : true},
+    {method: 'enumerate'},
     function () {return bob(depth - 1)}));
   condition(prior_alice == bob_choice);
   return prior_alice;
 }
 
 var dist = Infer(
-  {method: 'rejection', incremental : true},
+  {method: 'enumerate'},
   function () {return alice(11)});
 
 console.log(dist.getDist());

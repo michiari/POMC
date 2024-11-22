@@ -1,4 +1,6 @@
-probabilistic query: approximate;
+probabilistic query: quantitative;
+formula = F (ret And main And [main|res == 1u1]);
+
 
 program:
 u4 p;

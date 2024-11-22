@@ -1,5 +1,5 @@
 probabilistic query: approximate;
-formula = F (G (~ obs));
+//formula = F (ret And main And [main|row_choice == 0u2] And [main|column_choice == 0u2] And [main|final_winner == 0u2] );
 
 program:
 u2[3] upper;

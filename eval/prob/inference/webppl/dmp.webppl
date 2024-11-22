@@ -3,7 +3,6 @@ var sampleAction = function(current_player) {
     // sample a choice from the priori
     var priori = sample( Infer(
           {method: 'rejection', incremental : true},
-          //{method: 'enumerate'},
         function () {return action_priori(current_player)}));
     
     var another_turn = globalStore.u0 == 0 | globalStore.u1 == 0 | globalStore.u2 == 0 | globalStore.m0 == 0 | globalStore.m1 == 0 | globalStore.m2 == 0 | globalStore.l0 == 0 | globalStore.l1 == 0 | globalStore.l2 == 0;
@@ -16,7 +15,6 @@ var sampleAction = function(current_player) {
         // passing the turn
         var other_player_choices = sample(Infer(
               {method: 'rejection', incremental : true},
-              //{method: 'enumerate'},
             function () {return sampleAction(current_player == 1? 2 : 1)}));
     }
 
@@ -138,7 +136,6 @@ var main = function() {
 
 var dist = Infer(
   {method: 'rejection', incremental : true},
-  //{method: 'enumerate'},
   main);
 
 console.log(dist.getDist());
