@@ -60,6 +60,7 @@ library:
   - integer-logarithms
   - witch
   - monad-logger
+  - strict-containers
   # - rounded
 
 executables:
