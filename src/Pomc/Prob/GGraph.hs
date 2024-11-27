@@ -298,8 +298,8 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
   -- global data structures for constructing graph G
   gGlobals <- liftSTtoIO $ do
     newIdSequence <- newSTRef (0 :: Int)
-    emptyGGraphMap <- BH.new
-    emptyGGraph <- CM.empty
+    emptyGGraphMap <- BH.newSized (V.length suppGraph)
+    emptyGGraph <- CM.emptySized (V.length suppGraph)
     emptyGRGlobals <- GR.newGRobals
     return GGlobals { idSeq = newIdSequence
                     , ggraphMap = emptyGGraphMap
