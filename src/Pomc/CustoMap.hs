@@ -7,6 +7,7 @@
 
 module Pomc.CustoMap ( CustoMap
                      , empty
+                     , emptySized
                      , insert
                      , lookup
                      , modify
@@ -30,6 +31,9 @@ type CustoMap s v = MV.MVector s v
 
 empty :: ST.ST s (STRef s (CustoMap s v))
 empty = newSTRef =<< MV.new 4
+
+emptySized :: Int -> ST.ST s (STRef s (CustoMap s v))
+emptySized size = newSTRef =<< MV.new size
 
 insert :: STRef s (CustoMap s v) -> Int -> v -> ST.ST s ()
 insert cmref k val = do
