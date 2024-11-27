@@ -133,14 +133,14 @@ reachableStates globals delta state = do
   q <- wrapState (sIdGen globals) state
   currentSuppEnds <- MM.lookup (suppEnds globals) (getId q)
   if not (null currentSuppEnds)
-    then return $ map (first getState) currentSuppEnds
+    then return $ filter ((consistentFilter delta) . fst) . map (first getState) $ currentSuppEnds
     else do
       writeSTRef (currentInitial globals) (getId q)
       let newStateSatSet = PE.encodeSatState (proBitenc delta) state
       BH.insert (visited globals) (decode (q,Nothing)) newStateSatSet
       reach globals delta (q,Nothing) newStateSatSet
       updatedSuppEnds <- MM.lookup (suppEnds globals) (getId q)
-      return $ map (first getState) updatedSuppEnds
+      return $ filter ((consistentFilter delta) . fst) .  map (first getState) $ updatedSuppEnds
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
       => GRobals s state -- global variables of the algorithm
@@ -154,13 +154,17 @@ reach globals delta (q,g) pathSatSet = do
       precRel = (prec delta) (fst . fromJust $ g) qProps
       cases i
         -- semiconfigurations with empty stack but not the initial one
-        | (isNothing g) && (getId q /= i) = return ()
+        | (isNothing g) && (getId q /= i) = do
+            unless ((consistentFilter delta) qState) $ error $ "inconsistent AugState in a push with empty stack in GReach " ++  show qState
 
         -- this case includes the initial push
-        | (isNothing g) || (precRel == Just Yield && (consistentFilter delta) qState) =
+        | (isNothing g) || (precRel == Just Yield ) = do
+            -- sanity check
+            unless ((consistentFilter delta) qState) $ error $ "inconsistent AugState in a push in GReach " ++  show qState ++ "; " ++ show g ++ ";\n\n\nPREC " ++ show precRel
             reachPush globals delta q g qState pathSatSet
 
-        | precRel == Just Equal && (consistentFilter delta) qState =
+        | precRel == Just Equal = do
+            unless ((consistentFilter delta) qState) $ error $ "inconsistent AugState in a shift in GReach " ++  show qState
             reachShift globals delta q g qState pathSatSet
 
         | precRel == Just Take =
@@ -181,13 +185,14 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
 reachPush globals delta q g qState pathSatSet =
   let qProps = getStateProps (bitenc delta) qState
       doPush p = reachTransition globals delta Nothing Nothing (p, Just (qProps, q))
+      isConsistentOrPop s = (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) . getState $ s) == Just Take) || ((consistentFilter delta) (getState s))
   in do
     SM.insert (suppStarts globals) (getId q) g
     newStates <- wrapStates (sIdGen globals) $ map fst $ (deltaPush delta) qState
     mapM_ doPush newStates
     currentSuppEnds <- MM.lookup (suppEnds globals) (getId q)
     mapM_ (\(s, supportSatSet) -> reachTransition globals delta (Just pathSatSet) (Just supportSatSet) (s,g))
-      currentSuppEnds
+      $ filter (isConsistentOrPop. fst) currentSuppEnds
 
 reachShift :: (SatState state, Eq state, Hashable state, Show state)
       => GRobals s state
@@ -215,9 +220,12 @@ reachPop :: (SatState state, Eq state, Hashable state, Show state)
 reachPop globals delta _ g qState pathSatSet =
   let doPop p =
         let r = snd . fromJust $ g
-            closeSupports g' = do
-              lcSatSet <- fromJust <$> BH.lookup (visited globals) (decode (r,g'))
-              reachTransition globals delta (Just lcSatSet) (Just pathSatSet) (p, g')
+            pState = getState p
+            pProps = getStateProps (bitenc delta) pState
+            isConsistentOrPop g' = (isJust g' && prec delta (fst . fromJust $ g') pProps == Just Take) || ((consistentFilter delta) pState)
+            closeSupports g' = when (isConsistentOrPop g') $ do 
+                  lcSatSet <- fromJust <$> BH.lookup (visited globals) (decode (r,g'))
+                  reachTransition globals delta (Just lcSatSet) (Just pathSatSet) (p, g')
         in do
           MM.insertWith (suppEnds globals) (getId r) PE.union p pathSatSet
           currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
@@ -332,18 +340,23 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
       precRel = (prec delta) (fst . fromJust $ g) qProps
       transitionCases
         -- semiconfigurations with empty stack but not the initial one
-        | (isNothing g) && not encodeNothing = return IntSet.empty
+        | (isNothing g) && not encodeNothing = do
+          unless ((consistentFilter delta) qState) $ error "semiconfigurations with emty stack but inconsistent states" 
+          return IntSet.empty
 
         -- this case includes the initial push
-        | (isNothing g) || (precRel == Just Yield && (consistentFilter delta) qState) = do
+        | (isNothing g) || precRel == Just Yield = do
+          unless ((consistentFilter delta) qState) $ error "inconsistent state in a push"
           newPushStates <- liftSTtoIO $ wrapStates sIdGen $ map fst $ (deltaPush delta) qState
           forM_ newPushStates (\p -> follow (p, Just (qProps, q))) -- discard the result
-          let newSupportStates = Set.toList $ fromJust $ (supports V.!? (getId q)) <|> (Just Set.empty)
+          let isConsistentOrPop p = (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) . getState $ p) == Just Take) || ((consistentFilter delta) (getState p))
+              newSupportStates = Set.toList . Set.filter isConsistentOrPop . fromJust $ (supports V.!? (getId q)) <|> (Just Set.empty)
           if isNothing g
             then return IntSet.empty
             else IntSet.unions <$> forM newSupportStates (\p -> follow (p, g))
 
-        | precRel == Just Equal && (consistentFilter delta) qState = do
+        | precRel == Just Equal = do
+          unless ((consistentFilter delta) qState) $ error "inconsistent state in a push"
           newShiftStates <- liftSTtoIO $ wrapStates sIdGen $ map fst $ (deltaShift delta) qState
           IntSet.unions <$> forM newShiftStates (\p -> follow (p, Just (qProps, snd . fromJust $ g)))
 
@@ -380,7 +393,7 @@ lookupVar sccMembers globals decoded rightContext = do
   let cases
           | previouslyEncoded = return $ Just (varKey, True)
           | IntSet.notMember id_ sccMembers = return Nothing
-          | otherwise = do 
+          | otherwise = do
             addFixpEq (lowerEqMap globals) varKey (PopEq 0)
             return $ Just (varKey, False)
   cases
@@ -500,7 +513,8 @@ encodePush :: (SatState state, Eq state, Hashable state, Show state)
   -> IntSet
   -> IO ()
 encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) sccMembers =
-  let suppEnds = fromJust $ (supports V.!? getId q) <|> (Just Set.empty)
+  let isConsistentOrPop p = (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) . getState $ p) == Just Take) || ((consistentFilter delta) (getState p))
+      suppEnds = Set.toList . Set.filter isConsistentOrPop . fromJust $ (supports V.!? getId q) <|> (Just Set.empty)
       qProps = getStateProps (bitenc delta) qState
       closeSupports pushDest (unencodedVars, terms) suppId =
         let suppDest = (suppId, g)
@@ -575,7 +589,7 @@ encodeShift globals sIdGen delta supports _ g qState (semiconfId, rightContext) 
         maybeTerm <- lookupVar sccMembers globals (decode dest) rightContext
         if isNothing maybeTerm
           then return (newVars, terms)
-          else let 
+          else let
             (varKey, alreadyEncoded) = fromJust maybeTerm
             newUnencoded = if alreadyEncoded then newVars else (dest, fst varKey, snd varKey):newVars
           in return ( newUnencoded,(prob_, varKey):terms)

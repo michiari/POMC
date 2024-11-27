@@ -33,6 +33,7 @@ import qualified Pomc.IOStack as IOGS
 import qualified Pomc.Encoding as E
 import Pomc.Prob.FixPoint(VarKey)
 
+-- TODO: check whether replacing with Data.Strict.Map
 import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
 
@@ -185,13 +186,16 @@ buildPush gglobals delta suppGraph isPending (gn, p) =
       fPushPhiStates = (phiDeltaPush delta) p
       fPushGnodes = [(gn1, p1) | gn1 <- fPushGns, p1 <- fPushPhiStates, (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)]
       leftContext = AugState (getState . fst . semiconf $ gn) (getLabel . fst . semiconf $ gn) p
-      cDeltaPush (AugState q0 _ p0)  =  [ (AugState q1 lab p1, prob_) |
-                                          (q1, lab, prob_) <- (deltaPush delta) q0
+      precRel stackSymbol qProps = (prec delta) stackSymbol qProps
+      cDeltaPush (AugState q0 lab0 p0)  =  [ (AugState q1 lab1 p1, prob_) |
+                                          (q1, lab1, prob_) <- (deltaPush delta) q0
                                         , p1 <- (phiDeltaPush delta) p0
+                                        , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
                                         ]
-      cDeltaShift (AugState q0 _ p0) =  [ (AugState q1 lab p1, prob_) |
-                                          (q1, lab, prob_) <- (deltaShift delta) q0
+      cDeltaShift (AugState q0 lab0 p0) =  [ (AugState q1 lab1 p1, prob_) |
+                                          (q1, lab1, prob_) <- (deltaShift delta) q0
                                         , p1 <- (phiDeltaShift delta) p0
+                                        , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
                                         ]
       cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ (AugState q2 lab p2, prob_) |
                                                             (q2, lab, prob_) <- (deltaPop delta) q0 q1
@@ -215,11 +219,11 @@ buildPush gglobals delta suppGraph isPending (gn, p) =
     fSuppAugStates <- if not . null $ fSuppGns
                         then  GR.reachableStates (grGlobals gglobals) cDelta leftContext
                         else return []
+    unless (all (consistentFilter. fst) fSuppAugStates) $ error "a support Augmented State is inconsistent"
     let fSuppGnodes = [(gn1, p1, suppSatSet) |
                         gn1 <- fSuppGns
-                      , (AugState q lab p1, suppSatSet) <- fSuppAugStates
+                      , (AugState q _ p1, suppSatSet) <- fSuppAugStates
                       , (getState . fst . semiconf $ gn1) == q
-                      , consistentFilter (AugState q lab p1)
                       ]
     forM_ fSuppGnodes $ \(gn1, p1, suppSatSet) -> buildEdge gglobals delta suppGraph isPending (gn, p) suppSatSet (gn1, p1)
 
@@ -707,13 +711,16 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
             supportGn = suppGraph V.! (graphNode toG)
             leftContext = AugState (getState . fst . semiconf $ gn) (getLabel . fst . semiconf $ gn) (phiNode g)
             rightContext = AugState (getState . fst . semiconf $ supportGn) (getLabel . fst . semiconf $ supportGn) (phiNode toG)
-            cDeltaPush (AugState q0 _ p0)  =  [ (AugState q1 lab p1, prob_) |
-                                  (q1, lab, prob_) <- (deltaPush delta) q0
+            precRel stackSymbol qProps = (prec delta) stackSymbol qProps
+            cDeltaPush (AugState q0 lab0 p0)  =  [ (AugState q1 lab1 p1, prob_) |
+                                  (q1, lab1, prob_) <- (deltaPush delta) q0
                                 , p1 <- (phiDeltaPush delta) p0
+                                , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
                                 ]
-            cDeltaShift (AugState q0 _ p0) =  [ (AugState q1 lab p1, prob_) |
-                                  (q1, lab, prob_) <- (deltaShift delta) q0
+            cDeltaShift (AugState q0 lab0 p0) =  [ (AugState q1 lab1 p1, prob_) |
+                                  (q1, lab1, prob_) <- (deltaShift delta) q0
                                 , p1 <- (phiDeltaShift delta) p0
+                                , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
                                 ]
             cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ (AugState q2 lab p2, prob_) |
                                                     (q2, lab, prob_) <- (deltaPop delta) q0 q1
