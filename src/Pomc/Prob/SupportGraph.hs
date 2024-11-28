@@ -28,6 +28,9 @@ import qualified Data.Set as Set
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 
+import Data.Strict.Map(Map)
+import qualified Data.Strict.Map as StrictMap
+
 import qualified Data.Vector.Mutable as MV
 
 import Data.IntMap.Strict(IntMap)
@@ -77,6 +80,7 @@ instance  Ord (GraphNode state) where
 -- the Support Graph computed by this module
 type PartialSupportGraph s state = CM.CustoMap s (GraphNode state)
 type SupportGraph state = Vector (GraphNode state)
+type SidMap state = Map state Int
 
 -- the global variables in the algorithm
 data Globals s state = Globals
@@ -88,12 +92,12 @@ data Globals s state = Globals
   , graph      :: STRef s (PartialSupportGraph s state)
   }
 
-buildGraph  :: (Eq state, Hashable state, Show state)
+buildGraph  :: (Ord state, Hashable state, Show state)
         => DeltaWrapper state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
         -> Label -- label of the initial state
         -> STRef s Stats
-        -> ST s (SupportGraph state) -- returning a graph
+        -> ST s (SupportGraph state, SidMap state) -- returning a graph
 buildGraph probdelta i iLabel stats = do
   -- initialize the global variables
   newSig <- initSIdGen
@@ -120,7 +124,9 @@ buildGraph probdelta i iLabel stats = do
   statesCount <- sIdCount newSig
   modifySTRef' stats $ \s -> s{suppGraphLen = idx}
   modifySTRef' stats $ \s -> s{popaStatesCount = statesCount}
-  V.freeze . CM.take idx =<< (readSTRef . graph $ globals)
+  suppGraph <- V.freeze . CM.take idx =<< (readSTRef . graph $ globals)
+  sidMap <- sIdMap (sIdGen globals)
+  return (suppGraph, sidMap)
 
 -- requires: the initial state of the OPA is mapped to StateId with getId 0
 build :: (Eq state, Hashable state, Show state)

@@ -11,12 +11,12 @@ module Pomc.Prob.GGraph ( GNode(..)
                         , quantitativeModelCheck
                         ) where
 
-import Pomc.Prob.ProbUtils hiding (SIdGen)
+import Pomc.Prob.ProbUtils hiding (sIdMap, SIdGen)
 import Pomc.SatUtil(SIdGen, SatState(..))
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 import qualified Pomc.SatUtil as SU
-import Pomc.State(State(..), Input)
+import Pomc.State(State(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Potl(Formula(..))
 import Pomc.PropConv(APType)
@@ -34,8 +34,8 @@ import qualified Pomc.Encoding as E
 import Pomc.Prob.FixPoint(VarKey)
 
 -- TODO: check whether replacing with Data.Strict.Map
-import Data.IntMap.Strict(IntMap)
-import qualified Data.IntMap.Strict as Map
+import  Data.Strict.IntMap(IntMap)
+import qualified Data.Strict.IntMap as Map
 
 import Data.Map(Map)
 import qualified Data.Map as GeneralMap
@@ -45,6 +45,8 @@ import qualified Data.Set as Set
 
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
+
+import qualified Data.Strict.Map as StrictMap
 
 import qualified Data.Vector.Mutable as MV
 import Data.Vector(Vector, (!))
@@ -95,16 +97,17 @@ type HashTable s k v = BH.HashTable s k v
 
 -- a state in the cross product between the popa and the phiAutomaton
 -- similar to MCState in the non probabilistic case
-data AugState pstate =  AugState pstate Input State deriving (Generic, Eq, Show, Ord)
+data AugState pstate =  AugState (StateId pstate) State deriving (Generic, Eq, Show, Ord)
 
-instance Hashable s => Hashable (AugState s)
+instance Hashable (AugState state) where
+  hashWithSalt salt (AugState sId phiState) = hashWithSalt salt $ (getId sId, phiState)
 
 instance SatState (AugState s) where
-  getSatState (AugState _ _ p) = p
+  getSatState (AugState _ p) = p
   {-# INLINABLE getSatState #-}
 
   -- always promote the label
-  getStateProps _ (AugState _ lab _) = lab
+  getStateProps _ (AugState sId _ ) = getLabel sId
   {-# INLINABLE getStateProps #-}
 
 -- the G Graph computed by this function
@@ -127,8 +130,9 @@ buildGGraph :: (Ord pstate, Hashable pstate, Show pstate)
                 -> [State] -- initial states of the phiOpa 
                 -> SupportGraph pstate
                 -> (Int -> Bool) -- is a semiconf pending?
+                -> StrictMap.Map pstate Int
                 -> ST s (GGraph s, Int)
-buildGGraph gglobals delta phiInitials suppGraph isPending = do
+buildGGraph gglobals delta phiInitials suppGraph isPending sIdMap = do
   let iniGn = suppGraph ! 0
       iniLabel = getLabel . fst . semiconf $ iniGn
   currentIdSeq <- readSTRef $ idSeq gglobals
@@ -142,7 +146,7 @@ buildGGraph gglobals delta phiInitials suppGraph isPending = do
                       return s
                    ) (filter (\s -> iniLabel == E.extractInput (bitenc delta) (current s)) phiInitials)
   initialNodesBound <- readSTRef . idSeq $ gglobals
-  forM_ filtered $ \s -> build gglobals delta suppGraph isPending (iniGn, s)
+  forM_ filtered $ \s -> build gglobals delta suppGraph isPending sIdMap (iniGn, s)
   idx <- readSTRef . idSeq $ gglobals
   g <- CM.take idx <$> readSTRef (gGraph gglobals)
   return (g, initialNodesBound)
@@ -152,9 +156,10 @@ build :: (Ord pstate, Hashable pstate, Show pstate)
           -> DeltaWrapper pstate
           -> SupportGraph pstate
           -> (Int -> Bool) -- is a semiconf pending?
+          -> StrictMap.Map pstate Int
           -> (GraphNode pstate, State) -- current GNode
           -> ST s ()
-build gglobals delta suppGraph isPending (gn, p) =
+build gglobals delta suppGraph isPending sIdMap (gn, p) =
   let (q,g) = semiconf gn
       precRel = (prec delta) (fst . fromJust $ g) (getLabel q)
       cases
@@ -163,10 +168,10 @@ build gglobals delta suppGraph isPending (gn, p) =
 
         -- this case includes the initial push
         | (isNothing g) || precRel == Just Yield =
-          buildPush gglobals delta suppGraph isPending (gn,p)
+          buildPush gglobals delta suppGraph isPending sIdMap (gn,p)
 
         | precRel == Just Equal =
-          buildShift gglobals delta suppGraph isPending (gn, p)
+          buildShift gglobals delta suppGraph isPending sIdMap (gn, p)
 
         | precRel == Just Take = error $ "a pop transition cannot be reached in the augmented graph of pending semiconfs, as it terminates almost surely" ++ show gn
         | otherwise = return ()
@@ -178,31 +183,34 @@ buildPush :: (Ord pstate, Hashable pstate, Show pstate)
               -> DeltaWrapper pstate
               -> SupportGraph pstate
               -> (Int -> Bool) -- is a semiconf pending?
+              -> StrictMap.Map pstate Int
               -> (GraphNode pstate, State) -- current gnode
               -> ST s ()
-buildPush gglobals delta suppGraph isPending (gn, p) =
+buildPush gglobals delta suppGraph isPending sIdMap (gn, p) =
   let fPushGns = map (suppGraph !) . Set.toList . Set.filter isPending . Set.map to $ internalEdges gn
       fSuppGns = map (suppGraph !) . Set.toList . Set.filter isPending . Set.map to $ supportEdges gn
       fPushPhiStates = (phiDeltaPush delta) p
       fPushGnodes = [(gn1, p1) | gn1 <- fPushGns, p1 <- fPushPhiStates, (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)]
-      leftContext = AugState (getState . fst . semiconf $ gn) (getLabel . fst . semiconf $ gn) p
+      leftContext = AugState (fst . semiconf $ gn) p
       precRel stackSymbol qProps = (prec delta) stackSymbol qProps
-      cDeltaPush (AugState q0 lab0 p0)  =  [ (AugState q1 lab1 p1, prob_) |
-                                          (q1, lab1, prob_) <- (deltaPush delta) q0
-                                        , p1 <- (phiDeltaPush delta) p0
-                                        , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
-                                        ]
-      cDeltaShift (AugState q0 lab0 p0) =  [ (AugState q1 lab1 p1, prob_) |
-                                          (q1, lab1, prob_) <- (deltaShift delta) q0
-                                        , p1 <- (phiDeltaShift delta) p0
-                                        , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
-                                        ]
-      cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ (AugState q2 lab p2, prob_) |
-                                                            (q2, lab, prob_) <- (deltaPop delta) q0 q1
-                                                          , p2 <- (phiDeltaPop delta) p0 p1
-                                                          ]
+      cDeltaPush (AugState (StateId _ q0 lab0) p0)  =  [(AugState (StateId id1 q1 lab1) p1, prob_) |
+                                                          (q1, lab1, prob_) <- (deltaPush delta) q0
+                                                        , p1 <- (phiDeltaPush delta) p0
+                                                        , (precRel lab0 lab1 == Just Take)
+                                                          || lab1 == E.extractInput (bitenc delta) (current p1)
+                                                        , let id1 = sIdMap StrictMap.! q1]
+      cDeltaShift (AugState (StateId _ q0 lab0) p0) =  [ (AugState (StateId id1 q1 lab1) p1, prob_) |
+                                                         (q1, lab1, prob_) <- (deltaShift delta) q0
+                                                        , p1 <- (phiDeltaShift delta) p0
+                                                        , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
+                                                        , let id1 = sIdMap StrictMap.! q1
+                                                        ]
+      cDeltaPop (AugState (StateId _ q0 _) p0) (AugState (StateId _ q1 _) p1)  = [(AugState (StateId id2 q2 lab2) p2, prob_) |
+                                                                                    (q2, lab2, prob_) <- (deltaPop delta) q0 q1
+                                                                                  , let id2 = sIdMap StrictMap.! q2
+                                                                                  , p2 <- (phiDeltaPop delta) p0 p1]
 
-      consistentFilter (AugState _ lab p0) = lab == E.extractInput (bitenc delta) (current p0)
+      consistentFilter (AugState sId0 p0) = (getLabel sId0) == E.extractInput (bitenc delta) (current p0)
       cDelta = GR.Delta
         { GR.bitenc = bitenc delta
         , GR.proBitenc = proBitenc delta
@@ -214,7 +222,7 @@ buildPush gglobals delta suppGraph isPending (gn, p) =
         }
   in do
     -- handling the push edges
-    forM_ fPushGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
+    forM_ fPushGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending sIdMap (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
     -- handling the support edges
     fSuppAugStates <- if not . null $ fSuppGns
                         then  GR.reachableStates (grGlobals gglobals) cDelta leftContext
@@ -222,23 +230,24 @@ buildPush gglobals delta suppGraph isPending (gn, p) =
     unless (all (consistentFilter. fst) fSuppAugStates) $ error "a support Augmented State is inconsistent"
     let fSuppGnodes = [(gn1, p1, suppSatSet) |
                         gn1 <- fSuppGns
-                      , (AugState q _ p1, suppSatSet) <- fSuppAugStates
+                      , (AugState (StateId _ q _) p1, suppSatSet) <- fSuppAugStates
                       , (getState . fst . semiconf $ gn1) == q
                       ]
-    forM_ fSuppGnodes $ \(gn1, p1, suppSatSet) -> buildEdge gglobals delta suppGraph isPending (gn, p) suppSatSet (gn1, p1)
+    forM_ fSuppGnodes $ \(gn1, p1, suppSatSet) -> buildEdge gglobals delta suppGraph isPending sIdMap (gn, p) suppSatSet (gn1, p1)
 
 buildShift :: (Ord pstate, Hashable pstate, Show pstate)
                => GGlobals s pstate -- global variables of the algorithm
                -> DeltaWrapper pstate
                -> SupportGraph pstate
                -> (Int -> Bool) -- is a semiconf pending?
+               -> StrictMap.Map pstate Int
                -> (GraphNode pstate, State) -- current GNopde
                -> ST s ()
-buildShift gglobals delta suppGraph isPending (gn, p) =
+buildShift gglobals delta suppGraph isPending sIdMap (gn, p) =
   let fGns = map (suppGraph !) . Set.toList . Set.filter isPending . Set.map to $ internalEdges gn
       fPhiStates = (phiDeltaShift delta) p
       fGnodes = [(gn1, p1) | gn1 <- fGns, p1 <- fPhiStates, (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)]
-  in forM_ fGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
+  in forM_ fGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending sIdMap (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
 
 -- decomposing an edge to a new node
 buildEdge :: (Ord pstate, Hashable pstate, Show pstate)
@@ -246,11 +255,12 @@ buildEdge :: (Ord pstate, Hashable pstate, Show pstate)
                  -> DeltaWrapper pstate
                  -> SupportGraph pstate
                  -> (Int -> Bool) -- is a semiconf pending?
+                 -> StrictMap.Map pstate Int
                  -> (GraphNode pstate, State) -- current node
                  -> ProbEncodedSet -- for formulae satisfied in a support
                  -> (GraphNode pstate, State) -- to node
                  -> ST s ()
-buildEdge gglobals delta suppGraph isPending (gn, p) suppSatSet (gn1, p1) =
+buildEdge gglobals delta suppGraph isPending sIdMap (gn, p) suppSatSet (gn1, p1) =
   let
     insertEdge to_  g@GNode{edges = edges_} = g{edges = Map.insertWith PE.union to_ suppSatSet edges_}
     lookupInsert to_ = BH.lookup (ggraphMap gglobals) (gnId gn, p) >>= CM.modify (gGraph gglobals) (insertEdge to_) . fromJust
@@ -261,7 +271,7 @@ buildEdge gglobals delta suppGraph isPending (gn, p) suppSatSet (gn1, p1) =
         BH.insert (ggraphMap gglobals) (gnId gn1, p1) actualId
         CM.insert (gGraph gglobals) actualId $ GNode {gId= actualId, graphNode = gnId gn1, phiNode = p1, edges = Map.empty, iValue = 0, descSccs = IntSet.empty}
     lookupInsert actualId
-    when (isNothing maybeId) $ build gglobals delta suppGraph isPending (gn1, p1)
+    when (isNothing maybeId) $ build gglobals delta suppGraph isPending sIdMap (gn1, p1)
 
 -------- finding the bottom SCCs of subgraph H -------------
 type GraphNodesSCC = IntSet
@@ -292,9 +302,10 @@ qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate,
                       -> Formula APType -- phi: input formula to check
                       -> [State] -- initial states of the phiOpa 
                       -> SupportGraph pstate
+                      -> StrictMap.Map pstate Int
                       -> Vector Bool
                       -> m Bool
-qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
+qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector = do
   -- global data structures for constructing graph G
   gGlobals <- liftSTtoIO $ do
     newIdSequence <- newSTRef (0 :: Int)
@@ -308,7 +319,7 @@ qualitativeModelCheck delta phi phiInitials suppGraph pendVector = do
                     }
 
   logInfoN "Building graph G..."
-  (gGraph_, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!)
+  (gGraph_, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!) sIdMap
   logInfoN $ "Graph G has " ++ show (MV.length gGraph_) ++ " nodes."
   logInfoN "Analyzing graph G..."
   -- globals data structures for qualitative model checking
@@ -479,9 +490,10 @@ quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord pstate, Ha
                        -> IntSet
                        -> Map VarKey Prob
                        -> Map VarKey Prob
+                       -> StrictMap.Map pstate Int
                        -> STRef RealWorld Stats
                        -> m (Prob, Prob)
-quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds oldStats = do
+quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds sIdMap oldStats = do
   startGGTime <- startTimer
   -- global data structures for constructing graph G
   gGlobals <- liftSTtoIO $ do
@@ -494,7 +506,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
                     , gGraph = emptyGGraph
                     , grGlobals = emptyGRGlobals
                     }
-  (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (`IntSet.notMember` asTermSemiconfs)
+  (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (`IntSet.notMember` asTermSemiconfs) sIdMap
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
   hGlobals <- liftSTtoIO $ do
@@ -591,7 +603,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     -- encodings (2b) and (2c)
     encs1 <- concat <$> mapM
       (\gNode -> encode
-        globals (GR.sIdGen (grGlobals gGlobals)) freezedSuppEnds delta (newlMap, newuMap) suppGraph freezedGGraph (prec delta) isInH gNode pendProbsLowerBounds pendProbsUpperBounds
+        globals (GR.sIdGen (grGlobals gGlobals)) freezedSuppEnds delta (newlMap, newuMap) suppGraph freezedGGraph (prec delta) isInH gNode pendProbsLowerBounds pendProbsUpperBounds sIdMap
       ) (V.filter isInH freezedGGraph)
 
     logInfoN "Encoding conditions (2a)"
@@ -661,8 +673,9 @@ encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate
       -> GNode
       -> Vector Prob
       -> Vector Prob
+      -> StrictMap.Map pstate Int
       -> z3 [AST]
-encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB =
+encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB sIdMap =
   let gn = suppGraph ! graphNode gNode
       (q,g) = semiconf gn
       qLabel = getLabel q
@@ -670,7 +683,7 @@ encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph 
       cases
         -- this case includes the initial push
         | isNothing g || precRel == Just Yield =
-            encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH gNode gn pendProbsLB pendProbsUB
+            encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH gNode gn pendProbsLB pendProbsUB sIdMap
 
         | precRel == Just Equal =
             encodeShift (lTypVarMap, uTypVarMap) gGraph isInH gNode gn pendProbsLB pendProbsUB
@@ -692,8 +705,9 @@ encodePush :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable ps
   -> GraphNode pstate
   -> Vector Prob
   -> Vector Prob
+  -> StrictMap.Map pstate Int
   -> z3 [AST]
-encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB =
+encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB sIdMap =
   let fNodes = IntSet.toList . IntSet.filter (\idx -> isInH (gGraph V.! idx)) . Map.keysSet $ edges g
       pushEnc toIdx = do
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
@@ -709,25 +723,27 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
             -- supports edges in the Support Graph
             maybePSupport = Set.lookupLE (Edge (graphNode toG) 0) $ supportEdges gn
             supportGn = suppGraph V.! (graphNode toG)
-            leftContext = AugState (getState . fst . semiconf $ gn) (getLabel . fst . semiconf $ gn) (phiNode g)
-            rightContext = AugState (getState . fst . semiconf $ supportGn) (getLabel . fst . semiconf $ supportGn) (phiNode toG)
+            leftContext = AugState (fst . semiconf $ gn) (phiNode g)
+            rightContext = AugState (fst . semiconf $ supportGn) (phiNode toG)
             precRel stackSymbol qProps = (prec delta) stackSymbol qProps
-            cDeltaPush (AugState q0 lab0 p0)  =  [ (AugState q1 lab1 p1, prob_) |
+            cDeltaPush (AugState (StateId _ q0 lab0) p0)  =  [ (AugState (StateId id1 q1 lab1) p1, prob_) |
                                   (q1, lab1, prob_) <- (deltaPush delta) q0
                                 , p1 <- (phiDeltaPush delta) p0
                                 , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
+                                , let id1 = sIdMap StrictMap.! q1
                                 ]
-            cDeltaShift (AugState q0 lab0 p0) =  [ (AugState q1 lab1 p1, prob_) |
-                                  (q1, lab1, prob_) <- (deltaShift delta) q0
-                                , p1 <- (phiDeltaShift delta) p0
-                                , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
-                                ]
-            cDeltaPop (AugState q0 _ p0) (AugState q1 _ p1)  = [ (AugState q2 lab p2, prob_) |
-                                                    (q2, lab, prob_) <- (deltaPop delta) q0 q1
-                                                  , p2 <- (phiDeltaPop delta) p0 p1
-                                                  ]
+            cDeltaShift (AugState (StateId _ q0 lab0) p0) = [ (AugState (StateId id1 q1 lab1) p1, prob_) |
+                                                              (q1, lab1, prob_) <- (deltaShift delta) q0
+                                                            , p1 <- (phiDeltaShift delta) p0
+                                                            , (precRel lab0 lab1 == Just Take) || lab1 == E.extractInput (bitenc delta) (current p1)
+                                                            , let id1 = sIdMap StrictMap.! q1
+                                                            ]
+            cDeltaPop (AugState (StateId _ q0 _) p0) (AugState (StateId _ q1 _) p1)  = [(AugState (StateId id2 q2 lab2) p2, prob_) |
+                                                                                          (q2, lab2, prob_) <- (deltaPop delta) q0 q1
+                                                                                        ,  let id2 = sIdMap StrictMap.! q2
+                                                                                        ,  p2 <- (phiDeltaPop delta) p0 p1]
 
-            consistentFilter (AugState _ lab p0) = lab == E.extractInput (bitenc delta) (current p0)
+            consistentFilter (AugState sId p0) = (getLabel sId) == E.extractInput (bitenc delta) (current p0)
             cDelta = GR.Delta
               { GR.bitenc = bitenc delta
               , GR.proBitenc = proBitenc delta

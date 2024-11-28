@@ -23,6 +23,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , Stats(..)
                            , initSIdGen
                            , sIdCount
+                           , sIdMap
                            , wrapState
                            , freshPosId
                            , freshNegId
@@ -60,6 +61,11 @@ import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
 import Data.Map(Map)
+
+
+import Data.Bifunctor(second)
+
+import qualified Data.Strict.Map as StrictMap
 
 import Z3.Monad hiding (Solver)
 
@@ -105,8 +111,11 @@ initSIdGen = do
   return $ SIdGen { idSequence = newIdSequence,
                     stateToId = newStateToId }
 
-sIdCount :: SIdGen s state -> ST.ST s Int 
-sIdCount sig = readSTRef (idSequence sig)   
+sIdCount :: SIdGen s state -> ST.ST s Int
+sIdCount sig = readSTRef (idSequence sig)
+
+sIdMap :: (Ord state) => SIdGen s state -> ST.ST s (StrictMap.Map state Int)
+sIdMap sig = StrictMap.fromList . map (second getId) <$> H.toList (stateToId sig)
 
 -- wrap a State into the StateId data type and into the ST monad, and update accordingly SidGen
 wrapState :: (Eq state, Hashable state)
