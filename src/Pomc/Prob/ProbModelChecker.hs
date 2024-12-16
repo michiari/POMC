@@ -191,7 +191,7 @@ qualitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable
                       -> m (Bool, Stats, String)
 qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
-    (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
+    (bitenc, precFunc, phiInitials, (_, phiIsFinalW), phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
       makeOpa phi IsProb alphabet (\_ _ -> True)
 
     deltaPush  = bDeltaPush bitenc
@@ -200,7 +200,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
 
     initial = bInitials bitenc
 
-    proEnc = PE.makeProBitEncoding cl phiIsFinal
+    proEnc = PE.makeProBitEncoding cl phiIsFinalW
 
     phiPush p = (phiDeltaPush p Nothing)
     phiShift p = (phiDeltaShift p Nothing)
@@ -343,7 +343,7 @@ quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashabl
                        -> m ((Prob,Prob), Stats, String)
 quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
-    (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
+    (bitenc, precFunc, phiInitials, (_, phiIsFinalW), phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
       makeOpa phi IsProb alphabet (\_ _ -> True)
 
     deltaPush  = bDeltaPush bitenc
@@ -352,7 +352,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
 
     initial = bInitials bitenc
 
-    proEnc = PE.makeProBitEncoding cl phiIsFinal
+    proEnc = PE.makeProBitEncoding cl phiIsFinalW
 
     phiPush p = (phiDeltaPush p Nothing)
     phiShift p = (phiDeltaShift p Nothing)

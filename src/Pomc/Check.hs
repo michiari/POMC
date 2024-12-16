@@ -265,7 +265,7 @@ iffCons bitenc clos set =
 
 -- consistency check for (Until dir g h)
 untilCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-untilCons bitenc clos set = 
+untilCons bitenc clos set =
   E.all bitenc consSet set
   &&
   -- if h holds or (Until dir g h) still holds in the next (chain) position, then (Until dir g h) holds in the current atom
@@ -282,7 +282,7 @@ untilCons bitenc clos set =
 
 -- consistency check for (GUntil g h)
 gUntilCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-gUntilCons bitenc clos set = 
+gUntilCons bitenc clos set =
   E.all bitenc consSet set
   &&
   -- if h holds, then (GUntil g h) holds in the current atom
@@ -302,7 +302,7 @@ evCons bitenc clos set = -- if g holds, (Eventually g) holds as well
 
 -- consistency check for (Since dir g h)
 sinceCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-sinceCons bitenc clos set = 
+sinceCons bitenc clos set =
   E.all bitenc consSet set
   &&
   -- if h holds or (Since dir g h) still holds in the previous (chain) position,
@@ -1541,36 +1541,36 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
             valid curr pcomb = let info = makeInfo curr pcomb
                                in all ($ info) frs
 
--- given a BitEncoding, a state formula, determine whether the state is final
-isFinal :: BitEncoding -> [Formula APType] -> Formula APType -> State  -> Bool
-isFinal bitenc cl _   s@(FState {}) = isFinalF bitenc cl s
-isFinal bitenc _  phi s@(WState {}) = isFinalW bitenc phi s
-
 isNotTrivialOmega :: Formula APType -> Bool
-isNotTrivialOmega (XNext _ _) = True 
-isNotTrivialOmega (Until _ _ _) = True 
+isNotTrivialOmega (XNext _ _) = True
+isNotTrivialOmega (Until {}) = True
+isNotTrivialOmega (GUntil _ _) = True
 isNotTrivialOmega (Eventually _) = True
 isNotTrivialOmega _ = False
 
 -- determine whether a state is final for a formula, for the omega case
 isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
+isFinalW _ _  (FState {}) = error "got a state for finite-string model checking"
 isFinalW bitenc phi@(XNext Down g) s =
-  (not $ E.member bitenc phi (stack s))
-  && ((not $ E.member bitenc phi (pending s)) || E.member bitenc g (current s))
+  not (E.member bitenc phi (stack s))
+  && (not (E.member bitenc phi (pending s)) || E.member bitenc g (current s))
 isFinalW bitenc phi@(XNext Up _) s =
-  (not $ E.member bitenc phi (stack s)) && (not $ E.member bitenc phi (pending s))
+  not (E.member bitenc phi (stack s)) && not (E.member bitenc phi (pending s))
 isFinalW bitenc phi@(Until Down _ h) s =
   isFinalW bitenc (XNext Down phi) s
-  && ((not $ E.member bitenc phi (current s)) || E.member bitenc h (current s))
+  && (not (E.member bitenc phi (current s)) || E.member bitenc h (current s))
 isFinalW bitenc phi@(Until Up _ h) s =
   isFinalW bitenc (XNext Up phi) s
-  && ((not $ E.member bitenc phi (current s)) || E.member bitenc h (current s))
+  && (not (E.member bitenc phi (current s)) || E.member bitenc h (current s))
 isFinalW bitenc phi@(Eventually g) s =
-  (E.member bitenc g (current s)) || (not $ E.member bitenc phi (current s))
-isFinalW _ _ _ = error "called isFinalOmega on a formula for which trivially every state is final"
+  E.member bitenc g (current s) || not (E.member bitenc phi (current s))
+isFinalW bitenc phi@(GUntil _ h) s =
+  E.member bitenc h (current s) || not (E.member bitenc phi (current s))
+isFinalW _ _ _ = error "called isFinalW on a formula for which trivially every state is final"
 
 -- given a BitEncoding, a closure and a state, determine whether the state is final
 isFinalF :: BitEncoding -> [Formula APType] -> State -> Bool
+isFinalF _ _ (WState {}) = error "got a state for infinite-string model checking"
 isFinalF bitenc cl s =
   not (mustPush s) -- xe can be instead accepted, as if # = #
   && (not . E.null $ E.intersect currFset maskEnd)
@@ -1685,7 +1685,7 @@ makeOpa :: Formula APType -- the input formula
         -> ( BitEncoding -- data for encoding and decoding between bitsets and formulas and props
            , EncPrecFunc -- OPM on bitsets
            , [State] -- initial states
-           , Formula APType -> State -> Bool -- isFinal
+           , (State -> Bool, Formula APType -> State -> Bool) -- isFinal
            , State -> Maybe Input -> [State] -- deltaPush
            , State -> Maybe Input -> [State] -- deltaShift
            , State -> State -> [State] -- deltaPop
@@ -1695,7 +1695,7 @@ makeOpa phi isOmegaOrProb (sls, sprs) inputFilter =
   ( bitenc
   , prec
   , is
-  , isFinal bitenc cl
+  , (isFinalF bitenc cl, isFinalW bitenc)
   , deltaPush  as pcs scs pushRules  -- apply PushRules
   , deltaShift as pcs scs shiftRules -- apply ShiftRules
   , deltaPop   as pcs scs popRules   -- apply PopRules
