@@ -168,6 +168,8 @@ potlP = makeExprParser termParser operatorTable
             , binaryR "Sd" (P.Since P.Down)
             , binaryR "Su" (P.Since P.Up)
 
+            , binaryR "U" P.GUntil
+
             , binaryR "HUd" (P.HUntil P.Down)
             , binaryR "HUu" (P.HUntil P.Up)
             , binaryR "HSd" (P.HSince P.Down)

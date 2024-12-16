@@ -816,6 +816,54 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "texc", "t", "ret"])
         )
+      , ( "Accepting Global Until"
+        , True
+        , GUntil T (Atomic . Prop $ "thr")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Accepting Global Until - 2"
+        , True
+        , GUntil (Atomic . Prop $ "call") (Atomic . Prop $ "han")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Rejecting Global Until"
+        , False
+        , GUntil T (Atomic . Prop $ "thr")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Rejecting # with a Global Until"
+        , False
+        , GUntil (Atomic . Prop $ "call") (Not . Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Accepting calls Guntil First Ret"
+        , True
+        , GUntil (Atomic . Prop $ "call") (Atomic . Prop $ "ret")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "call", "ret"]
+        )
+      , ( "Accepting Not Global Until"
+        , True
+        , Not $ GUntil (Atomic . Prop $ "call") (Not . Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "call", "call"]
+        )
+      , ( "Rejecting Not Global Until"
+        , False
+        , Not $ GUntil T (Atomic . Prop $ "thr")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Accepting Global Until - 3"
+        , True
+        , GUntil T $ Not (Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
       , ( "Accepting Eventually"
         , True
         , Eventually (Atomic . Prop $ "thr")
@@ -834,7 +882,7 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV1
         , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
         )
-      , ( "Accepting Eventually"
+      , ( "Accepting Eventually - 2"
         , True
         , Eventually $ Not (Atomic . Prop $ "call")
         , stlPrecRelV1

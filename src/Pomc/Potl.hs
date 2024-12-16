@@ -12,7 +12,6 @@ module Pomc.Potl ( Dir(..)
                  , getProps
                    -- * Predicates on formulas
                  , atomic
-                 , future
                  , negative
                    -- * Operations on formulas
                  , negation
@@ -49,6 +48,8 @@ data Formula a = T
                | Since  Dir (Formula a) (Formula a)
                | HUntil Dir (Formula a) (Formula a)
                | HSince Dir (Formula a) (Formula a)
+               | Next (Formula a)
+               | GUntil (Formula a) (Formula a)
                | Eventually (Formula a)
                | Always     (Formula a)
                | AuxBack Dir (Formula a)  -- AuxBack Up is NEVER used
@@ -84,6 +85,8 @@ instance (Show a) => Show (Formula a) where
              HUntil Up   g h -> concat [showp g, " HUu ", showp h]
              HSince Down g h -> concat [showp g, " HSd ", showp h]
              HSince Up   g h -> concat [showp g, " HSu ", showp h]
+             Next g          -> concat ["PN", showp g]
+             GUntil g h      -> concat [showp g, "U", showp h]
              Eventually g    -> concat ["F ", showp g]
              Always g        -> concat ["G ", showp g]
              AuxBack Down g  -> concat ["AuxBd ", showp g]
@@ -114,11 +117,13 @@ instance Functor Formula where
                   HBack dir g     -> HBack dir (fmap func g)
                   Until dir g h   -> Until dir (fmap func g) (fmap func h)
                   Since dir g h   -> Since dir (fmap func g) (fmap func h)
-                  HUntil dir g h -> HUntil dir (fmap func g) (fmap func h)
-                  HSince dir g h -> HSince dir (fmap func g) (fmap func h)
+                  HUntil dir g h  -> HUntil dir (fmap func g) (fmap func h)
+                  HSince dir g h  -> HSince dir (fmap func g) (fmap func h)
+                  Next g          -> Next (fmap func g)
+                  GUntil g h      -> GUntil (fmap func g) (fmap func h)
                   Eventually g    -> Eventually (fmap func g)
                   Always g        -> Always (fmap func g)
-                  AuxBack dir g  -> AuxBack dir (fmap func g)
+                  AuxBack dir g   -> AuxBack dir (fmap func g)
 
 
 --get all the atomic propositions used by a formula, removing duplicates
@@ -143,6 +148,8 @@ getProps formula = nub $ collectProps formula
           Since _ g h        -> getProps g ++ getProps h
           HUntil _ g h       -> getProps g ++ getProps h
           HSince _ g h       -> getProps g ++ getProps h
+          Next g             -> getProps g 
+          GUntil g h         -> getProps g ++ getProps h
           Eventually g       -> getProps g
           Always g           -> getProps g
           AuxBack _ g        -> getProps g
@@ -150,15 +157,6 @@ getProps formula = nub $ collectProps formula
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
 atomic _ = False
-
-future :: Formula a -> Bool
-future (PNext      {})      = True
-future (XNext      {})      = True
-future (HNext      {})      = True
-future (Until      {})      = True
-future (HUntil     {})      = True
-future (Eventually {})      = True
-future _ = False
 
 negative :: Formula a -> Bool
 negative (Not _) = True
@@ -212,6 +210,8 @@ normalize f = case f of
                 Since dir g h      -> Since dir (normalize g) (normalize h)
                 HUntil dir g h     -> HUntil dir  (normalize g) (normalize h)
                 HSince dir g h     -> HSince dir  (normalize g) (normalize h)
+                Next g             -> Next (normalize g)
+                GUntil g h         -> GUntil (normalize g) (normalize h)
                 Eventually g       -> Eventually (normalize g)
                 Always g           -> Not . Eventually . normalize . Not $ g
                 AuxBack dir g      -> AuxBack dir (normalize g)
