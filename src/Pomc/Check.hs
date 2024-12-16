@@ -473,7 +473,8 @@ deltaRules bitenc cl precFunc =
                                      , (any checkHbu, hbuShiftPr)
                                      , (any checkHbd, hbdShiftPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (any checkGU,  guShiftFcr),
+        , ruleGroupFcrs = resolve cl [ (any checkNxt, nxtShiftFcr),
+                                       (any checkGU,  guShiftFcr),
                                        (any checkEv,  evShiftFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True,   xrShiftFpr)
@@ -511,7 +512,8 @@ deltaRules bitenc cl precFunc =
                                      , (any checkHbu, hbuPushPr)
                                      , (any checkHbd, hbdPushPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (any checkGU,  guPushFcr),
+        , ruleGroupFcrs = resolve cl [ (any checkNxt, nxtPushFcr),
+                                       (any checkGU,  guPushFcr),
                                        (any checkEv,  evPushFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True,   xrPushFpr)
@@ -1328,6 +1330,25 @@ deltaRules bitenc cl precFunc =
          && (fXl || fXe || ppCurrAbdHsdfs `E.intersect` checkSet == checkSet)
 
     --  LTL formulae 
+
+    -- Nxt: Next g -- 
+    -- pop transitions do not read any input symbol, so pCurr = fCurr by default in them
+    maskNxt = E.suchThat bitenc checkNxt
+    checkNxt (Next _) = True
+    checkNxt _ = False
+
+    nxtPushFcr :: FcrInfo -> Bool
+    nxtPushFcr info =
+      let pCurr = current $ fcrState info
+          fCurr = fcrFutureCurr info
+          pCurrNxtfs = E.intersect pCurr maskNxt
+          ng2g = makeOp2OpMap (\(Next g) -> g) checkNxt
+          fCurrGs = makeOpCheckSet ng2g fCurr
+      in if E.member bitenc (Atomic End) fCurr
+          then E.null pCurrNxtfs
+          else pCurrNxtfs == fCurrGs
+    nxtShiftFcr = nxtPushFcr
+
     -- Gu: GUntil g h -- 
     -- pop transitions do not read any input symbol, so pCurr = fCurr by default in them
     maskGU = E.suchThat bitenc checkGU
@@ -1523,8 +1544,8 @@ isFinal bitenc cl _   s@(FState {}) = isFinalF bitenc cl s
 isFinal bitenc _  phi s@(WState {}) = isFinalW bitenc phi s
 
 isNotTrivialOmega :: Formula APType -> Bool
-isNotTrivialOmega (XNext _ _) = True
-isNotTrivialOmega (Until _ _ _) = True
+isNotTrivialOmega (XNext _ _) = True 
+isNotTrivialOmega (Until _ _ _) = True 
 isNotTrivialOmega (Eventually _) = True
 isNotTrivialOmega _ = False
 

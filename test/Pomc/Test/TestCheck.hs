@@ -816,6 +816,54 @@ unitTests = testGroup "Unit tests" [potlTests1, potlTests2]
         , stlPrecRelV1
         , map (S.fromList . map Prop) (stlAnnotateV1 ["han", "call", "tbeg", "t", "texc", "t", "ret"])
         )
+      , ( "Accepting Global Next"
+        , True
+        , Next (Atomic . Prop $ "han")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Accepting Nested Next "
+        , True
+        , Next $ Next (Atomic . Prop $ "thr")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Rejecting Next"
+        , False
+        , Next (Atomic . Prop $ "thr")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Rejecting # with a Global Next"
+        , False
+        , Next (Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call"]
+        )
+      , ( "Rejecting # with a Global Next - 2"
+        , False
+        , Next (Not . Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call"]
+        )
+      , ( "Accepting Not Global Next"
+        , True
+        , Not $ Next (Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "ret"]
+        )
+      , ( "Rejecting Not Global Until"
+        , False
+        , Not $ Next (Atomic . Prop $ "han")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
+      , ( "Accepting Global Next - 2"
+        , True
+        , Next (Not . Atomic . Prop $ "call")
+        , stlPrecRelV1
+        , map (S.singleton . Prop) ["call", "han", "thr", "ret"]
+        )
       , ( "Accepting Global Until"
         , True
         , GUntil T (Atomic . Prop $ "thr")

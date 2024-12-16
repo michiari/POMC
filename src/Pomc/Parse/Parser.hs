@@ -148,6 +148,8 @@ potlP = makeExprParser termParser operatorTable
             , prefix "PBd" (P.PBack P.Down)
             , prefix "PBu" (P.PBack P.Up)
 
+            , prefix "N" P.Next
+
             , prefix "XNd" (P.XNext P.Down)
             , prefix "XNu" (P.XNext P.Up)
             , prefix "XBd" (P.XBack P.Down)
