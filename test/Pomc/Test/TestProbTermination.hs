@@ -363,7 +363,7 @@ loopFunShort = ExplicitPopa
       , (3, [(3, makeInputSet ["call"], 1)])
       ]
   , epopaDeltaShift =
-      [ (2, [(1, makeInputSet ["ret"], 1)]) ]
+      [ (2, [(1, makeInputSet ["call"], 1)]) ]
   , epopaDeltaPop =
       [ (1, 1, [(1, makeInputSet ["call"], 1 % 2), (2, makeInputSet ["ret"], 1 % 2)])
       , (1, 0, [(3, makeInputSet ["call"], 1)])
