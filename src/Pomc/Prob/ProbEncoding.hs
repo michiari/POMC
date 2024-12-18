@@ -71,7 +71,7 @@ subsumes eset1 eset2 = E.union eset1 eset2 == eset1
 
 -- are all formulae satisfied?
 isSatisfying :: EncodedSet -> Bool
-isSatisfying = E.all
+isSatisfying = E.allSet
 
 -- for debugging purposes
 showProbEncoding :: ProBitencoding -> ProbEncodedSet -> String

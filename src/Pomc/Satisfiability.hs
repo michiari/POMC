@@ -422,7 +422,7 @@ isSatisfiable isOmega phi alphabet =
   let encode True = IsOmega
       encode False = IsFinite
       
-      (be, precf, initials, isFinal, dPush, dShift, dPop, cl) =
+      (be, precf, initials, (isFinalF, isFinalW), dPush, dShift, dPop, cl) =
         makeOpa phi (encode isOmega) alphabet (\_ _ -> True)
       delta = Delta
         { bitenc = be
@@ -431,10 +431,10 @@ isSatisfiable isOmega phi alphabet =
         , deltaShift = (\q _ -> dShift q Nothing)
         , deltaPop = dPop
         }
-      obe = OE.makeOmegaBitEncoding cl (const True) isFinal
+      obe = OE.makeOmegaBitEncoding cl (const True) isFinalW
       (emptyRes, trace) = if isOmega
                           then isEmptyOmega delta initials obe
-                          else isEmpty delta initials (isFinal T)
+                          else isEmpty delta initials isFinalF
 
   in (not emptyRes, map snd $ toInputTrace be trace)
 

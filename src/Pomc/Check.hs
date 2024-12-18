@@ -17,7 +17,7 @@ module Pomc.Check ( fastcheck
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import Pomc.Opa (augRun)
-import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, future, getProps)
+import Pomc.Potl (Formula(..), Dir(..), negative, negation, atomic, normalize, getProps)
 import Pomc.Encoding (EncodedSet, PropSet, BitEncoding(..))
 import qualified Pomc.Encoding as E
 import Pomc.PropConv (APType, convPropTokens)
@@ -107,6 +107,8 @@ closure phi otherProps = let  propClos = concatMap (closList . Atomic) (End : ot
       HUntil Up g h   -> [f, Not f] ++ closList g ++ closList h ++ huuExpr g h
       HSince Down g h -> [f, Not f] ++ closList g ++ closList h ++ hsdExpr f g h
       HSince Up g h   -> [f, Not f] ++ closList g ++ closList h ++ hsuExpr g h
+      Next g          -> [f, Not f] ++ closList g
+      GUntil g h      -> [f, Not f] ++ closList g ++ closList h
       Eventually g    -> [f, Not f] ++ closList g
       AuxBack _ g     -> [f, Not f] ++ closList g
       Always _        -> error "Always formulas must be transformed to Eventually formulas."
@@ -145,7 +147,7 @@ makeBitEncoding clos =
 
   in E.newBitEncoding (fetchVec pClosVec) pClosLookup (V.length pClosVec) (V.length pAtomicVec)
 
--- generate encoded atoms from a the closure of phi and all possible inputs
+-- generate encoded atoms from the closure of phi and all possible inputs
 genAtoms :: BitEncoding -> [Formula APType] -> [Input] -> [Atom]
 genAtoms bitenc clos inputs =
   let -- Consistency checks
@@ -157,8 +159,10 @@ genAtoms bitenc clos inputs =
         , onlyif (not . null $ [f | f@(Xor _ _)          <- clos]) (xorCons bitenc clos)
         , onlyif (not . null $ [f | f@(Implies _ _)      <- clos]) (impliesCons bitenc clos)
         , onlyif (not . null $ [f | f@(Iff _ _)          <- clos]) (iffCons bitenc clos)
-        , onlyif (not . null $ [f | f@(Until _ _ _)      <- clos]) (untilCons bitenc clos)
-        , onlyif (not . null $ [f | f@(Since _ _ _)      <- clos]) (sinceCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Until {})         <- clos]) (untilCons bitenc clos)
+        , onlyif (not . null $ [f | f@(GUntil {})        <- clos]) (gUntilCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Eventually _)     <- clos]) (evCons bitenc clos)
+        , onlyif (not . null $ [f | f@(Since {})         <- clos]) (sinceCons bitenc clos)
         , onlyif (not . null $ [f | f@(HUntil Down _ _)  <- clos]) (hierUntilDownCons bitenc clos)
         , onlyif (not . null $ [f | f@(HUntil Up _ _)    <- clos]) (hierUntilUpCons bitenc clos)
         , onlyif (not . null $ [f | f@(HSince Down  _ _) <- clos]) (hierSinceDownCons bitenc clos)
@@ -192,7 +196,7 @@ trueCons bitenc set = not $ E.member bitenc (Not T) set
 -- consistency check for (And g h)
 andCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 andCons bitenc clos set =
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   &&
   -- if both g and h hold in current atom, then (And g h) must hold as well
   null [f | f@(And g h) <- clos,
@@ -201,13 +205,13 @@ andCons bitenc clos set =
          not (E.member bitenc f set)]
 
   where -- if (And g h) holds in current atom, then g and h must both hold as well
-        consSet (And g h) = not $ E.member bitenc g set && E.member bitenc h set
-        consSet _ = False
+        consSet (And g h) = E.member bitenc g set && E.member bitenc h set
+        consSet _ = True
 
 -- consistency check for (Or g h)
 orCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 orCons bitenc clos set =
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   &&
   -- if g or h holds in current atom, then (Or g h) must hold as well
   null [f | f@(Or g h) <- clos,
@@ -215,136 +219,158 @@ orCons bitenc clos set =
          && not (E.member bitenc f set)]
 
   where -- if (Or g h) holds in current atom, then g or h must hold as well
-        consSet (Or g h) = not $ E.member bitenc g set || E.member bitenc h set
-        consSet _ = False
+        consSet (Or g h) = E.member bitenc g set || E.member bitenc h set
+        consSet _ = True
 
 -- consistency check for (Xor g h)
 xorCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 xorCons bitenc clos set =
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   &&
   -- if g xor h holds in current atom, then (Xor g h) must hold as well
   null [f | f@(Xor g h) <- clos,
          (E.member bitenc g set /= E.member bitenc h set)
          && not (E.member bitenc f set)]
   where -- if (Xor g h) holds in current atom, then g xor h must hold as well
-        consSet (Xor g h) = not $ E.member bitenc g set /= E.member bitenc h set
-        consSet _ = False
+        consSet (Xor g h) = E.member bitenc g set /= E.member bitenc h set
+        consSet _ = True
 
 -- consistency check for (Implies g h)
 impliesCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 impliesCons bitenc clos set =
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   &&
   -- if g implies h holds in current atom, then (Implies g h) must hold as well
   null [f | f@(Implies g h) <- clos,
          (E.member bitenc g set `implies` E.member bitenc h set)
          && not (E.member bitenc f set)]
   where -- if (Implies g h) holds in current atom, then g implies h must hold as well
-        consSet (Implies g h) = not $ E.member bitenc g set `implies` E.member bitenc h set
-        consSet _ = False
+        consSet (Implies g h) = E.member bitenc g set `implies` E.member bitenc h set
+        consSet _ = True
 
         implies a b = not a || b
 
 -- consistency check for (Iff g h)
 iffCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 iffCons bitenc clos set =
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   &&
   -- if g iff h holds in current atom, then (Iff g h) must hold as well
   null [f | f@(Iff g h) <- clos,
          (E.member bitenc g set == E.member bitenc h set)
          && not (E.member bitenc f set)]
   where -- if (Iff g h) holds in current atom, then g iff h must hold as well
-        consSet (Iff g h) = not $ E.member bitenc g set == E.member bitenc h set
-        consSet _ = False
+        consSet (Iff g h) = E.member bitenc g set == E.member bitenc h set
+        consSet _ = True
 
 -- consistency check for (Until dir g h)
 untilCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-untilCons bitenc clos set = not (E.any bitenc consSet set)
-                            &&
-                            -- if h holds or (Until dir g h) still holds in the next (chain) position, then (Until dir g h) must hold in the current atom
-                            null [f | f@(Until pset g h) <- clos,
-                                                            present f pset g h &&
-                                                            not (E.member bitenc f set)]
-  where  -- if (Until dir g h) holds, then it must be that h holds or (Until dir g h) still holds in the next (chain) position
+untilCons bitenc clos set =
+  E.all bitenc consSet set
+  &&
+  -- if h holds or (Until dir g h) still holds in the next (chain) position, then (Until dir g h) holds in the current atom
+  null [f | f@(Until pset g h) <- clos,
+          present f pset g h &&
+          not (E.member bitenc f set)]
+  where  -- if (Until dir g h) holds, then h holds or (g holds and (Until dir g h) still holds in the next (chain) position)
         present u dir g h = E.member bitenc h set
                              || (E.member bitenc g set
                                  && (E.member bitenc (PNext  dir u) set
                                      || E.member bitenc (XNext dir u) set))
-        consSet f@(Until dir g h) = not $ present f dir g h
-        consSet _ = False
+        consSet f@(Until dir g h) = present f dir g h
+        consSet _ = True
+
+-- consistency check for (GUntil g h)
+gUntilCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
+gUntilCons bitenc clos set =
+  E.all bitenc consSet set
+  &&
+  -- if h holds, then (GUntil g h) holds in the current atom
+  null [f | f@(GUntil _ h) <- clos,
+                                  E.member bitenc h set &&
+                                  not (E.member bitenc f set)]
+  where  -- if (GUntil g h) holds, then h holds or g holds
+        consSet (GUntil g h) = E.member bitenc h set || E.member bitenc g set
+        consSet _ = True
+
+-- consistency check for (Eventually g)
+evCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
+evCons bitenc clos set = -- if g holds, (Eventually g) holds as well
+  null [f | f@(Eventually g) <- clos,
+        E.member bitenc g set &&
+        not (E.member bitenc f set)]
 
 -- consistency check for (Since dir g h)
 sinceCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
-sinceCons bitenc clos set = not (E.any bitenc consSet set)
-                            &&
-                            -- if h holds or (Since dir g h) still holds in the previous (chain) position,
-                            -- then (Since dir g h) must hold in the current atom
-                            null [f | f@(Since pset g h) <- clos,
-                                   present f pset g h &&
-                                   not (E.member bitenc f set)]
+sinceCons bitenc clos set =
+  E.all bitenc consSet set
+  &&
+  -- if h holds or (Since dir g h) still holds in the previous (chain) position,
+  -- then (Since dir g h) must hold in the current atom
+  null [f | f@(Since pset g h) <- clos,
+          present f pset g h &&
+          not (E.member bitenc f set)]
   where -- if (Since dir g h) holds, then h holds or (Since dir g h)
         -- holds in the previous (chain) position
         present s dir g h = E.member bitenc h set
                              || (E.member bitenc g set
                                  && (E.member bitenc (PBack dir s) set
                                      || E.member bitenc (XBack dir s) set))
-        consSet f@(Since dir g h) = not $ present f dir g h
-        consSet _ = False
+        consSet f@(Since dir g h) = present f dir g h
+        consSet _ = True
 
 -- consistency check for (HUntil Down g h)
 hierUntilDownCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 hierUntilDownCons bitenc clos set =
   -- if (HUntil Down g h) holds, then or (...) (...) holds
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   -- if (g and HNext Down hud) holds, then (HUntil Down g h) holds
   -- (the other case is checked by delta rules)
   && null [f | f@(HUntil Down g _) <- clos,
             not (E.member bitenc f set) && present f g]
   where present hud g = E.member bitenc g set && E.member bitenc (HNext Down hud) set
-        consSet f@(HUntil Down g h) = not $ E.member bitenc h set || present f g
-        consSet _ = False
+        consSet f@(HUntil Down g h) = E.member bitenc h set || present f g
+        consSet _ = True
 
 -- consistency check for (HUntil Up g h)
 hierUntilUpCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 hierUntilUpCons bitenc clos set =
   -- if (HUntil Up g h) holds, then or (...) (...) holds
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   -- if (g and HNext Up huu) holds, then (HUntil Up g h) holds
   -- (the other case is checked by delta rules)
   && null [f | f@(HUntil Up g _) <- clos,
             not (E.member bitenc f set) && present f g]
   where present huu g = E.member bitenc g set && E.member bitenc (HNext Up huu) set
-        consSet f@(HUntil Up g h) = not $ E.member bitenc h set || present f g
-        consSet _ = False
+        consSet f@(HUntil Up g h) = E.member bitenc h set || present f g
+        consSet _ = True
 
 -- consistency check for (HSince Down g h)
 hierSinceDownCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 hierSinceDownCons bitenc clos set =
   -- if (HSince Down g h) holds, then or (...) (...) holds
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   -- if (g and HBack Down hsd) holds, then (HSince Down g h) holds
   -- (the other case is checked by delta rules)
   && null [f | f@(HSince Down g _) <- clos,
             not (E.member bitenc f set) && present f g]
   where present hsd g = E.member bitenc g set && E.member bitenc (HBack Down hsd) set
-        consSet f@(HSince Down g h) = not $ E.member bitenc h set || present f g
-        consSet _ = False
+        consSet f@(HSince Down g h) = E.member bitenc h set || present f g
+        consSet _ = True
 
 
 -- consistency check for (HSince Up g h)
 hierSinceUpCons :: BitEncoding -> [Formula APType] -> EncodedSet -> Bool
 hierSinceUpCons bitenc clos set =
   -- if (HSince Up g h) holds, then or (...) (...) holds
-  not (E.any bitenc consSet set)
+  E.all bitenc consSet set
   -- if (g and HBack Up hsu) holds, then (HSince Up g h) holds
   -- (the other case is checked by delta rules)
   && null [f | f@(HSince Up g _) <- clos,
             not (E.member bitenc f set) && present f g ]
   where present hsu g = E.member bitenc g set && E.member bitenc (HBack Up hsu) set
-        consSet f@(HSince Up g h) = not $ E.member bitenc h set || present f g
-        consSet _ = False
+        consSet f@(HSince Up g h) = E.member bitenc h set || present f g
+        consSet _ = True
 
 -- given the BitEncoding and the closure of phi,
 -- generate all possible combinations of pending obligations + (mustPush, mustShift, afterPop)
@@ -358,10 +384,11 @@ pendCombs bitenc clos =
       checkPend _ = False
 
       pendSets = E.powerSet bitenc $ filter checkPend clos
-      combs pset = [(pset, xl, xe, xr) | xl <- [False, True]
-                                       , xe <- [False, True]
-                                       , xr <- [False, True]
-                                       , not (xl && xe)]
+      combs pset = [(pset, xl, xe, xr) |
+                      xl <- [False, True],
+                      xe <- [False, True],
+                      not (xl && xe),
+                      xr <- [False, True]]
   in concatMap combs pendSets
 
 -- given the BitEncoding and the closure of phi,
@@ -401,6 +428,32 @@ initials query bitenc phi clos atoms =
 resolve :: i -> [(i -> Bool, b)] -> [b]
 resolve info conditionals = snd . unzip $ filter (\(cond, _) -> cond info) conditionals
 
+-- Auxiliary functions for when we want to check for an operator
+-- depending on another one
+op2OpMap :: BitEncoding
+              -> [Formula APType]
+              -> (Formula APType -> Formula APType)
+              -> (Formula APType -> Bool)
+              -> [(EncodedSet, EncodedSet, EncodedSet)]
+op2OpMap bitenc cl getAssoc checkOp =
+  map makeMasks $ filter checkOp cl
+  where makeMasks f =
+          let g = getAssoc f
+              gMask = E.singleton bitenc
+                      $ if negative g then negation g else g
+          in ( E.singleton bitenc f -- mask for f
+              , gMask -- mask for g
+              , if negative g then E.empty bitenc else gMask -- how g should be
+              )
+opCheckSet :: BitEncoding
+                -> [(EncodedSet, EncodedSet, EncodedSet)]
+                -> EncodedSet
+                -> EncodedSet
+opCheckSet bitenc op2OpMap baseSet = foldl'
+  (\cset (fMask, gMask, g) -> if E.intersect gMask baseSet == g then E.union cset fMask else cset)
+  (E.empty bitenc)
+  op2OpMap
+
 -- given a BitEncoding, the closure of phi, and the precedence function, generate all Rule groups: (shift rules, push rules, pop rules)
 deltaRules :: BitEncoding -> [Formula APType] -> EncPrecFunc -> (RuleGroup, RuleGroup, RuleGroup)
 deltaRules bitenc cl precFunc =
@@ -423,7 +476,9 @@ deltaRules bitenc cl precFunc =
                                      , (any checkHbu, hbuShiftPr)
                                      , (any checkHbd, hbdShiftPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (any checkEv,  evShiftFcr)
+        , ruleGroupFcrs = resolve cl [ (any checkNxt, nxtShiftFcr),
+                                       (any checkGU,  guShiftFcr),
+                                       (any checkEv,  evShiftFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True,   xrShiftFpr)
                                      , (any checkXnd, xndShiftFpr)
@@ -460,7 +515,9 @@ deltaRules bitenc cl precFunc =
                                      , (any checkHbu, hbuPushPr)
                                      , (any checkHbd, hbdPushPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (any checkEv,  evPushFcr)
+        , ruleGroupFcrs = resolve cl [ (any checkNxt, nxtPushFcr),
+                                       (any checkGU,  guPushFcr),
+                                       (any checkEv,  evPushFcr)
                                      ]
         , ruleGroupFprs = resolve cl [ (const True,   xrPushFpr)
                                      , (any checkXnd, xndPushFpr)
@@ -492,8 +549,7 @@ deltaRules bitenc cl precFunc =
                                      , (any checkXnu, xnuPopPr)
                                      , (any checkHnu, hnuPopPr)
                                      ]
-        , ruleGroupFcrs = resolve cl [ (any checkEv,  evPopFcr)
-                                     ]
+        , ruleGroupFcrs = resolve cl []
           -- decrease nondeterminism by fixing Xl and Xe when not needed
         , ruleGroupFprs = resolve cl [ (const $ not needXl, xlDisableFpr)
                                      , (const $ not needXe, xeDisableFpr)
@@ -522,31 +578,11 @@ deltaRules bitenc cl precFunc =
         }
   in (shiftGroup, pushGroup, popGroup)
   where
-    -- Auxiliary functions for when we want to check for an operator
-    -- depending on another one
-    makeOp2OpMap :: (Formula APType -> Formula APType)
-                 -> (Formula APType -> Bool)
-                 -> [(EncodedSet, EncodedSet, EncodedSet)]
-    makeOp2OpMap getAssoc checkOp =
-      map makeMasks $ filter checkOp cl
-      where makeMasks f =
-              let g = getAssoc f
-                  gMask = E.singleton bitenc
-                          $ if negative g then negation g else g
-              in ( E.singleton bitenc f -- mask for f
-                 , gMask -- mask for g
-                 , if negative g then E.empty bitenc else gMask -- how g should be
-                 )
-    makeOpCheckSet :: [(EncodedSet, EncodedSet, EncodedSet)]
-                   -> EncodedSet
-                   -> EncodedSet
-    makeOpCheckSet op2OpMap baseSet = foldl'
-      (\cset (fMask, gMask, g) -> if E.intersect gMask baseSet == g then E.union cset fMask else cset)
-      (E.empty bitenc)
-      op2OpMap
+    makeOp2OpMap = op2OpMap bitenc cl
+    makeOpCheckSet = opCheckSet bitenc
 
     -- XL rules :: PrInfo -> Bool
-    -- if no operator needs Xl, we don't case about its value
+    -- if no operator needs Xl, we don't care about its value
     checkXl f = any ($ f) [ checkPn, checkPb, checkXnd, checkXnu, checkXbu
                           , checkHbu, checkHnd, checkHbd
                           , checkHuu, checkHsu, checkHud, checkHsd
@@ -559,7 +595,7 @@ deltaRules bitenc cl precFunc =
     --
 
     -- XE rules :: PrInfo -> Bool
-    -- if no operator needs Xe, we don't case about its value
+    -- if no operator needs Xe, we don't care about its value
     checkXe f = any ($ f) [ checkPn, checkPb
                           , checkHnd, checkHbd, checkHuu, checkHsu, checkHud, checkHsd
                           ]
@@ -1296,6 +1332,48 @@ deltaRules bitenc cl precFunc =
          -- If the next move is a pop and h holds, then HSince Down _ h has to hold
          && (fXl || fXe || ppCurrAbdHsdfs `E.intersect` checkSet == checkSet)
 
+    --  LTL formulae 
+
+    -- Nxt: Next g -- 
+    -- pop transitions do not read any input symbol, so pCurr = fCurr by default in them
+    maskNxt = E.suchThat bitenc checkNxt
+    checkNxt (Next _) = True
+    checkNxt _ = False
+
+    nxtPushFcr :: FcrInfo -> Bool
+    nxtPushFcr info =
+      let pCurr = current $ fcrState info
+          fCurr = fcrFutureCurr info
+          pCurrNxtfs = E.intersect pCurr maskNxt
+          ng2g = makeOp2OpMap (\(Next g) -> g) checkNxt
+          fCurrGs = makeOpCheckSet ng2g fCurr
+      in if E.member bitenc (Atomic End) fCurr
+          then E.null pCurrNxtfs
+          else pCurrNxtfs == fCurrGs
+    nxtShiftFcr = nxtPushFcr
+
+    -- Gu: GUntil g h -- 
+    -- pop transitions do not read any input symbol, so pCurr = fCurr by default in them
+    maskGU = E.suchThat bitenc checkGU
+    checkGU (GUntil {}) = True
+    checkGU _ = False
+
+    guPushFcr :: FcrInfo -> Bool
+    guPushFcr info =
+      let pCurr = current $ fcrState info
+          fCurr = fcrFutureCurr info
+          pCurrGUfs = E.intersect pCurr maskGU
+          gGUh2h = makeOp2OpMap (\(GUntil _ h) -> h) checkGU
+          gGUh2g = makeOp2OpMap (\(GUntil g _) -> g) checkGU
+          pCurrHs = makeOpCheckSet gGUh2h pCurr
+          pCurrGs = makeOpCheckSet gGUh2g pCurr
+          fCurrGUfs = E.intersect fCurr maskGU
+          checkSet = if E.member bitenc (Atomic End) fCurr
+                        then pCurrHs
+                        else pCurrHs `E.union` (pCurrGs `E.intersect` fCurrGUfs)
+      in pCurrGUfs == checkSet
+    guShiftFcr = guPushFcr
+
     -- Ev: Eventually g --
     maskEv = E.suchThat bitenc checkEv
     checkEv (Eventually _) = True
@@ -1307,17 +1385,13 @@ deltaRules bitenc cl precFunc =
           fCurr = fcrFutureCurr info
           pCurrEvfs = E.intersect pCurr maskEv
           evg2g = makeOp2OpMap (\(Eventually g) -> g) checkEv
-          pCheckSet = makeOpCheckSet evg2g pCurr
+          pCheckSet = makeOpCheckSet evg2g pCurr -- a mask for g iff Eventually g
           fCheckSet = E.intersect fCurr maskEv
-          checkSet = E.union pCheckSet fCheckSet
+          checkSet = if E.member bitenc (Atomic End) fCurr
+                      then pCheckSet
+                      else E.union pCheckSet fCheckSet
       in pCurrEvfs ==  checkSet
     evShiftFcr = evPushFcr
-    evPopFcr info =
-      let pCurr = current $ fcrState info
-          fCurr = fcrFutureCurr info
-          pCurrEvfs = E.intersect pCurr maskEv
-          fCheckSet = E.intersect fCurr maskEv
-      in pCurrEvfs ==  fCheckSet
 
 ---------------------------------------------------------------------------------
 -- present
@@ -1450,11 +1524,12 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
             valid scomb = let info = makeFsrInfo scomb
                           in all ($ info) fsrs
 
-    wfstates = if (pvalid)
-                then [WState curr pend st xl xe xr | curr <- vas,
-                                                     pc@(pend, xl, xe, xr) <- vpcs,
-                                                     st <- vscs,
-                                                     valid curr pc]
+    wfstates = if pvalid
+                then [WState curr pend st xl xe xr |
+                        curr <- vas,
+                        pc@(pend, xl, xe, xr) <- vpcs,
+                        valid curr pc,
+                        st <- vscs]
                 else []
       -- all future rules must be satisfied
       where makeInfo curr pendComb = FrInfo { frState          = state
@@ -1466,52 +1541,75 @@ delta rgroup atoms pcombs scombs state mprops mpopped mnextprops
             valid curr pcomb = let info = makeInfo curr pcomb
                                in all ($ info) frs
 
--- given a BitEncoding, a state formula, determine whether the state is final
-isFinal :: BitEncoding ->  Formula APType -> State  -> Bool
-isFinal bitenc _   s@(FState {}) = isFinalF bitenc s
-isFinal bitenc phi s@(WState {}) = isFinalW bitenc phi s
-
 isNotTrivialOmega :: Formula APType -> Bool
-isNotTrivialOmega (XNext _ _) = True 
-isNotTrivialOmega (Until _ _ _) = True 
+isNotTrivialOmega (XNext _ _) = True
+isNotTrivialOmega (Until {}) = True
+isNotTrivialOmega (GUntil _ _) = True
 isNotTrivialOmega (Eventually _) = True
 isNotTrivialOmega _ = False
 
 -- determine whether a state is final for a formula, for the omega case
 isFinalW :: BitEncoding -> Formula APType -> State  -> Bool
+isFinalW _ _  (FState {}) = error "got a state for finite-string model checking"
 isFinalW bitenc phi@(XNext Down g) s =
-  (not $ E.member bitenc phi (stack s))
-  && ((not $ E.member bitenc phi (pending s)) || E.member bitenc g (current s))
+  not (E.member bitenc phi (stack s))
+  && (not (E.member bitenc phi (pending s)) || E.member bitenc g (current s))
 isFinalW bitenc phi@(XNext Up _) s =
-  (not $ E.member bitenc phi (stack s)) && (not $ E.member bitenc phi (pending s))
+  not (E.member bitenc phi (stack s)) && not (E.member bitenc phi (pending s))
 isFinalW bitenc phi@(Until Down _ h) s =
   isFinalW bitenc (XNext Down phi) s
-  && ((not $ E.member bitenc phi (current s)) || E.member bitenc h (current s))
+  && (not (E.member bitenc phi (current s)) || E.member bitenc h (current s))
 isFinalW bitenc phi@(Until Up _ h) s =
   isFinalW bitenc (XNext Up phi) s
-  && ((not $ E.member bitenc phi (current s)) || E.member bitenc h (current s))
+  && (not (E.member bitenc phi (current s)) || E.member bitenc h (current s))
 isFinalW bitenc phi@(Eventually g) s =
-  (E.member bitenc g (current s)) || (not $ E.member bitenc phi (current s))
-isFinalW _ _ _ = error "called isFinalOmega on a formula for which trivially every state is final"
+  E.member bitenc g (current s) || not (E.member bitenc phi (current s))
+isFinalW bitenc phi@(GUntil _ h) s =
+  E.member bitenc h (current s) || not (E.member bitenc phi (current s))
+isFinalW _ _ _ = error "called isFinalW on a formula for which trivially every state is final"
 
--- given a BitEncoding and a state, determine whether the state is final
-isFinalF :: BitEncoding -> State -> Bool
-isFinalF bitenc s =
+-- given a BitEncoding, a closure and a state, determine whether the state is final
+isFinalF :: BitEncoding -> [Formula APType] -> State -> Bool
+isFinalF _ _ (WState {}) = error "got a state for infinite-string model checking"
+isFinalF bitenc cl s =
   not (mustPush s) -- xe can be instead accepted, as if # = #
   && (not . E.null $ E.intersect currFset maskEnd)
-  && (E.null $ E.intersect currFset maskFuture)
-  && currPend == (E.intersect currPend maskXbu)
+  && pCurrUntilOrEv == pCheckSet
+  && E.null (currFset `E.intersect`  maskOtherFutures)
+  && currPend == (currPend `E.intersect` maskXbu)
   where
     maskEnd = E.singleton bitenc (Atomic End)
-    maskFuture = E.suchThat bitenc future
+    maskOtherFutures = E.suchThat bitenc otherFutures
 
+    maskUntilOrEv = E.suchThat bitenc checkUntilOrEv
+    pCurrUntilOrEv = E.intersect currFset maskUntilOrEv
+    getAssocMap = op2OpMap bitenc cl getAssoc checkUntilOrEv
+    pCheckSet = opCheckSet bitenc getAssocMap currFset
+
+    -- only XBack Up formulas are allowed in pending part of final states
     maskXbu = E.suchThat bitenc checkXbu
     checkXbu (XBack Up _) = True
     checkXbu _ = False
 
     currFset = current s
     currPend = pending s
-    -- only XBack Up formulas are allowed in pending part of final states
+
+    checkUntilOrEv (Until {}) = True
+    checkUntilOrEv (GUntil {}) = True
+    checkUntilOrEv (Eventually _) = True
+    checkUntilOrEv _ = False
+
+    getAssoc (Until _ _ h) = h
+    getAssoc (GUntil _ h) = h
+    getAssoc (Eventually g) = g
+    getAssoc _ = error "not used"
+
+    otherFutures (PNext      {})      = True
+    otherFutures (XNext      {})      = True
+    otherFutures (HNext      {})      = True
+    otherFutures (HUntil     {})      = True
+    otherFutures (Next       _ )      = True
+    otherFutures _ = False
 
 ---------------------------------------------------------------------------------
 -- fastCheck performs trace checking using a lookahead to predict future inputs
@@ -1523,7 +1621,7 @@ fastcheck phi sprs ts =
   augRun
     prec
     is
-    (isFinalF bitenc)
+    (isFinalF bitenc cl)
     (augDeltaShift as pcs scs shiftRules)
     (augDeltaPush  as pcs scs pushRules)
     (augDeltaPop   as pcs scs popRules)
@@ -1587,7 +1685,7 @@ makeOpa :: Formula APType -- the input formula
         -> ( BitEncoding -- data for encoding and decoding between bitsets and formulas and props
            , EncPrecFunc -- OPM on bitsets
            , [State] -- initial states
-           , Formula APType -> State -> Bool -- isFinal
+           , (State -> Bool, Formula APType -> State -> Bool) -- isFinal
            , State -> Maybe Input -> [State] -- deltaPush
            , State -> Maybe Input -> [State] -- deltaShift
            , State -> State -> [State] -- deltaPop
@@ -1597,7 +1695,7 @@ makeOpa phi isOmegaOrProb (sls, sprs) inputFilter =
   ( bitenc
   , prec
   , is
-  , isFinal bitenc
+  , (isFinalF bitenc cl, isFinalW bitenc)
   , deltaPush  as pcs scs pushRules  -- apply PushRules
   , deltaShift as pcs scs shiftRules -- apply ShiftRules
   , deltaPop   as pcs scs popRules   -- apply PopRules

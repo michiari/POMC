@@ -84,7 +84,7 @@ subsumes oset1 oset2 = E.union (eset oset1) (eset oset2) == (eset oset1)
 -- are all formulae satisfied?
 isSatisfying :: OmegaEncodedSet -> Bool 
 isSatisfying (UnsatModel _) = False 
-isSatisfying (SatModel ea) = E.all ea
+isSatisfying (SatModel ea) = E.allSet ea
 
 -- for debugging purposes
 showOmegaEncoding :: OmegaBitencoding state -> OmegaEncodedSet -> String
