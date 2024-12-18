@@ -1,0 +1,14 @@
+probabilistic query: approximate;
+
+program:
+main() {
+  query f();
+}
+
+f() {
+  u1 x;
+  x = true {2 : 3} false;
+  if (x) {
+    observe false;
+  } else { }
+}
