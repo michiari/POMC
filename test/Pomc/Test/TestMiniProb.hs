@@ -13,7 +13,7 @@ import Pomc.Test.TestProbTermination (checkApproxResult)
 import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
 import Pomc.Prob.ProbUtils (Prob, Solver(..), TermResult(..))
 import Pomc.Prob.ProbModelChecker (programTermination)
-import Pomc.LogUtils (selectLogVerbosity)
+import Pomc.LogUtils (selectLogVerbosity) --, LogLevel(..))
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -46,7 +46,7 @@ makeParseTest progSource (name, phi, solver, expected) =
       pcreq <- case parse (checkRequestP <* eof) name $ filecont f of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                  Right pcreq     -> return pcreq
-      (ApproxSingleResult tres, _, dbginfo) <- selectLogVerbosity Nothing
+      (ApproxSingleResult tres, _, dbginfo) <- selectLogVerbosity Nothing -- (Just LevelDebug)
         $ programTermination solver (pcreqMiniProc pcreq)
       assertBool dbginfo (tres `checkApproxResult` expected)
 
@@ -70,6 +70,7 @@ basicTestCases solver =
   , makeParseTestCase doubleRndWalkSrc ("Double random walk example", "F T", solver, 1 % 2)
   , makeParseTestCase rndWalkFunSrc ("Random walk with function call", "F T", solver, 1 % 2)
   , makeParseTestCase loopFunSrc ("Recursive loop with function call", "F T", solver, 1 % 2)
+  , makeParseTestCase loopArgFunSrc ("Recursive loop with function call with argument", "F T", solver, 1 % 2)
   ]
 
 linRecSrc :: T.Text
@@ -296,6 +297,22 @@ pA() {
     x = true {2u4 : 3u4} false;
   }
 }
+|]
 
-pB() { }
+loopArgFunSrc :: T.Text
+loopArgFunSrc = T.pack [r|
+main() {
+  bool x;
+  x = true;
+  pA(x);
+}
+
+pA(bool &x) {
+  bool y, z;
+  while (x) {
+    z = true {2u4 : 3u4} false;
+    pA(z);
+    x = true {1u4 : 2u4} false;
+  }
+}
 |]
