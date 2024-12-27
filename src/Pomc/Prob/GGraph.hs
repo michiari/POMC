@@ -308,9 +308,10 @@ qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate,
 qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector = do
   -- global data structures for constructing graph G
   gGlobals <- liftSTtoIO $ do
+    let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
     newIdSequence <- newSTRef (0 :: Int)
-    emptyGGraphMap <- BH.newSized (V.length suppGraph)
-    emptyGGraph <- CM.emptySized (V.length suppGraph)
+    emptyGGraphMap <- BH.newSized numPendingSemiconfs
+    emptyGGraph <- CM.emptySized numPendingSemiconfs
     emptyGRGlobals <- GR.newGRobals
     return GGlobals { idSeq = newIdSequence
                     , ggraphMap = emptyGGraphMap
@@ -487,26 +488,27 @@ quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord pstate, Ha
                        -> Formula APType -- phi: input formula to check
                        -> [State] -- initial states of the phiOpa
                        -> SupportGraph pstate
-                       -> IntSet
+                       -> Vector Bool
                        -> Map VarKey Prob
                        -> Map VarKey Prob
                        -> StrictMap.Map pstate Int
                        -> STRef RealWorld Stats
                        -> m (Prob, Prob)
-quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBounds upperBounds sIdMap oldStats = do
+quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds upperBounds sIdMap oldStats = do
   startGGTime <- startTimer
   -- global data structures for constructing graph G
   gGlobals <- liftSTtoIO $ do
     newIdSequence <- newSTRef (0 :: Int)
-    emptyGGraphMap <- BH.new
-    emptyGGraph <- CM.empty
+    let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
+    emptyGGraphMap <- BH.newSized numPendingSemiconfs
+    emptyGGraph <- CM.emptySized numPendingSemiconfs
     emptyGRGlobals <- GR.newGRobals
     return GGlobals { idSeq = newIdSequence
                     , ggraphMap = emptyGGraphMap
                     , gGraph = emptyGGraph
                     , grGlobals = emptyGRGlobals
                     }
-  (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (`IntSet.notMember` asTermSemiconfs) sIdMap
+  (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!) sIdMap
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
   hGlobals <- liftSTtoIO $ do
@@ -526,7 +528,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
     node <- liftSTtoIO $ MV.unsafeRead computedGraph idx
     when (iValue node == 0) $ liftSTtoIO $ do
       addedNode <- addtoPath hGlobals node (Internal (gId node))
-      _ <- dfs suppGraph hGlobals delta (`IntSet.notMember` asTermSemiconfs) False addedNode
+      _ <- dfs suppGraph hGlobals delta (pendVector V.!) False addedNode
       return ()
     if E.member (bitenc delta) phi . current . phiNode $ node
       then return (idx:acc)
@@ -558,10 +560,10 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
 
   evalZ3TWith (Just QF_LRA) stdOpts $ do
     -- generate all variables and add them to two hashtables
-    newlMap <- liftSTtoIO $ BH.new
-    newlGroupedMap <- liftSTtoIO $ BH.new
-    newuMap <- liftSTtoIO $ BH.new
-    newuGroupedMap <- liftSTtoIO $ BH.new
+    newlMap <- liftSTtoIO BH.new
+    newlGroupedMap <- liftSTtoIO BH.new
+    newuMap <- liftSTtoIO BH.new
+    newuGroupedMap <- liftSTtoIO BH.new
     forM_ freezedGGraph $ \g -> when (isInH g) $ do
       newlVar <- mkFreshRealVar (show (gId g) ++ "L")
       newuVar <- mkFreshRealVar (show (gId g) ++ "U")
@@ -626,8 +628,9 @@ quantitativeModelCheck delta phi phiInitials suppGraph asTermSemiconfs lowerBoun
       ) [] groupeduMaptoList
 
     -- computing a lower bound on the probability to satisfy the given property
-    philVars <- liftIO $ mapM  (fmap fromJust . HT.lookup newlMap) (filter (\idx -> isInH (freezedGGraph V.! idx)) phiInitialGNodesIdxs)
-    phiuVars <- liftIO $ mapM  (fmap fromJust . HT.lookup newuMap) (filter (\idx -> isInH (freezedGGraph V.! idx)) phiInitialGNodesIdxs)
+    let phiInitialGNodesIdxsinH = filter (\idx -> isInH (freezedGGraph V.! idx)) phiInitialGNodesIdxs
+    philVars <- liftIO $ mapM  (fmap fromJust . HT.lookup newlMap) phiInitialGNodesIdxsinH
+    phiuVars <- liftIO $ mapM  (fmap fromJust . HT.lookup newuMap) phiInitialGNodesIdxsinH
 
     sumlVar <- mkAdd philVars
     sumuVar <- mkAdd phiuVars

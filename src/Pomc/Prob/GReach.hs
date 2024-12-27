@@ -379,7 +379,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
 
   in do
     popContxs <- transitionCases
-    createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, target)
+    createComponent globals sIdGen delta supports popContxs semiconfId
 
 lookupVar :: IntSet -> WeightedGRobals state -> (Int, Int, Int) -> Int ->  IO (Maybe ((Int,Int), Bool))
 lookupVar sccMembers globals decoded rightContext = do
@@ -439,11 +439,10 @@ createComponent :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable
   -> SIdGen RealWorld state
   -> Delta state
   -> Vector (Set(StateId state))
-  -> (StateId state, Stack state)
   -> SuccessorsPopContexts
-  -> (Int, Int)
+  -> Int
   -> m SuccessorsPopContexts
-createComponent globals sIdGen delta supports (q,g) popContxs (semiconfId, target) = do
+createComponent globals sIdGen delta supports popContxs semiconfId = do
   topB <- liftIO . IOGS.peek $ bStack globals
   iVal <- liftIO $ lookupIValue globals semiconfId
   let createC = liftIO $ do

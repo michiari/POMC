@@ -29,7 +29,7 @@ import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 import qualified Pomc.Encoding as E
 
-import Pomc.Prob.SupportGraph (buildGraph)
+import Pomc.Prob.SupportGraph (buildSupportGraph)
 import qualified Pomc.Prob.GGraph as GG
 import qualified Pomc.Prob.ProbEncoding as PE
 import Pomc.Prob.Z3Termination (terminationQuerySCC)
@@ -140,7 +140,7 @@ terminationExplicit query popa =
             }
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (sc, _) <- liftSTtoIO $ buildGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
+    (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
 
     (res, _) <- evalZ3TWith (chooseLogic $ solver query) stdOpts
       $ terminationQuerySCC sc precFunc query stats
@@ -171,7 +171,7 @@ programTermination solver prog =
 
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (sc, _) <- liftSTtoIO $ buildGraph pDelta initVs initLbl stats
+    (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta initVs initLbl stats
     (res, _) <- evalZ3TWith (chooseLogic solver) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxSingleQuery solver) stats
     logInfoN $ "Computed termination probabilities: " ++ show res
@@ -218,7 +218,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       }
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (sc, sIdMap) <- liftSTtoIO $ buildGraph wrapper (fst initial) (snd initial) stats
+    (sc, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (fst initial) (snd initial) stats
     logInfoN $ "Length of the summary chain: " ++ show (V.length sc)
     (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solver) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
@@ -331,7 +331,7 @@ qualitativeModelCheckExplicitGen solver phi popa =
 
 
 -- QUANTITATIVE MODEL CHECKING
--- is the probability that the POPA satisfies phi equal to 1?
+-- what is the probability that the POPA satisfies phi?
 quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s)
                        => Solver
                        -> Formula APType -- input formula to check
@@ -371,7 +371,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
  
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (supportChain, sIdMap) <- liftSTtoIO $ buildGraph wrapper (fst initial) (snd initial) stats
+    (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (fst initial) (snd initial) stats
     logInfoN $ "Length of the Support Chain chain: " ++ show (V.length supportChain)
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
       $ terminationQuerySCC supportChain precFunc (ApproxAllQuery solver) stats
@@ -390,7 +390,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     logDebugN $ "Pending Upper Bounds Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
 
-    (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain mustReachPopIdxs lbProbs ubProbs sIdMap stats 
+    (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain pendVector lbProbs ubProbs sIdMap stats 
     computedStats <- liftSTtoIO $ readSTRef stats
     return ((ub, lb), computedStats, show supportChain ++ show pendVector)
 

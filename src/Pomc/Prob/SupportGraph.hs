@@ -6,7 +6,7 @@
 -}
 
 module Pomc.Prob.SupportGraph ( SupportGraph
-                              , buildGraph
+                              , buildSupportGraph
                               , asPendingSemiconfs
                               , GraphNode(..)
                               , Edge(..)
@@ -29,7 +29,6 @@ import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 
 import Data.Strict.Map(Map)
-import qualified Data.Strict.Map as StrictMap
 
 import qualified Data.Vector.Mutable as MV
 
@@ -46,6 +45,7 @@ import Data.Hashable (Hashable)
 import qualified Data.HashTable.ST.Basic as BH
 import Data.Vector (Vector)
 import qualified Data.Vector as V
+
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
@@ -92,13 +92,13 @@ data Globals s state = Globals
   , graph      :: STRef s (PartialSupportGraph s state)
   }
 
-buildGraph  :: (Ord state, Hashable state, Show state)
+buildSupportGraph  :: (Ord state, Hashable state, Show state)
         => DeltaWrapper state -- probabilistic delta relation of a popa
         -> state -- initial state of the popa
         -> Label -- label of the initial state
         -> STRef s Stats
         -> ST s (SupportGraph state, SidMap state) -- returning a graph
-buildGraph probdelta i iLabel stats = do
+buildSupportGraph probdelta i iLabel stats = do
   -- initialize the global variables
   newSig <- initSIdGen
   emptySuppStarts <- SM.empty
