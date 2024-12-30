@@ -19,7 +19,7 @@ tests = testGroup "ModelChecking.hs Omega Tests" [ sasEvalTests, lREvalTests
                                                  , inspectionTest, overflowTest
                                                  , jensenTests, jensenFullTests
                                                  , stackExcTests, stackExcSwapTests
-                                                 , xnextdRegressionTests, dummySupportsTest
+                                                 , xnextdRegressionTests, dummyLTLTest, dummySupportsTest
                                                  ]
 
 sasEvalTests :: TestTree
@@ -861,6 +861,29 @@ lRSlowTests = testGroup "LargerRec OPA MC Omega Slow Tests" $
                                , (formulas !! 38, True)
                                , (formulas !! 44, False)
                                ]
+
+dummyLTLTest :: TestTree
+dummyLTLTest = testGroup "Dummy LTL OPA MC Omega Eval Tests" $
+  [makeTestCase dummyLTLOPA (("A simple test for a plain LTL Until formula", Not (GUntil (ap  "call") (ap "ret"))), False)]
+
+
+dummyLTLOPA :: ExplicitOpa Word String
+dummyLTLOPA = ExplicitOpa
+            { eoAlphabet = stlV2Alphabet
+            , eoInitials = [0]
+            , eoFinals = [3]
+            , eoDeltaPush =
+                [ (0, makeInputSet ["call"],   [1]),
+                  (3, makeInputSet ["call"],   [3])
+                ]
+            , eoDeltaShift =
+                [ (1, makeInputSet ["ret"],         [2])
+                , (2, makeInputSet ["ret"], [3])
+                ]
+            , eoDeltaPop =
+                [ (2, 0, [3])
+                ]
+            }
 
 dummySupportsTest :: TestTree
 dummySupportsTest = testGroup "Dummy Support OPA MC Omega Eval Tests" $

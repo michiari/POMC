@@ -194,7 +194,7 @@ main = do
       return time
 
     runUnfoldAndExport logLevel phi prog depth = do 
-      putStr (concat [ "\nUnfolding the stack into this model and exporting a Markov Chain [max stack depth = ", show depth, "]" 
+      putStr (concat [ "\nUnfolding the stack into this model and exporting a Markov Chain [max stack depth = ", show depth, "]", 
                        "\nQuery: ", show phi
                      ])
       ((transitions, labels), time) <- timeAction fst $ selectLogVerbosity logLevel
