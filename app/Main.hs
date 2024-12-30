@@ -11,7 +11,7 @@ module Main (main) where
 
 import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
-import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram)
+import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram, exportMarkovChain)
 import Pomc.Prob.ProbUtils (Solver(..), Stats(..))
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
 import Pomc.Prec (Prec(..))
@@ -19,7 +19,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.TimeUtils (timeAction, timeFunApp, timeToString)
 import Pomc.LogUtils (LogLevel(..), selectLogVerbosity)
 
-import Prelude hiding (readFile)
+import Prelude hiding (readFile, writeFile)
 import Numeric (showEFloat)
 
 import System.Exit
@@ -27,7 +27,7 @@ import System.FilePath
 import System.Console.CmdArgs
 
 import Text.Megaparsec
-import Data.Text.IO (readFile)
+import Data.Text.IO (readFile, writeFile)
 import qualified Data.Text as T
 
 import Data.List (intersperse)
@@ -41,6 +41,7 @@ data PomcArgs = PomcArgs
   , infinite :: Bool
   , noovi :: Bool
   , verbose :: Int
+  , maxDepth :: Int
   , fileName :: FilePath
   } deriving (Data,Typeable,Show,Eq)
 
@@ -50,6 +51,7 @@ pomcArgs = PomcArgs
   , infinite = False &= help "Use infinite-word (omega) semantics (default)"
   , noovi = False &= help "Use z3 instead of Optimistic Value Iteration for probabilistic model checking"
   , verbose = 0 &= help "Print more info about model checking progress. 0 = no logging (default), 1 = show info, 2 = debug mode"
+  , maxDepth = 100 &= help "Max stack depth when exporting a Markov Chain representation of the input program with unfolded stack (default = 100)"
   , fileName = def &= args &= typFile -- &= help "Input file"
   }
   &= summary "POMC v2.1.0"
@@ -66,6 +68,7 @@ main = do
   let isOmega = not $ finite pargs
       probSolver | noovi pargs = SMTWithHints
                  | otherwise = OVI
+      depth = maxDepth pargs
       fname = fileName pargs
       logLevel = case verbose pargs of
         0 -> Nothing
@@ -96,6 +99,7 @@ main = do
     ProbTermRequest _ prog -> runProbTerm logLevel probSolver prog
     ProbCheckRequest phi prog False -> runQualProbCheck logLevel probSolver phi prog
     ProbCheckRequest phi prog True -> runQuantProbCheck logLevel probSolver phi prog
+    ProbUnfoldRequest phi prog -> runUnfoldAndExport logLevel phi prog depth
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
@@ -187,6 +191,17 @@ main = do
                        , "\nSize of the largest SCC in quant mc weight computation: ", show $ largestSCCSemiconfsCountQuant stats
                        , "\nLargest number of equations in an SCC in quant mc weight computation: ", show $ largestSCCEqsCountQuant stats
                        ])
+      return time
+
+    runUnfoldAndExport logLevel phi prog depth = do 
+      putStr (concat [ "\nUnfolding the stack into this model and exporting a Markov Chain [max stack depth = ", show depth, "]" 
+                       "\nQuery: ", show phi
+                     ])
+      ((transitions, labels), time) <- timeAction fst $ selectLogVerbosity logLevel
+        $ exportMarkovChain phi prog depth
+      writeFile "exported.tra" (T.pack transitions)
+      writeFile "exported.lab" (T.pack labels)
+      putStr "\nFiles exported correctly."
       return time
 
     fst3 (a, _, _) = a

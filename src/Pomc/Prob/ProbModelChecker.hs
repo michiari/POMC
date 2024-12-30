@@ -18,13 +18,14 @@ module Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   , quantitativeModelCheckProgram
                                   , quantitativeModelCheckExplicit
                                   , quantitativeModelCheckExplicitGen
+                                  , exportMarkovChain
                                   ) where
 
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
 import Pomc.Potl (Formula(..), getProps, normalize)
 import Pomc.Check(makeOpa, InitialsComputation(..))
-import Pomc.PropConv (APType, convProps, PropConv(encodeProp), encodeFormula)
+import Pomc.PropConv (APType, convProps, PropConv(encodeProp, decodeAP), encodeFormula)
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 import qualified Pomc.Encoding as E
@@ -140,7 +141,7 @@ terminationExplicit query popa =
             }
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta (fst . epInitial $ popa) (E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
+    (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta (fst . epInitial $ popa, E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
 
     (res, _) <- evalZ3TWith (chooseLogic $ solver query) stdOpts
       $ terminationQuerySCC sc precFunc query stats
@@ -156,7 +157,7 @@ programTermination solver prog =
       (bitenc, precFunc, _, _, _, _, _, _) =
         makeOpa T IsProb (tsls, tprec) (\_ _ -> True)
 
-      (initVs, initLbl) = popaInitial popa bitenc
+      initial = popaInitial popa bitenc
       pDelta = Delta
                { bitenc = bitenc
                , proBitenc = error "proBitenc used in program termination"
@@ -171,7 +172,7 @@ programTermination solver prog =
 
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta initVs initLbl stats
+    (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta initial stats
     (res, _) <- evalZ3TWith (chooseLogic solver) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxSingleQuery solver) stats
     logInfoN $ "Computed termination probabilities: " ++ show res
@@ -218,7 +219,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       }
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (sc, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (fst initial) (snd initial) stats
+    (sc, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper initial stats
     logInfoN $ "Length of the summary chain: " ++ show (V.length sc)
     (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solver) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
@@ -371,7 +372,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
  
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (fst initial) (snd initial) stats
+    (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper initial stats
     logInfoN $ "Length of the Support Chain chain: " ++ show (V.length supportChain)
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
       $ terminationQuerySCC supportChain precFunc (ApproxAllQuery solver) stats
@@ -471,3 +472,31 @@ quantitativeModelCheckExplicitGen solver phi popa =
 chooseLogic :: Solver -> Maybe Logic
 chooseLogic OVI = Just QF_LRA
 chooseLogic _ = Just QF_NRA
+
+exportMarkovChain :: (MonadIO m, MonadFail m, MonadLogger m)
+            => Formula ExprProp -- phi: input formula to keep track of symbols
+            -> Program -- input program
+            -> Int -- a bound on stack's depth
+            -> m (String, String)
+exportMarkovChain phi prog depth =
+  let
+    (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
+    transPhi = encodeFormula pconv phi
+    (bitencPhi, precFunc, _, (_, _), _, _, _, _) =
+      makeOpa transPhi IsProb (popaAlphabet popa) (\_ _ -> True)
+
+
+    initial = (popaInitial popa) bitencPhi
+
+    -- some are not initialized because they are not needed
+    wrapper = Delta 
+      { bitenc = bitencPhi
+      , prec = precFunc
+      , deltaPush = (popaDeltaPush popa) bitencPhi
+      , deltaShift = (popaDeltaShift popa) bitencPhi
+      , deltaPop = (popaDeltaPop popa) bitencPhi
+      }
+  in do
+    logInfoN $ "Max depth: " ++ show depth
+    showFlatModel wrapper initial (decodeAP pconv) depth
+

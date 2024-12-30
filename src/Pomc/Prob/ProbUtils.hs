@@ -41,11 +41,13 @@ module Pomc.Prob.ProbUtils ( Prob
                            , extractLowerProb
                            , newStats
                            , debug
+                           , showFlatModel
                            ) where
 
 import Pomc.State(Input, State)
 import Pomc.Encoding (nat)
 import Pomc.Check (EncPrecFunc)
+import Pomc.Prec (Prec(..))
 
 import qualified Pomc.Encoding as E
 import qualified Pomc.Prob.ProbEncoding as PE
@@ -62,12 +64,26 @@ import qualified Data.HashTable.Class as H
 
 import Data.Map(Map)
 
+import qualified Data.Set as Set
+
+import Data.Maybe (fromJust, isNothing, catMaybes)
+
+import Control.Monad.ST (RealWorld)
+import Data.STRef (newSTRef, readSTRef, modifySTRef')
+
+import Control.Monad.IO.Class (MonadIO)
 
 import Data.Bifunctor(second)
 
 import qualified Data.Strict.Map as StrictMap
 
+import Data.Char (isSpace)
+
 import Z3.Monad hiding (Solver)
+import Control.Monad (when)
+import Pomc.Z3T (liftSTtoIO)
+import Pomc.PropConv (APType)
+import Pomc.Potl (Formula(..), Prop (Prop, End))
 
 type Prob = Rational
 type EqMapNumbersType = Double
@@ -164,6 +180,11 @@ freshNegId idSeq = do
 decode :: (StateId state, Stack state) -> (Int,Int,Int)
 decode (s1, Nothing) = (getId s1, 0, 0)
 decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
+
+decodeFullStack :: (StateId state, [Stack state]) -> (Int,[(Int,Int)])
+decodeFullStack (s1, s) = (getId s1, map dec s)
+  where dec Nothing = (0,0)
+        dec (Just (i, s2)) = (nat i, getId s2)
 
 -- Strategy to use to compute the result
 -- SMTWithHints: compute a lower approximation of the solution
@@ -275,3 +296,157 @@ newStats = Stats 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 debug :: String -> a -> a
 --debug = DBG.trace
 debug _ x = x
+
+-- generate a string representing a flattened version of a pOPA (a DTMC),
+-- where the stack is unfolded into the model up to a parameter (depth) 
+-- When stack's depth = max depth a state will just have a self loop.
+-- We follow Storm syntax for explicit models,
+-- and generate also a declaration of labels.
+
+-- mutable variables
+data Globals s state = Globals
+  { sIdGen     :: SIdGen s state
+  , idSeq      :: STRef s Int
+  , graphMap   :: HashTable s (Int,[(Int,Int)]) Int
+  , transitionFile :: STRef s String
+  , labelingFile :: STRef s String
+  }
+
+showFlatModel :: (MonadIO m, MonadFail m, MonadLogger m, Ord state, Hashable state, Show state, Show a)
+        => DeltaWrapper state -- probabilistic delta relation of a popa
+        -> (state, Label) -- (initial state of the popa, label of the initial state)
+        -> (APType -> a)
+        -> Int -- maxDepth
+        -> m (String, String) -- returning a graph
+showFlatModel probDelta (i,iLabel) decodeAP depth = do
+  newSig <- liftSTtoIO $ initSIdGen
+  initialsId <- liftSTtoIO $ wrapState newSig i iLabel
+  let initialNode = (initialsId, [Nothing])
+  newIdSequence <- liftSTtoIO $ newSTRef (0 :: Int)
+  emptyGraphMap <- liftSTtoIO $ BH.new
+  initialId <- liftSTtoIO $ freshPosId newIdSequence
+  transFile <- liftSTtoIO $ newSTRef "dtmc"
+  let labels = Set.toList . Set.filter notEnd $ E.decode (bitenc probDelta) iLabel
+      notEnd (Atomic End) = False
+      notEnd (Not (Atomic End)) = False
+      notEnd _ = True
+      showAllFormulas (Atomic (Prop symb)) = filter (not . isSpace) . show . decodeAP $ symb
+      showAllFormulas (Not (Atomic (Prop symb))) = filter (not . isSpace) . show . decodeAP $ symb
+      showAllFormulas f = error $ "only props can be exported: " ++ show f
+  labFile <- liftSTtoIO . newSTRef $ concat ["#DECLARATION\ninit ", unwords (map showAllFormulas labels), "\n#END"]
+  liftSTtoIO $ BH.insert emptyGraphMap (decodeFullStack initialNode) initialId
+  let globals = Globals { sIdGen = newSig
+                        , idSeq = newIdSequence
+                        , graphMap = emptyGraphMap
+                        , transitionFile = transFile
+                        , labelingFile = labFile
+                        }
+  showUnfoldedStates [initialNode] globals probDelta decodeAP depth
+  transFile <- liftSTtoIO $ readSTRef (transitionFile globals)
+  labFile <- liftSTtoIO $ readSTRef (labelingFile globals)
+  modelSize <- liftSTtoIO $ readSTRef (idSeq globals)
+  logInfoN $ "Generated a model of size " ++ (show modelSize)
+  return (transFile, labFile)
+
+showUnfoldedStates :: (MonadIO m, MonadFail m, MonadLogger m, Eq state, Hashable state, Show state, Show a)
+      => [(StateId state, [Stack state])] -- current state of the DTMC
+      -> Globals RealWorld state -- global variables of the algorithm
+      -> DeltaWrapper state -- delta relation of the popa
+      -> (APType -> a)
+      -> Int
+      -> m ()
+showUnfoldedStates [] _ _ _ _ = return ()
+showUnfoldedStates ((q,g):others) globals probDelta decodeAP depth = do
+  let qLabel = getLabel q
+      qState = getState q
+      precRel = (prec probDelta) (fst . fromJust . head $ g) qLabel
+      labels = Set.toList . Set.filter notEnd $ E.pdecode (bitenc probDelta) (getLabel q)
+      notEnd (Atomic End) = False
+      notEnd _ = True
+      showFormula (Atomic (Prop symb)) = filter (not . isSpace) . show . decodeAP $ symb
+      showFormula _ = error "only props can be exported"
+      cases
+
+        | length g == depth && ((isNothing (head g)) || precRel == Just Yield) = do
+          logInfoN "reached max stack depth - adding a self loop"
+          _ <- showUnfoldedTransition globals (q,g) 1 (q,g)
+          return []
+
+        -- this case includes the initial push
+        | isNothing (head g) || precRel == Just Yield =
+          showUnfoldedStatePush globals probDelta (q,g) qState qLabel
+
+        | precRel == Just Equal =
+          showUnfoldedStateShift globals probDelta (q,g) qState qLabel
+
+        | precRel == Just Take =
+          showUnfoldedStatePop globals probDelta (q,g) qState
+
+        | otherwise = return []
+
+  -- adding labels
+  liftSTtoIO $ do
+    fromId <- fromJust <$>  BH.lookup (graphMap globals) (decodeFullStack (q,g))
+    let maybeInit = if fromId == 0 then "init" : map showFormula labels else map showFormula labels
+    modifySTRef' (labelingFile globals) $ \s -> s ++ "\n" ++ unwords (show fromId : maybeInit)
+
+  unencoded <- cases
+  showUnfoldedStates (others ++ unencoded) globals probDelta decodeAP depth
+
+showUnfoldedStatePush :: (MonadIO m, MonadFail m, MonadLogger m, Eq state, Hashable state, Show state)
+      => Globals RealWorld state -- global variables of the algorithm
+      -> DeltaWrapper state -- delta relation of the popa
+      -> (StateId state, [Stack state]) -- current state of the DTMC
+      -> state
+      -> Label
+      -> m [(StateId state, [Stack state]) ]
+showUnfoldedStatePush globals probDelta (q,g) qState qLabel =
+  let showPush (p, pLabel, prob_) = do
+        newState <- liftSTtoIO $ wrapState (sIdGen globals) p pLabel
+        let newUnfoldedState = (newState, Just (qLabel, q) : g)
+        showUnfoldedTransition globals (q,g) prob_ newUnfoldedState
+  in catMaybes <$> mapM showPush ((deltaPush probDelta) qState)
+
+showUnfoldedStateShift :: (MonadIO m, MonadFail m, MonadLogger m, Eq state, Hashable state, Show state)
+      => Globals RealWorld state -- global variables of the algorithm
+      -> DeltaWrapper state -- delta relation of the popa
+      -> (StateId state, [Stack state]) -- current state of the DTMC
+      -> state
+      -> Label
+      -> m [(StateId state, [Stack state]) ]
+showUnfoldedStateShift globals probDelta (q,g) qState qLabel =
+  let showShift (p, pLabel, prob_) = do
+        newState <- liftSTtoIO $ wrapState (sIdGen globals) p pLabel
+        let newUnfoldedState = (newState, Just (qLabel, snd . fromJust . head $ g): tail g)
+        showUnfoldedTransition globals (q,g) prob_ newUnfoldedState
+  in catMaybes <$> mapM showShift ((deltaShift probDelta) qState)
+
+showUnfoldedStatePop :: (MonadIO m, MonadFail m, MonadLogger m, Eq state, Hashable state, Show state)
+      => Globals RealWorld state -- global variables of the algorithm
+      -> DeltaWrapper state -- delta relation of the popa
+      -> (StateId state, [Stack state]) -- current state of the DTMC
+      -> state
+      -> m [(StateId state, [Stack state]) ]
+showUnfoldedStatePop globals probDelta (q,g) qState =
+  let showPop (p, pLabel, prob_) = do
+        newState <- liftSTtoIO $ wrapState (sIdGen globals) p pLabel
+        let newUnfoldedState = (newState, tail g)
+        showUnfoldedTransition globals (q,g) prob_ newUnfoldedState
+  in catMaybes <$> mapM showPop ((deltaPop probDelta) qState (getState . snd . fromJust . head $ g))
+
+showUnfoldedTransition :: (MonadIO m, MonadFail m, MonadLogger m, Eq state, Hashable state, Show state)
+      => Globals RealWorld state -- global variables of the algorithm
+      -> (StateId state, [Stack state]) -- current state of the DTMC
+      -> Prob
+      -> (StateId state, [Stack state]) -- destination state of the DTMC
+      -> m (Maybe (StateId state, [Stack state])) -- do we need to encode dest?
+showUnfoldedTransition globals from prob_ dest = liftSTtoIO $ do
+    fromId <- fromJust <$> BH.lookup (graphMap globals) (decodeFullStack from)
+    maybeId <- BH.lookup (graphMap globals) (decodeFullStack dest)
+    actualId <- maybe (freshPosId $ idSeq globals) return maybeId
+    when (isNothing maybeId) $
+      BH.insert (graphMap globals) (decodeFullStack dest) actualId
+    modifySTRef' (transitionFile globals) $ \s -> s ++ "\n" ++ unwords [show fromId,  show actualId, show (fromRational prob_ :: Float)]
+    if isNothing maybeId
+      then return (Just dest)
+      else return Nothing

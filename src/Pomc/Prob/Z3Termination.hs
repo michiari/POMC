@@ -253,7 +253,6 @@ data DeficientGlobals state = DeficientGlobals
   , stats :: STRef RealWorld Stats
   }
 
--- requires: the initial semiconfiguration is at position 0 in the Support graph
 terminationQuerySCC :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)
                     => SupportGraph state
                     -> EncPrecFunc
@@ -266,8 +265,8 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   newIVec            <- liftIO $ MV.replicate (V.length suppGraph) 0
   newSuccessorsCntxs <- liftIO $ MV.replicate (V.length suppGraph) IntSet.empty
   newMap <- liftIO HT.new
-  newUpperEqMap <- liftIO $ MM.empty
-  newLowerEqMap <- liftIO $ MM.empty
+  newUpperEqMap <- liftIO MM.empty
+  newLowerEqMap <- liftIO MM.empty
   newLowerLiveVars <- liftIO $ newIORef Set.empty
   newUpperLiveVars <- liftIO $ newIORef Set.empty
   emptyMustReachPop <- liftIO $ newIORef IntSet.empty

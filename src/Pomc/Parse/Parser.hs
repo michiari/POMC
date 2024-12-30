@@ -40,21 +40,24 @@ type PFormula = P.Formula Text
 type PropString = [Set (Prop Text)]
 
 data CheckRequest =
-  ExplCheckRequest { ecreqFormulas :: [PFormula]
-                   , ecreqPrecRels :: [StructPrecRel Text]
-                   , ecreqStrings  :: Maybe [PropString]
-                   , ecreqOpa      :: Maybe (ExplicitOpa Word Text)
-                   } |
-  ProgCheckRequest { pcreqFormulas :: [P.Formula ExprProp]
-                   , pcreqMiniProc :: Program
-                   } |
-  ProbTermRequest  { ptreqTermQuery :: TermQuery
-                   , ptreqMiniProb  :: Program
-                   } |
-  ProbCheckRequest { pcreqFormula      :: P.Formula ExprProp
-                   , pcreqMiniProb     :: Program
-                   , pcreqQuantitative :: Bool
-                   }
+  ExplCheckRequest  { ecreqFormulas :: [PFormula]
+                    , ecreqPrecRels :: [StructPrecRel Text]
+                    , ecreqStrings  :: Maybe [PropString]
+                    , ecreqOpa      :: Maybe (ExplicitOpa Word Text)
+                    } |
+  ProgCheckRequest  { pcreqFormulas :: [P.Formula ExprProp]
+                    , pcreqMiniProc :: Program
+                    } |
+  ProbTermRequest   { ptreqTermQuery :: TermQuery
+                    , ptreqMiniProb  :: Program
+                    } |
+  ProbCheckRequest  { pcreqFormula      :: P.Formula ExprProp
+                    , pcreqMiniProb     :: Program
+                    , pcreqQuantitative :: Bool
+                    } |
+  ProbUnfoldRequest { pcreqFormula      :: P.Formula ExprProp
+                    , pcreqMiniProb     :: Program
+                    }
 
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
@@ -325,18 +328,28 @@ checkRequestP = nonProbModeP <|> probModeP where
                                    , ptreqMiniProb  = prog
                                    }
           mcModeP = do
-            quantitative <- (False <$ symbolP "qualitative")
-                            <|> (True <$ symbolP "quantitative")
+            req <- ((0 :: Integer) <$ symbolP "qualitative")
+                            <|> (1 <$ symbolP "quantitative")
+                            <|> (2 <$ symbolP "unfold&export")
             _ <- symbolP ";"
             _ <- symbolP "formula" >> symbolP "="
             formula <- potlP
             _ <- symbolP ";"
             _ <- symbolP "program" >> symbolP ":"
             prog <- programP
-            return ProbCheckRequest { pcreqFormula = untypeExprFormula prog formula
-                                    , pcreqMiniProb = prog
-                                    , pcreqQuantitative = quantitative
-                                    }
+            case req of 
+              0 -> return ProbCheckRequest { pcreqFormula = untypeExprFormula prog formula
+                                           , pcreqMiniProb = prog
+                                           , pcreqQuantitative = False
+                                           }
+              1 -> return ProbCheckRequest { pcreqFormula = untypeExprFormula prog formula
+                                           , pcreqMiniProb = prog
+                                           , pcreqQuantitative = True
+                                           }
+              2 -> return ProbUnfoldRequest { pcreqFormula = untypeExprFormula prog formula
+                                            , pcreqMiniProb = prog
+                                            }
+              _ -> error "unexpected request id"
 
   untypePropFormula = fmap $ \p -> case p of
     TextTProp t -> t

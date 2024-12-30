@@ -36,16 +36,18 @@ import Data.IntMap.Strict(IntMap)
 import qualified Data.IntMap.Strict as Map
 
 import Control.Monad(forM, forM_, when, unless)
-import Control.Monad.ST (ST)
 
+import Control.Monad.ST (ST)
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
+
 import Data.Maybe (fromJust, isNothing)
 
 import Data.Hashable (Hashable)
-import qualified Data.HashTable.ST.Basic as BH
+
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 
+import qualified Data.HashTable.ST.Basic as BH
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
 type HashTable s k v = BH.HashTable s k v
@@ -94,11 +96,10 @@ data Globals s state = Globals
 
 buildSupportGraph  :: (Ord state, Hashable state, Show state)
         => DeltaWrapper state -- probabilistic delta relation of a popa
-        -> state -- initial state of the popa
-        -> Label -- label of the initial state
+        -> (state, Label) -- (initial state of the popa, label of the initial state)
         -> STRef s Stats
         -> ST s (SupportGraph state, SidMap state) -- returning a graph
-buildSupportGraph probdelta i iLabel stats = do
+buildSupportGraph probdelta (i, iLabel) stats = do
   -- initialize the global variables
   newSig <- initSIdGen
   emptySuppStarts <- SM.empty
@@ -128,7 +129,6 @@ buildSupportGraph probdelta i iLabel stats = do
   sidMap <- sIdMap (sIdGen globals)
   return (suppGraph, sidMap)
 
--- requires: the initial state of the OPA is mapped to StateId with getId 0
 build :: (Eq state, Hashable state, Show state)
       => Globals s state -- global variables of the algorithm
       -> DeltaWrapper state -- delta relation of the popa
@@ -265,6 +265,7 @@ data DeficientGlobals s state = DeficientGlobals
   }
 
 -- perform the Gabow algorithm to determine semiconfs that cannot reach a pop
+-- requires: the initial semiconfiguration is at position 0 in the Support graph
 asPendingSemiconfs :: Show state => Vector (GraphNode state) -> ST s (IntSet, IntSet)
 asPendingSemiconfs suppGraph = do
   newSS            <- GS.new
@@ -272,7 +273,7 @@ asPendingSemiconfs suppGraph = do
   newIVec          <- MV.replicate (V.length suppGraph) 0
   newCanReachPop <- MV.replicate (V.length suppGraph) False
   newMustReachPop <- MV.replicate (V.length suppGraph) False
-  let gn = suppGraph V.! 0 
+  let gn = suppGraph V.! 0 -- the initial semiconf
       globals = DeficientGlobals { sStack = newSS
                                  , bStack = newBS
                                  , iVector = newIVec
