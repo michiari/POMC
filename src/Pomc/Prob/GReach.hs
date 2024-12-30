@@ -247,19 +247,20 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
   let -- computing the new set of sat formulae for the current path in the chain
     newStateSatSet = PE.encodeSatState (proBitenc delta) (getState . fst $ dest)
     newPathSatSet = PE.unions (newStateSatSet : catMaybes [pathSatSet, mSuppSatSet])
+    decodedDest = decode dest
   in do
-  maybeSatSet <- BH.lookup (visited globals) (decode dest)
+  maybeSatSet <- BH.lookup (visited globals) decodedDest
   if isNothing maybeSatSet
     then do
       -- dest semiconf has not been visited so far
-      BH.insert (visited globals) (decode dest) newPathSatSet
+      BH.insert (visited globals) decodedDest newPathSatSet
       reach globals delta dest newPathSatSet
     else do
       let recordedSatSet = fromJust maybeSatSet
       let augmentedPathSatSet = PE.unions (recordedSatSet : catMaybes [pathSatSet, mSuppSatSet])
       unless (recordedSatSet `PE.subsumes` augmentedPathSatSet) $ do
         -- dest semiconf has been visited, but with a set of sat formulae that does not subsume the current ones
-        BH.insert (visited globals) (decode dest) augmentedPathSatSet
+        BH.insert (visited globals) decodedDest augmentedPathSatSet
         reach globals delta dest augmentedPathSatSet
 
 --- compute weigths of a support transition

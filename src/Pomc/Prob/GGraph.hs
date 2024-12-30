@@ -221,8 +221,9 @@ buildPush gglobals delta suppGraph isPending sIdMap (gn, p) =
         , GR.consistentFilter = consistentFilter
         }
   in do
+    fromId <- fromJust <$> BH.lookup (ggraphMap gglobals) (gnId gn, p)
     -- handling the push edges
-    forM_ fPushGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending sIdMap (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
+    forM_ fPushGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending sIdMap fromId (PE.empty . proBitenc $ delta) (gn1, p1)
     -- handling the support edges
     fSuppAugStates <- if not . null $ fSuppGns
                         then  GR.reachableStates (grGlobals gglobals) cDelta leftContext
@@ -233,7 +234,7 @@ buildPush gglobals delta suppGraph isPending sIdMap (gn, p) =
                       , (AugState (StateId _ q _) p1, suppSatSet) <- fSuppAugStates
                       , (getState . fst . semiconf $ gn1) == q
                       ]
-    forM_ fSuppGnodes $ \(gn1, p1, suppSatSet) -> buildEdge gglobals delta suppGraph isPending sIdMap (gn, p) suppSatSet (gn1, p1)
+    forM_ fSuppGnodes $ \(gn1, p1, suppSatSet) -> buildEdge gglobals delta suppGraph isPending sIdMap fromId suppSatSet (gn1, p1)
 
 buildShift :: (Ord pstate, Hashable pstate, Show pstate)
                => GGlobals s pstate -- global variables of the algorithm
@@ -247,7 +248,9 @@ buildShift gglobals delta suppGraph isPending sIdMap (gn, p) =
   let fGns = map (suppGraph !) . Set.toList . Set.filter isPending . Set.map to $ internalEdges gn
       fPhiStates = (phiDeltaShift delta) p
       fGnodes = [(gn1, p1) | gn1 <- fGns, p1 <- fPhiStates, (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)]
-  in forM_ fGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending sIdMap (gn, p) (PE.empty . proBitenc $ delta) (gn1, p1)
+  in do 
+    fromId <- fromJust <$> BH.lookup (ggraphMap gglobals) (gnId gn, p)
+    forM_ fGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending sIdMap fromId (PE.empty . proBitenc $ delta) (gn1, p1)
 
 -- decomposing an edge to a new node
 buildEdge :: (Ord pstate, Hashable pstate, Show pstate)
@@ -256,14 +259,14 @@ buildEdge :: (Ord pstate, Hashable pstate, Show pstate)
                  -> SupportGraph pstate
                  -> (Int -> Bool) -- is a semiconf pending?
                  -> StrictMap.Map pstate Int
-                 -> (GraphNode pstate, State) -- current node
+                 -> Int-- id of current node
                  -> ProbEncodedSet -- for formulae satisfied in a support
                  -> (GraphNode pstate, State) -- to node
                  -> ST s ()
-buildEdge gglobals delta suppGraph isPending sIdMap (gn, p) suppSatSet (gn1, p1) =
+buildEdge gglobals delta suppGraph isPending sIdMap fromId suppSatSet (gn1, p1) =
   let
     insertEdge to_  g@GNode{edges = edges_} = g{edges = Map.insertWith PE.union to_ suppSatSet edges_}
-    lookupInsert to_ = BH.lookup (ggraphMap gglobals) (gnId gn, p) >>= CM.modify (gGraph gglobals) (insertEdge to_) . fromJust
+    lookupInsert to_ =  CM.modify (gGraph gglobals) (insertEdge to_) fromId
   in do
     maybeId <- BH.lookup (ggraphMap gglobals) (gnId gn1, p1)
     actualId <- maybe (freshPosId $ idSeq gglobals) return maybeId
