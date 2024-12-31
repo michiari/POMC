@@ -1,0 +1,153 @@
+/* Original program: 
+
+static int mid;
+B(List<T> a, T val, int left, int right){
+    // randomly select pivot element
+    mid = Uniform(left,right);
+
+    if (left < right){
+
+        if (a[mid] < val){
+            left = min(mid +1, right);
+            B(a, val, left, right);
+        } else {
+            if (a[mid] > val) {
+                right = max (mid -1, left);
+                B(a, val, left, right);
+            }
+        }
+    }
+}
+// B is supposed to store in mid the index of a where val lies 
+
+Reference: F. Olmedo et al., Reasoning about Recursive Probabilistic Programs, LICS 2016.
+*/
+
+probabilistic query: unfold&export;
+// Q15: Partial Correctness
+formula = G ((call And B And sorted And valOccurs And [B|left <= right]) --> XNu correctIndex);
+//formula = F (ret And main And [|mid == 2s5]);
+
+// 4 refers both to the array's length (M) and the domain of each array value (N)
+program:
+u2[4] a;
+u2 mid;
+u2 val;
+bool sorted, valOccurs, correctIndex;
+
+main() {
+    u2 left, right;
+    u2 temp;
+    s3 counter;
+
+    // val = 2, left = 0, right = 4
+    val = 2u2;
+    left = 0u2;
+    right = 3u2;
+
+    // initialization
+    counter = right;
+    while (counter >= left){
+        uniformSample(temp, 0u2, 3u2); // sample uniformly in [0,1,2,3];
+        a[counter] = temp;
+        counter = counter -1s3;
+    }
+
+    checkSortedness(left, right);
+    checkValOccurrence(left, right);
+    B(left, right);
+    
+}
+
+B(u2 left, u2 right){
+    uniformSample(mid, left, right);
+
+    if (left < right){
+        if (a[mid] < val){
+            if (mid + 1s4 < right){
+                left = mid + 1s4;
+            } else {
+                left = right;
+            }
+            checkSortedness(left, right);
+            checkValOccurrence(left, right);
+            B(left, right);
+        } else {
+            if (a[mid] > val) {
+                if (mid - 1s4 > left){
+                    right = mid - 1s4;
+                } else {
+                    right = left;
+                }
+                checkSortedness(left, right);
+                checkValOccurrence(left, right);
+                B(left, right);
+            } else {}
+        }
+    } else {}
+    checkCorrectIndex();
+
+}
+
+uniformSample(u2 &elem, u2 left, u2 right){
+    u2 counter;
+    bool stop;
+    if (left > right){
+        while (true) {
+            // the random assignment diverges if left > right
+            stop = false; // loops with empty body are not allowed in MiniProb.
+        }
+    } else {
+        counter = right; 
+        stop = false;
+        while (counter > left && !stop){
+            stop = true {1u2 : counter - left + 1u3} false;
+            if (!stop){
+                counter = counter - 1u2;
+            } else {}
+        }
+        elem = counter;
+    }  
+}
+
+checkSortedness(u2 left, u2 right){
+    u2 counter;
+    bool newSorted;
+    newSorted = true;
+    
+    if (left < right){
+        counter = right;
+        while(counter > left){
+            newSorted = newSorted && a[counter - 1u2] <= a[counter];
+            counter = counter - 1u2;
+        }
+    } else{
+        // if there is one or less elements, we assume sorted by default
+    }
+    sorted = newSorted;
+    
+}
+
+checkValOccurrence(u2 left, u2 right){
+    s3 counter;
+    bool newValOccurs;
+    newValOccurs = false;
+    // 
+    if (left <= right){
+        counter = right;
+        newValOccurs = false;
+        while(counter >= left){
+            newValOccurs = newValOccurs || a[counter] == val;
+            counter = counter - 1s3;
+        }
+        
+    } else{
+       // val certainly does not occurr in an empty array 
+    } 
+    valOccurs = newValOccurs;
+}
+
+checkCorrectIndex(){
+    correctIndex = a[mid] == val;
+}
+

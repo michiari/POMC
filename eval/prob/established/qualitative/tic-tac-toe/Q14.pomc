@@ -1,0 +1,145 @@
+probabilistic query: quantitative;
+formula = F (ret And main And [main|row_choice == 0u2] && [main|column_choice == 2u2]);
+
+program:
+u2[3] upper;
+u2[3] middle;
+u2[3] lower;
+u2 final_winner;
+
+/*  
+    0 = non assigned
+    1 = circle (player 1)
+    2 = cross (player 2)
+    Initial Condition: 
+    |   | O |   |
+    | O | X | X |
+    |   | O |   |
+Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Conditioning: Modeling Theory of Mind with Probabilistic Programs, Cognitive Systems Research 2014.
+*/ 
+
+main (){
+    u2 row_choice, column_choice;
+    upper[0u2] = 0u2;
+	upper[1u2] = 1u2;
+	upper[2u2] = 0u2;
+    middle[0u2] = 1u2;
+	middle[1u2] = 2u2;
+	middle[2u2] = 2u2;
+    lower[0u2] = 0u2;
+	lower[1u2] = 1u2;
+	lower[2u2] = 0u2;
+
+    final_winner = 0u2;
+    query sampleAction(2u2, row_choice, column_choice);
+
+}
+
+sampleAction(u2 current_player, u2 &row_choice, u2 &column_choice) {
+    bool another_turn;
+    u2 other_player;
+    u2 otherPlayerRowChoice, otherPlayerColumnChoice; 
+    
+    // sample a choice from the priori
+    query action_priori(current_player, row_choice, column_choice);
+    
+    // is there a final_winner or is the grid filled?
+    another_turn = upper[0u2] == 0u2 || upper[1u2] == 0u2 || upper[2u2] == 0u2 || middle[0u2] == 0u2 || middle[1u2] == 0u2 || middle[2u2] == 0u2 || lower[0u2] == 0u2 || lower[1u2] == 0u2 || lower[2u2] == 0u2;
+    winning_condition();
+
+    // if nobody has won and there is another turn to play...
+    if (final_winner == 0u2 && another_turn) {    
+        // passing the turn
+        if (current_player == 1u2) {
+            other_player = 2u2;
+        } else {
+            other_player = 1u2;
+        }
+        query sampleAction(other_player, otherPlayerRowChoice, otherPlayerColumnChoice);
+
+    } else {}
+
+    // observing according to the utility of the outcome
+    expected_utility(current_player);
+
+    // returning row_choice and column_choice - the choice of the player
+}
+
+
+action_priori(u2 current_player, u2 &row_choice, u2 &column_choice) {
+    u2 sampled_row_choice, sampled_column_choice;
+
+    sampled_row_choice = 0u2 {1u2 : 3u2} 1u2 {1u2: 3u2} 2u2;
+    sampled_column_choice = 0u2 {1u2 : 3u2} 1u2 {1u2: 3u2} 2u2;
+
+    // observe that the choice is feasible, and update the grid
+    if (sampled_row_choice == 0u2) {
+        observe upper[sampled_column_choice] == 0u2;
+        upper[sampled_column_choice] = current_player;
+    } else {
+        if (sampled_row_choice == 1u2) {
+            observe middle[sampled_column_choice] == 0u2;
+            middle[sampled_column_choice] = current_player;
+        } else {
+            observe lower[sampled_column_choice] == 0u2;
+            lower[sampled_column_choice] = current_player;
+        }
+    }
+    row_choice = sampled_row_choice;
+    column_choice = sampled_column_choice;
+}
+
+expected_utility(u2 current_player) {
+    bool coin_flip;
+    u4 utility;
+
+    if (final_winner == current_player) {
+        utility = 10u4;
+    } else {
+        if (final_winner == 0u2) {
+        utility = 5u4;
+        } else {
+            utility = 1u4;
+        }
+    }
+
+    // outcome should range from 0 to 10
+    coin_flip = 1u1 {utility : 10u4} 0u1;
+    observe coin_flip;
+}
+
+winning_condition() {
+    if (upper[0u2] == upper[1u2] && upper[1u2] == upper[2u2]) {
+        final_winner = upper[0u2];
+    } else {
+        if (middle[0u2] == middle[1u2] && middle[1u2] == middle[2u2]) {
+            final_winner = middle[0u2];
+        } else {
+            if (lower[0u2] == lower[1u2] && lower[1u2] == lower[2u2]) {
+                final_winner = lower[0u2];
+            } else {
+                if (upper[0u2] == middle[0u2] && middle[0u2] == lower[0u2]) {
+                    final_winner = upper[0u2];
+                } else {
+                    if (upper[1u2] == middle[1u2] && middle[1u2] == lower[1u2]) {
+                        final_winner = upper[1u2];
+                    } else {
+                        if (upper[2u2] == middle[2u2] && middle[2u2] == lower[2u2]) {
+                            final_winner = upper[2u2];
+                        } else {
+                            if (upper[0u2] == middle[1u2] && middle[1u2] == lower[2u2]) {
+                                final_winner = upper[0u2];
+                            } else {
+                                if (upper[2u2] == middle[1u2] && middle[1u2] == lower[0u2]) {
+                                    final_winner = upper[2u2];
+                                } else {
+                                    final_winner = 0u2;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
