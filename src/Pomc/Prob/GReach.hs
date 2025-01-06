@@ -185,14 +185,14 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
 reachPush globals delta q g qState pathSatSet =
   let qProps = getStateProps (bitenc delta) qState
       doPush p = reachTransition globals delta Nothing Nothing (p, Just (qProps, q))
-      isConsistentOrPop s = (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) . getState $ s) == Just Take) || ((consistentFilter delta) (getState s))
+      isConsistentOrPop p = let s = getState p in (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) $ s) == Just Take) || ((consistentFilter delta) s)
   in do
     SM.insert (suppStarts globals) (getId q) g
     newStates <- wrapStates (sIdGen globals) $ map fst $ (deltaPush delta) qState
     mapM_ doPush newStates
     currentSuppEnds <- MM.lookup (suppEnds globals) (getId q)
     mapM_ (\(s, supportSatSet) -> reachTransition globals delta (Just pathSatSet) (Just supportSatSet) (s,g))
-      $ filter (isConsistentOrPop. fst) currentSuppEnds
+      $ filter (isConsistentOrPop . fst) currentSuppEnds
 
 reachShift :: (SatState state, Eq state, Hashable state, Show state)
       => GRobals s state
@@ -218,7 +218,8 @@ reachPop :: (SatState state, Eq state, Hashable state, Show state)
     -> ProbEncodedSet
     -> ST s ()
 reachPop globals delta _ g qState pathSatSet =
-  let doPop p =
+  let gState = getState . snd . fromJust $ g
+      doPop p =
         let r = snd . fromJust $ g
             pState = getState p
             pProps = getStateProps (bitenc delta) pState
@@ -232,7 +233,7 @@ reachPop globals delta _ g qState pathSatSet =
           mapM_ closeSupports currentSuppStarts
   in do
     newStates <- wrapStates (sIdGen globals) $ map fst $
-      (deltaPop delta) qState (getState . snd . fromJust $ g)
+      (deltaPop delta) qState gState
     mapM_  doPop newStates
 
 -- handling the transition to a new semiconfiguration
@@ -263,7 +264,6 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
         BH.insert (visited globals) decodedDest augmentedPathSatSet
         reach globals delta dest augmentedPathSatSet
 
---- compute weigths of a support transition
 freezeSuppEnds :: GRobals RealWorld state -> IO (Vector (Set (StateId state)))
 freezeSuppEnds globals = stToIO $ do
   computedSuppEnds <- readSTRef (suppEnds globals)
@@ -284,6 +284,7 @@ data WeightedGRobals state = WeightedGRobals
   , stats :: STRef RealWorld Stats
   }
 
+-- compute weigths of a support transition
 weightQuerySCC :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show state)
                => WeightedGRobals state
                -> SIdGen RealWorld state
@@ -337,6 +338,7 @@ dfs :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show
     -> m SuccessorsPopContexts
 dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
   let qState = getState q
+      gState = getState . snd . fromJust $ g
       qProps = getStateProps (bitenc delta) qState
       precRel = (prec delta) (fst . fromJust $ g) qProps
       transitionCases
@@ -350,7 +352,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
           unless ((consistentFilter delta) qState) $ error "inconsistent state in a push"
           newPushStates <- liftSTtoIO $ wrapStates sIdGen $ map fst $ (deltaPush delta) qState
           forM_ newPushStates (\p -> follow (p, Just (qProps, q))) -- discard the result
-          let isConsistentOrPop p = (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) . getState $ p) == Just Take) || ((consistentFilter delta) (getState p))
+          let isConsistentOrPop p = let s = getState p in (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) $ s) == Just Take) || ((consistentFilter delta) s)
               newSupportStates = Set.toList . Set.filter isConsistentOrPop . fromJust $ (supports V.!? (getId q)) <|> (Just Set.empty)
           if isNothing g
             then return IntSet.empty
@@ -362,7 +364,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
           IntSet.unions <$> forM newShiftStates (\p -> follow (p, Just (qProps, snd . fromJust $ g)))
 
         | precRel == Just Take = IntSet.fromList <$>
-            mapM (\(unwrapped, _) -> do p <- liftSTtoIO $ wrapState sIdGen unwrapped; return (getId p)) ((deltaPop delta) qState (getState . snd . fromJust $ g))
+            mapM (\(unwrapped, _) -> do p <- liftSTtoIO $ wrapState sIdGen unwrapped; return (getId p)) ((deltaPop delta) qState gState)
 
         | otherwise = return IntSet.empty
 
@@ -482,6 +484,7 @@ encode :: (SatState state, Eq state, Hashable state, Show state)
   -> IO ()
 encode ((q,g), semiconfId, rightContext) globals sIdGen delta supports sccMembers =
   let qState = getState q
+      gState = getState . snd . fromJust $ g
       qProps = getStateProps (bitenc delta) qState
       precRel = (prec delta) (fst . fromJust $ g) qProps
       cases
@@ -492,7 +495,7 @@ encode ((q,g), semiconfId, rightContext) globals sIdGen delta supports sccMember
             encodeShift globals sIdGen delta supports q g qState (semiconfId, rightContext) sccMembers
 
         | precRel == Just Take = do
-            distr <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p, prob_)) $ (deltaPop delta) qState (getState . snd . fromJust $ g)
+            distr <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p, prob_)) $ (deltaPop delta) qState gState
             let e = Map.findWithDefault 0 rightContext (Map.fromList distr)
             addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational e
             addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational e
@@ -513,7 +516,7 @@ encodePush :: (SatState state, Eq state, Hashable state, Show state)
   -> IntSet
   -> IO ()
 encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) sccMembers =
-  let isConsistentOrPop p = (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) . getState $ p) == Just Take) || ((consistentFilter delta) (getState p))
+  let isConsistentOrPop p = let s = getState p in (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) $ s) == Just Take) || ((consistentFilter delta) s)
       suppEnds = Set.toList . Set.filter isConsistentOrPop . fromJust $ (supports V.!? getId q) <|> (Just Set.empty)
       qProps = getStateProps (bitenc delta) qState
       closeSupports pushDest (unencodedVars, terms) suppId =

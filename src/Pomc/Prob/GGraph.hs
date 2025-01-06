@@ -100,7 +100,10 @@ type HashTable s k v = BH.HashTable s k v
 data AugState pstate =  AugState (StateId pstate) State deriving (Generic, Eq, Show, Ord)
 
 instance Hashable (AugState state) where
-  hashWithSalt salt (AugState sId phiState) = hashWithSalt salt $ (getId sId, phiState)
+  hashWithSalt salt (AugState sId phiState) = hashWithSalt salt $ pack phiState
+    where 
+      pack WState{current = curr, pending = pend, stack = st, mustPush = mP, mustShift = mS, afterPop = aP} = ((getId sId), curr, pend, st, mP, mS, aP)
+      pack _ = error "state for finite-string model checking"
 
 instance SatState (AugState s) where
   getSatState (AugState _ p) = p
