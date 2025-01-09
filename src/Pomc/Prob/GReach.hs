@@ -465,7 +465,9 @@ createComponent globals sIdGen delta supports popContxs semiconfId = do
         liftIO $ forM_ toEncode $ \v -> encode v globals sIdGen delta supports sccMembers
         solveSCCQuery sccMembers globals
         return popContxs
-      doNotEncode _ = return popContxs
+      doNotEncode _ = do
+          liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
+          return popContxs
       cases
         | iVal /= topB = return popContxs
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
@@ -619,7 +621,7 @@ solveSCCQuery sccMembers globals = do
 
   -- preprocessing to solve variables that do not need ovi
   _ <- preprocessApproxFixp lEqMap iterEps (2 * sccLen)
-  (_, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (2 * sccLen)
+  (updatedVars, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (2 * sccLen)
 
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCountQuant = acc} -> s{largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
@@ -627,7 +629,7 @@ solveSCCQuery sccMembers globals = do
   -- lEqMap and uEqMap should be the same here
   unless (null unsolvedVars) $ do
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsQuant = acc} -> s{nonTrivialEquationsQuant = acc + length unsolvedVars}
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCountQuant = acc } -> s{ largestSCCEqsCountQuant = max acc (length unsolvedVars) }
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCountQuant = acc } -> s{ largestSCCEqsCountQuant = max acc (length unsolvedVars + length updatedVars) }
     startWeights <- startTimer
 
     -- computing lower bounds

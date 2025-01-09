@@ -369,7 +369,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
       , phiDeltaShift = phiShift
       , phiDeltaPop = phiDeltaPop
       }
- 
+
   in do
     stats <- liftSTtoIO $ newSTRef newStats
     (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper initial stats
@@ -391,7 +391,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     logDebugN $ "Pending Upper Bounds Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
 
-    (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain pendVector lbProbs ubProbs sIdMap stats 
+    (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain pendVector lbProbs ubProbs sIdMap stats
     computedStats <- liftSTtoIO $ readSTRef stats
     return ((ub, lb), computedStats, show supportChain ++ show pendVector)
 
@@ -489,7 +489,7 @@ exportMarkovChain phi prog depth =
     initial = (popaInitial popa) bitencPhi
 
     -- some are not initialized because they are not needed
-    wrapper = Delta 
+    wrapper = Delta
       { bitenc = bitencPhi
       , prec = precFunc
       , deltaPush = (popaDeltaPush popa) bitencPhi

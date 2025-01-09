@@ -295,7 +295,7 @@ terminationQuerySCC suppGraph precFun query oldStats = do
 
   addtoPath globals gn
   (popCntx, isAST) <- dfs suppGraph globals precFun (useZ3, exactEq) gn
-  unless (IntSet.null popCntx) $ error "the initial state cannot reach any pop"
+  unless (IntSet.null popCntx) $ error $ "Pop contexts detected: " ++ show popCntx ++ " but the initial state cannot reach any pop"
 
   -- returning the computed values
   currentEps <- liftIO $ readIORef (eps globals)
@@ -439,7 +439,9 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
             reset >> encode [(0, -1)] (varMap, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
             actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
             return (popContxs, actualMustReachPop)
-          else return (popContxs, False)
+          else do
+            liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
+            return (popContxs, False)
       cases
         | iVal /= topB = return (popContxs, dMustReachPop)
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
@@ -546,7 +548,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
 
   -- lEqMap and uEqMap have the same unsolved equations
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
-  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars) }
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars + length updatedUpperVars) }
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquations = acc} -> s{nonTrivialEquations = acc + length unsolvedVars}
 
 
