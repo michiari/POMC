@@ -254,7 +254,8 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     almostSurely <- GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc sIdMap pendVector stats
     tGG <- stopTimer startGGTime almostSurely
 
-    return (almostSurely, computedStats { gGraphTime = tGG }, show sc ++ show pendVector)
+    updatedStats <- liftSTtoIO $ readSTRef stats
+    return (almostSurely, updatedStats { gGraphTime = tGG }, show sc ++ show pendVector)
 
 qualitativeModelCheckProgram :: (MonadIO m, MonadFail m, MonadLogger m)
                              => Solver
@@ -373,7 +374,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
   in do
     stats <- liftSTtoIO $ newSTRef newStats
     (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper initial stats
-    logInfoN $ "Length of the Support Chain chain: " ++ show (V.length supportChain)
+    logInfoN $ "Length of the Support Chain: " ++ show (V.length supportChain)
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
       $ terminationQuerySCC supportChain precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
