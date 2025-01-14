@@ -288,10 +288,11 @@ data Stats = Stats { upperBoundTime :: Double
                    , sccCountQuant :: Int
                    , largestSCCSemiconfsCountQuant :: Int
                    , largestSCCEqsCountQuant :: Int
+                   , gGraphSize :: Int
                    }
 
 newStats :: Stats
-newStats = Stats 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+newStats = Stats 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
 debug :: String -> a -> a
 --debug = DBG.trace

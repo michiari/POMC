@@ -26,7 +26,7 @@ import qualified Pomc.Encoding as E
 import Pomc.PropConv(APType)
 import Pomc.State(State)
 import Pomc.SatUtil(SatState, getSatState)
-import Data.List (foldl')
+import Data.List (foldl1')
 
 
 -- data structures for keeping track of satisfied formulae in the probabilistic model checking algorithm. 
@@ -58,9 +58,7 @@ union = E.union
 -- a helper for bitwise OR between multiple BitVectors
 -- requires: the input list must be non empty
 unions ::  [ProbEncodedSet] -> ProbEncodedSet
-unions [] = error "unions of empty list"
-unions [x] = x
-unions l = foldl' union (head l) (tail l)
+unions = foldl1' union
 
 -- encode a satState into the formulae for which this state is final
 encodeSatState :: (SatState state) => ProBitencoding -> state -> ProbEncodedSet

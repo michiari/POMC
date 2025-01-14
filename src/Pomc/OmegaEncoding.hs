@@ -26,7 +26,7 @@ import qualified Pomc.Encoding as E
 import Pomc.PropConv(APType)
 import Pomc.State(State)
 import Pomc.SatUtil(SatState, getSatState)
-import Data.List (foldl')
+import Data.List (foldl1')
 
 
 -- a data structure for keeping track of satisfied formulae in the omega SCC algorithm. 
@@ -66,9 +66,7 @@ union oset1 oset2 = SatModel (E.union (eset oset1) (eset oset2))
 -- a helper for bitwise OR between multiple BitVectors
 -- requires: the input list must be non empty
 unions :: [OmegaEncodedSet] -> OmegaEncodedSet
-unions [] = error "union of empty list"
-unions [x] = x
-unions l = foldl' union (head l) (tail l)
+unions = foldl1' union
 
 -- encode a satState into the formulae for which this state is final
 encodeSatState :: (SatState state) => OmegaBitencoding state -> state -> OmegaEncodedSet

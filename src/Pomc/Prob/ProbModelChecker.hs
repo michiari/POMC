@@ -251,7 +251,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       ]
 
     startGGTime <- startTimer
-    almostSurely <- GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc sIdMap pendVector 
+    almostSurely <- GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc sIdMap pendVector stats
     tGG <- stopTimer startGGTime almostSurely
 
     return (almostSurely, computedStats { gGraphTime = tGG }, show sc ++ show pendVector)

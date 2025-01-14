@@ -310,8 +310,9 @@ qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate,
                       -> SupportGraph pstate
                       -> StrictMap.Map pstate Int
                       -> Vector Bool
+                      -> STRef RealWorld Stats
                       -> m Bool
-qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector = do
+qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector stats = do
   -- global data structures for constructing graph G
   gGlobals <- liftSTtoIO $ do
     let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
@@ -328,6 +329,8 @@ qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector = do
   logInfoN "Building graph G..."
   (gGraph_, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!) sIdMap
   logInfoN $ "Graph G has " ++ show (MV.length gGraph_) ++ " nodes."
+  liftSTtoIO $ modifySTRef' stats (\s -> s {gGraphSize = (MV.length gGraph_) })
+
   logInfoN "Analyzing graph G..."
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
@@ -500,7 +503,7 @@ quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord pstate, Ha
                        -> StrictMap.Map pstate Int
                        -> STRef RealWorld Stats
                        -> m (Prob, Prob)
-quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds upperBounds sIdMap oldStats = do
+quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds upperBounds sIdMap stats = do
   startGGTime <- startTimer
   -- global data structures for constructing graph G
   gGlobals <- liftSTtoIO $ do
@@ -515,6 +518,11 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
                     , grGlobals = emptyGRGlobals
                     }
   (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!) sIdMap
+  logInfoN $ "Graph G has " ++ show (MV.length computedGraph) ++ " nodes."
+
+  liftSTtoIO $ modifySTRef' stats (\s -> s {gGraphSize = (MV.length computedGraph) })
+  logInfoN "Analyzing graph G..."
+
   -- globals data structures for qualitative model checking
   -- -1 is reserved for useless (i.e. single node) SCCs
   hGlobals <- liftSTtoIO $ do
@@ -546,7 +554,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
 
   logInfoN "Computed qualitative model checking..."
   tGG <- stopTimer startGGTime hSCCs
-  liftSTtoIO $ modifySTRef' oldStats (\s -> s {gGraphTime = tGG })
+  liftSTtoIO $ modifySTRef' stats (\s -> s {gGraphTime = tGG })
 
   -- bottomString <- show <$> readSTRef (bottomHSCCs hGlobals)
   -- gString <- CM.showMap computedGraph
@@ -604,7 +612,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
                                 , GR.lowerEqMap = (newLowerEqMap, newLowerLiveVars)
                                 , GR.upperEqMap = (newUpperEqMap, newUpperLiveVars)
                                 , GR.actualEps = newEps
-                                , GR.stats = oldStats
+                                , GR.stats = stats
                                 }
 
     logInfoN "Encoding conditions (2b) and (2c)"
@@ -653,7 +661,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
       return (l, u))
 
     tSol <- stopTimer startSol ub
-    liftSTtoIO $ modifySTRef' oldStats (\s -> s { quantSolTime = quantSolTime s + tSol})
+    liftSTtoIO $ modifySTRef' stats (\s -> s { quantSolTime = quantSolTime s + tSol})
 
     return (lb, ub)
 

@@ -99,7 +99,7 @@ main = do
     ProbTermRequest _ prog -> runProbTerm logLevel probSolver prog
     ProbCheckRequest phi prog False -> runQualProbCheck logLevel probSolver phi prog
     ProbCheckRequest phi prog True -> runQuantProbCheck logLevel probSolver phi prog
-    ProbUnfoldRequest phi prog -> runUnfoldAndExport logLevel phi prog depth
+    ProbUnfoldRequest phi prog -> runUnfoldAndExport logLevel phi prog depth fname
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
@@ -163,6 +163,7 @@ main = do
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
                        , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
+                       , "\nSize of graph G: ", show $ gGraphSize stats 
                        ])
       return time
 
@@ -186,6 +187,7 @@ main = do
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
                        , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
+                       , "\nSize of graph G: ", show $ gGraphSize stats 
                        , "\nNon-trivial equations solved for quant mc: ", show $ nonTrivialEquationsQuant stats
                        , "\nSCC count in quant mc weight computation: ", show $ sccCountQuant stats
                        , "\nSize of the largest SCC in quant mc weight computation: ", show $ largestSCCSemiconfsCountQuant stats
@@ -193,14 +195,15 @@ main = do
                        ])
       return time
 
-    runUnfoldAndExport logLevel phi prog depth = do 
+    runUnfoldAndExport logLevel phi prog depth fname = do 
       putStr (concat [ "\nUnfolding the stack into this model and exporting a Markov Chain [max stack depth = ", show depth, "]", 
                        "\nQuery: ", show phi
                      ])
       ((transitions, labels), time) <- timeAction fst $ selectLogVerbosity logLevel
         $ exportMarkovChain phi prog depth
-      writeFile "exported.tra" (T.pack transitions)
-      writeFile "exported.lab" (T.pack labels)
+      let exportedName = replaceFileName fname (takeBaseName fname ++ "-exported")
+      writeFile (replaceExtension exportedName ".tra") (T.pack transitions)
+      writeFile (replaceExtension exportedName ".lab") (T.pack labels)
       putStr "\nFiles exported correctly."
       return time
 
