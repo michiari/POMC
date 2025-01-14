@@ -77,7 +77,7 @@ import Data.Bifunctor(second)
 
 import qualified Data.Strict.Map as StrictMap
 
-import Data.Char (isSpace)
+import Data.Char (isSpace, isLower)
 
 import Z3.Monad hiding (Solver)
 import Control.Monad (when)
@@ -327,14 +327,15 @@ showFlatModel probDelta (i,iLabel) decodeAP depth = do
   emptyGraphMap <- liftSTtoIO $ BH.new
   initialId <- liftSTtoIO $ freshPosId newIdSequence
   transFile <- liftSTtoIO $ newSTRef "dtmc"
-  let labels = Set.toList . Set.filter notEnd $ E.decode (bitenc probDelta) iLabel
-      notEnd (Atomic End) = False
-      notEnd (Not (Atomic End)) = False
-      notEnd _ = True
-      showAllFormulas (Atomic (Prop symb)) = filter (not . isSpace) . show . decodeAP $ symb
-      showAllFormulas (Not (Atomic (Prop symb))) = filter (not . isSpace) . show . decodeAP $ symb
+  let labels = Set.toList . Set.filter skipEnd $ E.decode (bitenc probDelta) iLabel
+      skipEnd (Atomic End) = False
+      skipEnd (Not (Atomic End)) = False
+      skipEnd _ = True
+      showAllFormulas (Atomic (Prop symb)) = filter isLower . show . decodeAP $ symb
+      showAllFormulas (Not (Atomic (Prop symb))) = filter isLower . show . decodeAP $ symb
       showAllFormulas f = error $ "only props can be exported: " ++ show f
-  labFile <- liftSTtoIO . newSTRef $ concat ["#DECLARATION\ninit ", unwords (map showAllFormulas labels), "\n#END"]
+      checkDuplicates l = if length l /= length (Set.fromList l) then error ("trimmed labels overlap: " ++ show l) else l
+  labFile <- liftSTtoIO . newSTRef $ concat ["#DECLARATION\ninit ", unwords (checkDuplicates . map showAllFormulas $ labels), "\n#END"]
   liftSTtoIO $ BH.insert emptyGraphMap (decodeFullStack initialNode) initialId
   let globals = Globals { sIdGen = newSig
                         , idSeq = newIdSequence
@@ -361,10 +362,10 @@ showUnfoldedStates ((q,g):others) globals probDelta decodeAP depth = do
   let qLabel = getLabel q
       qState = getState q
       precRel = (prec probDelta) (fst . fromJust . head $ g) qLabel
-      labels = Set.toList . Set.filter notEnd $ E.pdecode (bitenc probDelta) (getLabel q)
-      notEnd (Atomic End) = False
-      notEnd _ = True
-      showFormula (Atomic (Prop symb)) = filter (not . isSpace) . show . decodeAP $ symb
+      labels = Set.toList . Set.filter skipEnd $ E.pdecode (bitenc probDelta) (getLabel q)
+      skipEnd (Atomic End) = False
+      skipEnd _ = True
+      showFormula (Atomic (Prop symb)) = filter isLower . show . decodeAP $ symb
       showFormula _ = error "only props can be exported"
       cases
 
