@@ -36,7 +36,7 @@ import qualified Data.Vector as V
 import Control.Monad.State.Lazy (State, runState, get, gets, modify)
 import Control.Monad (when, foldM)
 
-import qualified Debug.Trace as DBG
+-- import qualified Debug.Trace as DBG
 
 data Popa s a = Popa
   { popaAlphabet   :: Alphabet a -- OP alphabet
@@ -51,6 +51,7 @@ data Popa s a = Popa
 -- Data structures
 data Action = Assign LValue Expr
   | Cat LValue [Expr] [(Expr, Expr)] -- lhs [rhs] [(num, den)]
+  | Unif LValue Expr Expr
   | CallOp FunctionName [FormalParam] [ActualParam]
   | Return
   | StartQuery
@@ -207,6 +208,14 @@ lowerStatement _ thisFinfo linkPred (Categorical lhs exprs probs) = do
   linkPred thisTarget
   insertPush catSid (psAction catState, thisTarget)
   return (\succStates -> addPops (catSid, catSid) NoRet succStates, Known thisTarget)
+
+lowerStatement _ thisFinfo linkPred (Uniform lhs lower upper) = do
+  unifSid <- getSidInc
+  let unifState = PState unifSid (mkPSLabels $ fiSkeleton thisFinfo) (Unif lhs lower upper)
+      thisTarget = Det unifState
+  linkPred thisTarget
+  insertPush unifSid (psAction unifState, thisTarget)
+  return (\succStates -> addPops (unifSid, unifSid) NoRet succStates, Known thisTarget)
 
 lowerStatement sks thisFinfo linkPred (Call fname args) = do
   callSid <- getSidInc
@@ -467,10 +476,20 @@ computeDsts bitenc pconv allProps gvii localsInfo oldVval act dt =
           Assign (LScalar lhs) rhs -> [(scalarAssign gvii vval lhs $ evalExpr gvii vval rhs, 1)]
           Assign (LArray var idxExpr) rhs ->
             [(arrayAssign gvii vval var idxExpr $ evalExpr gvii vval rhs, 1)]
+          Unif (LScalar lhs) lower upper -> evalUnif vval (scalarAssign gvii vval lhs) lower upper
+          Unif (LArray var idxExpr) lower upper ->
+            evalUnif vval (arrayAssign gvii vval var idxExpr) lower upper
           Cat (LScalar lhs) exprs probs -> evalCat vval (scalarAssign gvii vval lhs) exprs probs
           Cat (LArray var idxExpr) exprs probs ->
             evalCat vval (arrayAssign gvii vval var idxExpr) exprs probs
           _ -> [(vval, 1)]
+
+        evalUnif vval assThunk lower upper =
+          let lval = evalExpr gvii vval lower
+              uval = evalExpr gvii vval upper
+              (l, u) = (B.nat lval, B.nat uval)
+              n = u - l + 1
+          in zip (map assThunk [lval .. uval]) (repeat $ 1 % n)
 
         evalCat vval assThunk exprs probs =
           let assVvals = map (assThunk . evalExpr gvii vval) exprs
@@ -518,6 +537,7 @@ actionStruct :: Action -> Prop ExprProp
 actionStruct ac = Prop . TextProp . T.pack $ case ac of
   Assign {}  -> "stm"
   Cat {}     -> "stm"
+  Unif {}    -> "stm"
   CallOp {}  -> "call"
   Return     -> "ret"
   StartQuery -> "qry"

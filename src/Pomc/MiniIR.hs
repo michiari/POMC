@@ -94,6 +94,7 @@ data ActualParam = ActualVal Expr | ActualValRes Variable deriving (Eq, Ord, Sho
 data Statement = Assignment LValue Expr
                | Nondeterministic LValue
                | Categorical LValue [Expr] [(Expr, Expr)]
+               | Uniform LValue Expr Expr
                | Call FunctionName [ActualParam]
                | Query FunctionName [ActualParam]
                | TryCatch [Statement] [Statement]

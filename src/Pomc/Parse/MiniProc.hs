@@ -272,6 +272,22 @@ nondetP varmap = try $ do
   _ <- symbolP ";"
   return $ Nondeterministic lhs
 
+uniformP :: Map Text Variable -> Parser Statement
+uniformP varmap = try $ do
+  lhs <- lValueP varmap
+  _ <- symbolP "="
+  _ <- symbolP "uniform"
+  _ <- symbolP "("
+  lower <- typedExprP $ Just varmap
+  _ <- symbolP ","
+  upper <- typedExprP $ Just varmap
+  _ <- symbolP ")"
+  _ <- symbolP ";"
+  let lhsType = case lhs of
+        LScalar var -> varType var
+        LArray var _ -> scalarType . varType $ var
+  return $ Uniform lhs (untypeExprWithCast lhsType lower) (untypeExprWithCast lhsType upper)
+
 assOrCatP :: Map Text Variable -> Parser Statement
 assOrCatP varmap = do
   lhs <- try $ do
@@ -346,6 +362,7 @@ observeP varmap = do
 
 stmtP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 stmtP varmap = choice [ noParams $ nondetP varmap
+                      , noParams $ uniformP varmap
                       , noParams $ assOrCatP varmap
                       , callP varmap
                       , tryCatchP varmap

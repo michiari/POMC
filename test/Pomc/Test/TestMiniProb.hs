@@ -12,7 +12,7 @@ import Pomc.Test.EvalFormulas (excludeIndices)
 import Pomc.Test.TestProbTermination (checkApproxResult)
 import Pomc.Parse.Parser (checkRequestP, CheckRequest(..))
 import Pomc.Prob.ProbUtils (Prob, Solver(..), TermResult(..))
-import Pomc.Prob.ProbModelChecker (programTermination)
+import Pomc.Prob.ProbModelChecker (programTermination, quantitativeModelCheckProgram)
 import Pomc.LogUtils (selectLogVerbosity) --, LogLevel(..))
 
 import Test.Tasty
@@ -28,17 +28,20 @@ import Data.Ratio ((%))
 tests :: TestTree
 tests = testGroup "MiniProb Tests" [basicSMTWithHintsTests, basicOVITests]
 
-makeParseTestCase :: T.Text -> (String, String, Solver, Prob) -> TestTree
+makeParseTestCase :: T.Text -> (String, Maybe String, Solver, Prob) -> TestTree
 makeParseTestCase progSource npe@(_, phi, _, _) = testCase tname $ tthunk phi
   where (tname, tthunk) = makeParseTest progSource npe
 
-makeParseTest :: T.Text -> (String, String, Solver, Prob)
-              -> (String, String -> Assertion)
+makeParseTest :: T.Text -> (String, Maybe String, Solver, Prob)
+              -> (String, Maybe String -> Assertion)
 makeParseTest progSource (name, phi, solver, expected) =
-  (name ++ " (" ++ phi ++ ")", assertion)
+  (name ++ " (" ++ phiString phi ++ ")", assertion)
   where
-    filecont f = T.concat [ T.pack "formulas = "
-                          , T.pack f
+    phiString f = case f of
+                    Just p  -> p
+                    Nothing -> "F T"
+    filecont f = T.concat [ T.pack "probabilistic query:quantitative;\nformula = "
+                          , T.pack $ phiString f
                           , T.pack ";\nprogram:\n"
                           , progSource
                           ]
@@ -46,8 +49,13 @@ makeParseTest progSource (name, phi, solver, expected) =
       pcreq <- case parse (checkRequestP <* eof) name $ filecont f of
                  Left  errBundle -> assertFailure (errorBundlePretty errBundle)
                  Right pcreq     -> return pcreq
-      (ApproxSingleResult tres, _, dbginfo) <- selectLogVerbosity Nothing -- (Just LevelDebug)
-        $ programTermination solver (pcreqMiniProc pcreq)
+      (tres, dbginfo) <- case phi of
+        Just _  -> (\(qtres, _, qdbginfo) -> (qtres, qdbginfo))
+                   <$> selectLogVerbosity Nothing -- (Just LevelDebug)
+                       (quantitativeModelCheckProgram solver (pcreqFormula pcreq) (pcreqMiniProb pcreq))
+        Nothing -> (\(ApproxSingleResult qtres, _, qdbginfo) -> (qtres, qdbginfo))
+                   <$> selectLogVerbosity Nothing -- (Just LevelDebug)
+                       (programTermination solver (pcreqMiniProb pcreq))
       assertBool dbginfo (tres `checkApproxResult` expected)
 
 basicSMTWithHintsTests :: TestTree
@@ -59,19 +67,28 @@ basicOVITests = testGroup "Basic OVI Tests" $ basicTestCases OVI
 
 basicTestCases :: Solver -> [TestTree]
 basicTestCases solver =
-  [ makeParseTestCase linRecSrc ("Linearly Recursive Function Termination", "F T", solver, 1)
-  , makeParseTestCase randomWalkSrc ("1D Random Walk Termination", "F T", solver, (2 % 3))
-  , makeParseTestCase mutualRecSrc ("Mutual Recursion Termination", "F T", solver, 1)
-  , makeParseTestCase infiniteLoopSrc ("Infinite Loop", "F T", solver, 1)
-  , makeParseTestCase observeLoopSrc ("Observe Loop", "F T", solver, 1)
-  , makeParseTestCase queryBugSrc ("Query Bug", "F T", solver, 0)
-  , makeParseTestCase callRetLoopSrc ("Call-ret Loop", "F T", solver,  1 % 2)
-  , makeParseTestCase callRet1LoopSrc ("Call-ret One Loop", "F T", solver, 2 % 3)
-  , makeParseTestCase doubleRndWalkSrc ("Double random walk example", "F T", solver, 1 % 2)
-  , makeParseTestCase rndWalkFunSrc ("Random walk with function call", "F T", solver, 1 % 2)
-  , makeParseTestCase loopFunSrc ("Recursive loop with function call", "F T", solver, 1 % 2)
-  , makeParseTestCase loopArgFunSrc ("Recursive loop with function call with argument", "F T", solver, 1 % 2)
+  [ makeParseTestCase uniformSrc ("Uniform Distribution", Just "F [f | x == 5u4]", solver, 1 % 10)
+  , makeParseTestCase linRecSrc ("Linearly Recursive Function Termination", Nothing, solver, 1)
+  , makeParseTestCase randomWalkSrc ("1D Random Walk Termination", Nothing, solver, (2 % 3))
+  , makeParseTestCase mutualRecSrc ("Mutual Recursion Termination", Nothing, solver, 1)
+  , makeParseTestCase infiniteLoopSrc ("Infinite Loop", Nothing, solver, 1)
+  , makeParseTestCase observeLoopSrc ("Observe Loop", Nothing, solver, 1)
+  , makeParseTestCase queryBugSrc ("Query Bug", Nothing, solver, 0)
+  , makeParseTestCase callRetLoopSrc ("Call-ret Loop", Nothing, solver,  1 % 2)
+  , makeParseTestCase callRet1LoopSrc ("Call-ret One Loop", Nothing, solver, 2 % 3)
+  , makeParseTestCase doubleRndWalkSrc ("Double random walk example", Nothing, solver, 1 % 2)
+  , makeParseTestCase rndWalkFunSrc ("Random walk with function call", Nothing, solver, 1 % 2)
+  , makeParseTestCase loopFunSrc ("Recursive loop with function call", Nothing, solver, 1 % 2)
+  , makeParseTestCase loopArgFunSrc ("Recursive loop with function call with argument", Nothing, solver, 1 % 2)
   ]
+
+uniformSrc :: T.Text
+uniformSrc = T.pack [r|
+f() {
+  u4 x;
+  x = uniform(1, 10);
+}
+|]
 
 linRecSrc :: T.Text
 linRecSrc = T.pack [r|
