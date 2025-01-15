@@ -19,7 +19,7 @@ import Pomc.Prop (Prop(..))
 import Pomc.TimeUtils (timeAction, timeFunApp, timeToString)
 import Pomc.LogUtils (LogLevel(..), selectLogVerbosity)
 
-import Prelude hiding (readFile, writeFile)
+import Prelude hiding (readFile)
 import Numeric (showEFloat)
 
 import System.Exit
@@ -27,7 +27,7 @@ import System.FilePath
 import System.Console.CmdArgs
 
 import Text.Megaparsec
-import Data.Text.IO (readFile, writeFile)
+import Data.Text.IO (readFile)
 import qualified Data.Text as T
 
 import Data.List (intersperse)
@@ -199,11 +199,8 @@ main = do
       putStr (concat [ "\nUnfolding the stack into this model and exporting a Markov Chain [max stack depth = ", show depth, "]", 
                        "\nQuery: ", show phi
                      ])
-      ((transitions, labels), time) <- timeAction fst $ selectLogVerbosity logLevel
-        $ exportMarkovChain phi prog depth
-      let exportedName = replaceFileName fname (takeBaseName fname ++ "-exported")
-      writeFile (replaceExtension exportedName ".tra") (T.pack transitions)
-      writeFile (replaceExtension exportedName ".lab") (T.pack labels)
+      (_, time) <- timeAction id $ selectLogVerbosity logLevel
+        $ exportMarkovChain phi prog depth (replaceExtension fname ".tra") (replaceExtension fname ".lab")
       putStr "\nFiles exported correctly."
       return time
 
