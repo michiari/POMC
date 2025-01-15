@@ -344,7 +344,7 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   lowerVars <- liftIO $ MM.foldMaps newLowerEqMap
   upperVars <- liftIO $ MM.foldMaps newUpperEqMap
   logInfoN $ "Number of variables for lower bound: " ++ show (GeneralMap.size lowerVars)
-  logInfoN $ "\nNumber of variables for upper bound: " ++ show (GeneralMap.size upperVars)
+  logInfoN $ "Number of variables for upper bound: " ++ show (GeneralMap.size upperVars)
   readResults query
 
 dfs :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)

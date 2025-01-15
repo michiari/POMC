@@ -151,7 +151,7 @@ potlP = makeExprParser termParser operatorTable
             , prefix "PBd" (P.PBack P.Down)
             , prefix "PBu" (P.PBack P.Up)
 
-            , prefix "N" P.Next
+            , prefix "N" P.Next -- LTL next operator
 
             , prefix "XNd" (P.XNext P.Down)
             , prefix "XNu" (P.XNext P.Up)
@@ -173,7 +173,7 @@ potlP = makeExprParser termParser operatorTable
             , binaryR "Sd" (P.Since P.Down)
             , binaryR "Su" (P.Since P.Up)
 
-            , binaryR "U" P.GUntil
+            , binaryR "U" P.GUntil -- LTL Until operator
 
             , binaryR "HUd" (P.HUntil P.Down)
             , binaryR "HUu" (P.HUntil P.Up)

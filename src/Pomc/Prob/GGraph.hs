@@ -517,6 +517,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
                     , gGraph = emptyGGraph
                     , grGlobals = emptyGRGlobals
                     }
+  logInfoN "Building graph G..."
   (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!) sIdMap
   logInfoN $ "Graph G has " ++ show (MV.length computedGraph) ++ " nodes."
 
@@ -771,7 +772,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
               , GR.consistentFilter = consistentFilter
               }
             encodeSupportTrans = do
-              logDebugN $ "encountered a support transition - launching call to inner computation of fraction f for H node: " ++ show (gId g) ++ " to H node: " ++ show (gId toG)
+              logInfoN $ "encountered a support transition - launching call to inner computation of fraction f from H node" ++ show (gId g) ++ " to H node " ++ show (gId toG)
               (lW, uW) <- GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
               lT <- encodeTransition [lW, pendProbsLB V.! (graphNode toG)] [pendProbsUB V.! (graphNode g)] tolVar
               uT <- encodeTransition [uW, pendProbsUB V.! (graphNode toG)] [pendProbsLB V.! (graphNode g)] touVar

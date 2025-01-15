@@ -55,6 +55,8 @@ import qualified Data.Vector as V
 import Data.STRef (newSTRef, readSTRef)
 import Numeric (showEFloat)
 
+import System.FilePath
+
 -- import qualified Debug.Trace as DBG
 
 -- TODO: add normalize RichDistr to optimize the encoding
@@ -220,7 +222,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
   in do
     stats <- liftSTtoIO $ newSTRef newStats
     (sc, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper initial stats
-    logInfoN $ "Length of the summary chain: " ++ show (V.length sc)
+    logInfoN $ "Size of the Support Graph: " ++ show (V.length sc)
     (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solver) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubMap
@@ -237,6 +239,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
     logDebugN $ "Computed termination probabilities: " ++ show ubVec
     logDebugN $ "Pending Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
+    logInfoN $ "Size of the Support Chain: " ++ show (V.foldl (flip ((+) . fromEnum)) 0 pendVector)
     computedStats <- liftSTtoIO $ readSTRef stats
     logInfoN $ "Stats so far: " ++ concat [
         "Times: "
@@ -374,7 +377,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
   in do
     stats <- liftSTtoIO $ newSTRef newStats
     (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper initial stats
-    logInfoN $ "Length of the Support Chain: " ++ show (V.length supportChain)
+    logInfoN $ "Size of the Support Graph: " ++ show (V.length supportChain)
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
       $ terminationQuerySCC supportChain precFunc (ApproxAllQuery solver) stats
     let ubTermMap = Map.mapKeysWith (+) fst ubProbs
@@ -391,6 +394,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
     logInfoN $ "Computed upper bounds on termination probabilities: " ++ show ubVec
     logDebugN $ "Pending Upper Bounds Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
+    logInfoN $ "Size of the Support Chain: " ++ show (V.foldl (flip ((+) . fromEnum)) 0 pendVector)
 
     (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain pendVector lbProbs ubProbs sIdMap stats
     computedStats <- liftSTtoIO $ readSTRef stats
@@ -478,8 +482,10 @@ exportMarkovChain :: (MonadIO m, MonadFail m, MonadLogger m)
             => Formula ExprProp -- phi: input formula to keep track of symbols
             -> Program -- input program
             -> Int -- a bound on stack's depth
-            -> m (String, String)
-exportMarkovChain phi prog depth =
+            -> FilePath
+            -> FilePath
+            -> m ()
+exportMarkovChain phi prog depth transFile labFile =
   let
     (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
@@ -499,5 +505,5 @@ exportMarkovChain phi prog depth =
       }
   in do
     logInfoN $ "Max depth: " ++ show depth
-    showFlatModel wrapper initial (decodeAP pconv) depth
+    showFlatModel wrapper initial (decodeAP pconv) depth transFile labFile
 

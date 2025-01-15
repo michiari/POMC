@@ -344,7 +344,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
       transitionCases
         -- semiconfigurations with empty stack but not the initial one
         | (isNothing g) && not encodeNothing = do
-          unless ((consistentFilter delta) qState) $ error "semiconfigurations with emty stack but inconsistent states" 
+          unless ((consistentFilter delta) qState) $ error "semiconfigurations with empty stack but inconsistent states" 
           return IntSet.empty
 
         -- this case includes the initial push
