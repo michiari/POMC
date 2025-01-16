@@ -476,20 +476,22 @@ computeDsts bitenc pconv allProps gvii localsInfo oldVval act dt =
           Assign (LScalar lhs) rhs -> [(scalarAssign gvii vval lhs $ evalExpr gvii vval rhs, 1)]
           Assign (LArray var idxExpr) rhs ->
             [(arrayAssign gvii vval var idxExpr $ evalExpr gvii vval rhs, 1)]
-          Unif (LScalar lhs) lower upper -> evalUnif vval (scalarAssign gvii vval lhs) lower upper
+          Unif (LScalar lhs) lower upper -> evalUnif vval (scalarAssign gvii vval lhs) (varType lhs) lower upper
           Unif (LArray var idxExpr) lower upper ->
-            evalUnif vval (arrayAssign gvii vval var idxExpr) lower upper
+            evalUnif vval (arrayAssign gvii vval var idxExpr) (scalarType $ varType var) lower upper
           Cat (LScalar lhs) exprs probs -> evalCat vval (scalarAssign gvii vval lhs) exprs probs
           Cat (LArray var idxExpr) exprs probs ->
             evalCat vval (arrayAssign gvii vval var idxExpr) exprs probs
           _ -> [(vval, 1)]
 
-        evalUnif vval assThunk lower upper =
+        evalUnif vval assThunk lhsType lower upper =
           let lval = evalExpr gvii vval lower
               uval = evalExpr gvii vval upper
               (l, u) = (B.nat lval, B.nat uval)
               n = u - l + 1
-          in zip (map assThunk [lval .. uval]) (repeat $ 1 % n)
+              fixType v = if isSigned lhsType then B.signExtend extWidth v else B.zeroExtend extWidth v
+                where extWidth = typeWidth lhsType - B.size v
+          in zip (map (assThunk . fixType) [lval .. uval]) (repeat $ 1 % n)
 
         evalCat vval assThunk exprs probs =
           let assVvals = map (assThunk . evalExpr gvii vval) exprs
