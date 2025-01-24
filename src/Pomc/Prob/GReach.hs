@@ -322,9 +322,12 @@ weightQuerySCC globals sIdGen delta supports current target = do
   deleteFixpEq (upperEqMap globals) (actualId, -1)
   deleteFixpEq (lowerEqMap globals) (actualId, -2)
   deleteFixpEq (upperEqMap globals) (actualId, -2)
-  logDebugN $ "Returning weights: " ++ show (lb, ub)
+  let truncatedLB = min 1 lb
+      truncatedUB = min 1 ub
+
+  logDebugN $ "Returning weights: " ++ show (truncatedLB, truncatedUB)
   when (lb > ub || lb > 1 || ub > 1.3) $ error "unsound bounds on weight for this summary transition"
-  return (lb, ub)
+  return (truncatedLB, truncatedUB)
 
 -- functions for Gabow algorithm
 dfs :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show state)

@@ -629,7 +629,11 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
     encs2 <- foldM (\acc (_, vList) -> do
         vSum <- mkAdd vList
         lConstr1 <- mkLe vSum =<< mkRational (1 :: Prob)
-        lConstr2 <- mkGe vSum =<< mkRational (1 - defaultRTolerance)
+        eqString <- astToString lConstr1
+        logDebugN $ "Asserting Sum equal 1: " ++ eqString
+        lConstr2 <- mkGe vSum =<< mkRational (1 - 100 * defaultRTolerance)
+        eqString <- astToString lConstr2
+        logDebugN $ "Asserting Sum equal 1: " ++ eqString
         return (lConstr1:lConstr2:acc)
       ) [] groupedlMaptoList
 
@@ -638,7 +642,11 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
     encs3 <- foldM (\acc (_, vList) -> do
       vSum <- mkAdd vList
       uConstr1 <- mkGe vSum =<< mkRational (1 :: Prob)
-      uConstr2 <- mkLe vSum =<< mkRational (1 + defaultRTolerance)
+      eqString <- astToString uConstr1
+      logDebugN $ "Asserting Sum equal 1: " ++ eqString
+      uConstr2 <- mkLe vSum =<< mkRational (1 + 100 * defaultRTolerance)
+      eqString <- astToString uConstr2
+      logDebugN $ "Asserting Sum equal 1: " ++ eqString
       return (uConstr1:uConstr2:acc)
       ) [] groupeduMaptoList
 
@@ -648,7 +656,11 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
     phiuVars <- liftIO $ mapM  (fmap fromJust . HT.lookup newuMap) phiInitialGNodesIdxsinH
 
     sumlVar <- mkAdd philVars
+    eqStringL <- astToString sumlVar
+    logDebugN $ "Sum of interest (lower bound): " ++ eqStringL
     sumuVar <- mkAdd phiuVars
+    eqStringU <- astToString sumuVar
+    logDebugN $ "Sum of interest (upper bound): " ++ eqStringU
 
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
@@ -793,8 +805,8 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
     transitions <- mapM pushEnc fNodes
     lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
     uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
-    lEq <- mkGe lvar =<< mkAdd (map fst . concat $ transitions)
-    uEq <- mkLe uvar =<< mkAdd (map snd . concat $ transitions)
+    lEq <- mkEq lvar =<< mkAdd (map fst . concat $ transitions)
+    uEq <- mkEq uvar =<< mkAdd (map snd . concat $ transitions)
     -- debugging
     eqString <- astToString lEq
     logDebugN $ "Asserting Push/Support equation (lower bound): " ++ eqString
@@ -836,8 +848,8 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
   transitions <- mapM shiftEnc fNodes
   lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
   uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
-  lEq <- mkGe lvar =<< mkAdd (map fst transitions)
-  uEq <- mkLe uvar =<< mkAdd (map snd transitions)
+  lEq <- mkEq lvar =<< mkAdd (map fst transitions)
+  uEq <- mkEq uvar =<< mkAdd (map snd transitions)
   -- debugging
   eqString <- astToString lEq
   logDebugN $ "Asserting Shift equation (lower bound): " ++ eqString
