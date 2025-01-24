@@ -498,6 +498,7 @@ encode ((q,g), semiconfId, rightContext) globals sIdGen delta supports sccMember
             distr <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p, prob_)) $ (deltaPop delta) qState gState
             let e = Map.findWithDefault 0 rightContext (Map.fromList distr)
             addFixpEq (lowerEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational e
+            liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
             addFixpEq (upperEqMap globals) (semiconfId, rightContext) $ PopEq $ fromRational e
             -- logDebugN $ "Encoding PopSemiconf: " ++ show (semiconfId, rightContext) ++ " = PopEq " ++ show e
 
@@ -542,6 +543,7 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
         pushEq | emptyPush = PopEq 0
                | otherwise = PushEq $ concat terms
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) pushEq
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) pushEq
     -- logDebugN $ "Encoding Push: " ++ show terms
     forM_ unencodedVars $ \v -> encode v globals sIdGen delta supports sccMembers
@@ -572,6 +574,7 @@ encodeInitialPush globals sIdGen delta q _ semiconfId suppId  =
       addFixpEq (upperEqMap globals) (semiconfId, -1) $ PushEq terms
       -- logDebugN $ "Encoding initial push:" ++ show terms
       addFixpEq (lowerEqMap globals) (semiconfId, -2) $ PopEq (1 :: Double)
+      liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
       addFixpEq (upperEqMap globals) (semiconfId, -2) $ PopEq (1 :: Double)
 
 encodeShift :: (SatState state, Eq state, Hashable state, Show state)
@@ -602,6 +605,7 @@ encodeShift globals sIdGen delta supports _ g qState (semiconfId, rightContext) 
     let shiftEq | null terms = error "shift semiconfs should go somewhere!"
                 | otherwise = ShiftEq terms
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) shiftEq
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) shiftEq
     -- logDebugN $ "Encoding shift: " ++ show (semiconfId, rightContext) ++ " = ShiftEq " ++ show terms
     forM_ unencodedVars $ \v -> encode v globals sIdGen delta supports sccMembers
@@ -626,8 +630,8 @@ solveSCCQuery sccMembers globals = do
 
   -- lEqMap and uEqMap should be the same here
   unless (null unsolvedVars) $ do
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsQuant = acc} -> s{nonTrivialEquationsQuant = acc + length unsolvedVars}
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCountQuant = acc } -> s{ largestSCCEqsCountQuant = max acc (length unsolvedVars + length updatedVars) }
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCountQuant = acc} -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars}
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCountQuant = acc } -> s{ largestSCCNonTrivialEqsCountQuant = max acc (length unsolvedVars + length updatedVars) }
     startWeights <- startTimer
 
     -- computing lower bounds

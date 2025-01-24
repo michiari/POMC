@@ -653,7 +653,6 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
     logInfoN "Calling Z3 to solve quantitative model checking..."
-    logInfoN "In the new implementation it is too expensive to compute the number of stored equations"
     (lb, ub) <- fromJust . snd <$> withModel (\model -> do
       l <- extractLowerProb . fromJust =<< eval model sumlVar
       u <- extractUpperProb . fromJust =<< eval model sumuVar

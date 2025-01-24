@@ -247,7 +247,8 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       , showEFloat (Just 4) (pastTime computedStats) " s (PAST certificates), "
       , "\nInput pOPA state count: ", show $ popaStatesCount computedStats
       , "\nSupport graph size: ", show $ suppGraphLen computedStats
-      , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations computedStats
+      , "\nEquations solved for termination probabilities: ", show $ equationsCount computedStats
+      , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount computedStats
       , "\nSCC count in the support graph: ", show $ sccCount computedStats
       , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount computedStats
       , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount computedStats

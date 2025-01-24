@@ -79,8 +79,6 @@ import qualified Data.Strict.Map as StrictMap
 
 import Data.Char (isLower, toLower)
 
-import System.FilePath
-
 import Data.Text.IO (appendFile)
 import qualified Data.Text as T
 
@@ -284,20 +282,22 @@ data Stats = Stats { upperBoundTime :: Double
                    , quantSolTime :: Double
                    , suppGraphLen :: Int
                    , popaStatesCount :: Int
-                   , nonTrivialEquations :: Int
+                   , equationsCount :: Int
+                   , nonTrivialEquationsCount :: Int
                    , sccCount :: Int
                    , largestSCCSemiconfsCount :: Int
                    , largestSCCEqsCount :: Int
                    -- quantitative model checking OVI stats
-                   , nonTrivialEquationsQuant :: Int
+                   , equationsCountQuant :: Int
+                   , nonTrivialEquationsCountQuant :: Int
                    , sccCountQuant :: Int
                    , largestSCCSemiconfsCountQuant :: Int
-                   , largestSCCEqsCountQuant :: Int
+                   , largestSCCNonTrivialEqsCountQuant :: Int
                    , gGraphSize :: Int
                    }
 
 newStats :: Stats
-newStats = Stats 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+newStats = Stats 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
 debug :: String -> a -> a
 --debug = DBG.trace

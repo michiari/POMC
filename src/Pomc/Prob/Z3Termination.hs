@@ -97,7 +97,7 @@ lookupVar (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) key = do
 
 -- end helpers
 
-encode :: (MonadZ3 z3, MonadFail z3, Eq state, Hashable state, Show state)
+encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)
        => [(Int, Int)]
        -> VarMap
        -> (AugEqMap EqMapNumbersType, AugEqMap EqMapNumbersType)
@@ -105,9 +105,10 @@ encode :: (MonadZ3 z3, MonadFail z3, Eq state, Hashable state, Show state)
        -> EncPrecFunc
        -> (AST -> AST -> z3 AST)
        -> Bool
-       -> z3 ()
-encode [] _ _ _ _ _ _ = return ()
-encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 = do
+       -> Int
+       -> z3 Int
+encode [] _ _ _ _ _ _ count = return count
+encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 count = do
   let varKey = (gnId_, rightContext)
   var <- liftIO $ fromJust <$> HT.lookup m varKey
   let gn = graph ! gnId_
@@ -137,7 +138,7 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) (lowerEqMap, upperEqMa
         | otherwise = fail "unexpected prec rel"
 
   newUnencoded <- cases
-  encode (newUnencoded ++ unencoded) varMap (lowerEqMap, upperEqMap) graph precFun mkComp useZ3
+  encode (newUnencoded ++ unencoded) varMap (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 (count + 1)
 
 -- encoding helpers --
 encodePush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
@@ -427,7 +428,9 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
         insertedVars <- map (snd . fromJust) <$> forM toEncode (lookupVar (varMap, sccMembers, encodeInitial) (lEqMap, uEqMap))
         when (or insertedVars ) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
-        reset >> encode toEncode (varMap, sccMembers, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
+        reset 
+        eqsCount <- encode toEncode (varMap, sccMembers, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3 0
+        liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
         actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, sccMembers, encodeInitial) globals precFun (useZ3, exactEq)
         when actualMustReachPop $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef' (mustReachPop globals) $ IntSet.insert e
         return (popContxs, actualMustReachPop)
@@ -436,7 +439,9 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
           then do -- for the initial semiconf, encode anyway
             var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
             liftIO $ HT.insert varMap (0, -1) var
-            reset >> encode [(0, -1)] (varMap, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3
+            reset 
+            eqsCount <- encode [(0, -1)] (varMap, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3 0
+            liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
             actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
             return (popContxs, actualMustReachPop)
           else do
@@ -549,7 +554,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
   -- lEqMap and uEqMap have the same unsolved equations
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars + length updatedUpperVars) }
-  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquations = acc} -> s{nonTrivialEquations = acc + length unsolvedVars}
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCount = acc} -> s{nonTrivialEquationsCount = acc + length unsolvedVars}
 
 
   -- find bounds for this SCC

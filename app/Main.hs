@@ -159,7 +159,8 @@ main = do
                        , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis)."
                        , "\nInput pOPA state count: ", show $ popaStatesCount stats
                        , "\nSupport graph size: ", show $ suppGraphLen stats
-                       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations stats
+                       , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
+                       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
                        , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
@@ -183,15 +184,18 @@ main = do
                        , showEFloat (Just 4) (quantSolTime stats) " s (eq system for quant MC)."
                        , "\nInput pOPA state count: ", show $ popaStatesCount stats
                        , "\nSupport graph size: ", show $ suppGraphLen stats
-                       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquations stats
+                       , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
+                       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
                        , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
                        , "\nSize of graph G: ", show $ gGraphSize stats 
-                       , "\nNon-trivial equations solved for quant mc: ", show $ nonTrivialEquationsQuant stats
+                       --
+                       , "\nEquations solved for quant mc: ", show $ equationsCountQuant stats
+                       , "\nNon-trivial equations solved for quant mc: ", show $ nonTrivialEquationsCountQuant stats
                        , "\nSCC count in quant mc weight computation: ", show $ sccCountQuant stats
                        , "\nSize of the largest SCC in quant mc weight computation: ", show $ largestSCCSemiconfsCountQuant stats
-                       , "\nLargest number of equations in an SCC in quant mc weight computation: ", show $ largestSCCEqsCountQuant stats
+                       , "\nLargest number of non trivial equations in an SCC in quant mc weight computation: ", show $ largestSCCNonTrivialEqsCountQuant stats
                        ])
       return time
 
