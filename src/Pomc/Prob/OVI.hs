@@ -31,7 +31,7 @@ import qualified Data.Vector.Mutable as MV
 
 import Witch.Instances (realFloatToRational)
 import Data.IORef (readIORef)
-import qualified Data.Set as Set
+import Data.Either (isLeft)
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviMaxKleeneIters :: Int
@@ -101,16 +101,14 @@ data Monomial2 n = Quad n VarKey VarKey
 type Polynomial2 n = [Monomial2 n]
 type PolyVector n = IOVector (VarKey, Polynomial2 n)
 
-
-
 evalMonomial :: (MonadIO m, Num n) => AugEqMap n -> Monomial2 n -> ProbVec n -> m n
-evalMonomial augEqMap m v = liftIO $ case m of
+evalMonomial _ m v = liftIO $ case m of
   Quad c k1 k2 -> do
-    v1 <- lookupValue augEqMap v k1
-    v2 <- lookupValue augEqMap v k2
+    v1 <- fromJust <$> HT.lookup v k1
+    v2 <- fromJust <$> HT.lookup v k2
     return $ c * v1 * v2
   Lin c k1 -> do
-    v1 <- lookupValue augEqMap v k1
+    v1 <- fromJust <$> HT.lookup v k1
     return $ c * v1
   Const c -> return c
 
@@ -141,29 +139,31 @@ monomialDerivative m x = case m of -- ugly but it works
 -- compute (J|v + I) x, where J|v is the Jacobian of leqSys evaluated on v,
 -- I is the identity matrix, and x is the vector of all variables
 jacobiTimesX :: (MonadIO m, Num n) => AugEqMap n -> LEqSys n -> ProbVec n -> m (PolyVector n)
-jacobiTimesX augEqMap@(_, lVarsRef) leqSys v = liftIO $ MV.generateM (MV.length leqSys)
-  -- checkVec is just to check that a variable is alive in O(1)
+jacobiTimesX augEqMap@(_, _) leqSys v = liftIO $ MV.generateM (MV.length leqSys)
   (\i -> do
         (k, eq) <- MV.read leqSys i
         poly <- case eq of
-          PushLEq terms -> (Lin 1 k :) . concat <$> forM terms
+          PushLEq terms -> (Lin 1 k :) . concat <$> forM 
+            (filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms)
             (\(p, k1, k2) -> do
-                let pm = Quad p k1 k2
+                let build (Left k1)   ( Left k2) = Quad p k1 k2
+                    build (Left k1)   (Right val) = Lin (p * val) k1
+                    build (Right val) (Left k1)  = Lin (p * val) k1
+                    build _ _ = error "unexpected"
+                    pm = build k1 k2
                 m1 <- jtxMonomial pm k1
                 m2 <- jtxMonomial pm k2
                 return $ m1 ++ m2
             )
-          ShiftLEq terms -> (Lin 1 k :) . concat <$> forM terms
-            (\(p, k1) -> jtxMonomial (Lin p k1) k1)
+          ShiftLEq terms -> (Lin 1 k :) . concat <$> forM 
+            (filter (\(_, eitherP) -> isLeft eitherP) terms)
+            (\(p, (Left k1)) -> jtxMonomial (Lin p k1) (Left k1))
         return (k, poly)
     )
-  where jtxMonomial lmon key = do
-          lVars <- liftIO $ readIORef lVarsRef
-          if Set.member key lVars
-            then do
-            coeff <- evalMonomial augEqMap (monomialDerivative lmon key) v
-            return [Lin coeff key]
-            else return []
+  where jtxMonomial lmon (Left key) = do
+          coeff <- evalMonomial augEqMap (monomialDerivative lmon key) v
+          return [Lin coeff key]
+        jtxMonomial _ _ = return []
 
 powerIterate :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
              => AugEqMap n -> n -> Int -> PolyVector n -> ProbVec n -> m n
@@ -252,7 +252,7 @@ ovi settings augEqMap@(eqMap, _) = do
             let check prev newV oldV = prev && newV <= oldV
                   -- prev && 1 / (oldV - newV) >= 0
                   -- prev && (1-eps)*newV + eps <= oldV
-            inductive <- evalEqSys augEqMap leqSys check upperApprox evalUpperApprox
+            inductive <- evalEqSys leqSys check upperApprox evalUpperApprox
             logDebugN $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
             if inductive
               then return True
@@ -288,14 +288,14 @@ oviToRational settings augEqMap@(_, _) oviRes = do
       showF1 = "realFloatToRational"
       showF2 = "approxRational + eps"
 
-  rleqSys <- toLiveEqMap augEqMap
+  rleqSys <- toLiveEqMapWith augEqMap f1
   -- Convert upper bound to rational
   rub <- mapVec f1 $ oviUpperBound oviRes
   srub <- liftIO $ HT.newSized =<< stToIO (BHT.size rub)
   let checkWithKInd _ _ _ _  0 = return False
       checkWithKInd showF f rleqSys srub kIters  = do
         -- Evaluate equation system
-        inductive <- evalEqSysWithF augEqMap f rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
+        inductive <- evalEqSys rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
 
         logDebugN $ "Is the rational approximation inductive? " ++ show inductive
         if inductive
