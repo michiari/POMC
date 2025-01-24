@@ -396,9 +396,7 @@ lookupVar sccMembers globals decoded rightContext = do
   let cases
           | previouslyEncoded = return $ Just (varKey, True)
           | IntSet.notMember id_ sccMembers = return Nothing
-          | otherwise = do
-            addFixpEq (lowerEqMap globals) varKey (PopEq 0)
-            return $ Just (varKey, False)
+          | otherwise = return $ Just (varKey, False)
   cases
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
