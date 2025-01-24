@@ -541,7 +541,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
 
   -- preprocessing phase
   _ <- preprocessApproxFixp lEqMap defaultEps (2 * sccLen)
-  (updatedUpperVars, unsolvedVars) <- preprocessApproxFixp uEqMap defaultEps (2 * sccLen)
+  (updatedUpperVars, unsolvedVars) <- preprocessApproxFixp uEqMap defaultEps (sccLen + 1)
   forM_ updatedUpperVars $ \(varKey, p) -> do
     pAST <- mkRealNum (p :: Double)
     liftIO $ HT.insert m varKey pAST

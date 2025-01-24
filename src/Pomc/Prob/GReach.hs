@@ -619,7 +619,7 @@ solveSCCQuery sccMembers globals = do
 
   -- preprocessing to solve variables that do not need ovi
   _ <- preprocessApproxFixp lEqMap iterEps (2 * sccLen)
-  (updatedVars, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (2 * sccLen)
+  (updatedVars, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (sccLen + 1)
 
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCountQuant = acc} -> s{largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
