@@ -7,10 +7,10 @@ import csv
 
 
 def pretty_print(results, csvfile):
-    key_list = ['name', 'states', 'supp_size', 'eqs', 'sccs', 'maxscc', 'maxeqs', 'quant_eqs', 'quant_sccs', 'quant_maxscc', 'quant_maxeqs', 'ub_time', 'past_time', 'gg_time', 'quant_OVI_time', 'quant_eqs_time', 'time', 'mem_tot', 'result', 'quant_result']
+    key_list = ['name', 'k', 'm', 'states', 'supp_size', 'eqs', 'non_trivial_eqs', 'sccs', 'maxscc', 'maxeqs', 'g_size', 'quant_eqs', 'non_trivial_quant_eqs', 'quant_sccs', 'quant_maxscc', 'quant_maxeqs', 'ub_time', 'past_time', 'gg_time', 'quant_OVI_time', 'quant_eqs_time', 'time', 'mem_tot', 'result', 'quant_result']
     results_matrix = to_list(results, list(map(lambda k: (k,  lambda x: x), key_list)))
 
-    header = ["Name", "|Q_A|", "|SG|", "|f|", "#SCC", "|SCC|max", "|f(SCC)|max", "|f|(quant)", "#SCC(quant)", "|SCC|max(quant)", "|f(SCC)|max(quant)", "UB Time (s)", "PAST Time (s)", "G Time (s)", "quant OVI (s)", "quant Eqs (s)", "Time (s)", "Memory (KiB)", "Holds AS", "Prob"]
+    header = ["Name", "Array_values_bits(K)", "Array_length(M)", "|Q_A|", "|SG|", "|f|", "|f_NT|", "#SCC", "|SCC|max", "|f(SCC)_NT|max", "|G|", "|f|(quant)", "|f_NT|(quant)", "#SCC(quant)", "|SCC|max(quant)", "|f(SCC)_NT|max(quant)", "UB Time (s)", "PAST Time (s)", "G Time (s)", "quant OVI (s)", "quant Eqs (s)", "Time (s)", "Memory (KiB)", "Holds AS", "Prob"]
 
     print(tabulate(results_matrix, headers=header))
 

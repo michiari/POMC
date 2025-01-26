@@ -16,14 +16,20 @@ result_pattern = re.compile(r"Result:  ((True)|(False))")
 quant_result_pattern = re.compile(r"Result:  (\([0-9]+ % [0-9]+\,[0-9]+ % [0-9]+\))")
 states_pattern = re.compile(r"Input (OPA|pOPA) state count: ([0-9]+)")
 supp_pattern = re.compile(r"Support graph size: ([0-9]+)")
-eqs_pattern = re.compile(r"Non-trivial equations solved for termination probabilities: ([0-9]+)")
+eqs_pattern = re.compile(r"Equations solved for termination probabilities: ([0-9]+)")
+non_trivial_eqs_pattern = re.compile(r"Non-trivial equations solved for termination probabilities: ([0-9]+)")
 sccs_pattern = re.compile(r"SCC count in the support graph: ([0-9]+)")
 maxscc_pattern = re.compile(r"Size of the largest SCC in the support graph: ([0-9]+)")
-maxeqs_pattern = re.compile(r"Largest number of equations in an SCC in the Support Graph: ([0-9]+)")
-quant_eqs_pattern = re.compile(r"Non-trivial equations solved for quant mc: ([0-9]+)")
+maxeqs_pattern = re.compile(r"Largest number of non trivial equations in an SCC in the Support Graph: ([0-9]+)")
+
+g_size_pattern = re.compile(r"Size of graph G: ([0-9]+)" )
+
+quant_eqs_pattern = re.compile(r"Equations solved for quant mc: ([0-9]+)")
+non_trivial_quant_eqs_pattern = re.compile(r"Non-trivial equations solved for quant mc: ([0-9]+)")
 quant_sccs_pattern = re.compile(r"SCC count in quant mc weight computation: ([0-9]+)")
 quant_maxscc_pattern = re.compile(r"Size of the largest SCC in quant mc weight computation: ([0-9]+)")
-quant_maxeqs_pattern = re.compile(r"Largest number of equations in an SCC in quant mc weight computation: ([0-9]+)")
+quant_maxeqs_pattern = re.compile(r"Largest number of non trivial equations in an SCC in quant mc weight computation: ([0-9]+)")
+
 ub_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(upper bounds\)")
 past_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(PAST certificates\)")
 gg_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(graph analysis\)")
@@ -31,6 +37,8 @@ quant_OVI_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(weights for qua
 quant_eqs_time_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(eq system for quant MC\)")
 memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
+
+sherwood_pattern = re.compile(r".*sherwood-([0-9]+)\.([0-9]+)\.S([0-9]+).pomc$")
 
 if platform.system() == 'Darwin':
     time_bin = 'gtime'
@@ -92,21 +100,29 @@ def exec_bench(fname, args):
     result_match = result_pattern.search(raw_stdout)
     quant_result_match = quant_result_pattern.search(raw_stdout)
     states_match = states_pattern.search(raw_out)
-    ub_match = ub_pattern.search(raw_out)
-    past_match = past_pattern.search(raw_out)
-    gg_match = gg_pattern.search(raw_stdout)
-    memgc_match = memgc_pattern.search(raw_stderr)
     supp_match = supp_pattern.search(raw_out)
     eqs_match = eqs_pattern.search(raw_out)
+    non_trivial_eqs_match = non_trivial_eqs_pattern.search(raw_out)
     sccs_match = sccs_pattern.search(raw_out)
     maxscc_match = maxscc_pattern.search(raw_out)
     maxeqs_match = maxeqs_pattern.search(raw_out)
+
+    g_size_match = g_size_pattern.search(raw_out)
+
     quant_eqs_match = quant_eqs_pattern.search(raw_out)
+    non_trivial_quant_eqs_match = non_trivial_quant_eqs_pattern.search(raw_out)
     quant_sccs_match = quant_sccs_pattern.search(raw_out)
     quant_maxscc_match = quant_maxscc_pattern.search(raw_out)
     quant_maxeqs_match = quant_maxeqs_pattern.search(raw_out)
+    
+    ub_match = ub_pattern.search(raw_out)
+    past_match = past_pattern.search(raw_out)
+    gg_match = gg_pattern.search(raw_stdout)
     quant_OVI_match = quant_OVI_pattern.search(raw_out)
     quant_eqs_time_match = quant_eqs_time_pattern.search(raw_out)
+    memgc_match = memgc_pattern.search(raw_stderr)
+
+    sherwood_match = sherwood_pattern.search(fname)
 
     check_match = lambda m, groupno=1, err=-1: m.group(groupno) if m else err
     record = {
@@ -119,15 +135,20 @@ def exec_bench(fname, args):
         'states': int(check_match(states_match, 2)),
         'supp_size': int(check_match(supp_match)),
         'eqs': int(check_match(eqs_match)),
+        'non_trivial_eqs': int(check_match(non_trivial_eqs_match)),
         'sccs': int(check_match(sccs_match)),
         'maxscc': int(check_match(maxscc_match)),
         'maxeqs': int(check_match(maxeqs_match)),
+        'g_size': int(check_match(g_size_match)),
         'quant_eqs': int(check_match(quant_eqs_match)),
+        'non_trivial_quant_eqs': int(check_match(non_trivial_quant_eqs_match)),
         'quant_sccs': int(check_match(quant_sccs_match)),
         'quant_maxscc': int(check_match(quant_maxscc_match)),
         'quant_maxeqs': int(check_match(quant_maxeqs_match)),
         'quant_OVI_time': float(check_match(quant_OVI_match)),
         'quant_eqs_time': float(check_match(quant_eqs_time_match)),
+        'k' : int(check_match(sherwood_match)),
+        'm' : int(check_match(sherwood_match, 2)),
     }
     if raw_res.returncode != 0:
         if raw_res.returncode == -9:
@@ -142,6 +163,8 @@ def iter_bench(fname, args):
     results = [exec_bench(fname, args) for _ in range(0, args.iters)]
     return {
         'name': fname,
+        'k' : results[0]['k'],
+        'm' : results[0]['m'],
         'time': statistics.mean(get_column(results, 'time')),
         'ub_time': statistics.mean(get_column(results, 'ub_time')),
         'past_time': statistics.mean(get_column(results, 'past_time')),
@@ -155,10 +178,13 @@ def iter_bench(fname, args):
         'states': results[0]['states'],
         'supp_size': results[0]['supp_size'],
         'eqs': results[0]['eqs'],
+        'non_trivial_eqs': results[0]['non_trivial_eqs'],
         'sccs': results[0]['sccs'],
         'maxscc': results[0]['maxscc'],
         'maxeqs': results[0]['maxeqs'],
+        'g_size': results[0]['g_size'],        
         'quant_eqs': results[0]['quant_eqs'],
+        'non_trivial_quant_eqs': results[0]['non_trivial_quant_eqs'],
         'quant_sccs': results[0]['quant_sccs'],
         'quant_maxscc': results[0]['quant_maxscc'],
         'quant_maxeqs': results[0]['quant_maxeqs'],
