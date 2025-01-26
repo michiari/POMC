@@ -48,6 +48,7 @@ import qualified Data.IntSet as IntSet
 
 import qualified Data.IntMap as Map
 
+
 import qualified Data.Map as GeneralMap
 
 import Data.Vector(Vector)
@@ -399,7 +400,10 @@ lookupVar sccMembers globals decoded rightContext = do
   let cases
           | previouslyEncoded = return $ Just (varKey, True)
           | IntSet.notMember id_ sccMembers = return Nothing
-          | otherwise = return $ Just (varKey, False)
+          | otherwise = do 
+              addFixpEq (lowerEqMap globals) varKey (PopEq 0) -- this equation is needed as a placeholder to avoid double encoding of the same variable
+              -- since we do not keep track of whether a variable is currently in the buffer of "unencodedVars"
+              return $ Just (varKey, False)
   cases
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
