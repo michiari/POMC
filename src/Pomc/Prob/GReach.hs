@@ -629,7 +629,7 @@ solveSCCQuery sccMembers globals = do
   let iterEps = min defaultEps $ currentEps * currentEps
 
   -- preprocessing to solve variables that do not need ovi
-  _ <- preprocessApproxFixp lEqMap iterEps (2 * sccLen)
+  _ <- preprocessApproxFixp lEqMap iterEps (sccLen + 1)
   (updatedVars, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (sccLen + 1)
 
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
