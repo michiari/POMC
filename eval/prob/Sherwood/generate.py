@@ -5,12 +5,12 @@ import os
 
 queries = ['qualitative', 'quantitative', 'unfold&export']
 benchmark = [
-    ("G ((call And B And sorted And valOccurs And [B|left <= right]) --> XNu correctIndex);\n// Q15: Partial Correctness", "Q15"), # partial correctness
-    ("G ((call And B And sorted And (~ valOccurs) And [B|left <= right]) --> XNu ( ~ correctIndex));\n// Q16: Dual Partial Correctness", "Q16"), # dual partial correctness
-    ("G ((call And B And sorted And valOccurs And [B|left < right]) --> XNd (call And B));\n// Q17: Stack inspection", "Q17"), # stack inspection
-    ("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> XNd (call And B));\n// Q18: Stack inspection (v2)", "Q18"), # stack inspection (v2)
-    ("G ((call And B And sorted And valOccurs And [B|left < right]) --> PNd (F (call And B)));\n// Q19: Stack inspection (LTL)", "Q19"), # stack inspection (LTL)
-    ("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> PNd (F (call And B)));\n// Q20: Stack inspection (v2) (LTL)", "Q20") # stack inspection (v2) (LTL)
+    ("G ((call And B And sorted And valOccurs And [B|left <= right]) --> XNu correctIndex);\n// Q15: Partial Correctness", "S1"), # partial correctness
+    ("G ((call And B And sorted And (~ valOccurs) And [B|left <= right]) --> XNu ( ~ correctIndex));\n// Q16: Dual Partial Correctness", "S2"), # dual partial correctness
+    ("G ((call And B And sorted And valOccurs And [B|left < right]) --> XNd (call And B));\n// Q17: Stack inspection", "S3"), # stack inspection
+    ("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> XNd (call And B));\n// Q18: Stack inspection (v2)", "S3"), # stack inspection (v2)
+    ("G ((call And B And sorted And valOccurs And [B|left < right]) --> PNd (F (call And B)));\n// Q19: Stack inspection (LTL)", "S4"), # stack inspection (LTL)
+    ("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> PNd (F (call And B)));\n// Q20: Stack inspection (v2) (LTL)", "S5") # stack inspection (v2) (LTL)
     ]
 
 def array_domain_comment(bits):
