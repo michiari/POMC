@@ -86,7 +86,7 @@ instance (Show a) => Show (Formula a) where
              HSince Down g h -> concat [showp g, " HSd ", showp h]
              HSince Up   g h -> concat [showp g, " HSu ", showp h]
              Next g          -> concat ["PN ", showp g]
-             GUntil g h      -> concat [showp g, " U" , showp h]
+             GUntil g h      -> concat [showp g, " U " , showp h]
              Eventually g    -> concat ["F ", showp g]
              Always g        -> concat ["G ", showp g]
              AuxBack Down g  -> concat ["AuxBd ", showp g]
