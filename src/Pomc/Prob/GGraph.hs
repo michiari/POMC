@@ -631,7 +631,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
         lConstr1 <- mkLe vSum =<< mkRational (1 :: Prob)
         eqString <- astToString lConstr1
         logDebugN $ "Asserting Sum equal 1: " ++ eqString
-        lConstr2 <- mkGe vSum =<< mkRational (1 - 100 * defaultRTolerance)
+        lConstr2 <- mkGe vSum =<< mkRational (1 - 1000 * defaultRTolerance)
         eqString <- astToString lConstr2
         logDebugN $ "Asserting Sum equal 1: " ++ eqString
         return (lConstr1:lConstr2:acc)
@@ -644,7 +644,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
       uConstr1 <- mkGe vSum =<< mkRational (1 :: Prob)
       eqString <- astToString uConstr1
       logDebugN $ "Asserting Sum equal 1: " ++ eqString
-      uConstr2 <- mkLe vSum =<< mkRational (1 + 100 * defaultRTolerance)
+      uConstr2 <- mkLe vSum =<< mkRational (1 + 1000 * defaultRTolerance)
       eqString <- astToString uConstr2
       logDebugN $ "Asserting Sum equal 1: " ++ eqString
       return (uConstr1:uConstr2:acc)

@@ -286,7 +286,7 @@ data Stats = Stats { upperBoundTime :: Double
                    , nonTrivialEquationsCount :: Int
                    , sccCount :: Int
                    , largestSCCSemiconfsCount :: Int
-                   , largestSCCEqsCount :: Int
+                   , largestSCCNonTrivialEqsCount :: Int
                    -- quantitative model checking OVI stats
                    , equationsCountQuant :: Int
                    , nonTrivialEquationsCountQuant :: Int

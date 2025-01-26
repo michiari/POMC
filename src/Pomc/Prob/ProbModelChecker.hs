@@ -251,7 +251,7 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount computedStats
       , "\nSCC count in the support graph: ", show $ sccCount computedStats
       , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount computedStats
-      , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount computedStats
+      , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount computedStats
       ]
 
     startGGTime <- startTimer

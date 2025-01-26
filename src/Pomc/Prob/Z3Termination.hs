@@ -553,7 +553,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
 
   -- lEqMap and uEqMap have the same unsolved equations
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
-  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCEqsCount = acc } -> s{ largestSCCEqsCount = max acc (length unsolvedVars + length updatedUpperVars) }
+  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCount = acc } -> s{ largestSCCNonTrivialEqsCount = max acc (length unsolvedVars) }
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCount = acc} -> s{nonTrivialEquationsCount = acc + length unsolvedVars}
 
 

@@ -163,7 +163,7 @@ main = do
                        , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-                       , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
+                       , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
                        , "\nSize of graph G: ", show $ gGraphSize stats 
                        ])
       return time
@@ -188,7 +188,7 @@ main = do
                        , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-                       , "\nLargest number of equations in an SCC in the Support Graph: ", show $ largestSCCEqsCount stats
+                       , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
                        , "\nSize of graph G: ", show $ gGraphSize stats 
                        --
                        , "\nEquations solved for quant mc: ", show $ equationsCountQuant stats
