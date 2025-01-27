@@ -638,7 +638,7 @@ solveSCCQuery sccMembers globals = do
   -- lEqMap and uEqMap should be the same here
   unless (null unsolvedVars) $ do
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCountQuant = acc} -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars}
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCountQuant = acc } -> s{ largestSCCNonTrivialEqsCountQuant = max acc (length unsolvedVars + length updatedVars) }
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCountQuant = acc } -> s{ largestSCCNonTrivialEqsCountQuant = max acc (length updatedVars) }
     startWeights <- startTimer
 
     -- computing lower bounds
