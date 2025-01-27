@@ -48,13 +48,13 @@ data OVISettings n = OVISettings { oviMaxIters :: Int
 defaultOVISettingsDouble :: OVISettings Double
 defaultOVISettingsDouble = OVISettings
   { oviMaxIters = 20
-  , oviMaxKleeneIters = 1000000
+  , oviMaxKleeneIters = 100000000
   , oviDampingFactor = 0.5
-  , oviKleeneEps = 1e-3
+  , oviKleeneEps = 1e-4
   , oviKleeneDampingFactor = 1e-1
-  , oviPowerIterEps = 1e-3
+  , oviPowerIterEps = 1e-4
   , oviPowerIterDampingFactor = 1e-1
-  , oviMaxPowerIters = 10000
+  , oviMaxPowerIters = 1000000
   , oviRationalApproxEps = 1e-8
   , oviMaxKIndIters = 10
   }
@@ -62,13 +62,13 @@ defaultOVISettingsDouble = OVISettings
 defaultOVISettingsProb :: OVISettings Prob
 defaultOVISettingsProb = OVISettings
   { oviMaxIters = 10
-  , oviMaxKleeneIters = 1000000
+  , oviMaxKleeneIters = 100000000
   , oviDampingFactor = 1 % 2
   , oviKleeneEps = 1 % 1000
   , oviKleeneDampingFactor = 1 % 10
-  , oviPowerIterEps = 1 % 1000
+  , oviPowerIterEps = 1 % 10000
   , oviPowerIterDampingFactor = 1 % 10
-  , oviMaxPowerIters = 10000
+  , oviMaxPowerIters = 1000000
   , oviRationalApproxEps = 1 % 10^(8 :: Integer)
   , oviMaxKIndIters = 10
   }

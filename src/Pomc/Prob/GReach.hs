@@ -76,7 +76,7 @@ import qualified Data.Vector.Mutable as MV
 import GHC.IO (stToIO)
 
 import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef')
-import Data.Ratio (approxRational)
+import Data.Ratio (approxRational, (%))
 
 import Control.Applicative ((<|>))
 
@@ -326,8 +326,8 @@ weightQuerySCC globals sIdGen delta supports current target = do
   let truncatedLB = min 1 lb
       truncatedUB = min 1 ub
 
-  logDebugN $ "Returning weights: " ++ show (truncatedLB, truncatedUB)
-  when (lb > ub || lb > 1 || ub > 1.3) $ error "unsound bounds on weight for this summary transition"
+  logInfoN $ "Returning weights: " ++ show (truncatedLB, truncatedUB)
+  when (lb > ub || lb > 1 || ub - lb > 1 % 50) $ error $ "unsound or too loose bounds on weights for this summary transition: " ++ show (lb,ub)
   return (truncatedLB, truncatedUB)
 
 -- functions for Gabow algorithm
@@ -645,7 +645,7 @@ solveSCCQuery sccMembers globals = do
     approxVec <- approxFixp lEqMap iterEps defaultMaxIters
 
     -- computing upper bounds
-    logInfoN "Running OVI to compute an upper bound to the equation system"
+    logDebugN "Running OVI to compute an upper bound to the equation system"
     oviRes <- ovi defaultOVISettingsDouble uEqMap
 
     rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
@@ -663,4 +663,4 @@ solveSCCQuery sccMembers globals = do
     liftIO $ HT.mapM_ (\(varKey, p) -> addFixpEq uEqMap varKey (PopEq p)) (oviUpperBound oviRes)
 
     upperBound <- liftIO $ HT.toList (oviUpperBound oviRes)
-    logInfoN $ "Computed upper bounds: " ++ show upperBound
+    logDebugN $ "Computed upper bounds: " ++ show upperBound
