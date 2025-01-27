@@ -1,5 +1,5 @@
 probabilistic query: qualitative;
-formula = XNd (PNd (alice And XNd (PNd (bob))));
+formula = (~ alice) U (call And alice And XNu (obs And [alice|prior_alice == 1u1]) And F (ret And main And res));
 
 program:
 u4 p;

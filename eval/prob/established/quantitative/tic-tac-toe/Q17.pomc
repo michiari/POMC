@@ -1,5 +1,5 @@
 probabilistic query: quantitative;
-formula = ~ (F (qry And XNu (([sampleAction|otherPlayerRowChoice == 0u2]) And ([sampleAction|otherPlayerColumnChoice == 1u2]))));
+formula = (~ sampleAction) U (call And sampleAction And XNd (qry And PNd (call And sampleAction And XNd (qry And PNd (call And sampleAction)))));
 
 program:
 u2[3] upper;

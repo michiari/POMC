@@ -1,5 +1,5 @@
 probabilistic query: quantitative;
-formula = XNd (PNd (sampleAction And XNd (PNd (sampleAction))));
+formula = (~ sampleAction) U (call And sampleAction And XNd (qry And PNd (call And sampleAction)));
 
 program:
 u2[3] upper;
