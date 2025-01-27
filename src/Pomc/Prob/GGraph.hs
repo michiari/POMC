@@ -33,7 +33,8 @@ import qualified Pomc.IOStack as IOGS
 import qualified Pomc.Encoding as E
 import Pomc.Prob.FixPoint(VarKey)
 
--- TODO: check whether replacing with Data.Strict.Map
+import Data.Ratio ((%),)
+
 import  Data.Strict.IntMap(IntMap)
 import qualified Data.Strict.IntMap as Map
 
@@ -629,11 +630,9 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
     encs2 <- foldM (\acc (_, vList) -> do
         vSum <- mkAdd vList
         lConstr1 <- mkLe vSum =<< mkRational (1 :: Prob)
+        lConstr2 <- mkGe vSum =<< mkRational (1 - 1 % 100)
         eqString <- astToString lConstr1
-        logDebugN $ "Asserting Sum equal 1: " ++ eqString
-        lConstr2 <- mkGe vSum =<< mkRational (1 - 1000 * defaultRTolerance)
-        eqString <- astToString lConstr2
-        logDebugN $ "Asserting Sum equal 1: " ++ eqString
+        logInfoN $ "Asserting Sum equal 1: " ++ eqString
         return (lConstr1:lConstr2:acc)
       ) [] groupedlMaptoList
 
@@ -643,24 +642,24 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
       vSum <- mkAdd vList
       uConstr1 <- mkGe vSum =<< mkRational (1 :: Prob)
       eqString <- astToString uConstr1
-      logDebugN $ "Asserting Sum equal 1: " ++ eqString
-      uConstr2 <- mkLe vSum =<< mkRational (1 + 1000 * defaultRTolerance)
+      logInfoN $ "Asserting Sum equal 1: " ++ eqString
+      uConstr2 <- mkLe vSum =<< mkRational (1 + 1 % 100)
       eqString <- astToString uConstr2
-      logDebugN $ "Asserting Sum equal 1: " ++ eqString
+      logInfoN $ "Asserting Sum equal 1: " ++ eqString
       return (uConstr1:uConstr2:acc)
       ) [] groupeduMaptoList
 
-    -- computing a lower bound on the probability to satisfy the given property
+    -- computing bounds on the probability to satisfy the given property
     let phiInitialGNodesIdxsinH = filter (\idx -> isInH (freezedGGraph V.! idx)) phiInitialGNodesIdxs
     philVars <- liftIO $ mapM  (fmap fromJust . HT.lookup newlMap) phiInitialGNodesIdxsinH
     phiuVars <- liftIO $ mapM  (fmap fromJust . HT.lookup newuMap) phiInitialGNodesIdxsinH
 
     sumlVar <- mkAdd philVars
     eqStringL <- astToString sumlVar
-    logDebugN $ "Sum of interest (lower bound): " ++ eqStringL
+    logInfoN $ "Sum of interest (lower bound): " ++ eqStringL
     sumuVar <- mkAdd phiuVars
     eqStringU <- astToString sumuVar
-    logDebugN $ "Sum of interest (upper bound): " ++ eqStringU
+    logInfoN $ "Sum of interest (upper bound): " ++ eqStringU
 
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
@@ -674,8 +673,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
 
     tSol <- stopTimer startSol ub
     liftSTtoIO $ modifySTRef' stats (\s -> s { quantSolTime = quantSolTime s + tSol})
-
-    return (lb, ub)
+    return (lb, min 1 ub)
 
 -- helpers for the Z3 encoding
 -- every node of graph H is associated with a Z3 var
@@ -783,7 +781,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
               , GR.consistentFilter = consistentFilter
               }
             encodeSupportTrans = do
-              logInfoN $ "encountered a support transition - launching call to inner computation of fraction f from H node" ++ show (gId g) ++ " to H node " ++ show (gId toG)
+              logInfoN $ "encountered a support transition - launching call to inner computation of fraction f from H node " ++ show (gId g) ++ " to H node " ++ show (gId toG)
               (lW, uW) <- GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext
               lT <- encodeTransition [lW, pendProbsLB V.! (graphNode toG)] [pendProbsUB V.! (graphNode g)] tolVar
               uT <- encodeTransition [uW, pendProbsUB V.! (graphNode toG)] [pendProbsLB V.! (graphNode g)] touVar
@@ -802,23 +800,24 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
   in do
     -- a little sanity check
     unless (graphNode g == gnId gn) $ error "Encoding Push corresponding to non consistent pair GNode - graphNode"
-    transitions <- mapM pushEnc fNodes
     lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
     uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
-    lEq <- mkEq lvar =<< mkAdd (map fst . concat $ transitions)
-    uEq <- mkEq uvar =<< mkAdd (map snd . concat $ transitions)
-    -- debugging
-    eqString <- astToString lEq
-    logDebugN $ "Asserting Push/Support equation (lower bound): " ++ eqString
-    eqString <- astToString uEq
-    logDebugN $ "Asserting Push/Support equation (upper bound): " ++ eqString
-    -- it's greater than zero for sure!
-    lgtZero <- mkGt lvar =<< mkRational (0 :: Prob)
-    ugtZero <- mkGt uvar =<< mkRational (0 :: Prob)
-    lleqOne <- mkLe lvar =<< mkRational (1 :: Prob)
-    uleqOne <- mkLe uvar =<< mkRational (1 :: Prob)
-    soundness <- mkLe lvar uvar
-    return [lEq, lgtZero, lleqOne, uEq, ugtZero, uleqOne, soundness]
+    if fNodes == [gId g]
+      then do
+        lEqOne <- mkEq lvar =<< mkRational (1 :: Prob)
+        uEqOne <- mkEq uvar =<< mkRational (1 :: Prob)
+        return [lEqOne, uEqOne]
+      else do 
+        transitions <- mapM pushEnc fNodes
+        lEq <- mkGe lvar =<< mkAdd (map fst . concat $ transitions)
+        uEq <- mkLe uvar =<< mkAdd (map snd . concat $ transitions)
+        soundness <- mkLe lvar uvar
+        -- debugging
+        eqString <- astToString lEq
+        logInfoN $ "Asserting Push/Support equation (lower bound): " ++ eqString
+        eqString <- astToString uEq
+        logInfoN $ "Asserting Push/Support equation (upper bound): " ++ eqString
+        return [lEq, uEq, soundness]
 
 
 encodeShift :: (MonadZ3 z3, MonadLogger z3)
@@ -845,25 +844,22 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
   in do
   -- a little sanity check
   unless (graphNode g == gnId gn) $ error "Encoding Shift encountered a non consistent pair GNode - graphNode"
-  transitions <- mapM shiftEnc fNodes
   lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
   uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
-  lEq <- mkEq lvar =<< mkAdd (map fst transitions)
-  uEq <- mkEq uvar =<< mkAdd (map snd transitions)
-  -- debugging
-  eqString <- astToString lEq
-  logDebugN $ "Asserting Shift equation (lower bound): " ++ eqString
-  eqString <- astToString uEq
-  logDebugN $ "Asserting Shift equation (upper bound): " ++ eqString
   -- it's greater than zero for sure!
-  lgtZero <- mkGt lvar =<< mkRational (0 :: Prob)
-  ugtZero <- mkGt uvar =<< mkRational (0 :: Prob)
-  lleqOne <- mkLe lvar =<< mkRational (1 :: Prob)
-  uleqOne <- mkLe uvar =<< mkRational (1 :: Prob)
-  soundness <- mkLe lvar uvar
-  return [lEq, lgtZero, lleqOne, uEq, ugtZero, uleqOne, soundness]
-
-
-
-
-
+  if fNodes == [gId g]
+      then do
+        lEqOne <- mkEq lvar =<< mkRational (1 :: Prob)
+        uEqOne <- mkEq uvar =<< mkRational (1 :: Prob)
+        return [lEqOne, uEqOne]
+      else do 
+        transitions <- mapM shiftEnc fNodes
+        lEq <- mkGe lvar =<< mkAdd (map fst transitions)
+        uEq <- mkLe uvar =<< mkAdd (map snd transitions)
+        soundness <- mkLe lvar uvar
+        -- debugging
+        eqString <- astToString lEq
+        logInfoN $ "Asserting Shift equation (lower bound): " ++ eqString
+        eqString <- astToString uEq
+        logInfoN $ "Asserting Shift equation (upper bound): " ++ eqString
+        return [lEq, uEq, soundness]

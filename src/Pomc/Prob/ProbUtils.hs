@@ -195,10 +195,10 @@ decodeFullStack (s1, s) = (getId s1, map dec s)
 data Solver = SMTWithHints | ExactSMTWithHints | OVI deriving (Eq, Show)
 
 defaultTolerance :: EqMapNumbersType
-defaultTolerance = 1e-5
+defaultTolerance = 1e-7
 
 defaultRTolerance :: Prob
-defaultRTolerance = 1e-5
+defaultRTolerance = 1e-7
 
 -- different termination queries
 -- CompQuery asks whether the probability to terminate is <, <=, >, >= than the given probability depending on Comp
