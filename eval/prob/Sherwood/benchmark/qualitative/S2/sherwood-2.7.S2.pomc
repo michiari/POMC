@@ -25,7 +25,7 @@ Reference: F. Olmedo et al., Reasoning about Recursive Probabilistic Programs, L
 
 probabilistic query: qualitative;
 formula = G ((call And B And sorted And (~ valOccurs) And [B|left <= right]) --> XNu ( ~ correctIndex));
-// Q16: Dual Partial Correctness
+// S2: Dual Partial Correctness
 
 program:
 u4[7] a;
