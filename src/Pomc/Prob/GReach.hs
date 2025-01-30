@@ -630,7 +630,7 @@ solveSCCQuery sccMembers globals = do
 
   -- preprocessing to solve variables that do not need ovi
   _ <- preprocessApproxFixp lEqMap iterEps (sccLen + 1)
-  (updatedVars, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (sccLen + 1)
+  (_, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (sccLen + 1)
 
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCountQuant = acc} -> s{largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
@@ -638,7 +638,7 @@ solveSCCQuery sccMembers globals = do
   -- lEqMap and uEqMap should be the same here
   unless (null unsolvedVars) $ do
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCountQuant = acc} -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars}
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCountQuant = acc } -> s{ largestSCCNonTrivialEqsCountQuant = max acc (length updatedVars) }
+    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCountQuant = acc } -> s{ largestSCCNonTrivialEqsCountQuant = max acc (length unsolvedVars) }
     startWeights <- startTimer
 
     -- computing lower bounds
