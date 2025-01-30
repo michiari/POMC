@@ -42,6 +42,7 @@ for query in queries:
                 arr_len_ass = array_length_assignment(arr_size)
                 fileout = 'benchmark/' + query + '/' + name + '/sherwood-' + str(u_size) + '.' + str(arr_size) + '.' + name + '.pomc'
                 with open(filein, 'r') as f1:
+                    os.makedirs(os.path.dirname(fileout), exist_ok=True)
                     with open(fileout, 'w+') as f2:
                         for line in f1:
                             f2.write(
