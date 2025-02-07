@@ -55,12 +55,8 @@ import qualified Data.Vector as V
 import Data.STRef (newSTRef, readSTRef)
 import Numeric (showEFloat)
 
-import System.FilePath
-
 -- import qualified Debug.Trace as DBG
 
--- TODO: add normalize RichDistr to optimize the encoding
--- note that non normalized encodings are at the moment (16.11.23) correctly handled by the termination algorithms
 data ExplicitPopa s a = ExplicitPopa
   { epAlphabet       :: Alphabet a -- OP alphabet
   , epInitial        :: (s, Set (Prop a)) -- initial state of the POPA
@@ -189,22 +185,15 @@ qualitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable
                       -> Alphabet APType -- structural OP alphabet
                       -> (E.BitEncoding -> (s, Label)) -- POPA initial states
                       -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
-                      -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
-                      -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
+                      -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Shift
+                      -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- POPA Delta Pop
                       -> m (Bool, Stats, String)
 qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
     (bitenc, precFunc, phiInitials, (_, phiIsFinalW), phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
       makeOpa phi IsProb alphabet (\_ _ -> True)
 
-    deltaPush  = bDeltaPush bitenc
-    deltaShift = bDeltaShift bitenc
-    deltaPop  = bDeltaPop bitenc
-
-    initial = bInitials bitenc
-
     proEnc = PE.makeProBitEncoding cl phiIsFinalW
-
     phiPush p = (phiDeltaPush p Nothing)
     phiShift p = (phiDeltaShift p Nothing)
 
@@ -212,16 +201,16 @@ qualitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDelt
       { bitenc = bitenc
       , proBitenc = proEnc
       , prec = precFunc
-      , deltaPush = deltaPush
-      , deltaShift = deltaShift
-      , deltaPop = deltaPop
+      , deltaPush = bDeltaPush bitenc
+      , deltaShift = bDeltaShift bitenc
+      , deltaPop = bDeltaPop bitenc
       , phiDeltaPush = phiPush
       , phiDeltaShift = phiShift
       , phiDeltaPop = phiDeltaPop
       }
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (sc, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper initial stats
+    (sc, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (bInitials bitenc) stats
     logInfoN $ "Size of the Support Graph: " ++ show (V.length sc)
     (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solver) stdOpts
       $ terminationQuerySCC sc precFunc (ApproxAllQuery solver) stats
@@ -344,22 +333,15 @@ quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashabl
                        -> Alphabet APType -- structural OP alphabet
                        -> (E.BitEncoding -> (s, Label)) -- POPA initial states
                        -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Push
-                       -> (E.BitEncoding -> s -> RichDistr s Label) -- OPA Delta Shift
-                       -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- OPA Delta Pop
+                       -> (E.BitEncoding -> s -> RichDistr s Label) -- POPA Delta Shift
+                       -> (E.BitEncoding -> s -> s -> RichDistr s Label) -- POPA Delta Pop
                        -> m ((Prob,Prob), Stats, String)
 quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDeltaPop =
   let
     (bitenc, precFunc, phiInitials, (_, phiIsFinalW), phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
       makeOpa phi IsProb alphabet (\_ _ -> True)
 
-    deltaPush  = bDeltaPush bitenc
-    deltaShift = bDeltaShift bitenc
-    deltaPop  = bDeltaPop bitenc
-
-    initial = bInitials bitenc
-
     proEnc = PE.makeProBitEncoding cl phiIsFinalW
-
     phiPush p = (phiDeltaPush p Nothing)
     phiShift p = (phiDeltaShift p Nothing)
 
@@ -367,9 +349,9 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
       { bitenc = bitenc
       , proBitenc = proEnc
       , prec = precFunc
-      , deltaPush = deltaPush
-      , deltaShift = deltaShift
-      , deltaPop = deltaPop
+      , deltaPush = bDeltaPush bitenc
+      , deltaShift = bDeltaShift bitenc
+      , deltaPop = bDeltaPop bitenc
       , phiDeltaPush = phiPush
       , phiDeltaShift = phiShift
       , phiDeltaPop = phiDeltaPop
@@ -377,7 +359,7 @@ quantitativeModelCheck solver phi alphabet bInitials bDeltaPush bDeltaShift bDel
 
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper initial stats
+    (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (bInitials bitenc) stats
     logInfoN $ "Size of the Support Graph: " ++ show (V.length supportChain)
     (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
       $ terminationQuerySCC supportChain precFunc (ApproxAllQuery solver) stats
