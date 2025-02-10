@@ -402,7 +402,7 @@ lookupVar sccMembers globals decoded rightContext = do
           | IntSet.notMember id_ sccMembers = return Nothing
           | otherwise = do 
               addFixpEq (lowerEqMap globals) varKey (PopEq 0) -- this equation is needed as a placeholder to avoid double encoding of the same variable
-              -- since we do not keep track of whether a variable is currently in the buffer of "unencodedVars"
+              -- because we do not keep track of whether a variable is currently in the buffer of "unencodedVars"
               return $ Just (varKey, False)
   cases
 
@@ -465,9 +465,14 @@ createComponent globals sIdGen delta supports popContxs semiconfId = do
       doEncode poppedSemiconfs = do
         let toEncode = [(s, semiconfId_, rc) | (s, semiconfId_) <- poppedSemiconfs, rc <- IntSet.toList popContxs]
             sccMembers = IntSet.fromList . map snd $ poppedSemiconfs
-        insertedVars <- liftIO $ map (snd . fromJust) <$> forM toEncode (\(s, _, rc) -> lookupVar sccMembers globals (decode s) rc)
-        when (or insertedVars) $ error "inserting a variable that has already been encoded"
+        liftIO $ do
+          -- this sanity check has been removed for performance reasons
+          -- insertedVars <- map (snd . fromJust) <$> forM toEncode (\(s, _, rc) -> lookupVar sccMembers globals (decode s) rc)
+          -- when (or insertedVars) $ error "inserting a variable that has already been encoded"
+          forM_ toEncode (\(_, sId, rc) -> addFixpEq (lowerEqMap globals) (sId, rc) (PopEq 0))
+          forM_ toEncode $ \v -> encode v globals sIdGen delta supports sccMembers
         liftIO $ forM_ toEncode $ \v -> encode v globals sIdGen delta supports sccMembers
+
         solveSCCQuery sccMembers globals
         return popContxs
       doNotEncode _ = do
