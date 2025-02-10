@@ -62,7 +62,7 @@ data FixpEq n = PushEq [(Prob, VarKey, VarKey)]
               | PopEq n
               deriving (Eq, Show)
 
-type EqMap n = IORef (IOMapMap Int (FixpEq n))
+type EqMap n = IORef (IOMapMap (FixpEq n))
 -- keep track of live equations for huge equation systems
 type AugEqMap n = (EqMap n, IORef (Set VarKey))
 

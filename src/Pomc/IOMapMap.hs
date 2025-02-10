@@ -21,19 +21,22 @@ import Prelude hiding (lookup)
 
 import qualified Data.Vector.Mutable as MV
 
-import qualified Data.Map as Map
+import qualified Data.IntMap as Map
+import Data.IntMap(IntMap)
+
 import Data.Map(Map)
+import qualified Data.Map as GM
 import Data.IORef (readIORef, IORef, newIORef, writeIORef)
 import Data.Vector.Mutable (IOVector)
 
 import Control.Monad(when)
 
 -- Map to Maps
-type IOMapMap k v = IOVector (Map k v)
+type IOMapMap v = IOVector (IntMap v)
 
 -- insert a pair (key, value) into the IOMapMap
 -- ensures: it replaces the existing mapping, if existing
-insert :: (Ord k) => IORef (IOMapMap k v) -> Int -> k -> v -> IO ()
+insert :: IORef (IOMapMap v) -> Int -> Int -> v -> IO ()
 insert mmref idx key val = do
   mm <- readIORef mmref
   let len = MV.length mm
@@ -50,7 +53,7 @@ insert mmref idx key val = do
 
 -- insert a pair (key, value) into the IOMapMap
 -- ensures: it uses the supplied combining function if the mapping is already present
-insertWith :: (Ord k) => IORef (IOMapMap k v) -> Int -> (v -> v -> v) -> k -> v -> IO ()
+insertWith :: IORef (IOMapMap v) -> Int -> (v -> v -> v) -> Int -> v -> IO ()
 insertWith mmref idx f key val = do
   mm <- readIORef mmref
   let len = MV.length mm
@@ -65,27 +68,27 @@ insertWith mmref idx f key val = do
                ; writeIORef mmref grown
                }
 
-lookup :: IORef (IOMapMap k v) -> Int -> IO [(k,v)]
+lookup :: IORef (IOMapMap v) -> Int -> IO [(Int,v)]
 lookup mmref idx = do
   mm <- readIORef mmref
   if idx < MV.length mm
     then Map.toList <$> MV.read mm idx
     else return []
 
-lookupValue :: (Ord k) => IORef (IOMapMap k v) -> Int -> k -> IO (Maybe v)
+lookupValue :: IORef (IOMapMap v) -> Int -> Int -> IO (Maybe v)
 lookupValue mmref idx mapIdx = do
   mm <- readIORef mmref
   if idx < MV.length mm
     then Map.lookup mapIdx <$> MV.read mm idx
     else return Nothing
  
-delete :: Ord k => IORef (IOMapMap k v) -> (Int, k) -> IO ()
+delete :: IORef (IOMapMap v) -> (Int, Int) -> IO ()
 delete mmref (idx, mapIdx) = do
   mm <- readIORef mmref
   when (idx < MV.length mm) $ MV.unsafeModify mm (Map.delete mapIdx) idx
 
 -- check the presence of the key in the Map at StateId position
-member :: (Ord k) => IORef (IOMapMap k v) -> Int -> k -> IO Bool
+member :: IORef (IOMapMap v) -> Int -> Int -> IO Bool
 member mmref idx key = do
   mm <- readIORef mmref
   if idx < MV.length mm
@@ -93,18 +96,18 @@ member mmref idx key = do
     else return False
 
 -- an empty Map Map, an array of maps
-empty :: IO (IORef (IOMapMap k v))
+empty :: IO (IORef (IOMapMap v))
 empty = do
   mm <- MV.replicate 4 Map.empty
   newIORef mm
 
-foldMaps :: (Ord k) => IORef (IOMapMap k v) -> IO (Map (Int,k) v)
+foldMaps :: IORef (IOMapMap v) -> IO (Map (Int,Int) v)
 foldMaps mmref = do 
   mm <- readIORef mmref 
-  MV.ifoldl' (\acc idx m -> Map.union acc . Map.mapKeys (\k -> (idx, k)) $ m) Map.empty mm
+  MV.ifoldl' (\acc idx m -> GM.union acc . GM.fromList . map (\(k, i) -> ((idx, k), i)) . Map.toList $ m) GM.empty mm
 
 -- for debugging purposes
-showIOMapMap :: (Show  k, Show v) => IOMapMap k v -> IO String
+showIOMapMap :: (Show v) => IOMapMap v -> IO String
 showIOMapMap = MV.ifoldl'
     (\acc idx el -> acc ++ "Map at position " ++ show idx ++ " : " ++ show el ++ "\n\n")
     ""
