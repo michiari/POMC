@@ -17,10 +17,6 @@ module Pomc.Prob.FixPoint ( VarKey
                           , deleteFixpEq
                           , toLiveEqMap
                           , toLiveEqMapWith
-                          , newVecSameSize
-                          , mapVec
-                          , copyVec
-                          , zeroLiveVec
                           , evalEqSys
                           , approxFixpFrom
                           , approxFixp
@@ -32,28 +28,26 @@ module Pomc.Prob.FixPoint ( VarKey
                           ) where
 
 import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
+import Pomc.LogUtils (MonadLogger)
 
 import Data.Maybe (fromJust)
 import Data.Ratio (approxRational)
-import Control.Monad ( unless, foldM, forM_, foldM_)
+import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad.ST (stToIO)
-import qualified Data.HashTable.IO as HT
-import qualified Data.HashTable.ST.Basic as BHT
+import Data.IORef (modifyIORef', readIORef, IORef)
 
 import Pomc.IOMapMap(IOMapMap)
 import qualified Pomc.IOMapMap as MM
 
-import Data.Vector.Mutable (IOVector)
-import qualified Data.Vector.Mutable as MV
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.IORef (modifyIORef', readIORef, IORef)
 
 -- a Map that is really strict
 import qualified Data.Strict.Map as M
 import Data.Foldable (foldl')
 
+import Data.Vector (Vector)
+import qualified Data.Vector as V
 
 type VarKey = (Int, Int)
 
@@ -67,12 +61,14 @@ type EqMap n = IORef (IOMapMap (FixpEq n))
 type AugEqMap n = (EqMap n, IORef (Set VarKey))
 
 -- EqMap containing only preprocessed live equations
-data LiveEq n = PushLEq [(n, Either VarKey n, Either VarKey n)]
-              | ShiftLEq [(n, Either VarKey n)]
+-- (Left Int) is the variable's index in the current probVec, 
+-- (Right n) is the supplied actual value for already solved variables
+data LiveEq n = PushLEq [(n, Either Int n, Either Int n)]
+              | ShiftLEq [(n, Either Int n)]
               deriving Show
-type LEqSys n = IOVector (VarKey, LiveEq n)
 
-type ProbVec n = HT.BasicHashTable VarKey n
+type LEqSys n = Vector (LiveEq n)
+type ProbVec n = Vector n
 
 addFixpEq :: MonadIO m => AugEqMap n -> VarKey -> FixpEq n -> m ()
 addFixpEq (eqMap, lEqs) varKey eq@(PopEq _) = liftIO $ do
@@ -87,20 +83,19 @@ deleteFixpEq (eqMap, lEqs) varKey = liftIO $ do
   MM.delete eqMap varKey
   modifyIORef' lEqs (Set.delete varKey)
 
-constructEither :: (MonadIO m, Fractional n) => AugEqMap n -> VarKey -> Set VarKey -> m (Either VarKey n)
+constructEither :: (MonadIO m, MonadLogger m, Fractional n) => AugEqMap n -> VarKey -> Set VarKey -> m (Either Int n)
 constructEither (eqMap, _) k lVars
-  | Set.member k lVars = return (Left k)
+  | (Just idx) <- Set.lookupIndex k lVars = return (Left idx)
   | otherwise = liftIO $ Right . (\(PopEq n) -> n) . fromJust <$> uncurry (MM.lookupValue eqMap) k
 
-constructEitherWith :: (MonadIO m, Fractional n, Fractional k) => AugEqMap n -> VarKey -> Set VarKey -> (n -> k) -> m (Either VarKey k)
+constructEitherWith :: (MonadIO m, Fractional n, Fractional k) => AugEqMap n -> VarKey -> Set VarKey -> (n -> k) -> m (Either Int k)
 constructEitherWith (eqMap, _) k lVars f
-  | Set.member k lVars = return (Left k)
+  | (Just idx) <- Set.lookupIndex k lVars = return (Left idx)
   | otherwise = liftIO $ Right . (\(PopEq n) -> f n) . fromJust <$> uncurry (MM.lookupValue eqMap) k
 
-toLiveEqMap :: (MonadIO m, Fractional n) => AugEqMap n -> m (LEqSys n)
-toLiveEqMap (eqMap, lEqs) = liftIO $ do
-  lVars <- readIORef lEqs
-  leqMap <- MV.unsafeNew (Set.size lVars)
+toLiveEqMap :: (MonadIO m, MonadLogger m, Fractional n) => AugEqMap n -> m (LEqSys n)
+toLiveEqMap (eqMap, lEqs) = do
+  lVars <- liftIO $ readIORef lEqs
   let createLivePush (p, k1, k2) = do
         eitherK1 <- constructEither (eqMap, lEqs) k1 lVars
         eitherK2 <- constructEither (eqMap, lEqs) k2 lVars
@@ -108,26 +103,17 @@ toLiveEqMap (eqMap, lEqs) = liftIO $ do
       createLiveShift (p, k1) = do
         eitherK1 <- constructEither (eqMap, lEqs) k1 lVars
         return (fromRational p, eitherK1)
-  foldM_
-    (\i k -> do
-        eq <- fromJust <$> uncurry (MM.lookupValue eqMap) k
+      createEq k = do
+        eq <- liftIO $ fromJust <$> uncurry (MM.lookupValue eqMap) k
         case eq of
-          PushEq terms -> do
-            liveTerms <- mapM createLivePush terms
-            MV.unsafeWrite leqMap i (k, PushLEq liveTerms)
-            return (i + 1)
-          ShiftEq terms -> do
-            liveTerms <- mapM createLiveShift terms
-            MV.unsafeWrite leqMap i (k, ShiftLEq liveTerms)
-            return (i + 1)
+          PushEq terms -> PushLEq <$> mapM createLivePush terms
+          ShiftEq terms -> ShiftLEq <$> mapM createLiveShift terms
           _ -> error "A supposed live variable is actually dead"
-    ) 0 lVars
-  return leqMap
+  V.mapM createEq (V.fromList $ Set.toList lVars)
 
 toLiveEqMapWith :: (MonadIO m, Fractional n, Fractional k) => AugEqMap n -> (n -> k) -> m (LEqSys k)
 toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
   lVars <- readIORef lEqs
-  leqMap <- MV.unsafeNew (Set.size lVars)
   let createLivePush (p, k1, k2) = do
         eitherK1 <- constructEitherWith (eqMap, lEqs) k1 lVars f
         eitherK2 <- constructEitherWith (eqMap, lEqs) k2 lVars f
@@ -135,73 +121,44 @@ toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
       createLiveShift (p, k1) = do
         eitherK1 <- constructEitherWith (eqMap, lEqs) k1 lVars f
         return (fromRational p, eitherK1)
-  foldM_
-    (\i k -> do
+      createEq k = do
         eq <- fromJust <$> uncurry (MM.lookupValue eqMap) k
         case eq of
-          PushEq terms -> do
-            liveTerms <- mapM createLivePush terms
-            MV.unsafeWrite leqMap i (k, PushLEq liveTerms)
-            return (i + 1)
-          ShiftEq terms -> do
-            liveTerms <- mapM createLiveShift terms
-            MV.unsafeWrite leqMap i (k, ShiftLEq liveTerms)
-            return (i + 1)
+          PushEq terms -> PushLEq <$> mapM createLivePush terms
+          ShiftEq terms -> ShiftLEq <$> mapM createLiveShift terms
           _ -> error "A supposed live variable is actually dead"
-    ) 0 lVars
-  return leqMap
+  V.mapM createEq (V.fromList $ Set.toList lVars)
 
-newVecSameSize :: MonadIO m => ProbVec a -> m (ProbVec b)
-newVecSameSize vec = liftIO $ HT.newSized =<< stToIO (BHT.size vec)
+evalEqSys :: (Ord n, Fractional n)
+          => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
+evalEqSys leqMap checkRes src =
+  let computEq eq 
+        | (PushLEq terms) <- eq = sum $ map
+            (\(p, k1, k2) -> p * (either (src V.!) id k1) * (either (src V.!) id k2)
+            ) terms
+        | (ShiftLEq terms) <- eq = sum $ map
+            (\(p, k1) -> p * either (src V.!) id k1) terms
 
-mapVec :: MonadIO m => (a -> b) -> ProbVec a -> m (ProbVec b)
-mapVec f vec = liftIO $ do
-  newVec <- HT.newSized =<< stToIO (BHT.size vec)
-  HT.mapM_ (\(k, v) -> HT.insert newVec k $ f v) vec
-  return newVec
+      dest = V.map computEq leqMap
+      checkDest = V.all (uncurry checkRes) (V.zip dest src)
+  in (checkDest, dest)
 
-copyVec :: MonadIO m => ProbVec n -> m (ProbVec n)
-copyVec = mapVec id
-
--- a vector of 0 for all live equations
-zeroLiveVec :: (MonadIO m, Fractional n) => AugEqMap n -> m (ProbVec n)
-zeroLiveVec (_, lEqs) = liftIO $ do
-  lVars <- readIORef lEqs
-  probVec <- HT.newSized (Set.size lVars)
-  forM_ (Set.toList lVars) $ \k -> HT.insert probVec k 0
-  -- adding also values they depend on, it will be useful for latel
-  return probVec
-
-evalEqSys :: (MonadIO m, Ord n, Fractional n)
-          => LEqSys n -> (Bool -> n -> n -> Bool) -> ProbVec n -> ProbVec n -> m Bool
-evalEqSys leqMap checkRes src dst = liftIO $ MV.foldM' evalEq True leqMap where
-  evalEq prevCheck (key, eq) = do
-    oldV <- fromJust <$> HT.lookup src key
-    newV <- case eq of
-      PushLEq terms -> sum <$> mapM
-        (\(p, k1, k2) -> do
-            v1 <- either (fmap fromJust . HT.lookup src) return k1
-            v2 <- either (fmap fromJust . HT.lookup src) return k2
-            return $ p * v1 * v2
-        ) terms
-      ShiftLEq terms -> sum <$> mapM (\(p, k1) -> (p *) <$> either (fmap fromJust . HT.lookup src) return k1) terms
-    HT.insert dst key newV
-    return $ checkRes prevCheck newV oldV
-
-approxFixpFrom :: (MonadIO m, Ord n, Fractional n, Show n)
-               => AugEqMap n -> LEqSys n -> n -> Int -> ProbVec n -> m ()
+approxFixpFrom :: (Ord n, Fractional n, Show n)
+               => AugEqMap n -> LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
 approxFixpFrom augEqMap leqMap eps maxIters probVec
-  | maxIters <= 0 = return ()
-  | otherwise = do
+  | maxIters <= 0 = probVec
+  | otherwise =
       -- should be newV >= oldV
-      let checkIter leqEps newV oldV =
-            -- leqEps && newV - oldV <= eps -- absolute error
-            leqEps && (newV == 0 || (newV - oldV) / newV <= eps) -- relative error
-      lessThanEps <- evalEqSys leqMap checkIter probVec probVec
-      unless lessThanEps $ approxFixpFrom augEqMap leqMap eps (maxIters - 1) probVec
+      let checkIter newV oldV =
+            -- newV - oldV <= eps -- absolute error
+            newV == 0 || (newV - oldV) / newV <= eps -- relative error
+          (lessThanEps, newProbVec) = evalEqSys leqMap checkIter probVec
+      in if lessThanEps
+          then newProbVec
+          else approxFixpFrom augEqMap leqMap eps (maxIters - 1) newProbVec
 
 -- determine variables for which zero is a fixpoint
-preprocessApproxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
+preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
                       => AugEqMap n -> n -> Int -> m ([(VarKey, n)], [VarKey])
 preprocessApproxFixp augEqMap@(eqMap, lVarsRef) eps maxIters = do
   lVars <- liftIO $ readIORef lVarsRef
@@ -209,66 +166,60 @@ preprocessApproxFixp augEqMap@(eqMap, lVarsRef) eps maxIters = do
     then return ([],[])
     else do
       leqMap <- toLiveEqMap augEqMap
-      probVec <- zeroLiveVec augEqMap
-
-      -- iterate just n and check if fixpoint remains zero
-      approxFixpFrom augEqMap leqMap eps maxIters probVec
-
-      (zeroVars, nonZeroVars) <- liftIO $ MV.foldM (\(acc1, acc2) (varKey, eq) -> do
-                                    p <- fromJust <$> HT.lookup probVec varKey
-                                    if p == 0
-                                      then do
-                                        uncurry (MM.insert eqMap) varKey (PopEq 0)
-                                        modifyIORef' lVarsRef (Set.delete varKey)
-                                        return (M.insert varKey 0 acc1, acc2)
-                                      else return (acc1, (varKey, eq):acc2)
-                                    ) (M.empty, []) leqMap
-
-      let isLiveSys = not (null nonZeroVars) 
+      let probVec = approxFixpFrom augEqMap leqMap eps maxIters (V.replicate (Set.size lVars) 0)
+          (zeroVec, nonZeroVec) = V.unstablePartition (\(_,_,p) -> p == 0) $ V.zip3 (V.fromList $ Set.toList lVars) leqMap probVec
+          isLiveSys = not (V.null nonZeroVec)
 
           solveShift _ Nothing _ = Nothing
-          solveShift _ (Just acc) (p, (Right v)) = Just $ acc + p * v
-          solveShift killedVars (Just acc) (p, ( Left k))
-            | M.member k killedVars = Just $ acc + p * ((M.!) killedVars k)
+          solveShift _ (Just acc) (p, Right v) = Just $ acc + p * v
+          solveShift killedVars (Just acc) (p, Left idx)
+            | (Just v) <- M.lookup k killedVars = Just $ acc + p * v
             | otherwise = Nothing
+              where k = Set.elemAt idx lVars
 
           solvePush _ Nothing _ = Nothing
-          solvePush _ (Just acc) (p, (Right v1), (Right v2)) = Just $ acc + p * v1 * v2
-          solvePush killedVars (Just acc) (p, (Right v1), (Left k))
-            | M.member k killedVars = Just $ acc + p * v1 * ((M.!) killedVars k)
+          solvePush _ (Just acc) (p, Right v1, Right v2) = Just $ acc + p * v1 * v2
+          solvePush killedVars (Just acc) (p, Right v1, Left idx)
+            | (Just v) <- M.lookup k killedVars = Just $ acc + p * v1 * v
             | otherwise = Nothing
-          solvePush killedVars (Just acc) (p, (Left k), (Right v1)) = solvePush killedVars (Just acc) (p, (Right v1), (Left k))
-          solvePush killedVars (Just acc) (p, (Left k1), (Left k2))
-            | M.member k1 killedVars && M.member k2 killedVars = Just $ acc + p * ((M.!) killedVars k2) * ((M.!) killedVars k1)
+              where k = Set.elemAt idx lVars
+          solvePush killedVars (Just acc) (p, Left k, Right v1) = solvePush killedVars (Just acc) (p, Right v1, Left k)
+          solvePush killedVars (Just acc) (p, Left idx1, Left idx2)
+            | (Just v1) <- M.lookup k1 killedVars, (Just v2) <- M.lookup k2 killedVars = Just $ acc + p * v1 * v2
             | otherwise = Nothing
+              where k1 = Set.elemAt idx1 lVars
+                    k2 = Set.elemAt idx2 lVars
 
-          solveEq killedVars eq = case eq of 
+          solveEq killedVars eq = case eq of
             PushLEq terms ->  foldl' (solvePush killedVars)  (Just 0) terms
             ShiftLEq terms -> foldl' (solveShift killedVars) (Just 0) terms
 
           go (False, updatedVars, liveVars)  = (M.toList updatedVars, map fst liveVars)
-          go (True, updatedVars, liveVars) = go $ foldl' (\(recurse, upVars, lVars) (varKey, eq) -> 
-            case (solveEq updatedVars eq) of 
+          go (True, updatedVars, liveVars) = go $ foldl' (\(recurse, upVars, lVars) (varKey, eq) ->
+            case solveEq updatedVars eq of
               Nothing -> (recurse, upVars, (varKey, eq):lVars)
               Just v  -> (True, M.insert varKey v upVars, lVars)
 
             ) (False, updatedVars, []) liveVars
-            
+
           -- preprocess live equations by propagating found values, until no value
-          (upVars, lVars) = go (isLiveSys, zeroVars, nonZeroVars)
+          zeroVars = M.fromList . V.toList . V.map (\(k,_,p) -> (k,p)) $ zeroVec
+          nonZeroVars = V.toList . V.map (\(k,eq, _) -> (k,eq)) $ nonZeroVec
+          (upVars, newLiveVars) = go (isLiveSys, zeroVars, nonZeroVars)
+
       liftIO $ forM_ upVars $ \(k, p) -> do
         uncurry (MM.insert eqMap) k (PopEq p)
         modifyIORef' lVarsRef (Set.delete k)
-      return (upVars, lVars)
 
+      return (upVars, newLiveVars)
 
-approxFixp :: (MonadIO m, Ord n, Fractional n, Show n)
-           => AugEqMap n -> n -> Int -> m (ProbVec n)
-approxFixp augEqMap eps maxIters = do
+approxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
+           => AugEqMap n -> n -> Int -> m (ProbVec (VarKey, n))
+approxFixp augEqMap@(_,lVarsRef) eps maxIters = do
   leqMap <- toLiveEqMap augEqMap
-  probVec <- zeroLiveVec augEqMap
-  approxFixpFrom augEqMap leqMap eps maxIters probVec
-  return probVec
+  let probVec = approxFixpFrom augEqMap leqMap eps maxIters (V.replicate (V.length leqMap) 0)
+  lVars <- liftIO $ readIORef lVarsRef
+  return (V.zip (V.fromList . Set.toList $ lVars) probVec)
 
 defaultEps :: EqMapNumbersType
 defaultEps = 0x1p-26 -- ~ 1e-8
@@ -276,8 +227,8 @@ defaultEps = 0x1p-26 -- ~ 1e-8
 defaultMaxIters :: Int
 defaultMaxIters = 1000000
 
-toRationalProbVec :: (MonadIO m, RealFrac n) => n -> ProbVec n -> m [(VarKey, Prob)]
-toRationalProbVec eps probVec = liftIO $ HT.foldM (\acc (lVar, p) -> return ((lVar, approxRational (p - eps) eps) : acc) ) [] probVec
+toRationalProbVec :: (RealFrac n) => n -> ProbVec (VarKey, n) -> ProbVec (VarKey, Prob)
+toRationalProbVec eps = V.map (\(k, p) -> (k, approxRational (p - eps) eps))
 -- p - eps is to prevent approxRational from producing a result > p
 
 containsEquation :: (MonadIO m, RealFrac n) => AugEqMap n -> VarKey -> m Bool

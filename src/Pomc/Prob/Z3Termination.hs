@@ -477,13 +477,13 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
       updateLowerBound = do
         -- updating lower bounds
         approxVec <- approxFixp lEqMap defaultEps defaultMaxIters
-        liftIO $ HT.mapM_ (\(varKey, p) -> addFixpEq lEqMap varKey (PopEq p)) approxVec
+        liftIO $ V.mapM_ (\(varKey, p) -> addFixpEq lEqMap varKey (PopEq p)) approxVec
       --
       doAssert approxFracVec currentEps = do
         push -- create a backtracking point
         epsReal <- mkRealNum currentEps
 
-        forM_ approxFracVec (\(varKey, pRational) -> do
+        V.forM_ approxFracVec (\(varKey, pRational) -> do
             var <- liftIO $ fromJust <$> HT.lookup m varKey
             pReal <- mkRealNum pRational
             assert =<< mkGe var pReal
@@ -505,20 +505,20 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
         startUpper <- startTimer
         logDebugN "Approximating via Value Iteration + z3"
         approxVec <- approxFixp uEqMap defaultEps defaultMaxIters
-        approxFracVec <- toRationalProbVec defaultEps approxVec
+        let approxFracVec = toRationalProbVec defaultEps approxVec
 
         logDebugN "Asserting lower and upper bounds computed from value iteration, and getting a model"
         model <- doAssert approxFracVec (min defaultTolerance currentEps)
 
         -- actual updates
-        upperBound <- liftIO (HT.toList approxVec) >>= foldM (\acc (varKey, _) -> do
+        upperBound <- foldM (\acc (varKey, _) -> do
           varAST <- liftIO $ fromJust <$> HT.lookup m varKey
           ubAST <- fromJust <$> eval model varAST
           pDouble <- extractUpperDouble ubAST
           liftIO $ HT.insert m varKey ubAST
           addFixpEq uEqMap varKey (PopEq pDouble)
           return ((varKey, pDouble):acc)
-          ) []
+          ) [] approxVec
 
         tUpper <- stopTimer startUpper upperBound
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
@@ -533,16 +533,16 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
         unless (oviSuccess oviRes || rCertified) $ error "OVI was not successful in computing an upper bound on the termination probabilities"
 
         -- actual updates
-        liftIO (HT.toList $ oviUpperBound oviRes) >>= mapM_ ( \(varKey, p) -> do
+        V.mapM_ ( \(varKey, p) -> do
           let ub = min (1 :: Double) p
           ubAST <- mkRealNum ub
           liftIO $ HT.insert m varKey ubAST
           addFixpEq uEqMap varKey (PopEq p)
-          ) 
+          ) (oviUpperBound oviRes)
 
         tUpper <- stopTimer startUpper True
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
-        liftIO $ HT.toList (oviUpperBound oviRes)
+        return $ V.toList (oviUpperBound oviRes)
 
   -- preprocessing phase
   _ <- preprocessApproxFixp lEqMap defaultEps (sccLen + 1)

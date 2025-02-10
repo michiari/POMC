@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 -- {-# LANGUAGE DataKinds #-} -- For Rounded
 {- |
    Module      : Pomc.Prob.OVI
@@ -20,18 +21,16 @@ import Pomc.Prob.FixPoint
 import Pomc.LogUtils (MonadLogger, logDebugN)
 
 import Data.Ratio ((%), approxRational)
-import Data.Maybe (fromJust)
-import Control.Monad (forM)
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad.ST (stToIO)
-import qualified Data.HashTable.IO as HT
-import qualified Data.HashTable.ST.Basic as BHT
-import Data.Vector.Mutable (IOVector)
-import qualified Data.Vector.Mutable as MV
+import Data.IORef (readIORef)
 
 import Witch.Instances (realFloatToRational)
-import Data.IORef (readIORef)
 import Data.Either (isLeft)
+
+import Data.Vector (Vector)
+import qualified Data.Vector as V
+
+import qualified Data.Set as Set
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviMaxKleeneIters :: Int
@@ -91,42 +90,32 @@ defaultOVISettingsProb = OVISettings
 data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviIters :: Int
                              , oviLowerBound :: ProbVec n
-                             , oviUpperBound :: ProbVec n
+                             , oviUpperBound :: ProbVec (VarKey, n)
                              }
 
-data Monomial2 n = Quad n VarKey VarKey
-                 | Lin n VarKey
+-- Int values are variables' indexes in the current src 
+-- n are constant coefficients
+data Monomial2 n = Quad n Int Int
+                 | Lin n Int
                  | Const n
                  deriving Show
 type Polynomial2 n = [Monomial2 n]
-type PolyVector n = IOVector (VarKey, Polynomial2 n)
+type PolyVector n = Vector (Polynomial2 n)
 
-evalMonomial :: (MonadIO m, Num n) => AugEqMap n -> Monomial2 n -> ProbVec n -> m n
-evalMonomial _ m v = liftIO $ case m of
-  Quad c k1 k2 -> do
-    v1 <- fromJust <$> HT.lookup v k1
-    v2 <- fromJust <$> HT.lookup v k2
-    return $ c * v1 * v2
-  Lin c k1 -> do
-    v1 <- fromJust <$> HT.lookup v k1
-    return $ c * v1
-  Const c -> return c
+evalMonomial :: (Num n) => ProbVec n -> Monomial2 n -> n
+evalMonomial v m = case m of
+  Quad c k1 k2 -> c * (v V.! k1) * (v V.! k2)
+  Lin c k1 -> c * (v V.! k1)
+  Const c -> c
 
-evalPolynomial :: (MonadIO m, Num n) => AugEqMap n -> Polynomial2 n -> ProbVec n -> m n
-evalPolynomial augEqMap p v = liftIO $ sum <$> mapM (flip (evalMonomial augEqMap) v) p
+evalPolynomial :: (Num n) => Polynomial2 n -> ProbVec n -> n
+evalPolynomial p v = sum . map (evalMonomial v) $ p
 
-evalPolySys :: (MonadIO m, Ord n, Fractional n)
-            => AugEqMap n -> PolyVector n -> (Bool -> n -> n -> Bool) -> ProbVec n -> ProbVec n
-            -> m Bool
-evalPolySys augEqMap polySys checkRes src dst = liftIO $ MV.foldM' eval True polySys
-  where eval prevCheck (key, poly) = do
-          oldV <- fromJust <$> HT.lookup src key
-          newV <- evalPolynomial augEqMap poly src
-          HT.insert dst key newV
-          return $ checkRes prevCheck newV oldV
+evalPolySys :: (Ord n, Fractional n) => PolyVector n -> ProbVec n -> ProbVec n
+evalPolySys polySys src = V.map (`evalPolynomial` src) polySys
 
 -- compute dm/dx
-monomialDerivative :: Num n => Monomial2 n -> VarKey -> Monomial2 n
+monomialDerivative :: Num n => Monomial2 n -> Int -> Monomial2 n
 monomialDerivative m x = case m of -- ugly but it works
   Quad c k1 k2 | k1 == k2 && k2 == x -> Lin (2 * c) x -- square
                | k1 == x -> Lin c k2
@@ -139,142 +128,128 @@ monomialDerivative m x = case m of -- ugly but it works
 -- compute (J|v + I) x, where J|v is the Jacobian of leqSys evaluated on v,
 -- I is the identity matrix, and x is the vector of all variables
 jacobiTimesX :: (MonadIO m, Num n) => AugEqMap n -> LEqSys n -> ProbVec n -> m (PolyVector n)
-jacobiTimesX augEqMap@(_, _) leqSys v = liftIO $ MV.generateM (MV.length leqSys)
-  (\i -> do
-        (k, eq) <- MV.read leqSys i
-        poly <- case eq of
-          PushLEq terms -> (Lin 1 k :) . concat <$> forM 
-            (filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms)
-            (\(p, k1, k2) -> do
-                let build (Left k1)   ( Left k2) = Quad p k1 k2
-                    build (Left k1)   (Right val) = Lin (p * val) k1
-                    build (Right val) (Left k1)  = Lin (p * val) k1
-                    build _ _ = error "unexpected"
-                    pm = build k1 k2
-                m1 <- jtxMonomial pm k1
-                m2 <- jtxMonomial pm k2
-                return $ m1 ++ m2
-            )
-          ShiftLEq terms -> (Lin 1 k :) . concat <$> forM 
-            (filter (\(_, eitherP) -> isLeft eitherP) terms)
-            (\(p, (Left k1)) -> jtxMonomial (Lin p k1) (Left k1))
-        return (k, poly)
-    )
-  where jtxMonomial lmon (Left key) = do
-          coeff <- evalMonomial augEqMap (monomialDerivative lmon key) v
-          return [Lin coeff key]
-        jtxMonomial _ _ = return []
+jacobiTimesX (_, _) leqSys v = liftIO $ do
+  let jtxMonomial lmon (Left key) = let
+            coeff = evalMonomial v (monomialDerivative lmon key)
+            in [Lin coeff key]
+      jtxMonomial _ _ = []
+      constructPoly k (PushLEq terms) = (Lin 1 k :) . concatMap
+        (\(p, k1, k2) ->
+            let build (Left k1)   (Left k2) = Quad p k1 k2
+                build (Left k1)   (Right val) = Lin (p * val) k1
+                build (Right val) (Left k1)  = Lin (p * val) k1
+                build _ _ = error "unexpected"
+                pm = build k1 k2
+                m1 = jtxMonomial pm k1
+                m2 = jtxMonomial pm k2
+            in  m1 ++ m2
+        )
+        $ filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms
+      constructPoly k (ShiftLEq terms) = (Lin 1 k :) . concatMap
+        (\(p, Left k1) -> jtxMonomial (Lin p k1) (Left k1))
+        $ filter (\(_, eitherP) -> isLeft eitherP) terms
+  return $ V.imap constructPoly leqSys
 
 powerIterate :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
-             => AugEqMap n -> n -> Int -> PolyVector n -> ProbVec n -> m n
-powerIterate augEqMap eps maxIters matrix eigenVec = do
-  oldEigenVec <- copyVec eigenVec
-  let go eigenVal 0 = logDebugN "Power iterations exhausted!" >> return eigenVal
-      go _ iters = do
-        _ <- evalPolySys augEqMap matrix (\p _ _ -> p) oldEigenVec eigenVec
-        -- get approximate largest eigenvalue as the maxNorm
-        eigenVal <- liftIO $ HT.foldM (\oldMax (_, v) -> return $ max oldMax v) 0 eigenVec
-        -- normalize eigenVec on the largest eigenValue
-        -- FIXME: iterate on matrix because I don't know if I can modify a HT while iterating on it
-        liftIO $ MV.mapM_ (\(k, _) -> HT.mutate eigenVec k (\(Just v) -> (Just $ v / eigenVal, v))) matrix
-        -- check absolute error
-        stop <- liftIO $ HT.foldM (\chk (k, nv) -> do
-                                      ov <- fromJust <$> HT.lookup oldEigenVec k
-                                      return $ chk && abs (ov - nv) <= eps
-                                  ) True eigenVec
+             => n -> Int -> PolyVector n -> ProbVec n -> m (ProbVec n, n)
+powerIterate eps maxIters matrix oldEV = do
+  let go oldEigenVec eigenVal 0 = logDebugN "Power iterations exhausted!" >> return (oldEigenVec, eigenVal)
+      go oldEigenVec _ iters = do
+        let
+            nnEigenVec = evalPolySys matrix oldEigenVec
+            -- get approximate largest eigenvalue as the maxNorm
+            eigenVal = V.maximum nnEigenVec
+            -- normalize eigenVec on the largest eigenValue
+            newEigenVec = V.map (/ eigenVal) nnEigenVec
+            -- check absolute error
+            stop = V.all (\(ov, nv) -> abs (ov - nv) <= eps) (V.zip oldEigenVec newEigenVec)
         if stop
           then do
           logDebugN $ concat
             [ "Power iteration converged after ", show (maxIters - iters)
             , " iterations. Eigenvalue: ", show eigenVal
             ]
-          return eigenVal
-          else do
-          liftIO $ HT.mapM_ (\(k, v) -> HT.insert oldEigenVec k v) eigenVec
-          go eigenVal (iters - 1)
-  go 0 maxIters
-
+          return (newEigenVec, eigenVal)
+          else go newEigenVec eigenVal (iters - 1)
+  go oldEV 0 maxIters
 
 computeEigen :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
-             => AugEqMap n -> LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> m n
+             => AugEqMap n -> LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> m (ProbVec n, n)
 computeEigen augEqMap leqSys eps maxIters lowerApprox eigenVec = do
   matrix <- jacobiTimesX augEqMap leqSys lowerApprox
-  eigenVal <- powerIterate augEqMap eps maxIters matrix eigenVec -- modifies eigenVec in-place
-  return $ eigenVal - 1 -- -1 because we added the identity matrix
+  (newEigenVec, eigenVal) <- powerIterate eps maxIters matrix eigenVec
+  return (newEigenVec, eigenVal - 1) -- -1 because we added the identity matrix
 
 
-ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
+ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n, Num n)
     => OVISettings n -> AugEqMap n -> m (OVIResult n)
-ovi settings augEqMap@(eqMap, _) = do
-  s <- liftIO $ MV.length <$> readIORef eqMap
-  logDebugN $ "Starting OVI on a system with " ++ show s ++ " semiconfigurations..."
-  lowerApprox <- zeroLiveVec augEqMap
-  -- initialize upperApprox with lowerApprox, so we copy non-alive variable values
-  upperApprox <- copyVec lowerApprox
-  evalUpperApprox <- newVecSameSize lowerApprox
+ovi settings augEqMap@(_, lVarsRef) = do
+
   -- create system containing only live equations
   leqSys <- toLiveEqMap augEqMap
-  logDebugN $ "Identified " ++ show (MV.length leqSys) ++ " live variables..."
-  -- create eigenVec and initialize it to 1
-  -- we only use live equations for eigenVec to avoid too many 0 values
-  eigenVec <- liftIO $ HT.newSized $ MV.length leqSys
-  liftIO $ MV.forM_ leqSys (\(k, _) -> HT.insert eigenVec k 1)
+  logDebugN $ "Identified " ++ show (V.length leqSys) ++ " live variables..."
+  lVars <- liftIO $ readIORef lVarsRef
   let
-    go _ _ 0 = return OVIResult { oviSuccess  = False
+    varsVec = V.fromList . Set.toList $ lVars
+    vecLength = V.length varsVec
+    lowerApproxInitial = V.replicate vecLength 0
+    upperApproxInitial = V.map (,0) varsVec
+    eigenVecInitial = V.replicate vecLength 1
+    go _ _ lowerApprox upperApprox 0 _ = return OVIResult { oviSuccess  = False
                                 , oviIters = oviMaxIters settings
                                 , oviLowerBound = lowerApprox
                                 , oviUpperBound = upperApprox
                                 }
-    go kleeneEps powerIterEps maxIters = do
+    go kleeneEps powerIterEps lowerApprox _ maxIters oldEigenVec = do
       let currentIter = oviMaxIters settings - maxIters
       logDebugN $ "Starting OVI iteration " ++ show currentIter
 
-      approxFixpFrom augEqMap leqSys kleeneEps (oviMaxKleeneIters settings) lowerApprox
-      -- DBG.traceShowM =<< (liftIO $ HT.toList lowerApprox)
-      eigenVal <- computeEigen augEqMap leqSys powerIterEps (oviMaxPowerIters settings)
-                  lowerApprox eigenVec -- modifies eigenVec
+      let newLowerApprox = approxFixpFrom augEqMap leqSys kleeneEps (oviMaxKleeneIters settings) lowerApprox
+      logDebugN $ "newLowerApprox " ++ show newLowerApprox
+      (newEigenVec, eigenVal) <- computeEigen augEqMap leqSys powerIterEps (oviMaxPowerIters settings)
+                  newLowerApprox oldEigenVec -- modifies eigenVec
       logDebugN $ "The eigenvalue is " ++ show eigenVal
+      logDebugN $ "The eigenVec is " ++ show newEigenVec
 
-      let guessAndCheckInductive 0 = return False
+      let guessAndCheckInductive 0 = return (False, V.empty)
           guessAndCheckInductive maxGuesses = do
             let currentGuess = currentIter + 1 - maxGuesses
                 scaleFactor = oviPowerIterEps settings *
                   (oviDampingFactor settings)^currentGuess
             -- upperApprox <- lowerApprox + eigenVal * scaleFactor
-            liftIO $ HT.mapM_
-              (\(k, l) -> do
-                  eigenV <- fromJust <$> HT.lookup eigenVec k
-                  HT.insert upperApprox k (l + (eigenV * scaleFactor))
-              )
-              lowerApprox
+                newUpperApprox = V.map (\(eigenV, l) -> l + (eigenV * scaleFactor)) (V.zip newEigenVec newLowerApprox)
 
             -- check if upperApprox is inductive
-            let check prev newV oldV = prev && newV <= oldV
+                check newV oldV = newV <= oldV
                   -- prev && 1 / (oldV - newV) >= 0
                   -- prev && (1-eps)*newV + eps <= oldV
-            inductive <- evalEqSys leqSys check upperApprox evalUpperApprox
+                (inductive, _) = evalEqSys leqSys check newUpperApprox
             logDebugN $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
             if inductive
-              then return True
+              then return (True, newUpperApprox)
               else guessAndCheckInductive (maxGuesses - 1)
-      inductive <- guessAndCheckInductive (currentIter + 1)
+      (inductive, newUpperApprox) <- guessAndCheckInductive (currentIter + 1)
+      let upperApproxWithKeys = V.zip varsVec . V.map (* 1.00001) $ newUpperApprox
 
       logDebugN $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
         ++ show inductive
+
       if inductive
         then do
-        liftIO $ MV.forM_ leqSys (\(k, _) -> HT.mutate upperApprox k (\(Just v) -> (Just $ v * 1.00001, v)))
         return OVIResult { oviSuccess  = True
                          , oviIters = oviMaxIters settings - maxIters
-                         , oviLowerBound = lowerApprox
-                         , oviUpperBound = upperApprox
+                         , oviLowerBound = newLowerApprox
+                         , oviUpperBound = upperApproxWithKeys
                          }
         else go
              (kleeneEps * oviKleeneDampingFactor settings)
              (powerIterEps * oviPowerIterDampingFactor settings)
+             newLowerApprox
+             upperApproxWithKeys
              (maxIters - 1)
+             newEigenVec
 
-  go (oviKleeneEps settings) (oviPowerIterEps settings) (oviMaxIters settings)
+  go (oviKleeneEps settings) (oviPowerIterEps settings) lowerApproxInitial upperApproxInitial (oviMaxIters settings) eigenVecInitial
 
 oviToRational :: (MonadIO m, MonadLogger m, Ord n, RealFrac n, Show n, RealFloat n)
                        => OVISettings n -> AugEqMap n -> OVIResult n -> m Bool
@@ -290,28 +265,24 @@ oviToRational settings augEqMap@(_, _) oviRes = do
 
   rleqSys <- toLiveEqMapWith augEqMap f1
   -- Convert upper bound to rational
-  rub <- mapVec f1 $ oviUpperBound oviRes
-  srub <- liftIO $ HT.newSized =<< stToIO (BHT.size rub)
-  let checkWithKInd _ _ _ _  0 = return False
-      checkWithKInd showF f rleqSys srub kIters  = do
+  let initialRub1 = V.map (\(_, v) -> f1 v) $ oviUpperBound oviRes
+      initialRub2 = V.map (\(_, v) -> f2eps v) $ oviUpperBound oviRes
+      checkWithKInd _ _ _ _ 0 = return False
+      checkWithKInd showF f rleqSys rub kIters  = do
         -- Evaluate equation system
-        inductive <- evalEqSys rleqSys (\prev newV oldV -> prev && newV <= oldV) rub srub
+        let (inductive, srub) = evalEqSys rleqSys (<=) rub
 
         logDebugN $ "Is the rational approximation inductive? " ++ show inductive
         if inductive
           then return inductive
           else do
           logDebugN $ "Trying with k-induction with function " ++ showF  ++ ", remaining iterations: " ++ show kIters
-          liftIO $ HT.mapM_ (\(k, sv) -> do
-                                v <- fromJust <$> HT.lookup rub k
-                                HT.insert rub k (min v sv)
-                            ) srub
-          checkWithKInd showF f rleqSys srub (kIters - 1)
-  success <- checkWithKInd showF1 f1 rleqSys srub $ oviMaxKIndIters settings
+          let newRub = V.map (uncurry min) (V.zip rub srub)
+          checkWithKInd showF f rleqSys newRub (kIters - 1)
+  success <- checkWithKInd showF1 f1 rleqSys initialRub1 $ oviMaxKIndIters settings
   if success
     then return success
     else do
       -- Convert upper bound to rational
-      rub <- mapVec f2eps $ oviUpperBound oviRes
-      srub <- liftIO $ HT.newSized =<< stToIO (BHT.size rub)
-      checkWithKInd showF2 f2eps rleqSys srub $ oviMaxKIndIters settings
+      let
+      checkWithKInd showF2 f2eps rleqSys initialRub2 $ oviMaxKIndIters settings

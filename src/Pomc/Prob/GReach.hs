@@ -657,10 +657,8 @@ solveSCCQuery sccMembers globals = do
     liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
 
     -- updating lower bounds 
-    liftIO $ HT.mapM_ (\(varKey, p) -> addFixpEq lEqMap varKey (PopEq p)) approxVec
+    V.mapM_ (\(varKey, p) -> addFixpEq lEqMap varKey (PopEq p)) approxVec
 
     -- updating upper bounds
-    liftIO $ HT.mapM_ (\(varKey, p) -> addFixpEq uEqMap varKey (PopEq p)) (oviUpperBound oviRes)
-
-    upperBound <- liftIO $ HT.toList (oviUpperBound oviRes)
-    logDebugN $ "Computed upper bounds: " ++ show upperBound
+    V.mapM_ (\(varKey, p) -> addFixpEq uEqMap varKey (PopEq p)) (oviUpperBound oviRes)
+    logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
