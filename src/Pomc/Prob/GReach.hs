@@ -471,8 +471,7 @@ createComponent globals sIdGen delta supports popContxs semiconfId = do
           -- when (or insertedVars) $ error "inserting a variable that has already been encoded"
           forM_ toEncode (\(_, sId, rc) -> addFixpEq (lowerEqMap globals) (sId, rc) (PopEq 0))
           forM_ toEncode $ \v -> encode v globals sIdGen delta supports sccMembers
-        liftIO $ forM_ toEncode $ \v -> encode v globals sIdGen delta supports sccMembers
-
+          
         solveSCCQuery sccMembers globals
         return popContxs
       doNotEncode _ = do
