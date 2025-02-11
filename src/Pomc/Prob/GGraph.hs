@@ -743,12 +743,15 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
             -- push edges in the support Graph
             maybePPush = Set.lookupLE (Edge (graphNode toG) 0) $ internalEdges gn
             probPush = prob $ fromJust maybePPush
+            isPushEdge = isJust maybePPush && to (fromJust maybePPush) == (graphNode toG) && 
+              elem (phiNode toG) (phiDeltaPush delta $ phiNode g)
             encodePushTrans = do
               lT <- encodeTransition [probPush, pendProbsLB ! (graphNode toG)] [pendProbsUB V.! (graphNode g)] tolVar
               uT <- encodeTransition [probPush, pendProbsUB ! (graphNode toG)] [pendProbsLB V.! (graphNode g)] touVar
               return [(lT, uT)]
             -- supports edges in the Support Graph
             maybePSupport = Set.lookupLE (Edge (graphNode toG) 0) $ supportEdges gn
+            isSuppEdge = isJust maybePSupport && to (fromJust maybePSupport) == (graphNode toG)
             supportGn = suppGraph V.! (graphNode toG)
             leftContext = AugState (fst . semiconf $ gn) (phiNode g)
             rightContext = AugState (fst . semiconf $ supportGn) (phiNode toG)
@@ -787,13 +790,12 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
               uT <- encodeTransition [uW, pendProbsUB V.! (graphNode toG)] [pendProbsLB V.! (graphNode g)] touVar
               return [(lT, uT)]
             cases
-              | isJust maybePPush && to (fromJust maybePPush) == (graphNode toG) &&
-                isJust maybePSupport && to (fromJust maybePSupport) == (graphNode toG) = do
+              | isPushEdge && isSuppEdge = do
                   pushEncs <- encodePushTrans
                   suppEncs <- encodeSupportTrans
                   return (pushEncs ++ suppEncs)
-              | isJust maybePPush && to (fromJust maybePPush) == (graphNode toG) = encodePushTrans
-              | isJust maybePSupport && to (fromJust maybePSupport) == (graphNode toG) = encodeSupportTrans
+              | isPushEdge = encodePushTrans
+              | isSuppEdge = encodeSupportTrans
               | otherwise = error "there must be at least one edge in the support graph associated with this edge in graph H"
         cases
 
