@@ -127,12 +127,12 @@ monomialDerivative m x = case m of -- ugly but it works
 
 -- compute (J|v + I) x, where J|v is the Jacobian of leqSys evaluated on v,
 -- I is the identity matrix, and x is the vector of all variables
-jacobiTimesX :: (MonadIO m, Num n) => AugEqMap n -> LEqSys n -> ProbVec n -> m (PolyVector n)
-jacobiTimesX (_, _) leqSys v = liftIO $ do
-  let jtxMonomial lmon (Left key) = let
-            coeff = evalMonomial v (monomialDerivative lmon key)
-            in [Lin coeff key]
+jacobiTimesX :: (Num n) => AugEqMap n -> LEqSys n -> ProbVec n -> PolyVector n
+jacobiTimesX (_, _) leqSys v =
+  let jtxMonomial lmon (Left key) = [Lin coeff key]
+        where coeff = evalMonomial v (monomialDerivative lmon key)
       jtxMonomial _ _ = []
+
       constructPoly k (PushLEq terms) = (Lin 1 k :) . concatMap
         (\(p, k1, k2) ->
             let build (Left k1)   (Left k2) = Quad p k1 k2
@@ -143,27 +143,26 @@ jacobiTimesX (_, _) leqSys v = liftIO $ do
                 m1 = jtxMonomial pm k1
                 m2 = jtxMonomial pm k2
             in  m1 ++ m2
-        )
-        $ filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms
+        ) $ filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms
       constructPoly k (ShiftLEq terms) = (Lin 1 k :) . concatMap
         (\(p, Left k1) -> jtxMonomial (Lin p k1) (Left k1))
         $ filter (\(_, eitherP) -> isLeft eitherP) terms
-  return $ V.imap constructPoly leqSys
+        
+  in V.imap constructPoly leqSys
 
 powerIterate :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
              => n -> Int -> PolyVector n -> ProbVec n -> m (ProbVec n, n)
 powerIterate eps maxIters matrix oldEV = do
   let go oldEigenVec eigenVal 0 = logDebugN "Power iterations exhausted!" >> return (oldEigenVec, eigenVal)
-      go oldEigenVec _ iters = do
-        let
-            nnEigenVec = evalPolySys matrix oldEigenVec
+      go oldEigenVec _ iters =
+        let nnEigenVec = evalPolySys matrix oldEigenVec
             -- get approximate largest eigenvalue as the maxNorm
             eigenVal = V.maximum nnEigenVec
             -- normalize eigenVec on the largest eigenValue
             newEigenVec = V.map (/ eigenVal) nnEigenVec
             -- check absolute error
             stop = V.all (\(ov, nv) -> abs (ov - nv) <= eps) (V.zip oldEigenVec newEigenVec)
-        if stop
+        in if stop
           then do
           logDebugN $ concat
             [ "Power iteration converged after ", show (maxIters - iters)
@@ -176,7 +175,7 @@ powerIterate eps maxIters matrix oldEV = do
 computeEigen :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
              => AugEqMap n -> LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> m (ProbVec n, n)
 computeEigen augEqMap leqSys eps maxIters lowerApprox eigenVec = do
-  matrix <- jacobiTimesX augEqMap leqSys lowerApprox
+  let matrix = jacobiTimesX augEqMap leqSys lowerApprox
   (newEigenVec, eigenVal) <- powerIterate eps maxIters matrix eigenVec
   return (newEigenVec, eigenVal - 1) -- -1 because we added the identity matrix
 
@@ -282,7 +281,4 @@ oviToRational settings augEqMap@(_, _) oviRes = do
   success <- checkWithKInd showF1 f1 rleqSys initialRub1 $ oviMaxKIndIters settings
   if success
     then return success
-    else do
-      -- Convert upper bound to rational
-      let
-      checkWithKInd showF2 f2eps rleqSys initialRub2 $ oviMaxKIndIters settings
+    else checkWithKInd showF2 f2eps rleqSys initialRub2 $ oviMaxKIndIters settings
