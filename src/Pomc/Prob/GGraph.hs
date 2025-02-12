@@ -283,6 +283,7 @@ buildEdge gglobals delta suppGraph isPending sIdMap fromId suppSatSet (gn1, p1) 
 -------- finding the bottom SCCs of subgraph H -------------
 type GraphNodesSCC = IntSet
 
+-- global variables for building and studying subgraph H
 data HGlobals s pstate = HGlobals
   { graph :: GGraph s
   , sStack     :: GStack s HEdge
