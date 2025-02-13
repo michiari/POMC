@@ -86,7 +86,6 @@ defaultOVISettingsProb = OVISettings
 --   , oviMaxKIndIters = 10
 --   }
 
-
 data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviIters :: Int
                              , oviLowerBound :: ProbVec n
@@ -150,10 +149,10 @@ jacobiTimesX (_, _) leqSys v =
         
   in V.imap constructPoly leqSys
 
-powerIterate :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
-             => n -> Int -> PolyVector n -> ProbVec n -> m (ProbVec n, n)
-powerIterate eps maxIters matrix oldEV = do
-  let go oldEigenVec eigenVal 0 = logDebugN "Power iterations exhausted!" >> return (oldEigenVec, eigenVal)
+powerIterate :: (Fractional n, Ord n, Show n)
+             => n -> Int -> PolyVector n -> ProbVec n -> (ProbVec n, n, Int)
+powerIterate eps maxIters matrix oldEV =
+  let go oldEigenVec eigenVal 0 = (oldEigenVec, eigenVal, 0)
       go oldEigenVec _ iters =
         let nnEigenVec = evalPolySys matrix oldEigenVec
             -- get approximate largest eigenvalue as the maxNorm
@@ -163,22 +162,16 @@ powerIterate eps maxIters matrix oldEV = do
             -- check absolute error
             stop = V.all (\(ov, nv) -> abs (ov - nv) <= eps) (V.zip oldEigenVec newEigenVec)
         in if stop
-          then do
-          logDebugN $ concat
-            [ "Power iteration converged after ", show (maxIters - iters)
-            , " iterations. Eigenvalue: ", show eigenVal
-            ]
-          return (newEigenVec, eigenVal)
+          then (newEigenVec, eigenVal, iters)
           else go newEigenVec eigenVal (iters - 1)
-  go oldEV 0 maxIters
+  in go oldEV 0 maxIters
 
-computeEigen :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n)
-             => AugEqMap n -> LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> m (ProbVec n, n)
-computeEigen augEqMap leqSys eps maxIters lowerApprox eigenVec = do
+computeEigen :: (Fractional n, Ord n, Show n)
+             => AugEqMap n -> LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> (ProbVec n, n, Int)
+computeEigen augEqMap leqSys eps maxIters lowerApprox eigenVec =
   let matrix = jacobiTimesX augEqMap leqSys lowerApprox
-  (newEigenVec, eigenVal) <- powerIterate eps maxIters matrix eigenVec
-  return (newEigenVec, eigenVal - 1) -- -1 because we added the identity matrix
-
+      (newEigenVec, eigenVal, iters) = powerIterate eps maxIters matrix eigenVec
+  in (newEigenVec, eigenVal - 1, iters) -- -1 because we added the identity matrix
 
 ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n, Num n)
     => OVISettings n -> AugEqMap n -> m (OVIResult n)
@@ -204,13 +197,16 @@ ovi settings augEqMap@(_, lVarsRef) = do
       logDebugN $ "Starting OVI iteration " ++ show currentIter
 
       let newLowerApprox = approxFixpFrom augEqMap leqSys kleeneEps (oviMaxKleeneIters settings) lowerApprox
-      logDebugN $ "newLowerApprox " ++ show newLowerApprox
-      (newEigenVec, eigenVal) <- computeEigen augEqMap leqSys powerIterEps (oviMaxPowerIters settings)
+          (newEigenVec, eigenVal, iters) = computeEigen augEqMap leqSys powerIterEps (oviMaxPowerIters settings)
                   newLowerApprox oldEigenVec -- modifies eigenVec
-      logDebugN $ "The eigenvalue is " ++ show eigenVal
-      logDebugN $ "The eigenVec is " ++ show newEigenVec
+          debugMsg 
+            | iters == 0 = "Power Iteration exhausted!"
+            | otherwise = concat
+                [ "Power iteration converged after ", show (maxIters - iters)
+                , " iterations. Eigenvalue: ", show eigenVal
+                ]
 
-      let guessAndCheckInductive 0 = return (False, V.empty)
+          guessAndCheckInductive 0 = return (False, V.empty)
           guessAndCheckInductive maxGuesses = do
             let currentGuess = currentIter + 1 - maxGuesses
                 scaleFactor = oviPowerIterEps settings *
@@ -227,6 +223,10 @@ ovi settings augEqMap@(_, lVarsRef) = do
             if inductive
               then return (True, newUpperApprox)
               else guessAndCheckInductive (maxGuesses - 1)
+              
+      logDebugN $ "Lower Approximation: " ++ show newLowerApprox
+      logDebugN debugMsg
+      logDebugN $ "EigenVector: " ++ show newEigenVec
       (inductive, newUpperApprox) <- guessAndCheckInductive (currentIter + 1)
       let upperApproxWithKeys = V.zip varsVec . V.map (* 1.00001) $ newUpperApprox
 
@@ -234,8 +234,7 @@ ovi settings augEqMap@(_, lVarsRef) = do
         ++ show inductive
 
       if inductive
-        then do
-        return OVIResult { oviSuccess  = True
+        then return OVIResult { oviSuccess  = True
                          , oviIters = oviMaxIters settings - maxIters
                          , oviLowerBound = newLowerApprox
                          , oviUpperBound = upperApproxWithKeys
@@ -266,8 +265,8 @@ oviToRational settings augEqMap@(_, _) oviRes = do
   -- Convert upper bound to rational
   let initialRub1 = V.map (\(_, v) -> f1 v) $ oviUpperBound oviRes
       initialRub2 = V.map (\(_, v) -> f2eps v) $ oviUpperBound oviRes
-      checkWithKInd _ _ _ _ 0 = return False
-      checkWithKInd showF f rleqSys rub kIters  = do
+      checkWithKInd _ _ 0 = return False
+      checkWithKInd showF rub kIters  = do
         -- Evaluate equation system
         let (inductive, srub) = evalEqSys rleqSys (<=) rub
 
@@ -275,10 +274,10 @@ oviToRational settings augEqMap@(_, _) oviRes = do
         if inductive
           then return inductive
           else do
-          logDebugN $ "Trying with k-induction with function " ++ showF  ++ ", remaining iterations: " ++ show kIters
-          let newRub = V.map (uncurry min) (V.zip rub srub)
-          checkWithKInd showF f rleqSys newRub (kIters - 1)
-  success <- checkWithKInd showF1 f1 rleqSys initialRub1 $ oviMaxKIndIters settings
+            logDebugN $ "Trying with k-induction with function " ++ showF  ++ ", remaining iterations: " ++ show kIters
+            let newRub = V.map (uncurry min) (V.zip rub srub)
+            checkWithKInd showF newRub (kIters - 1)
+  success <- checkWithKInd showF1 initialRub1 $ oviMaxKIndIters settings
   if success
     then return success
-    else checkWithKInd showF2 f2eps rleqSys initialRub2 $ oviMaxKIndIters settings
+    else checkWithKInd showF2 initialRub2 $ oviMaxKIndIters settings

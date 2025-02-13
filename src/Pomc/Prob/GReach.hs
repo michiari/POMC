@@ -188,7 +188,9 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
 reachPush globals delta q g qState pathSatSet =
   let qProps = getStateProps (bitenc delta) qState
       doPush p = reachTransition globals delta Nothing Nothing (p, Just (qProps, q))
-      isConsistentOrPop p = let s = getState p in (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) $ s) == Just Take) || ((consistentFilter delta) s)
+      isConsistentOrPop p = let s = getState p in
+          (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) s) == Just Take)
+          || (consistentFilter delta) s
   in do
     SM.insert (suppStarts globals) (getId q) g
     newStates <- wrapStates (sIdGen globals) $ map fst $ (deltaPush delta) qState
@@ -226,7 +228,8 @@ reachPop globals delta _ g qState pathSatSet =
         let r = snd . fromJust $ g
             pState = getState p
             pProps = getStateProps (bitenc delta) pState
-            isConsistentOrPop g' = (isJust g' && prec delta (fst . fromJust $ g') pProps == Just Take) || ((consistentFilter delta) pState)
+            isConsistentOrPop g' = (isJust g' && prec delta (fst . fromJust $ g') pProps == Just Take)
+                || (consistentFilter delta) pState
             closeSupports g' = when (isConsistentOrPop g') $ do
                   lcSatSet <- fromJust <$> BH.lookup (visited globals) (decode (r,g'))
                   reachTransition globals delta (Just lcSatSet) (Just pathSatSet) (p, g')
@@ -308,21 +311,23 @@ weightQuerySCC :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable 
                -> m (Prob, Prob)
 weightQuerySCC globals sIdGen delta supports current target = do
   q <- liftSTtoIO $ wrapState sIdGen current
-  let semiconf = (q, Nothing)
   targetState <- liftSTtoIO $ wrapState sIdGen target
-  maybeSemiconfId <- liftIO $ HT.lookup (graphMap globals) (decode semiconf)
+  let semiconf = (q, Nothing)
+      decodedSemiconf = decode semiconf
+      targetId = getId targetState
+  maybeSemiconfId <- liftIO $ HT.lookup (graphMap globals) decodedSemiconf
 
   actualId <- case maybeSemiconfId of
     Just scId -> do
-      liftIO $ encodeInitialPush globals sIdGen delta q Nothing scId (getId targetState)
+      liftIO $ encodeInitialPush globals sIdGen delta q Nothing scId targetId
       solveSCCQuery (IntSet.singleton scId) globals
       return scId
     Nothing -> do
       newId <- liftIO $ freshIOPosId (idSeq globals)
-      liftIO $ HT.insert (graphMap globals) (decode semiconf) newId
+      liftIO $ HT.insert (graphMap globals) decodedSemiconf newId
       liftIO $ addtoPath globals semiconf newId
-      _ <- dfs globals sIdGen delta supports semiconf (newId, getId targetState) True
-      liftIO $ encodeInitialPush globals sIdGen delta q Nothing newId (getId targetState)
+      _ <- dfs globals sIdGen delta supports semiconf (newId, targetId) True
+      liftIO $ encodeInitialPush globals sIdGen delta q Nothing newId targetId
       solveSCCQuery (IntSet.singleton newId) globals
       return newId
 
@@ -368,8 +373,10 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
           unless ((consistentFilter delta) qState) $ error "inconsistent state in a push"
           newPushStates <- liftSTtoIO $ wrapStates sIdGen $ map fst $ (deltaPush delta) qState
           forM_ newPushStates (\p -> follow (p, Just (qProps, q))) -- discard the result
-          let isConsistentOrPop p = let s = getState p in (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) $ s) == Just Take) || ((consistentFilter delta) s)
-              newSupportStates = Set.toList . Set.filter isConsistentOrPop . fromJust $ (supports V.!? (getId q)) <|> (Just Set.empty)
+          let isConsistentOrPop p = let s = getState p in
+                (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) s) == Just Take)
+                || (consistentFilter delta) s
+              newSupportStates = Set.toList . Set.filter isConsistentOrPop . fromJust $ (supports V.!? (getId q)) <|> Just Set.empty
           if isNothing g
             then return IntSet.empty
             else IntSet.unions <$> forM newSupportStates (\p -> follow (p, g))
@@ -380,7 +387,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
           IntSet.unions <$> forM newShiftStates (\p -> follow (p, Just (qProps, snd . fromJust $ g)))
 
         | precRel == Just Take = IntSet.fromList <$>
-            mapM (\(unwrapped, _) -> do p <- liftSTtoIO $ wrapState sIdGen unwrapped; return (getId p)) ((deltaPop delta) qState gState)
+            mapM (\(unwrapped, _) -> getId <$> liftSTtoIO (wrapState sIdGen unwrapped)) ((deltaPop delta) qState gState)
 
         | otherwise = return IntSet.empty
 
@@ -547,7 +554,9 @@ encodePush :: (SatState state, Eq state, Hashable state, Show state)
   -> IntSet
   -> IO (Set (QuantVariable state))
 encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) sccMembers =
-  let isConsistentOrPop p = let s = getState p in (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) $ s) == Just Take) || ((consistentFilter delta) s)
+  let isConsistentOrPop p = let s = getState p in
+        (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) s) == Just Take)
+        || (consistentFilter delta) s
       suppEnds = Set.filter isConsistentOrPop . fromJust $ (supports V.!? getId q) <|> (Just Set.empty)
       suppSemiconfs = Set.map (, g) suppEnds
       suppVars = Set.toList . Set.map (, rightContext) $ suppSemiconfs
