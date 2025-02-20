@@ -68,8 +68,6 @@ import Data.Maybe
 import Data.Hashable(Hashable)
 import Data.Bifunctor(first)
 
-import Data.List (partition)
-
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as BC
 import qualified Data.HashTable.IO as HT
@@ -77,7 +75,7 @@ import qualified Data.HashTable.IO as HT
 import qualified Data.Vector.Mutable as MV
 import GHC.IO (stToIO)
 
-import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef')
+import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef', newIORef)
 import Data.Ratio (approxRational, (%))
 
 import Control.Applicative ((<|>))
@@ -410,12 +408,9 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
 lookupVar :: IntSet -> WeightedGRobals state -> (StateId state, Stack state) -> Int ->  IO (Maybe ((StateId state, Stack state), (Int,Int), Bool))
 lookupVar sccMembers globals sc rightContext = do
   let decoded = decode sc
-  maybeId <- HT.lookup (graphMap globals) decoded
-  let id_ = fromJust maybeId
-      varKey = (id_, rightContext)
-      (_, a,b) = decoded
-  when (isNothing maybeId) $ error $ "future semiconfs should have been already visited and inserted in the hashtable: " ++ show decoded
-  when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system"
+  id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
+  let varKey = (id_, rightContext)
+  --when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system" (, a,b) = decoded
   previouslyEncoded <- containsEquation (lowerEqMap globals) varKey
   let cases
           | previouslyEncoded = return $ Just (sc, varKey, True)
@@ -557,40 +552,60 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
   let isConsistentOrPop p = let s = getState p in
         (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) s) == Just Take)
         || (consistentFilter delta) s
-      suppEnds = Set.filter isConsistentOrPop . fromJust $ (supports V.!? getId q) <|> (Just Set.empty)
-      suppSemiconfs = Set.map (, g) suppEnds
-      suppVars = Set.toList . Set.map (, rightContext) $ suppSemiconfs
+      (a,b) = decodeStack g -- current stack decoded 
       qProps = getStateProps (bitenc delta) qState
-
-      closeSupports pushDest (unencodedVars, terms) (suppId, suppVarKey) = do
-          maybeTerm <- lookupVar sccMembers globals pushDest suppId
-          if isNothing maybeTerm
-          then return (unencodedVars, terms)
-          else let
-            (_, varKey, alreadyEncoded) = fromJust maybeTerm
-            newUnencoded = if alreadyEncoded then unencodedVars else Set.insert (QuantVariable pushDest varKey) unencodedVars
-            in return ( newUnencoded, (varKey, suppVarKey):terms)
-
-      pushEnc supps (newVars, terms) (p, prob_) =
-        let dest = (p, Just (qProps, q)) in do
-          (unencodedVars, varTerms) <- foldM (closeSupports dest) (newVars, []) supps
-          return (unencodedVars, (map (\(v1, v2) -> (prob_, v1, v2)) varTerms):terms)
+      newG = Just (qProps, q)
+      (c,d) = decodeStack newG
+      suppEnds = Set.toList . Set.filter isConsistentOrPop . fromJust $ (supports V.!? getId q) <|> (Just Set.empty)
+      suppEndsIds = map decodeStateId suppEnds
+      suppDecodedSemiconfs = map (, a, b) suppEndsIds
 
   in do
     newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
-    filteredSuppEnds <- catMaybes <$> mapM (uncurry (lookupVar sccMembers globals)) suppVars
-    let (unencodedSuppEnds, _) = partition (\(_, _, b) -> not b) filteredSuppEnds
-        suppIds = map (\((sId, _), varKey, _) -> (getId sId, varKey)) filteredSuppEnds
-    (unencodedVars, terms) <- foldM (pushEnc suppIds) (Set.empty, []) newStates
-    let emptyPush = all null terms
-        pushEq | emptyPush = PopEq 0
-               | otherwise = PushEq $ concat terms
+    suppSemiconfsIds <- mapM (fmap fromJust . HT.lookup (graphMap globals)) suppDecodedSemiconfs
+    newUnencoded <- newIORef Set.empty
+
+    let suppInfo = zip3 suppEnds suppEndsIds (map (, rightContext) suppSemiconfsIds)
+    suppVarKeys  <- foldM (\acc (s, sId, varKey) -> do
+      previouslyEncoded <- containsEquation (lowerEqMap globals) varKey
+      let quantVar = QuantVariable (s, g) varKey
+          cases
+            | previouslyEncoded = return $ (sId, varKey):acc
+            | IntSet.notMember (fst varKey) sccMembers = return acc
+            | otherwise = do
+              addFixpEq (lowerEqMap globals) varKey (PopEq 0)
+              modifyIORef' newUnencoded $ Set.insert quantVar
+              return $ (sId, varKey):acc
+      cases
+      ) [] suppInfo
+
+    let newStatesWithSuppIds = [(p, prob_, suppRC) | (p,prob_) <- newStates, suppRC <- suppEndsIds]
+    pushVarKeys <- foldM (\acc (p, prob_, suppRC) -> do
+      let decoded = (decodeStateId p, c, d)
+      id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
+      let varKey = (id_, suppRC)
+      previouslyEncoded <- containsEquation (lowerEqMap globals) varKey
+      let quantVar = QuantVariable (p, newG) varKey
+          cases
+            | previouslyEncoded = return $ (prob_, varKey):acc
+            | IntSet.notMember id_ sccMembers = return acc
+            | otherwise = do
+              modifyIORef' newUnencoded $ Set.insert quantVar
+              return $ (prob_, varKey):acc
+      cases
+      ) [] newStatesWithSuppIds
+
+    let terms = [(prob_, destVarkey, suppVarKey) | 
+                  (suppSId, suppVarKey) <- suppVarKeys, 
+                  (prob_, destVarkey) <- pushVarKeys, 
+                  snd destVarkey == suppSId
+                ]
+        pushEq | null terms = PopEq 0
+               | otherwise = PushEq terms
     addFixpEq (lowerEqMap globals) (semiconfId, rightContext) pushEq
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
     addFixpEq (upperEqMap globals) (semiconfId, rightContext) pushEq
-    -- logDebugN $ "Encoding Push: " ++ show terms
-    return $ Set.union unencodedVars
-      (Set.fromList . map (\(sc, key, False) -> QuantVariable sc key) $ unencodedSuppEnds)
+    readIORef newUnencoded
 
 encodeInitialPush :: (SatState state, Eq state, Hashable state, Show state)
     => WeightedGRobals state

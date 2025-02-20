@@ -69,7 +69,6 @@ import qualified Data.Set as Set
 import Data.Maybe (fromJust, isNothing, catMaybes)
 
 import Control.Monad.ST (RealWorld)
-import Data.STRef (newSTRef, readSTRef, modifySTRef')
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 

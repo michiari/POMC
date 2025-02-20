@@ -15,6 +15,8 @@ module Pomc.SatUtil( SatState(..)
                    , debug
                    , freshPosId
                    , decode
+                   , decodeStateId
+                   , decodeStack
                    ) where
 
 import Pomc.State(Input, State(..))
@@ -112,3 +114,10 @@ freshPosId idSeq = do
 decode :: (StateId state, Stack state) -> (Int,Int,Int)
 decode (s1, Nothing) = (getId s1, 0, 0)
 decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
+
+decodeStateId :: StateId state -> Int 
+decodeStateId = getId 
+
+decodeStack  :: Stack state -> (Int,Int)
+decodeStack Nothing = (0,0)
+decodeStack (Just (i, s2)) = (nat i, getId s2)

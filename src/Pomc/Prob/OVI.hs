@@ -202,7 +202,7 @@ ovi settings augEqMap@(_, lVarsRef) = do
           debugMsg 
             | iters == 0 = "Power Iteration exhausted!"
             | otherwise = concat
-                [ "Power iteration converged after ", show (maxIters - iters)
+                [ "Power iteration converged after ", show ((oviMaxPowerIters settings) - iters)
                 , " iterations. Eigenvalue: ", show eigenVal
                 ]
 
