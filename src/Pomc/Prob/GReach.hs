@@ -405,17 +405,18 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
     popContxs <- transitionCases
     createComponent globals sIdGen delta supports popContxs semiconfId
 
-lookupVar :: IntSet -> WeightedGRobals state -> (StateId state, Stack state) -> Int ->  IO (Maybe ((StateId state, Stack state), (Int,Int), Bool))
+lookupVar :: IntSet -> WeightedGRobals state -> (StateId state, Stack state) -> Int ->  IO (Maybe ((Int,Int), Bool))
 lookupVar sccMembers globals sc rightContext = do
   let decoded = decode sc
   id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
   let varKey = (id_, rightContext)
-  --when ((a,b) == (0,0) || rightContext == -1) $ error "semiconfs with empty stack should not be in the RHS of the equation system" (, a,b) = decoded
+  --when ((a,b) == (0,0) || rightContext == -1) 
+    -- $ error "semiconfs with empty stack should not be in the RHS of the equation system" (, a,b) = decoded
   previouslyEncoded <- containsEquation (lowerEqMap globals) varKey
   let cases
-          | previouslyEncoded = return $ Just (sc, varKey, True)
+          | previouslyEncoded = return $ Just (varKey, True)
           | IntSet.notMember id_ sccMembers = return Nothing
-          | otherwise = return $ Just (sc, varKey, False)
+          | otherwise = return $ Just (varKey, False)
   cases
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
@@ -561,7 +562,7 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
       suppDecodedSemiconfs = map (, a, b) suppEndsIds
 
   in do
-    newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
+    newStates <- mapM (\(unwrapped, prob_) -> (,prob_) <$> stToIO (wrapState sIdGen unwrapped)) $ (deltaPush delta) qState
     suppSemiconfsIds <- mapM (fmap fromJust . HT.lookup (graphMap globals)) suppDecodedSemiconfs
     newUnencoded <- newIORef Set.empty
 
@@ -595,10 +596,10 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
       cases
       ) [] newStatesWithSuppIds
 
-    let terms = [(prob_, destVarkey, suppVarKey) | 
-                  (suppSId, suppVarKey) <- suppVarKeys, 
-                  (prob_, destVarkey) <- pushVarKeys, 
-                  snd destVarkey == suppSId
+    let terms = [(prob_, pushVarKey, suppVarKey) |
+                  (suppSId, suppVarKey) <- suppVarKeys,
+                  (prob_, pushVarKey) <- pushVarKeys,
+                  snd pushVarKey == suppSId
                 ]
         pushEq | null terms = PopEq 0
                | otherwise = PushEq terms
@@ -627,7 +628,7 @@ encodeInitialPush globals sIdGen delta q _ semiconfId suppId  =
               then return $ (prob_, (pushId, suppId), (semiconfId, -2)):terms
               else return terms
     in do
-      newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaPush delta) qState
+      newStates <- mapM (\(unwrapped, prob_) -> (,prob_) <$> stToIO (wrapState sIdGen unwrapped)) $ (deltaPush delta) qState
       terms <- foldM pushEnc [] newStates
       addFixpEq (lowerEqMap globals) (semiconfId, -1) $ PushEq terms
       addFixpEq (upperEqMap globals) (semiconfId, -1) $ PushEq terms
@@ -654,11 +655,11 @@ encodeShift globals sIdGen delta _ g qState (semiconfId, rightContext) sccMember
         if isNothing maybeTerm
           then return (newVars, terms)
           else let
-            (_, varKey, alreadyEncoded) = fromJust maybeTerm
+            (varKey, alreadyEncoded) = fromJust maybeTerm
             newUnencoded = if alreadyEncoded then newVars else Set.insert (QuantVariable dest varKey) newVars
           in return ( newUnencoded,(prob_, varKey):terms)
   in do
-    newStates <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (p,prob_)) $ (deltaShift delta) qState
+    newStates <- mapM (\(unwrapped, prob_) -> (,prob_) <$> stToIO (wrapState sIdGen unwrapped)) $ (deltaShift delta) qState
     (unencodedVars, terms) <- foldM shiftEnc (Set.empty, []) newStates
     let shiftEq | null terms = error "shift semiconfs should go somewhere!"
                 | otherwise = ShiftEq terms
