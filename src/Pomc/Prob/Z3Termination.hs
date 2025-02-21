@@ -71,9 +71,6 @@ mkOp1 mkOp asts = mkOp asts
 mkAdd1 :: MonadZ3 z3 => [AST] -> z3 AST
 mkAdd1 = mkOp1 mkAdd
 
-mkMul1 :: MonadZ3 z3 => [AST] -> z3 AST
-mkMul1 = mkOp1 mkMul
-
 -- (Z3 Var, was it already present?)
 lookupVar :: MonadZ3 z3
           => VarMap -> (AugEqMap EqMapNumbersType, AugEqMap EqMapNumbersType) -> VarKey
@@ -136,7 +133,6 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) (lowerEqMap, upperEqMa
             return [] -- pop transitions do not generate new variables
 
         | otherwise = fail "unexpected prec rel"
-
   newUnencoded <- cases
   encode (newUnencoded ++ unencoded) varMap (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 (count + 1)
 
@@ -151,50 +147,86 @@ encodePush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
            -> AST
            -> Bool
            -> z3 [(Int, Int)]
-encodePush graph varMap@(m, _, _) (lowerEqMap, upperEqMap) mkComp  gn varKey@(_, rightContext) var useZ3 =
-  let closeSummaries pushGn (currs, newVars, terms) e = do
-        let supportGn = graph ! (to e)
-            varsIds = [(gnId pushGn, getId . fst . semiconf $ supportGn), (gnId supportGn, rightContext)]
-        maybeTerms <- mapM (lookupVar varMap (lowerEqMap, upperEqMap)) varsIds
-        let newUnencoded = [(gnId__, rightContext_) | (Just (_, False), (gnId__, rightContext_)) <- zip maybeTerms varsIds]
-                           ++ newVars
-        if any isNothing maybeTerms
-          then return (currs, newUnencoded, terms) -- One variable is null, so we don't add the term
-          else do
-          eq <- mkMul1 (map (fst . fromJust ) maybeTerms)
-          return (eq:currs, newUnencoded, varsIds:terms)
+encodePush graph (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) mkComp  gn varKey@(_, rightContext) var useZ3 =
+  let pushSemiconfs = Set.toList $ Set.map (\e -> (gnId $ graph ! to e, prob e)) (internalEdges gn)
+      suppSemiconfs = Set.toList $ Set.map (\e -> graph ! to e) (supportEdges gn)
+      suppEndsIds = map (getId . fst . semiconf) suppSemiconfs
+      suppInfo = zip suppEndsIds (map (\gn -> (gnId gn, rightContext)) suppSemiconfs)
+      pushSemiconfswithSuppIds = [((p, rc), prob_) | (p,prob_) <- pushSemiconfs, rc <- suppEndsIds]
 
-      pushEnc (currs, vars, terms) e = do
-        (equations, unencodedVars, varTerms) <- foldM (closeSummaries (graph ! to e)) ([], [], []) (supportEdges gn)
-        if null equations
-          then return (currs, unencodedVars ++ vars, terms)
-          else do
-            transition <- encodeTransition e =<< mkAdd1 equations
-            return ( transition:currs
-                    , unencodedVars ++ vars
-                    , (map (\[v1, v2] -> (prob e, v1, v2)) varTerms):terms
-                    )
   in do
-    (transitions, unencoded_vars, terms) <- foldM pushEnc ([], [], []) (internalEdges gn)
-    -- logDebugN $ show varKey ++ " = PushEq " ++ show terms
-    let emptyPush = all null terms
+    newUnencoded <- liftIO $ newIORef []
+    suppVarKeys  <- foldM (\acc (sId, varKey) -> do
+        maybeVar <- liftIO $ HT.lookup varMap varKey
+        let cases
+              | isJust maybeVar = return $ (fromJust maybeVar, sId, varKey):acc
+              | snd varKey == -1 && encodeInitial = do
+                  addFixpEq leqMap varKey (PopEq 1)
+                  addFixpEq uEqMap varKey (PopEq 1)
+                  var <- mkRealNum (1 :: EqMapNumbersType)
+                  liftIO $ HT.insert varMap varKey var
+                  return $ (var, sId, varKey):acc
+              | IntSet.notMember (fst varKey) sccMembers = return acc
+              | otherwise = do -- it might happen that we discover new variables, in case of cycles that keep pushing
+                  var <- mkFreshRealVar $ show varKey
+                  liftIO $ HT.insert varMap varKey var
+                  liftIO $ modifyIORef' newUnencoded $ \x -> varKey:x
+                  return $ (var, sId, varKey):acc
+        cases
+      ) [] suppInfo
+
+    pushVarKeys <- foldM (\acc (varKey, prob_) -> do
+      maybeVar <- liftIO $ HT.lookup varMap varKey
+      let rc = snd varKey
+          cases
+              | isJust maybeVar = return $ (fromJust maybeVar, prob_, rc, varKey):acc
+              | snd varKey == -1 && encodeInitial = do
+                  addFixpEq leqMap varKey (PopEq 1)
+                  addFixpEq uEqMap varKey (PopEq 1)
+                  newVar <- mkRealNum (1 :: EqMapNumbersType)
+                  liftIO $ HT.insert varMap varKey newVar
+                  return $ (newVar, prob_, rc, varKey):acc
+              | IntSet.notMember (fst varKey) sccMembers = return acc
+              | otherwise = do -- it might happen that we discover new variables, in case of cycles that keep pushing
+                  newVar <- mkFreshRealVar $ show varKey
+                  liftIO $ HT.insert varMap varKey newVar
+                  liftIO $ modifyIORef' newUnencoded $ \x -> varKey:x
+                  return $ (newVar, prob_, rc, varKey):acc
+      cases
+      ) [] pushSemiconfswithSuppIds
+
+    let terms = [(prob_, pushTerm, suppVarKey) |
+                  (_, suppSId, suppVarKey) <- suppVarKeys,
+                  (_, prob_, rc, pushTerm) <- pushVarKeys,
+                  rc == suppSId
+                ]
+        z3Terms = [(prob_, pushTerm, suppVarKey) |
+                    (suppVarKey, suppSId, _) <- suppVarKeys,
+                    (pushTerm, prob_, rc, _) <- pushVarKeys,
+                    rc == suppSId
+                  ]
+        emptyPush = null terms
         pushEq | emptyPush = PopEq 0
-               | otherwise = PushEq $ concat terms
+               | otherwise = PushEq terms
+        encodePush (prob_, pushTerm, suppVarKey) = do
+            probReal <- mkRealNum prob_
+            mkMul [probReal, pushTerm, suppVarKey]
+
     when useZ3 $ if emptyPush
         then do
           solvedVar <- mkRealNum (0 :: Rational)
-          liftIO $ HT.insert m varKey solvedVar
+          liftIO $ HT.insert varMap varKey solvedVar
           eq <- mkEq var solvedVar
           assert eq
         else do
-          eq <- mkComp var =<< mkAdd1 transitions -- generate the equation for this semiconf
+          eq <- mkComp var =<< mkAdd1 =<< mapM encodePush z3Terms
           --eqString <- astToString eq
           -- logDebugN $ "Asserting Push equation: " ++ eqString
           assert eq
-
-    addFixpEq upperEqMap varKey pushEq
-    addFixpEq lowerEqMap varKey pushEq
-    return unencoded_vars
+    ---
+    addFixpEq leqMap varKey pushEq
+    addFixpEq uEqMap varKey pushEq
+    liftIO $ readIORef newUnencoded
 
 encodeShift :: (MonadZ3 z3, Eq state, Hashable state, Show state)
             => VarMap
@@ -205,21 +237,35 @@ encodeShift :: (MonadZ3 z3, Eq state, Hashable state, Show state)
             -> AST
             -> Bool
             -> z3 [(Int, Int)]
-encodeShift varMap (lowerEqMap, upperEqMap) mkComp gn varKey@(_, rightContext) var useZ3 =
+encodeShift (varMap, sccMembers, encodeInitial) (lEqMap, uEqMap) mkComp gn varKey@(_, rightContext) var useZ3 =
   let shiftEnc (currs, newVars, terms) e = do
-        let target = (to e, rightContext)
-        maybeTerm <- lookupVar varMap (lowerEqMap, upperEqMap) target
-        if isNothing maybeTerm
-          then return (currs, newVars, terms)
-          else do
-            let (toVar, alreadyEncoded) = fromJust maybeTerm
-                newUnencoded = if alreadyEncoded then newVars else target:newVars
-            trans <- encodeTransition e toVar
-            return (trans:currs, newUnencoded, (prob e, target):terms)
+        let toKey = (to e, rightContext)
+        maybeVar <- liftIO $ HT.lookup varMap toKey
+        let toVar = fromJust maybeVar
+            prob_ = prob e
+            cases
+              | isJust maybeVar = do
+                trans <- encodeTransition e toVar
+                return (trans:currs, newVars, (prob_, toKey):terms)
+              | snd toKey == -1 && encodeInitial = do
+                  addFixpEq lEqMap toKey (PopEq 1)
+                  addFixpEq uEqMap toKey (PopEq 1)
+                  newvar <- mkRealNum (1 :: EqMapNumbersType)
+                  trans <- encodeTransition e newvar
+                  liftIO $ HT.insert varMap toKey newvar
+                  return (trans:currs, newVars, (prob_, toKey):terms)
+              | IntSet.notMember (fst toKey) sccMembers = return (currs, newVars, terms)
+              | otherwise = do -- it might happen that we discover new variables, in case of cycles that keep pushing
+                  newVar <- mkFreshRealVar $ show toKey
+                  liftIO $ HT.insert varMap toKey newVar
+                  trans <- encodeTransition e newVar
+                  return (trans:currs, toKey:newVars, (prob_, toKey):terms)
+        cases
+
   in do
-    (transitions, unencoded_vars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
+    (transitions, unencodedVars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
     when useZ3 $ do
-      eq <- mkComp var =<< mkAdd1 transitions -- generate the equation for this semiconf
+      eq <- mkComp var =<< mkAdd1 transitions
       --eqString <- astToString eq
       -- logDebugN $ "Asserting Shift equation: " ++ eqString
       assert eq
@@ -227,9 +273,9 @@ encodeShift varMap (lowerEqMap, upperEqMap) mkComp gn varKey@(_, rightContext) v
     -- logDebugN $ show varKey ++ " = ShiftEq " ++ show terms
     let shiftEq | null terms = error "shift semiconfs should go somewhere!"
                 | otherwise = ShiftEq terms
-    addFixpEq upperEqMap varKey shiftEq
-    addFixpEq lowerEqMap varKey shiftEq
-    return unencoded_vars
+    addFixpEq lEqMap varKey shiftEq
+    addFixpEq uEqMap varKey shiftEq
+    return unencodedVars
 -- end
 
 ---------------------------------------------------------------------------------------------------
@@ -428,7 +474,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
         insertedVars <- map (snd . fromJust) <$> forM toEncode (lookupVar (varMap, sccMembers, encodeInitial) (lEqMap, uEqMap))
         when (or insertedVars ) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
-        reset 
+        reset
         eqsCount <- encode toEncode (varMap, sccMembers, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3 0
         liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
         actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, sccMembers, encodeInitial) globals precFun (useZ3, exactEq)
@@ -439,7 +485,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
           then do -- for the initial semiconf, encode anyway
             var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
             liftIO $ HT.insert varMap (0, -1) var
-            reset 
+            reset
             eqsCount <- encode [(0, -1)] (varMap, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3 0
             liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
             actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
