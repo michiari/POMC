@@ -22,15 +22,12 @@ import Pomc.LogUtils (MonadLogger, logDebugN)
 
 import Data.Ratio ((%), approxRational)
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Data.IORef (readIORef)
 
 import Witch.Instances (realFloatToRational)
 import Data.Either (isLeft)
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-
-import qualified Data.Set as Set
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviMaxKleeneIters :: Int
@@ -89,7 +86,7 @@ defaultOVISettingsProb = OVISettings
 data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviIters :: Int
                              , oviLowerBound :: ProbVec n
-                             , oviUpperBound :: ProbVec (VarKey, n)
+                             , oviUpperBound :: ProbVec n
                              }
 
 -- Int values are variables' indexes in the current src 
@@ -175,17 +172,15 @@ computeEigen leqSys eps maxIters lowerApprox eigenVec =
 
 ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n, Num n)
     => OVISettings n -> AugEqMap k -> (k -> n) -> m (OVIResult n)
-ovi settings augEqMap@(_, lVarsRef) f = do
+ovi settings augEqMap f = do
 
   -- create system containing only live equations
   leqSys <- toLiveEqMapWith augEqMap f
   logDebugN $ "Identified " ++ show (V.length leqSys) ++ " live variables..."
-  lVars <- liftIO $ readIORef lVarsRef
   let
-    varsVec = V.fromList . Set.toList $ lVars
-    vecLength = V.length varsVec
+    vecLength = V.length leqSys
     lowerApproxInitial = V.replicate vecLength 0
-    upperApproxInitial = V.map (,0) varsVec
+    upperApproxInitial = V.replicate vecLength 0
     eigenVecInitial = V.replicate vecLength 1
     go _ _ lowerApprox upperApprox 0 _ = return OVIResult { oviSuccess  = False
                                 , oviIters = oviMaxIters settings
@@ -205,45 +200,43 @@ ovi settings augEqMap@(_, lVarsRef) f = do
                 [ "Power iteration converged after ", show ((oviMaxPowerIters settings) - iters)
                 , " iterations. Eigenvalue: ", show eigenVal
                 ]
-
-          guessAndCheckInductive 0 = return (False, V.empty)
+          zippedEigenLowerApprox = V.zip newEigenVec newLowerApprox
+          guessAndCheckInductive 0 = (False, V.empty)
           guessAndCheckInductive maxGuesses = do
             let currentGuess = currentIter + 1 - maxGuesses
                 scaleFactor = oviPowerIterEps settings *
                   (oviDampingFactor settings)^currentGuess
             -- upperApprox <- lowerApprox + eigenVal * scaleFactor
-                newUpperApprox = V.map (\(eigenV, l) -> l + (eigenV * scaleFactor)) (V.zip newEigenVec newLowerApprox)
+                newUpperApprox = V.map (\(eigenV, l) -> l + (eigenV * scaleFactor)) zippedEigenLowerApprox
 
             -- check if upperApprox is inductive
                 check newV oldV = newV <= oldV
                   -- prev && 1 / (oldV - newV) >= 0
                   -- prev && (1-eps)*newV + eps <= oldV
                 (inductive, _) = evalEqSys leqSys check newUpperApprox
-            logDebugN $ "Is guess " ++ show currentGuess ++ " inductive? " ++ show inductive
             if inductive
-              then return (True, newUpperApprox)
+              then (True, newUpperApprox)
               else guessAndCheckInductive (maxGuesses - 1)
               
+          (inductive, newUpperApprox) = guessAndCheckInductive (currentIter + 1)
+          adjustedUpperApprox = V.map (* 1.00001) newUpperApprox  
+      
       logDebugN $ "Lower Approximation: " ++ show newLowerApprox
       logDebugN debugMsg
       logDebugN $ "EigenVector: " ++ show newEigenVec
-      (inductive, newUpperApprox) <- guessAndCheckInductive (currentIter + 1)
-      let upperApproxWithKeys = V.zip varsVec . V.map (* 1.00001) $ newUpperApprox
-
       logDebugN $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
         ++ show inductive
-
       if inductive
         then return OVIResult { oviSuccess  = True
                          , oviIters = oviMaxIters settings - maxIters
                          , oviLowerBound = newLowerApprox
-                         , oviUpperBound = upperApproxWithKeys
+                         , oviUpperBound = adjustedUpperApprox
                          }
         else go
              (kleeneEps * oviKleeneDampingFactor settings)
              (powerIterEps * oviPowerIterDampingFactor settings)
              newLowerApprox
-             upperApproxWithKeys
+             adjustedUpperApprox
              (maxIters - 1)
              newEigenVec
 
@@ -263,8 +256,8 @@ oviToRational settings augEqMap@(_, _) f oviRes = do
 
   rleqSys <- toLiveEqMapWith augEqMap (f1 . f)
   -- Convert upper bound to rational
-  let initialRub1 = V.map (\(_, v) -> f1 v) $ oviUpperBound oviRes
-      initialRub2 = V.map (\(_, v) -> f2eps v) $ oviUpperBound oviRes
+  let initialRub1 = V.map f1 $ oviUpperBound oviRes
+      initialRub2 = V.map f2eps $ oviUpperBound oviRes
       checkWithKInd _ _ 0 = return False
       checkWithKInd showF rub kIters  = do
         -- Evaluate equation system

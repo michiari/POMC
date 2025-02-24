@@ -24,6 +24,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , toRationalProbVec
                           , preprocessApproxFixp
                           , containsEquation
+                          , liveVariables
                           ) where
 
 import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
@@ -31,7 +32,6 @@ import Pomc.LogUtils (MonadLogger)
 
 import Data.Maybe (fromJust)
 import Data.Ratio (approxRational)
-import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.IORef (modifyIORef', readIORef, IORef)
 
@@ -43,10 +43,11 @@ import qualified Data.Set as Set
 
 -- a Map that is really strict
 import qualified Data.Strict.Map as M
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', foldMap')
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
+import Data.Monoid (Sum(..))
 
 type VarKey = (Int, Int)
 
@@ -108,15 +109,14 @@ toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
 evalEqSys :: (Ord n, Fractional n)
           => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
 evalEqSys leqMap checkRes src =
-  let computEq eq 
-        | (PushLEq terms) <- eq = sum $ map
-            (\(p, k1, k2) -> p * (either (src V.!) id k1) * (either (src V.!) id k2)
+  let computEq (PushLEq terms) = getSum $ foldMap' 
+            (\(p, k1, k2) -> Sum $ p * (either (src V.!) id k1) * (either (src V.!) id k2)
             ) terms
-        | (ShiftLEq terms) <- eq = sum $ map
-            (\(p, k1) -> p * either (src V.!) id k1) terms
+      computEq (ShiftLEq terms) = getSum $ foldMap'
+            (\(p, k1) -> Sum $ p * either (src V.!) id k1) terms
 
       dest = V.map computEq leqMap
-      checkDest = V.all (uncurry checkRes) (V.zip dest src)
+      checkDest = V.and (V.zipWith checkRes dest src)
   in (checkDest, dest)
 
 approxFixpFrom :: (Ord n, Fractional n, Show n)
@@ -186,22 +186,23 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
       return (upVars, newLiveVars)
 
 approxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
-           => AugEqMap k -> (k -> n) -> n -> Int -> m (ProbVec (VarKey, n))
-approxFixp augEqMap@(_,lVarsRef) f eps maxIters = do
+           => AugEqMap k -> (k -> n) -> n -> Int -> m (ProbVec n)
+approxFixp augEqMap f eps maxIters = do
   leqMap <- toLiveEqMapWith augEqMap f
-  let probVec = approxFixpFrom leqMap eps maxIters (V.replicate (V.length leqMap) 0)
-  lVars <- liftIO $ readIORef lVarsRef
-  return (V.zip (V.fromList . Set.toList $ lVars) probVec)
-
+  return $ approxFixpFrom leqMap eps maxIters (V.replicate (V.length leqMap) 0)
+   
 defaultEps :: EqMapNumbersType
 defaultEps = 0x1p-26 -- ~ 1e-8
 
 defaultMaxIters :: Int
 defaultMaxIters = 1000000
 
-toRationalProbVec :: (RealFrac n) => n -> ProbVec (VarKey, n) -> ProbVec (VarKey, Prob)
-toRationalProbVec eps = V.map (\(k, p) -> (k, approxRational (p - eps) eps))
+toRationalProbVec :: (RealFrac n) => n -> ProbVec n -> ProbVec Prob
+toRationalProbVec eps = V.map (\p -> approxRational (p - eps) eps)
 -- p - eps is to prevent approxRational from producing a result > p
 
 containsEquation :: (MonadIO m) => AugEqMap n -> VarKey -> m Bool
 containsEquation (eqMap, _) varKey = liftIO $ uncurry (MM.member eqMap) varKey
+
+liveVariables :: (MonadIO m) => AugEqMap n ->  m (Vector VarKey)
+liveVariables (_,lVarsRef) = V.fromList . Set.toList <$> liftIO (readIORef lVarsRef)

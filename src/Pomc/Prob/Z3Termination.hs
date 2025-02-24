@@ -533,10 +533,12 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
         startUpper <- startTimer
         logDebugN "Approximating via Value Iteration + z3"
         approxVec <- approxFixp eqs snd defaultEps defaultMaxIters
+        varKeys <- liveVariables eqs 
+        
         let approxFracVec = toRationalProbVec defaultEps approxVec
 
         logDebugN "Asserting lower and upper bounds computed from value iteration, and getting a model"
-        model <- doAssert approxFracVec (min defaultTolerance currentEps)
+        model <- doAssert (V.zip varKeys approxFracVec) (min defaultTolerance currentEps)
 
         -- actual updates
         upperBound <- foldM (\acc (varKey, l) -> do
@@ -546,7 +548,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
           liftIO $ HT.insert m varKey ubAST
           addFixpEq eqs varKey (PopEq (l, pDouble))
           return ((varKey, pDouble):acc)
-          ) [] lowerBound
+          ) [] (V.zip varKeys lowerBound)
 
         tUpper <- stopTimer startUpper upperBound
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
@@ -561,16 +563,18 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
         unless (oviSuccess oviRes || rCertified) $ error "OVI was not successful in computing an upper bound on the termination probabilities"
 
         -- actual updates
-        let bounds = V.zip lowerBound (oviUpperBound oviRes)
-        V.mapM_ ( \((varKey, l), (_, p)) -> do
+        varKeys <- liveVariables eqs
+        let bounds = V.zip3 varKeys lowerBound (oviUpperBound oviRes)
+        upperBoundWithKeys <- V.mapM ( \(varKey, l, p) -> do
           let ub = min (1 :: Double) p
           ubAST <- mkRealNum ub
           liftIO $ HT.insert m varKey ubAST
           addFixpEq eqs varKey (PopEq (l,p))
+          return (varKey, p)
           ) bounds
         tUpper <- stopTimer startUpper True
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
-        return $ V.toList (oviUpperBound oviRes)
+        return $ V.toList upperBoundWithKeys
 
   -- preprocessing phase
   (solvedLVars, _) <- preprocessApproxFixp eqs fst defaultEps (sccLen + 1)

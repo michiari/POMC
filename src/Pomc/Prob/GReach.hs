@@ -330,7 +330,7 @@ weightQuerySCC globals sIdGen delta supports current target = do
 
   -- returning the computed values
   eps <- liftIO $ readIORef (actualEps globals)
-  (lb, ub) <- liftIO $ (\(PopEq (d, c)) -> (approxRational (d - eps) eps, approxRational (c - eps) eps)) . fromJust <$> IOMM.lookupValue (fst $ eqMap globals) actualId (-1)
+  (lb, ub) <- liftIO $ (\(PopEq (d, c)) -> (approxRational (d - eps) eps, approxRational (c + eps) eps)) . fromJust <$> IOMM.lookupValue (fst $ eqMap globals) actualId (-1)
   -- cleaning the hashtable
   deleteFixpEq (eqMap globals) (actualId, -1)
   deleteFixpEq (eqMap globals) (actualId, -2)
@@ -694,6 +694,7 @@ solveSCCQuery sccMembers globals = do
     liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
 
     -- updating lower and upper bounds 
-    let bounds = V.zip approxVec (oviUpperBound oviRes)
-    V.mapM_ (\((k1, l), (_, u)) -> do
-      addFixpEq eqs k1 (PopEq (l,u))) bounds
+    varKeys <- liveVariables eqs
+    let bounds = V.zip3 varKeys approxVec (oviUpperBound oviRes)
+    V.mapM_ (\(varKey, l,u) -> do
+      addFixpEq eqs varKey (PopEq (l,u))) bounds
