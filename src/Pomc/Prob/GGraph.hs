@@ -102,7 +102,7 @@ data AugState pstate =  AugState (StateId pstate) State deriving (Generic, Eq, S
 
 instance Hashable (AugState state) where
   hashWithSalt salt (AugState sId phiState) = hashWithSalt salt $ pack phiState
-    where 
+    where
       pack WState{current = curr, pending = pend, stack = st, mustPush = mP, mustShift = mS, afterPop = aP} = ((getId sId), curr, pend, st, mP, mS, aP)
       pack _ = error "state for finite-string model checking"
 
@@ -252,7 +252,7 @@ buildShift gglobals delta suppGraph isPending sIdMap (gn, p) =
   let fGns = map (suppGraph !) . Set.toList . Set.filter isPending . Set.map to $ internalEdges gn
       fPhiStates = (phiDeltaShift delta) p
       fGnodes = [(gn1, p1) | gn1 <- fGns, p1 <- fPhiStates, (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)]
-  in do 
+  in do
     fromId <- fromJust <$> BH.lookup (ggraphMap gglobals) (gnId gn, p)
     forM_ fGnodes $ \(gn1, p1) -> buildEdge gglobals delta suppGraph isPending sIdMap fromId (PE.empty . proBitenc $ delta) (gn1, p1)
 
@@ -602,9 +602,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
       newIVector <- HT.new
       newScntxs <- HT.new
       newLowerEqMap <- MM.empty
-      newUpperEqMap <- MM.empty
       newLowerLiveVars <- newIORef Set.empty
-      newUpperLiveVars <- newIORef Set.empty
       newEps <- newIORef defaultTolerance
       return GR.WeightedGRobals { GR.idSeq = newIdSeq
                                 , GR.graphMap = newGraphMap
@@ -612,8 +610,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
                                 , GR.bStack = newBStack
                                 , GR.iVector = newIVector
                                 , GR.successorsCntxs = newScntxs
-                                , GR.lowerEqMap = (newLowerEqMap, newLowerLiveVars)
-                                , GR.upperEqMap = (newUpperEqMap, newUpperLiveVars)
+                                , GR.eqMap = (newLowerEqMap, newLowerLiveVars)
                                 , GR.actualEps = newEps
                                 , GR.stats = stats
                                 }
@@ -744,7 +741,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
             -- push edges in the support Graph
             maybePPush = Set.lookupLE (Edge (graphNode toG) 0) $ internalEdges gn
             probPush = prob $ fromJust maybePPush
-            isPushEdge = isJust maybePPush && to (fromJust maybePPush) == (graphNode toG) && 
+            isPushEdge = isJust maybePPush && to (fromJust maybePPush) == graphNode toG &&
               elem (phiNode toG) (phiDeltaPush delta $ phiNode g)
             encodePushTrans = do
               lT <- encodeTransition [probPush, pendProbsLB ! (graphNode toG)] [pendProbsUB V.! (graphNode g)] tolVar
@@ -810,7 +807,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
         lEqOne <- mkEq lvar =<< mkRational (1 :: Prob)
         uEqOne <- mkEq uvar =<< mkRational (1 :: Prob)
         return [lEqOne, uEqOne]
-      else do 
+      else do
         transitions <- mapM pushEnc fNodes
         lEq <- mkGe lvar =<< mkAdd (map fst . concat $ transitions)
         uEq <- mkLe uvar =<< mkAdd (map snd . concat $ transitions)
@@ -855,7 +852,7 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g gn pendProbsLB pendProbsUB =
         lEqOne <- mkEq lvar =<< mkRational (1 :: Prob)
         uEqOne <- mkEq uvar =<< mkRational (1 :: Prob)
         return [lEqOne, uEqOne]
-      else do 
+      else do
         transitions <- mapM shiftEnc fNodes
         lEq <- mkGe lvar =<< mkAdd (map fst transitions)
         uEq <- mkLe uvar =<< mkAdd (map snd transitions)

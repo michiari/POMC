@@ -292,8 +292,7 @@ data WeightedGRobals state = WeightedGRobals
   , bStack     :: IOStack Int
   , iVector    :: HT.BasicHashTable Int Int
   , successorsCntxs :: HT.BasicHashTable Int IntSet
-  , upperEqMap :: AugEqMap EqMapNumbersType
-  , lowerEqMap :: AugEqMap EqMapNumbersType
+  , eqMap :: AugEqMap (EqMapNumbersType,EqMapNumbersType)
   , actualEps :: IORef EqMapNumbersType
   , stats :: STRef RealWorld Stats
   }
@@ -331,13 +330,10 @@ weightQuerySCC globals sIdGen delta supports current target = do
 
   -- returning the computed values
   eps <- liftIO $ readIORef (actualEps globals)
-  lb <- liftIO $ (\(PopEq d) -> approxRational (d - eps) eps) . fromJust <$> IOMM.lookupValue (fst $ lowerEqMap globals) actualId (-1)
-  ub <- liftIO $ (\(PopEq d) -> approxRational (d + eps) eps) . fromJust <$> IOMM.lookupValue (fst $ upperEqMap globals) actualId (-1)
+  (lb, ub) <- liftIO $ (\(PopEq (d, c)) -> (approxRational (d - eps) eps, approxRational (c - eps) eps)) . fromJust <$> IOMM.lookupValue (fst $ eqMap globals) actualId (-1)
   -- cleaning the hashtable
-  deleteFixpEq (lowerEqMap globals) (actualId, -1)
-  deleteFixpEq (upperEqMap globals) (actualId, -1)
-  deleteFixpEq (lowerEqMap globals) (actualId, -2)
-  deleteFixpEq (upperEqMap globals) (actualId, -2)
+  deleteFixpEq (eqMap globals) (actualId, -1)
+  deleteFixpEq (eqMap globals) (actualId, -2)
   let truncatedLB = min 1 lb
       truncatedUB = min 1 ub
 
@@ -470,7 +466,7 @@ createComponent globals sIdGen delta supports popContxs semiconfId = do
           -- insertedVars <- map (snd . fromJust) <$> forM toEncode (\(s, _, rc) -> lookupVar sccMembers globals (decode s) rc)
           -- when (or insertedVars) $ error "inserting a variable that has already been encoded"
           -- little optimization trick
-          forM_ toEncode (\ (QuantVariable _ varKey) -> addFixpEq (lowerEqMap globals) varKey (PushEq []))
+          forM_ toEncode (\ (QuantVariable _ varKey) -> addFixpEq (eqMap globals) varKey (PushEq []))
           encode toEncodeSet globals sIdGen delta supports sccMembers
 
         solveSCCQuery sccMembers globals
@@ -512,9 +508,8 @@ encode unencodedVars globals sIdGen delta supports sccMembers
           | precRel == Just Take = do
               distr <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p, prob_)) $ (deltaPop delta) qState gState
               let e = Map.findWithDefault 0 (snd varKey) (Map.fromList distr)
-              addFixpEq (lowerEqMap globals) varKey $ PopEq $ fromRational e
+              addFixpEq (eqMap globals) varKey $ PopEq $ (fromRational e, fromRational e)
               liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
-              addFixpEq (upperEqMap globals) varKey $ PopEq $ fromRational e
               return Set.empty
               -- logDebugN $ "Encoding PopSemiconf: " ++ show varKey ++ " = PopEq " ++ show e
 
@@ -554,13 +549,13 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
 
     let suppInfo = zip3 suppEnds suppEndsIds (map (, rightContext) suppSemiconfsIds)
     suppVarKeys  <- foldM (\acc (s, sId, varKey) -> do
-      previouslyEncoded <- containsEquation (lowerEqMap globals) varKey
+      previouslyEncoded <- containsEquation (eqMap globals) varKey
       let quantVar = QuantVariable (s, g) varKey
           cases
             | previouslyEncoded = return $ (sId, varKey):acc
             | IntSet.notMember (fst varKey) sccMembers = return acc
             | otherwise = do
-              addFixpEq (lowerEqMap globals) varKey (PushEq [])
+              addFixpEq (eqMap globals) varKey (PushEq [])
               modifyIORef' newUnencoded $ Set.insert quantVar
               return $ (sId, varKey):acc
       cases
@@ -571,13 +566,13 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
       let decoded = (decodeStateId p, c, d)
       id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
       let varKey = (id_, suppRC)
-      previouslyEncoded <- containsEquation (lowerEqMap globals) varKey
+      previouslyEncoded <- containsEquation (eqMap globals) varKey
       let quantVar = QuantVariable (p, newG) varKey
           cases
             | previouslyEncoded = return $ (prob_, varKey):acc
             | IntSet.notMember id_ sccMembers = return acc
             | otherwise = do
-              addFixpEq (lowerEqMap globals) varKey (PushEq [])
+              addFixpEq (eqMap globals) varKey (PushEq [])
               modifyIORef' newUnencoded $ Set.insert quantVar
               return $ (prob_, varKey):acc
       cases
@@ -588,11 +583,10 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
                   (prob_, pushVarKey) <- pushVarKeys,
                   snd pushVarKey == suppSId
                 ]
-        pushEq | null terms = PopEq 0
+        pushEq | null terms = PopEq (0, 0)
                | otherwise = PushEq terms
-    addFixpEq (lowerEqMap globals) (semiconfId, rightContext) pushEq
+    addFixpEq (eqMap globals) (semiconfId, rightContext) pushEq
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
-    addFixpEq (upperEqMap globals) (semiconfId, rightContext) pushEq
     readIORef newUnencoded
 
 encodeInitialPush :: (SatState state, Eq state, Hashable state, Show state)
@@ -610,19 +604,17 @@ encodeInitialPush globals sIdGen delta q _ semiconfId suppId  =
         pushEnc terms (p, prob_) =
           let dest = (p, Just (qProps, q)) in do
             pushId <- fromJust <$> HT.lookup (graphMap globals) (decode dest)
-            present <- containsEquation (lowerEqMap globals) (pushId, suppId)
+            present <- containsEquation (eqMap globals) (pushId, suppId)
             if present
               then return $ (prob_, (pushId, suppId), (semiconfId, -2)):terms
               else return terms
     in do
       newStates <- mapM (\(unwrapped, prob_) -> (,prob_) <$> stToIO (wrapState sIdGen unwrapped)) $ (deltaPush delta) qState
       terms <- foldM pushEnc [] newStates
-      addFixpEq (lowerEqMap globals) (semiconfId, -1) $ PushEq terms
-      addFixpEq (upperEqMap globals) (semiconfId, -1) $ PushEq terms
+      addFixpEq (eqMap globals) (semiconfId, -1) $ PushEq terms
       -- logDebugN $ "Encoding initial push:" ++ show terms
-      addFixpEq (lowerEqMap globals) (semiconfId, -2) $ PopEq (1 :: Double)
+      addFixpEq (eqMap globals) (semiconfId, -2) $ PopEq (1,1)
       liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
-      addFixpEq (upperEqMap globals) (semiconfId, -2) $ PopEq (1 :: Double)
 
 encodeShift :: (SatState state, Eq state, Hashable state, Show state)
   => WeightedGRobals state
@@ -641,12 +633,12 @@ encodeShift globals sIdGen delta _ g qState fromVarKey sccMembers =
             decoded = decode dest
         id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
         let varKey = (id_, snd fromVarKey)
-        previouslyEncoded <- containsEquation (lowerEqMap globals) varKey
+        previouslyEncoded <- containsEquation (eqMap globals) varKey
         let cases
               | previouslyEncoded = return (newVars, (prob_, varKey):terms)
               | IntSet.notMember id_ sccMembers = return (newVars, terms)
               | otherwise = do 
-                addFixpEq (lowerEqMap globals) varKey (PushEq [])
+                addFixpEq (eqMap globals) varKey (PushEq [])
                 return ( Set.insert (QuantVariable dest varKey) newVars,
                   (prob_, varKey):terms)
         cases
@@ -655,9 +647,8 @@ encodeShift globals sIdGen delta _ g qState fromVarKey sccMembers =
     (unencodedVars, terms) <- foldM shiftEnc (Set.empty, []) newStates
     let shiftEq | null terms = error "shift semiconfs should go somewhere!"
                 | otherwise = ShiftEq terms
-    addFixpEq (lowerEqMap globals) fromVarKey shiftEq
+    addFixpEq (eqMap globals) fromVarKey shiftEq
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
-    addFixpEq (upperEqMap globals) fromVarKey shiftEq
     -- logDebugN $ "Encoding shift: " ++ show fromVarKey ++ " = ShiftEq " ++ show terms
     return unencodedVars
 
@@ -666,43 +657,43 @@ solveSCCQuery :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state
 solveSCCQuery sccMembers globals = do
   let sccLen = IntSet.size sccMembers
       epsVar = actualEps globals
-      lEqMap = lowerEqMap globals
-      uEqMap = upperEqMap globals
+      eqs = eqMap globals
 
   currentEps <- liftIO $ readIORef epsVar
   let iterEps = min defaultEps $ currentEps * currentEps
 
   -- preprocessing to solve variables that do not need ovi
-  _ <- preprocessApproxFixp lEqMap iterEps (sccLen + 1)
-  (_, unsolvedVars) <- preprocessApproxFixp uEqMap iterEps (sccLen + 1)
+  (solvedLVars, _) <- preprocessApproxFixp eqs fst iterEps (sccLen + 1)
+  (solvedUvars, unsolvedVars) <- preprocessApproxFixp eqs snd iterEps (sccLen + 1)
+
+  let zipSolved = zip solvedLVars solvedUvars
+  liftIO $ forM_ zipSolved $ \((k1, l), (_, u)) -> do
+    addFixpEq eqs k1 (PopEq (l,u))
 
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCountQuant = acc} -> s{largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
 
-  -- lEqMap and uEqMap should be the same here
   unless (null unsolvedVars) $ do
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCountQuant = acc} -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars}
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCountQuant = acc } -> s{ largestSCCNonTrivialEqsCountQuant = max acc (length unsolvedVars) }
     startWeights <- startTimer
 
-    -- computing lower bounds
-    approxVec <- approxFixp lEqMap iterEps defaultMaxIters
+    -- compute lower bounds
+    approxVec <- approxFixp eqs fst iterEps defaultMaxIters
 
-    -- computing upper bounds
+    -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
-    oviRes <- ovi defaultOVISettingsDouble uEqMap
+    oviRes <- ovi defaultOVISettingsDouble eqs snd
 
-    rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
+    -- certify the result and compute some statistics
+    rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
     unless rCertified $ error "cannot deduce a rational certificate for this SCC when computing fraction f"
-
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
-
+    logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
     tWeights <- stopTimer startWeights rCertified
     liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
 
-    -- updating lower bounds 
-    V.mapM_ (\(varKey, p) -> addFixpEq lEqMap varKey (PopEq p)) approxVec
-
-    -- updating upper bounds
-    V.mapM_ (\(varKey, p) -> addFixpEq uEqMap varKey (PopEq p)) (oviUpperBound oviRes)
-    logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
+    -- updating lower and upper bounds 
+    let bounds = V.zip approxVec (oviUpperBound oviRes)
+    V.mapM_ (\((k1, l), (_, u)) -> do
+      addFixpEq eqs k1 (PopEq (l,u))) bounds

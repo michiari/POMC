@@ -126,8 +126,8 @@ monomialDerivative m x = case m of -- ugly but it works
 
 -- compute (J|v + I) x, where J|v is the Jacobian of leqSys evaluated on v,
 -- I is the identity matrix, and x is the vector of all variables
-jacobiTimesX :: (Num n) => AugEqMap n -> LEqSys n -> ProbVec n -> PolyVector n
-jacobiTimesX (_, _) leqSys v =
+jacobiTimesX :: (Num n) => LEqSys n -> ProbVec n -> PolyVector n
+jacobiTimesX leqSys v =
   let jtxMonomial lmon (Left key) = [Lin coeff key]
         where coeff = evalMonomial v (monomialDerivative lmon key)
       jtxMonomial _ _ = []
@@ -167,18 +167,18 @@ powerIterate eps maxIters matrix oldEV =
   in go oldEV 0 maxIters
 
 computeEigen :: (Fractional n, Ord n, Show n)
-             => AugEqMap n -> LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> (ProbVec n, n, Int)
-computeEigen augEqMap leqSys eps maxIters lowerApprox eigenVec =
-  let matrix = jacobiTimesX augEqMap leqSys lowerApprox
+             =>  LEqSys n -> n -> Int -> ProbVec n -> ProbVec n -> (ProbVec n, n, Int)
+computeEigen leqSys eps maxIters lowerApprox eigenVec =
+  let matrix = jacobiTimesX leqSys lowerApprox
       (newEigenVec, eigenVal, iters) = powerIterate eps maxIters matrix eigenVec
   in (newEigenVec, eigenVal - 1, iters) -- -1 because we added the identity matrix
 
 ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n, Num n)
-    => OVISettings n -> AugEqMap n -> m (OVIResult n)
-ovi settings augEqMap@(_, lVarsRef) = do
+    => OVISettings n -> AugEqMap k -> (k -> n) -> m (OVIResult n)
+ovi settings augEqMap@(_, lVarsRef) f = do
 
   -- create system containing only live equations
-  leqSys <- toLiveEqMap augEqMap
+  leqSys <- toLiveEqMapWith augEqMap f
   logDebugN $ "Identified " ++ show (V.length leqSys) ++ " live variables..."
   lVars <- liftIO $ readIORef lVarsRef
   let
@@ -196,8 +196,8 @@ ovi settings augEqMap@(_, lVarsRef) = do
       let currentIter = oviMaxIters settings - maxIters
       logDebugN $ "Starting OVI iteration " ++ show currentIter
 
-      let newLowerApprox = approxFixpFrom augEqMap leqSys kleeneEps (oviMaxKleeneIters settings) lowerApprox
-          (newEigenVec, eigenVal, iters) = computeEigen augEqMap leqSys powerIterEps (oviMaxPowerIters settings)
+      let newLowerApprox = approxFixpFrom leqSys kleeneEps (oviMaxKleeneIters settings) lowerApprox
+          (newEigenVec, eigenVal, iters) = computeEigen leqSys powerIterEps (oviMaxPowerIters settings)
                   newLowerApprox oldEigenVec -- modifies eigenVec
           debugMsg 
             | iters == 0 = "Power Iteration exhausted!"
@@ -250,8 +250,8 @@ ovi settings augEqMap@(_, lVarsRef) = do
   go (oviKleeneEps settings) (oviPowerIterEps settings) lowerApproxInitial upperApproxInitial (oviMaxIters settings) eigenVecInitial
 
 oviToRational :: (MonadIO m, MonadLogger m, Ord n, RealFrac n, Show n, RealFloat n)
-                       => OVISettings n -> AugEqMap n -> OVIResult n -> m Bool
-oviToRational settings augEqMap@(_, _) oviRes = do
+                       => OVISettings n -> AugEqMap k -> (k -> n) -> OVIResult n -> m Bool
+oviToRational settings augEqMap@(_, _) f oviRes = do
   let eps = oviRationalApproxEps settings
       -- two solutions for approximating the floating point upper bound with rational values
       f1 p = case realFloatToRational p of
@@ -261,7 +261,7 @@ oviToRational settings augEqMap@(_, _) oviRes = do
       showF1 = "realFloatToRational"
       showF2 = "approxRational + eps"
 
-  rleqSys <- toLiveEqMapWith augEqMap f1
+  rleqSys <- toLiveEqMapWith augEqMap (f1 . f)
   -- Convert upper bound to rational
   let initialRub1 = V.map (\(_, v) -> f1 v) $ oviUpperBound oviRes
       initialRub2 = V.map (\(_, v) -> f2eps v) $ oviUpperBound oviRes

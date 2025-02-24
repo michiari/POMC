@@ -43,6 +43,7 @@ import qualified Data.Vector.Mutable as MV
 import Data.Vector((!))
 import qualified Data.Vector as V
 import Data.Ratio (approxRational)
+import Data.Bifunctor(first)
 
 import Z3.Monad
 import Data.IORef (IORef, newIORef, modifyIORef', readIORef, writeIORef)
@@ -73,15 +74,14 @@ mkAdd1 = mkOp1 mkAdd
 
 -- (Z3 Var, was it already present?)
 lookupVar :: MonadZ3 z3
-          => VarMap -> (AugEqMap EqMapNumbersType, AugEqMap EqMapNumbersType) -> VarKey
+          => VarMap -> AugEqMap (EqMapNumbersType, EqMapNumbersType) -> VarKey
           -> z3 (Maybe (AST, Bool))
-lookupVar (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) key = do
+lookupVar (varMap, sccMembers, encodeInitial) eqMap key = do
   maybeVar <- liftIO $ HT.lookup varMap key
   let cases
         | isJust maybeVar = return $ Just (fromJust maybeVar, True)
         | snd key == -1 && encodeInitial = do
-            addFixpEq leqMap key (PopEq 1)
-            addFixpEq uEqMap key (PopEq 1)
+            addFixpEq eqMap key (PopEq (1,1))
             var <- mkRealNum (1 :: EqMapNumbersType)
             liftIO $ HT.insert varMap key var
             return $ Just (var, True)
@@ -97,7 +97,7 @@ lookupVar (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) key = do
 encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)
        => [(Int, Int)]
        -> VarMap
-       -> (AugEqMap EqMapNumbersType, AugEqMap EqMapNumbersType)
+       -> AugEqMap (EqMapNumbersType, EqMapNumbersType)
        -> SupportGraph state
        -> EncPrecFunc
        -> (AST -> AST -> z3 AST)
@@ -105,7 +105,7 @@ encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, S
        -> Int
        -> z3 Int
 encode [] _ _ _ _ _ _ count = return count
-encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 count = do
+encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) eqs graph precFun mkComp useZ3 count = do
   let varKey = (gnId_, rightContext)
   var <- liftIO $ fromJust <$> HT.lookup m varKey
   let gn = graph ! gnId_
@@ -117,10 +117,10 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) (lowerEqMap, upperEqMa
             error "Never encode semiconfs with bottom stack, apart from the initial one"
 
         | isNothing g || precRel == Just Yield =
-            encodePush graph varMap (lowerEqMap, upperEqMap) mkComp gn varKey var useZ3
+            encodePush graph varMap eqs mkComp gn varKey var useZ3
 
         | precRel == Just Equal =
-            encodeShift varMap (lowerEqMap, upperEqMap) mkComp gn varKey var useZ3
+            encodeShift varMap eqs mkComp gn varKey var useZ3
 
         | precRel == Just Take = do
             let e = Map.findWithDefault 0 rightContext (popContexts gn)
@@ -128,26 +128,25 @@ encode ((gnId_, rightContext):unencoded) varMap@(m, _, _) (lowerEqMap, upperEqMa
               solvedVar <- mkRealNum e
               liftIO $ HT.insert m varKey solvedVar
 
-            addFixpEq lowerEqMap varKey $ PopEq $ fromRational e
-            addFixpEq upperEqMap varKey $ PopEq $ fromRational e
+            addFixpEq eqs varKey $ PopEq $ (fromRational e, fromRational e)
             return [] -- pop transitions do not generate new variables
 
         | otherwise = fail "unexpected prec rel"
   newUnencoded <- cases
-  encode (newUnencoded ++ unencoded) varMap (lowerEqMap, upperEqMap) graph precFun mkComp useZ3 (count + 1)
+  encode (newUnencoded ++ unencoded) varMap eqs graph precFun mkComp useZ3 (count + 1)
 
 -- encoding helpers --
 encodePush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
            => SupportGraph state
            -> VarMap
-           -> (AugEqMap EqMapNumbersType, AugEqMap EqMapNumbersType)
+           -> AugEqMap (EqMapNumbersType, EqMapNumbersType)
            -> (AST -> AST -> z3 AST)
            -> GraphNode state
            -> VarKey
            -> AST
            -> Bool
            -> z3 [(Int, Int)]
-encodePush graph (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) mkComp  gn varKey@(_, rightContext) var useZ3 =
+encodePush graph (varMap, sccMembers, encodeInitial) eqs mkComp  gn varKey@(_, rightContext) var useZ3 =
   let pushSemiconfs = Set.toList $ Set.map (\e -> (gnId $ graph ! to e, prob e)) (internalEdges gn)
       suppSemiconfs = Set.toList $ Set.map (\e -> graph ! to e) (supportEdges gn)
       suppEndsIds = map (getId . fst . semiconf) suppSemiconfs
@@ -161,8 +160,7 @@ encodePush graph (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) mkComp  gn
         let cases
               | isJust maybeVar = return $ (fromJust maybeVar, sId, varKey):acc
               | snd varKey == -1 && encodeInitial = do
-                  addFixpEq leqMap varKey (PopEq 1)
-                  addFixpEq uEqMap varKey (PopEq 1)
+                  addFixpEq eqs varKey (PopEq (1,1))
                   var <- mkRealNum (1 :: EqMapNumbersType)
                   liftIO $ HT.insert varMap varKey var
                   return $ (var, sId, varKey):acc
@@ -181,8 +179,7 @@ encodePush graph (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) mkComp  gn
           cases
               | isJust maybeVar = return $ (fromJust maybeVar, prob_, rc, varKey):acc
               | snd varKey == -1 && encodeInitial = do
-                  addFixpEq leqMap varKey (PopEq 1)
-                  addFixpEq uEqMap varKey (PopEq 1)
+                  addFixpEq eqs varKey (PopEq (1,1))
                   newVar <- mkRealNum (1 :: EqMapNumbersType)
                   liftIO $ HT.insert varMap varKey newVar
                   return $ (newVar, prob_, rc, varKey):acc
@@ -206,7 +203,7 @@ encodePush graph (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) mkComp  gn
                     rc == suppSId
                   ]
         emptyPush = null terms
-        pushEq | emptyPush = PopEq 0
+        pushEq | emptyPush = PopEq (0, 0)
                | otherwise = PushEq terms
         encodePush (prob_, pushTerm, suppVarKey) = do
             probReal <- mkRealNum prob_
@@ -224,20 +221,19 @@ encodePush graph (varMap, sccMembers, encodeInitial) (leqMap, uEqMap) mkComp  gn
           -- logDebugN $ "Asserting Push equation: " ++ eqString
           assert eq
     ---
-    addFixpEq leqMap varKey pushEq
-    addFixpEq uEqMap varKey pushEq
+    addFixpEq eqs varKey pushEq
     liftIO $ readIORef newUnencoded
 
 encodeShift :: (MonadZ3 z3, Eq state, Hashable state, Show state)
             => VarMap
-            -> (AugEqMap EqMapNumbersType, AugEqMap EqMapNumbersType)
+            -> AugEqMap (EqMapNumbersType, EqMapNumbersType)
             -> (AST -> AST -> z3 AST)
             -> GraphNode state
             -> VarKey
             -> AST
             -> Bool
             -> z3 [(Int, Int)]
-encodeShift (varMap, sccMembers, encodeInitial) (lEqMap, uEqMap) mkComp gn varKey@(_, rightContext) var useZ3 =
+encodeShift (varMap, sccMembers, encodeInitial) eqs mkComp gn varKey@(_, rightContext) var useZ3 =
   let shiftEnc (currs, newVars, terms) e = do
         let toKey = (to e, rightContext)
         maybeVar <- liftIO $ HT.lookup varMap toKey
@@ -248,8 +244,7 @@ encodeShift (varMap, sccMembers, encodeInitial) (lEqMap, uEqMap) mkComp gn varKe
                 trans <- encodeTransition e toVar
                 return (trans:currs, newVars, (prob_, toKey):terms)
               | snd toKey == -1 && encodeInitial = do
-                  addFixpEq lEqMap toKey (PopEq 1)
-                  addFixpEq uEqMap toKey (PopEq 1)
+                  addFixpEq eqs toKey (PopEq (1,1))
                   newvar <- mkRealNum (1 :: EqMapNumbersType)
                   trans <- encodeTransition e newvar
                   liftIO $ HT.insert varMap toKey newvar
@@ -273,8 +268,7 @@ encodeShift (varMap, sccMembers, encodeInitial) (lEqMap, uEqMap) mkComp gn varKe
     -- logDebugN $ show varKey ++ " = ShiftEq " ++ show terms
     let shiftEq | null terms = error "shift semiconfs should go somewhere!"
                 | otherwise = ShiftEq terms
-    addFixpEq lEqMap varKey shiftEq
-    addFixpEq uEqMap varKey shiftEq
+    addFixpEq eqs varKey shiftEq
     return unencodedVars
 -- end
 
@@ -294,8 +288,7 @@ data DeficientGlobals state = DeficientGlobals
   , mustReachPop :: IORef IntSet
   , partialVarMap :: PartialVarMap
   , rewVarMap :: RewVarMap
-  , upperEqMap :: AugEqMap EqMapNumbersType
-  , lowerEqMap :: AugEqMap EqMapNumbersType
+  , eqMap :: AugEqMap (EqMapNumbersType, EqMapNumbersType)
   , eps :: IORef EqMapNumbersType
   , stats :: STRef RealWorld Stats
   }
@@ -312,10 +305,8 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   newIVec            <- liftIO $ MV.replicate (V.length suppGraph) 0
   newSuccessorsCntxs <- liftIO $ MV.replicate (V.length suppGraph) IntSet.empty
   newMap <- liftIO HT.new
-  newUpperEqMap <- liftIO MM.empty
-  newLowerEqMap <- liftIO MM.empty
-  newLowerLiveVars <- liftIO $ newIORef Set.empty
-  newUpperLiveVars <- liftIO $ newIORef Set.empty
+  newEqMap <- liftIO MM.empty
+  newLiveVars <- liftIO $ newIORef Set.empty
   emptyMustReachPop <- liftIO $ newIORef IntSet.empty
   newRewVarMap <- liftIO HT.new
   newEps <- liftIO $ newIORef defaultEps
@@ -326,8 +317,7 @@ terminationQuerySCC suppGraph precFun query oldStats = do
                                 , mustReachPop = emptyMustReachPop
                                 , partialVarMap = (newMap, encodeInitialSemiconf query)
                                 , rewVarMap = newRewVarMap
-                                , upperEqMap = (newUpperEqMap, newUpperLiveVars)
-                                , lowerEqMap = (newLowerEqMap, newLowerLiveVars)
+                                , eqMap = (newEqMap, newLiveVars)
                                 , eps = newEps
                                 , stats = oldStats
                                 }
@@ -352,21 +342,23 @@ terminationQuerySCC suppGraph precFun query oldStats = do
       intervalLogic (lb, _) Gt p = lb > p
       intervalLogic (_, ub) Le p = ub <= p
       intervalLogic (lb, _) Ge p = lb >= p
+      approxL (v, _) = approxRational (v - actualEps) actualEps
+      approxU (_, v) = approxRational (v + actualEps) actualEps
       readResults (ApproxAllQuery SMTWithHints) = do
         upperProbRationalMap <- GeneralMap.fromList <$> (mapM (\(varKey, varAST) -> do
             pRational <- extractUpperProb varAST
             return (varKey, pRational)) =<< liftIO (HT.toList newMap))
-        lowerProbMap <- liftIO $ GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newLowerEqMap
-        let lowerProbRationalMap = GeneralMap.map (\v -> approxRational (v - actualEps) actualEps) lowerProbMap
+        probMap <- liftIO $ GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newEqMap
+        let lowerProbRationalMap = GeneralMap.map approxL probMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
       readResults (ApproxSingleQuery SMTWithHints) = do
         ub <- if isAST then return 1 else extractUpperProb . fromJust =<< liftIO (HT.lookup newMap (0,-1))
-        lb <- if isAST then return 1 else liftIO $ (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap 0 (-1)
+        lb <- if isAST then return 1 else liftIO $ (\(PopEq d) -> approxL d) . fromJust <$> MM.lookupValue newEqMap 0 (-1)
         return (ApproxSingleResult (lb, ub), mustReachPopIdxs)
       readResults (CompQuery comp bound SMTWithHints) = do
         ub <- if isAST then return 1 else extractUpperProb . fromJust =<< liftIO (HT.lookup newMap (0,-1))
         logInfoN $ "Computed upper bound: " ++ show ub
-        lb <- if isAST then return 1 else liftIO $  (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap 0 (-1)
+        lb <- if isAST then return 1 else liftIO $  (\(PopEq d) -> approxL d) . fromJust <$> MM.lookupValue newEqMap 0 (-1)
         logInfoN $ "Computed lower bound: " ++ show lb
         logInfoN $ "Comparing: " ++ show comp ++ " " ++ show bound
         return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
@@ -374,24 +366,19 @@ terminationQuerySCC suppGraph precFun query oldStats = do
       readResults (ApproxSingleQuery ExactSMTWithHints) = readResults (ApproxSingleQuery SMTWithHints)
       readResults (CompQuery comp bound ExactSMTWithHints) = readResults (CompQuery comp bound SMTWithHints)
       readResults (ApproxAllQuery OVI) = liftIO $ do
-        upperProbMap <- GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newUpperEqMap
-        let upperProbRationalMap = GeneralMap.map (\v -> approxRational (v + actualEps) actualEps) upperProbMap
-        lowerProbMap <- GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newLowerEqMap
-        let lowerProbRationalMap = GeneralMap.map (\v -> approxRational (v - actualEps) actualEps) lowerProbMap
+        probMap <- GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newEqMap
+        let upperProbRationalMap = GeneralMap.map approxU probMap
+        let lowerProbRationalMap = GeneralMap.map approxL probMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
       readResults (ApproxSingleQuery OVI) = liftIO $ do
-        ub <- if isAST then return 1 else (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> MM.lookupValue newUpperEqMap  0 (-1)
-        lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap  0 (-1)
+        (lb, ub) <- if isAST then return (1,1) else (\(PopEq v) -> (approxL v, approxU v)) . fromJust <$> MM.lookupValue newEqMap 0 (-1)
         return (ApproxSingleResult (lb, ub), mustReachPopIdxs)
       readResults (CompQuery comp bound OVI) = liftIO $ do
-        ub <- if isAST then return 1 else (\(PopEq d) -> approxRational (d + actualEps) actualEps) . fromJust <$> MM.lookupValue newUpperEqMap  0 (-1)
-        lb <- if isAST then return 1 else (\(PopEq d) -> approxRational (d - actualEps) actualEps) . fromJust <$> MM.lookupValue newLowerEqMap  0 (-1)
+        (lb, ub) <- if isAST then return (1,1) else (\(PopEq v) -> (approxL v, approxU v)) . fromJust <$> MM.lookupValue newEqMap 0 (-1)
         return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
 
-  lowerVars <- liftIO $ MM.foldMaps newLowerEqMap
-  upperVars <- liftIO $ MM.foldMaps newUpperEqMap
-  logInfoN $ "Number of variables for lower bound: " ++ show (GeneralMap.size lowerVars)
-  logInfoN $ "Number of variables for upper bound: " ++ show (GeneralMap.size upperVars)
+  vars <- liftIO $ MM.foldMaps newEqMap
+  logInfoN $ "Number of variables for lower/upper bound: " ++ show (GeneralMap.size vars)
   readResults query
 
 dfs :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)
@@ -454,8 +441,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
   topB <- liftIO $ ZS.peek $ bStack globals
   iVal <- liftIO $ MV.unsafeRead (iVector globals) (gnId gn)
   let (varMap, encodeInitial) = partialVarMap globals
-      lEqMap = lowerEqMap globals
-      uEqMap = upperEqMap globals
+      eqs = eqMap globals
       mkComp = (if exactEq then mkEq else mkGe)
       createC = do
         liftIO $ ZS.pop_ (bStack globals)
@@ -471,11 +457,11 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
       doEncode poppedEdges  = do
         let toEncode = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
             sccMembers = IntSet.fromList poppedEdges
-        insertedVars <- map (snd . fromJust) <$> forM toEncode (lookupVar (varMap, sccMembers, encodeInitial) (lEqMap, uEqMap))
+        insertedVars <- map (snd . fromJust) <$> forM toEncode (lookupVar (varMap, sccMembers, encodeInitial) eqs)
         when (or insertedVars ) $ error "inserting a variable that has already been encoded"
         -- delete previous assertions and encoding the new ones
         reset
-        eqsCount <- encode toEncode (varMap, sccMembers, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3 0
+        eqsCount <- encode toEncode (varMap, sccMembers, encodeInitial) eqs suppGraph precFun mkComp useZ3 0
         liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
         actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, sccMembers, encodeInitial) globals precFun (useZ3, exactEq)
         when actualMustReachPop $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef' (mustReachPop globals) $ IntSet.insert e
@@ -486,7 +472,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
             var <- mkFreshRealVar "(0,-1)" -- by convention, we give rightContext -1 to the initial state
             liftIO $ HT.insert varMap (0, -1) var
             reset
-            eqsCount <- encode [(0, -1)] (varMap, IntSet.singleton 0, encodeInitial) (lowerEqMap globals, upperEqMap globals) suppGraph precFun mkComp useZ3 0
+            eqsCount <- encode [(0, -1)] (varMap, IntSet.singleton 0, encodeInitial) eqs suppGraph precFun mkComp useZ3 0
             liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
             actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
             return (popContxs, actualMustReachPop)
@@ -511,19 +497,15 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
   --logDebugN $ "New variables of this SCC: " ++ show variables
   currentEps <- liftIO $ readIORef (eps globals)
 
-  let lEqMap = lowerEqMap globals
-      uEqMap = upperEqMap globals
+  let eqs = eqMap globals
       rVarMap = rewVarMap globals
       augTolerance = 100 * defaultTolerance
       sccLen = IntSet.size sccMembers
       cases unsolvedVars
         | null unsolvedVars = logDebugN "No equation system has to be solved here, just propagated all the values." >> return []
-        | useZ3 = updateLowerBound >> updateUpperBoundsZ3
-        | otherwise = updateLowerBound >> updateUpperBoundsOVI
-      updateLowerBound = do
-        -- updating lower bounds
-        approxVec <- approxFixp lEqMap defaultEps defaultMaxIters
-        liftIO $ V.mapM_ (\(varKey, p) -> addFixpEq lEqMap varKey (PopEq p)) approxVec
+        | useZ3 = updateLowerBound >>= updateUpperBoundsZ3
+        | otherwise = updateLowerBound >>= updateUpperBoundsOVI
+      updateLowerBound = approxFixp eqs fst defaultEps defaultMaxIters
       --
       doAssert approxFracVec currentEps = do
         push -- create a backtracking point
@@ -547,55 +529,58 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
             | otherwise -> error "Maximum tolerance reached when solving SCC"
           _ -> error "Undefinite result when checking an SCC"
       --
-      updateUpperBoundsZ3 = do
+      updateUpperBoundsZ3 lowerBound = do
         startUpper <- startTimer
         logDebugN "Approximating via Value Iteration + z3"
-        approxVec <- approxFixp uEqMap defaultEps defaultMaxIters
+        approxVec <- approxFixp eqs snd defaultEps defaultMaxIters
         let approxFracVec = toRationalProbVec defaultEps approxVec
 
         logDebugN "Asserting lower and upper bounds computed from value iteration, and getting a model"
         model <- doAssert approxFracVec (min defaultTolerance currentEps)
 
         -- actual updates
-        upperBound <- foldM (\acc (varKey, _) -> do
+        upperBound <- foldM (\acc (varKey, l) -> do
           varAST <- liftIO $ fromJust <$> HT.lookup m varKey
           ubAST <- fromJust <$> eval model varAST
           pDouble <- extractUpperDouble ubAST
           liftIO $ HT.insert m varKey ubAST
-          addFixpEq uEqMap varKey (PopEq pDouble)
+          addFixpEq eqs varKey (PopEq (l, pDouble))
           return ((varKey, pDouble):acc)
-          ) [] approxVec
+          ) [] lowerBound
 
         tUpper <- stopTimer startUpper upperBound
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
         return upperBound
       --
-      updateUpperBoundsOVI = do
+      updateUpperBoundsOVI lowerBound = do
         startUpper <- startTimer
         logDebugN "Using OVI to update upper bounds"
-        oviRes <- ovi defaultOVISettingsDouble uEqMap
-        rCertified <- oviToRational defaultOVISettingsDouble uEqMap oviRes
+        oviRes <- ovi defaultOVISettingsDouble eqs snd
+        rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
         unless rCertified $ error "cannot deduce a rational certificate for this semiconf"
         unless (oviSuccess oviRes || rCertified) $ error "OVI was not successful in computing an upper bound on the termination probabilities"
 
         -- actual updates
-        V.mapM_ ( \(varKey, p) -> do
+        let bounds = V.zip lowerBound (oviUpperBound oviRes)
+        V.mapM_ ( \((varKey, l), (_, p)) -> do
           let ub = min (1 :: Double) p
           ubAST <- mkRealNum ub
           liftIO $ HT.insert m varKey ubAST
-          addFixpEq uEqMap varKey (PopEq p)
-          ) (oviUpperBound oviRes)
-
+          addFixpEq eqs varKey (PopEq (l,p))
+          ) bounds
         tUpper <- stopTimer startUpper True
         liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
         return $ V.toList (oviUpperBound oviRes)
 
   -- preprocessing phase
-  _ <- preprocessApproxFixp lEqMap defaultEps (sccLen + 1)
-  (updatedUpperVars, unsolvedVars) <- preprocessApproxFixp uEqMap defaultEps (sccLen + 1)
-  forM_ updatedUpperVars $ \(varKey, p) -> do
-    pAST <- mkRealNum (p :: Double)
+  (solvedLVars, _) <- preprocessApproxFixp eqs fst defaultEps (sccLen + 1)
+  (solvedUvars, unsolvedVars) <- preprocessApproxFixp eqs snd defaultEps (sccLen + 1)
+
+  let zipSolved = zip solvedLVars solvedUvars
+  forM_ zipSolved $ \((varKey, l), (_, u)) -> do
+    pAST <- mkRealNum (u :: Double)
     liftIO $ HT.insert m varKey pAST
+    addFixpEq eqs varKey (PopEq (l,u))
 
   -- lEqMap and uEqMap have the same unsolved equations
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
@@ -605,7 +590,7 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
 
   -- find bounds for this SCC
   upperBound <- cases unsolvedVars
-  let upperBoundsTermProbs = Map.fromListWith (+) . map (\(key, ub) -> (fst key, ub)) $ (upperBound ++ updatedUpperVars)
+  let upperBoundsTermProbs = Map.fromListWith (+) . map (first fst) $ (upperBound ++ solvedUvars)
   let upperBounds = GeneralMap.fromList upperBound
   logDebugN $ unlines
     [ "Computed upper bounds: " ++ show upperBounds
