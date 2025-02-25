@@ -7,10 +7,11 @@ queries = ['qualitative', 'quantitative', 'unfold&export']
 benchmark = [
     ("G ((call And B And sorted And valOccurs And [B|left <= right]) --> XNu correctIndex);\n// S1: Partial Correctness", "S1"), # partial correctness
     ("G ((call And B And sorted And (~ valOccurs) And [B|left <= right]) --> XNu ( ~ correctIndex));\n// S2: Dual Partial Correctness", "S2"), # dual partial correctness
-    ("G ((call And B And sorted And valOccurs And [B|left < right]) --> XNd (call And B));\n// S3: Stack inspection", "S3"), # stack inspection
-    ("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> XNd (call And B));\n// S4: Stack inspection (v2)", "S4"), # stack inspection (v2)
-    ("G ((call And B And sorted And valOccurs And [B|left < right]) --> PNd (F (call And B)));\n// S5: Stack inspection (LTL)", "S5"), # stack inspection (LTL)
-    ("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> PNd (F (call And B)));\n// S6: Stack inspection (v2) (LTL)", "S6") # stack inspection (v2) (LTL)
+    ("G ((call And B And sorted And valOccurs And [B|left < right]) --> PNd (F (call And B)));\n// S5: Stack inspection (LTL)", "S3"), # stack inspection (LTL)
+    ("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> PNd (F (call And B)));\n// S6: Stack inspection (v2) (LTL)", "S4") # stack inspection (v2) (LTL)
+    
+    #("G ((call And B And sorted And valOccurs And [B|left < right]) --> XNd (call And B));\n// S3: Stack inspection", "S5"), # stack inspection
+    #("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> XNd (call And B));\n// S4: Stack inspection (v2)", "S6"), # stack inspection (v2)
     ]
 
 def array_domain_comment(bits):
@@ -37,7 +38,7 @@ for query in queries:
         for u_size in range(1,5):
             arr_domain_comm = array_domain_comment(u_size)
             arr_domain_ass = array_domain_assignment(u_size)
-            for arr_size in range(2,8):
+            for arr_size in range(1,8):
                 arr_len_comm = array_length_comment(arr_size)
                 arr_len_ass = array_length_assignment(arr_size)
                 fileout = 'benchmark/' + query + '/' + name + '/sherwood-' + str(u_size) + '.' + str(arr_size) + '.' + name + '.pomc'

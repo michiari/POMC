@@ -24,8 +24,8 @@ Reference: F. Olmedo et al., Reasoning about Recursive Probabilistic Programs, L
 */
 
 probabilistic query: unfold&export;
-formula = G ((call And B And sorted And valOccurs And [B|left < right]) --> XNd (call And B));
-// S3: Stack inspection
+formula = G ((call And B And sorted And valOccurs And [B|left < right]) --> PNd (F (call And B)));
+// S5: Stack inspection (LTL)
 
 program:
 u4[7] a;
