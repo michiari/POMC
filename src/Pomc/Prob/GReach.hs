@@ -312,31 +312,24 @@ weightQuerySCC globals sIdGen delta supports current target = do
   let semiconf = (q, Nothing)
       decodedSemiconf = decode semiconf
       targetId = getId targetState
+      approx eps (d,c) = (approxRational (d - eps) eps, approxRational (c + eps) eps)
   maybeSemiconfId <- liftIO $ HT.lookup (graphMap globals) decodedSemiconf
-
-  actualId <- case maybeSemiconfId of
-    Just scId -> do
-      liftIO $ encodeInitialPush globals sIdGen delta q Nothing scId targetId
-      solveSCCQuery (IntSet.singleton scId) globals
-      return scId
+  (lb, ub) <- case maybeSemiconfId of
+    Just _ -> do
+      -- directly reading the result
+      eps <- liftIO $ readIORef (actualEps globals)
+      liftIO $ approx eps <$> retrieveValue globals sIdGen delta q targetId
     Nothing -> do
       newId <- liftIO $ freshIOPosId (idSeq globals)
       liftIO $ HT.insert (graphMap globals) decodedSemiconf newId
       liftIO $ addtoPath globals semiconf newId
+      -- encoding the whole support
       _ <- dfs globals sIdGen delta supports semiconf (newId, targetId) True
-      liftIO $ encodeInitialPush globals sIdGen delta q Nothing newId targetId
-      solveSCCQuery (IntSet.singleton newId) globals
-      return newId
+      eps <- liftIO $ readIORef (actualEps globals)
+      liftIO $ approx eps <$> retrieveValue globals sIdGen delta q targetId
 
-  -- returning the computed values
-  eps <- liftIO $ readIORef (actualEps globals)
-  (lb, ub) <- liftIO $ (\(PopEq (d, c)) -> (approxRational (d - eps) eps, approxRational (c + eps) eps)) . fromJust <$> IOMM.lookupValue (fst $ eqMap globals) actualId (-1)
-  -- cleaning the hashtable
-  deleteFixpEq (eqMap globals) (actualId, -1)
-  deleteFixpEq (eqMap globals) (actualId, -2)
   let truncatedLB = min 1 lb
       truncatedUB = min 1 ub
-
   logInfoN $ "Returning weights: " ++ show (truncatedLB, truncatedUB)
   when (lb > ub || lb > 1 || ub - lb > 1 % 50) $ error $ "unsound or too loose bounds on weights for this summary transition: " ++ show (lb,ub)
   return (truncatedLB, truncatedUB)
@@ -589,32 +582,31 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
     readIORef newUnencoded
 
-encodeInitialPush :: (SatState state, Eq state, Hashable state, Show state)
+retrieveValue :: (SatState state, Eq state, Hashable state, Show state)
     => WeightedGRobals state
     -> SIdGen RealWorld state
     -> Delta state
     -> StateId state
-    -> Stack state
     -> Int
-    -> Int
-    -> IO ()
-encodeInitialPush globals sIdGen delta q _ semiconfId suppId  =
+    -> IO (EqMapNumbersType,EqMapNumbersType)
+retrieveValue globals sIdGen delta q suppId =
     let qState = getState q
         qProps = getStateProps (bitenc delta) qState
-        pushEnc terms (p, prob_) =
-          let dest = (p, Just (qProps, q)) in do
-            pushId <- fromJust <$> HT.lookup (graphMap globals) (decode dest)
-            present <- containsEquation (eqMap globals) (pushId, suppId)
-            if present
-              then return $ (prob_, (pushId, suppId), (semiconfId, -2)):terms
-              else return terms
+        newG = Just (qProps, q)
+        pushEnc acc@(accL, accU) (p, prob_) = do
+          pushId <- fromJust <$> HT.lookup (graphMap globals) (decode (p, newG))
+          maybeEq <- retrieveEquation (eqMap globals) (pushId, suppId)
+          let Just (PopEq (l,u)) = maybeEq
+              dProb_ = fromRational prob_
+              newAccL = (dProb_ * l) + accL
+              newAccU = (dProb_ * u) + accU
+          if isJust maybeEq
+            then return (newAccL, newAccU)
+            else return acc
     in do
       newStates <- mapM (\(unwrapped, prob_) -> (,prob_) <$> stToIO (wrapState sIdGen unwrapped)) $ (deltaPush delta) qState
-      terms <- foldM pushEnc [] newStates
-      addFixpEq (eqMap globals) (semiconfId, -1) $ PushEq terms
-      -- logDebugN $ "Encoding initial push:" ++ show terms
-      addFixpEq (eqMap globals) (semiconfId, -2) $ PopEq (1,1)
       liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
+      foldM pushEnc (0,0) newStates
 
 encodeShift :: (SatState state, Eq state, Hashable state, Show state)
   => WeightedGRobals state
@@ -637,7 +629,7 @@ encodeShift globals sIdGen delta _ g qState fromVarKey sccMembers =
         let cases
               | previouslyEncoded = return (newVars, (prob_, varKey):terms)
               | IntSet.notMember id_ sccMembers = return (newVars, terms)
-              | otherwise = do 
+              | otherwise = do
                 addFixpEq (eqMap globals) varKey (PushEq [])
                 return ( Set.insert (QuantVariable dest varKey) newVars,
                   (prob_, varKey):terms)
