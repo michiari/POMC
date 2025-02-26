@@ -687,7 +687,7 @@ solveSCCQuery sccMembers globals = do
 
     -- certify the result and compute some statistics
     rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
-    unless rCertified $ error "cannot deduce a rational certificate for this SCC when computing fraction f"
+    unless rCertified $ error $ "Cannot deduce a rational certificate for this SCC when computing fraction f: " ++ show sccMembers
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
     logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
     tWeights <- stopTimer startWeights rCertified

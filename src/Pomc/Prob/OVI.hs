@@ -52,7 +52,7 @@ defaultOVISettingsDouble = OVISettings
   , oviPowerIterDampingFactor = 1e-1
   , oviMaxPowerIters = 1000000
   , oviRationalApproxEps = 1e-8
-  , oviMaxKIndIters = 10
+  , oviMaxKIndIters = 50
   }
 
 defaultOVISettingsProb :: OVISettings Prob
@@ -66,7 +66,7 @@ defaultOVISettingsProb = OVISettings
   , oviPowerIterDampingFactor = 1 % 10
   , oviMaxPowerIters = 1000000
   , oviRationalApproxEps = 1 % 10^(8 :: Integer)
-  , oviMaxKIndIters = 10
+  , oviMaxKIndIters = 50
   }
 
 -- defaultOVISettingsRounded :: OVISettings (R.Rounded 'R.TowardNearest 128)
@@ -143,7 +143,7 @@ jacobiTimesX leqSys v =
       constructPoly k (ShiftLEq terms) = (Lin 1 k :) . concatMap
         (\(p, Left k1) -> jtxMonomial (Lin p k1) (Left k1))
         $ filter (\(_, eitherP) -> isLeft eitherP) terms
-        
+
   in V.imap constructPoly leqSys
 
 powerIterate :: (Fractional n, Ord n, Show n)
@@ -157,7 +157,7 @@ powerIterate eps maxIters matrix oldEV =
             -- normalize eigenVec on the largest eigenValue
             newEigenVec = V.map (/ eigenVal) nnEigenVec
             -- check absolute error
-            stop = V.all (\(ov, nv) -> abs (ov - nv) <= eps) (V.zip oldEigenVec newEigenVec)
+            stop = V.and (V.zipWith (\ov nv -> abs (ov - nv) <= eps) oldEigenVec newEigenVec)
         in if stop
           then (newEigenVec, eigenVal, iters)
           else go newEigenVec eigenVal (iters - 1)
@@ -173,7 +173,6 @@ computeEigen leqSys eps maxIters lowerApprox eigenVec =
 ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n, Num n)
     => OVISettings n -> AugEqMap k -> (k -> n) -> m (OVIResult n)
 ovi settings augEqMap f = do
-
   -- create system containing only live equations
   leqSys <- toLiveEqMapWith augEqMap f
   logDebugN $ "Identified " ++ show (V.length leqSys) ++ " live variables..."
@@ -193,8 +192,8 @@ ovi settings augEqMap f = do
 
       let newLowerApprox = approxFixpFrom leqSys kleeneEps (oviMaxKleeneIters settings) lowerApprox
           (newEigenVec, eigenVal, iters) = computeEigen leqSys powerIterEps (oviMaxPowerIters settings)
-                  newLowerApprox oldEigenVec -- modifies eigenVec
-          debugMsg 
+                  newLowerApprox oldEigenVec
+          debugMsg
             | iters == 0 = "Power Iteration exhausted!"
             | otherwise = concat
                 [ "Power iteration converged after ", show ((oviMaxPowerIters settings) - iters)
@@ -202,7 +201,7 @@ ovi settings augEqMap f = do
                 ]
           zippedEigenLowerApprox = V.zip newEigenVec newLowerApprox
           guessAndCheckInductive 0 = (False, V.empty)
-          guessAndCheckInductive maxGuesses = do
+          guessAndCheckInductive maxGuesses =
             let currentGuess = currentIter + 1 - maxGuesses
                 scaleFactor = oviPowerIterEps settings *
                   (oviDampingFactor settings)^currentGuess
@@ -210,24 +209,23 @@ ovi settings augEqMap f = do
                 newUpperApprox = V.map (\(eigenV, l) -> l + (eigenV * scaleFactor)) zippedEigenLowerApprox
 
             -- check if upperApprox is inductive
-                check newV oldV = newV <= oldV
-                  -- prev && 1 / (oldV - newV) >= 0
-                  -- prev && (1-eps)*newV + eps <= oldV
-                (inductive, _) = evalEqSys leqSys check newUpperApprox
-            if inductive
-              then (True, newUpperApprox)
-              else guessAndCheckInductive (maxGuesses - 1)
-              
+                (inductive, _) = evalEqSys leqSys (<=) newUpperApprox
+            in if inductive
+                then (True, newUpperApprox)
+                else guessAndCheckInductive (maxGuesses - 1)
+
           (inductive, newUpperApprox) = guessAndCheckInductive (currentIter + 1)
-          adjustedUpperApprox = V.map (* 1.00001) newUpperApprox  
-      
-      logDebugN $ "Lower Approximation: " ++ show newLowerApprox
+          adjustedUpperApprox = V.map (* 1.00001) newUpperApprox
+
       logDebugN debugMsg
-      logDebugN $ "EigenVector: " ++ show newEigenVec
       logDebugN $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
         ++ show inductive
       if inductive
-        then return OVIResult { oviSuccess  = True
+        then do
+              logDebugN $ "Lower Approximation: " ++ show newLowerApprox
+              logDebugN $ "EigenVector: " ++ show newEigenVec
+              logDebugN $ "Upper Approximation: " ++ show adjustedUpperApprox
+              return OVIResult { oviSuccess  = True
                          , oviIters = oviMaxIters settings - maxIters
                          , oviLowerBound = newLowerApprox
                          , oviUpperBound = adjustedUpperApprox
@@ -251,26 +249,29 @@ oviToRational settings augEqMap@(_, _) f oviRes = do
         (Right v) -> v
         (Left exc) -> error $ "error when converting to rational upper bound " ++ show p ++ " - " ++ show exc
       f2eps p = approxRational (p + eps) eps
-      showF1 = "realFloatToRational"
-      showF2 = "approxRational + eps"
 
   rleqSys <- toLiveEqMapWith augEqMap (f1 . f)
   -- Convert upper bound to rational
   let initialRub1 = V.map f1 $ oviUpperBound oviRes
       initialRub2 = V.map f2eps $ oviUpperBound oviRes
-      checkWithKInd _ _ 0 = return False
-      checkWithKInd showF rub kIters  = do
-        -- Evaluate equation system
-        let (inductive, srub) = evalEqSys rleqSys (<=) rub
+      maxIters = oviMaxKIndIters settings
+      checkWithKInd _ 0 = (False, maxIters)
+      checkWithKInd rub kIters  =
+        let
+          -- Evaluate equation system
+          (inductive, srub) = evalEqSys rleqSys (<=) rub
+          newRub = V.zipWith min rub srub
+        in if inductive
+          then (inductive, maxIters - kIters + 1)
+          else checkWithKInd newRub (kIters - 1)
+      (successF1, itersF1) =  checkWithKInd initialRub1 maxIters
+      (successF2, itersF2) = checkWithKInd initialRub2 maxIters
+  if successF1
+    then do
+      logDebugN $ unwords ["Successful k-induction with function realFloatToRational after", show itersF1, "iterations"]
+      return successF1
+    else do
+      logDebugN $ unwords ["k-induction with function realFloatToRational failed in", show maxIters, "- Trying k-induction with function approxRational + eps."]
+      logDebugN $ unwords ["Is k-induction with function approxRational + eps successful?", show successF2, "- Number of iterations:", show itersF2]
+      return successF2
 
-        logDebugN $ "Is the rational approximation inductive? " ++ show inductive
-        if inductive
-          then return inductive
-          else do
-            logDebugN $ "Trying with k-induction with function " ++ showF  ++ ", remaining iterations: " ++ show kIters
-            let newRub = V.map (uncurry min) (V.zip rub srub)
-            checkWithKInd showF newRub (kIters - 1)
-  success <- checkWithKInd showF1 initialRub1 $ oviMaxKIndIters settings
-  if success
-    then return success
-    else checkWithKInd showF2 initialRub2 $ oviMaxKIndIters settings
