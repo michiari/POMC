@@ -79,6 +79,7 @@ import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef', newIORef)
 import Data.Ratio (approxRational, (%))
 
 import Control.Applicative ((<|>))
+import qualified Data.IntMap as IntMap
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
@@ -536,7 +537,13 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
       suppDecodedSemiconfs = map (, a, b) suppEndsIds
 
   in do
-    newStates <- mapM (\(unwrapped, prob_) -> (,prob_) <$> stToIO (wrapState sIdGen unwrapped)) $ (deltaPush delta) qState
+    newStates <- forM ((deltaPush delta) qState) $ \(unwrapped, prob_) -> do 
+      p <- stToIO (wrapState sIdGen unwrapped) 
+      let decoded = (decodeStateId p, c, d)
+      id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
+      equationsIds_ <- retrieveEquationsIds (eqMap globals) id_
+      return (p, id_, prob_, equationsIds_)
+      
     suppSemiconfsIds <- mapM (fmap fromJust . HT.lookup (graphMap globals)) suppDecodedSemiconfs
     newUnencoded <- newIORef Set.empty
 
@@ -554,30 +561,24 @@ encodePush globals sIdGen delta supports q g qState (semiconfId, rightContext) s
       cases
       ) [] suppInfo
 
-    let newStatesWithSuppIds = [(p, prob_, suppRC) | (p,prob_) <- newStates, suppRC <- suppEndsIds]
-    pushVarKeys <- foldM (\acc (p, prob_, suppRC) -> do
-      let decoded = (decodeStateId p, c, d)
-      id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
-      let varKey = (id_, suppRC)
-      previouslyEncoded <- containsEquation (eqMap globals) varKey
-      let quantVar = QuantVariable (p, newG) varKey
-          cases
-            | previouslyEncoded = return $ (prob_, varKey):acc
-            | IntSet.notMember id_ sccMembers = return acc
-            | otherwise = do
-              addFixpEq (eqMap globals) varKey (PushEq [])
-              modifyIORef' newUnencoded $ Set.insert quantVar
-              return $ (prob_, varKey):acc
-      cases
-      ) [] newStatesWithSuppIds
-
-    let terms = [(prob_, pushVarKey, suppVarKey) |
+    let pushVarKeys = [(p, prob_, equations, (id_, suppRC)) | 
+                        (p, id_, prob_, equations) <- newStates, 
+                        suppRC <- suppEndsIds, 
+                        IntSet.member id_ sccMembers || IntSet.member suppRC equations
+                      ]
+        pushVarKeystoEncode = Set.fromList [ QuantVariable (p, newG) varKey | 
+                                (p, _, equations, varKey) <- pushVarKeys,
+                                IntSet.notMember (snd varKey) equations
+                              ]
+        terms = [(prob_, pushVarKey, suppVarKey) |
                   (suppSId, suppVarKey) <- suppVarKeys,
-                  (prob_, pushVarKey) <- pushVarKeys,
+                  (_, prob_, _, pushVarKey) <- pushVarKeys,
                   snd pushVarKey == suppSId
                 ]
         pushEq | null terms = PopEq (0, 0)
                | otherwise = PushEq terms
+
+    modifyIORef' newUnencoded $ Set.union pushVarKeystoEncode
     addFixpEq (eqMap globals) (semiconfId, rightContext) pushEq
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
     readIORef newUnencoded
