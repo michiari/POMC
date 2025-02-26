@@ -24,6 +24,8 @@ module Pomc.Prob.FixPoint ( VarKey
                           , toRationalProbVec
                           , preprocessApproxFixp
                           , containsEquation
+                          , retrieveEquation
+                          , retrieveEquationsIds
                           , liveVariables
                           ) where
 
@@ -48,6 +50,8 @@ import Data.Foldable (foldl', foldMap')
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Data.Monoid (Sum(..))
+import Data.IntMap (IntMap)
+import Data.IntSet (IntSet)
 
 type VarKey = (Int, Int)
 
@@ -203,6 +207,12 @@ toRationalProbVec eps = V.map (\p -> approxRational (p - eps) eps)
 
 containsEquation :: (MonadIO m) => AugEqMap n -> VarKey -> m Bool
 containsEquation (eqMap, _) varKey = liftIO $ uncurry (MM.member eqMap) varKey
+
+retrieveEquation :: (MonadIO m) => AugEqMap n -> VarKey -> m (Maybe (FixpEq n))
+retrieveEquation (eqMap, _) varKey = liftIO $ uncurry (MM.lookupValue eqMap) varKey
+
+retrieveEquationsIds :: (MonadIO m) => AugEqMap n -> Int -> m IntSet
+retrieveEquationsIds (eqMap, _) semiconfId_ = liftIO $ MM.lookupKeys eqMap semiconfId_
 
 liveVariables :: (MonadIO m) => AugEqMap n ->  m (Vector VarKey)
 liveVariables (_,lVarsRef) = V.fromList . Set.toList <$> liftIO (readIORef lVarsRef)

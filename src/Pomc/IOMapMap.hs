@@ -9,6 +9,7 @@ module Pomc.IOMapMap ( IOMapMap
                    , insert
                    , insertWith
                    , lookup
+                   , lookupKeys
                    , lookupValue
                    , member
                    , delete
@@ -30,6 +31,8 @@ import Data.IORef (readIORef, IORef, newIORef, writeIORef)
 import Data.Vector.Mutable (IOVector)
 
 import Control.Monad(when)
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 
 -- Map to Maps
 type IOMapMap v = IOVector (IntMap v)
@@ -74,6 +77,13 @@ lookup mmref idx = do
   if idx < MV.length mm
     then Map.toList <$> MV.read mm idx
     else return []
+
+lookupKeys :: IORef (IOMapMap v) -> Int -> IO IntSet
+lookupKeys mmref idx = do
+  mm <- readIORef mmref
+  if idx < MV.length mm
+    then Map.keysSet <$> MV.read mm idx
+    else return IntSet.empty
 
 lookupValue :: IORef (IOMapMap v) -> Int -> Int -> IO (Maybe v)
 lookupValue mmref idx mapIdx = do
