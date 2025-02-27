@@ -11,13 +11,15 @@ module Pomc.Prob.GReach ( GRobals(..)
                         , Delta(..)
                         , WeightedGRobals(..)
                         , newGRobals
+                        , nrSemiconfs
                         , reachableStates
                         , showGrobals
+                        , newWeightedGRobals
                         , weightQuerySCC
                         , freezeSuppEnds
                         ) where
 
-import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..))
+import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..), defaultTolerance)
 import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProbEncodedSet, ProBitencoding)
 import qualified Pomc.Prob.ProbEncoding as PE
@@ -125,6 +127,9 @@ newGRobals = do
                    , suppEnds = emptySuppEnds
                    , currentInitial = noInitial
                    }
+
+nrSemiconfs :: GRobals s state -> ST.ST s Int 
+nrSemiconfs grobals = BH.size (visited grobals)
 
 reachableStates :: (SatState state, Eq state, Hashable state, Show state)
    => GRobals s state
@@ -297,6 +302,30 @@ data WeightedGRobals state = WeightedGRobals
   , actualEps :: IORef EqMapNumbersType
   , stats :: STRef RealWorld Stats
   }
+
+newWeightedGRobals :: (MonadIO m) => Int -> STRef RealWorld Stats -> m (WeightedGRobals state)
+newWeightedGRobals len stats = liftIO $ do
+  newIdSeq <- newIORef 0
+  newGraphMap <- HT.newSized len
+  newSStack <- IOGS.new
+  newBStack <- IOGS.new
+  newIVector <- HT.newSized len
+  newScntxs <- HT.newSized len
+  newLowerEqMap <- IOMM.empty
+  newLowerLiveVars <- newIORef Set.empty
+  newEps <- newIORef defaultTolerance
+  return WeightedGRobals { idSeq = newIdSeq
+                         , graphMap = newGraphMap
+                         , sStack = newSStack
+                         , bStack = newBStack
+                         , iVector = newIVector
+                         , successorsCntxs = newScntxs
+                         , eqMap = (newLowerEqMap, newLowerLiveVars)
+                         , actualEps = newEps
+                         , stats = stats
+                         }
+
+
 
 -- compute weigths of a support edge in H with respect to the support transition
 weightQuerySCC :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show state)
@@ -502,7 +531,7 @@ encode unencodedVars globals sIdGen delta supports sccMembers
           | precRel == Just Take = do
               distr <- mapM (\(unwrapped, prob_) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p, prob_)) $ (deltaPop delta) qState gState
               let e = Map.findWithDefault 0 (snd varKey) (Map.fromList distr)
-              addFixpEq (eqMap globals) varKey $ PopEq $ (fromRational e, fromRational e)
+              addFixpEq (eqMap globals) varKey $ PopEq (fromRational e, fromRational e)
               liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + 1}
               return Set.empty
               -- logDebugN $ "Encoding PopSemiconf: " ++ show varKey ++ " = PopEq " ++ show e

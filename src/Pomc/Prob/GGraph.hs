@@ -29,7 +29,6 @@ import qualified Pomc.Prob.GReach as GR
 import Pomc.Prob.SupportGraph(GraphNode(..), Edge(..), SupportGraph)
 import Pomc.Prob.ProbEncoding(ProbEncodedSet)
 import qualified Pomc.Prob.ProbEncoding as PE
-import qualified Pomc.IOStack as IOGS
 import qualified Pomc.Encoding as E
 import Pomc.Prob.FixPoint(VarKey)
 
@@ -58,7 +57,6 @@ import Control.Monad (when, unless, forM_, foldM, forM)
 import Control.Monad.ST (ST, RealWorld)
 
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
-import Data.IORef (newIORef)
 import Data.Maybe (fromJust, isNothing, isJust, mapMaybe)
 
 import GHC.Generics (Generic)
@@ -68,7 +66,6 @@ import qualified Data.HashTable.ST.Basic as BH
 
 import Z3.Monad
 import Pomc.Z3T
-import qualified Pomc.IOMapMap as MM
 
 -- import qualified Debug.Trace as DBG
 
@@ -196,7 +193,7 @@ buildPush gglobals delta suppGraph isPending sIdMap (gn, p) =
       fPushPhiStates = (phiDeltaPush delta) p
       fPushGnodes = [(gn1, p1) | gn1 <- fPushGns, p1 <- fPushPhiStates, (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)]
       leftContext = AugState (fst . semiconf $ gn) p
-      precRel stackSymbol qProps = (prec delta) stackSymbol qProps
+      precRel = (prec delta)
       cDeltaPush (AugState (StateId _ q0 lab0) p0)  =  [(AugState (StateId id1 q1 lab1) p1, prob_) |
                                                           (q1, lab1, prob_) <- (deltaPush delta) q0
                                                         , p1 <- (phiDeltaPush delta) p0
@@ -594,26 +591,8 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
     -- preparing the global variables for the computation of the fractions f
     freezedSuppEnds <- liftIO $ GR.freezeSuppEnds (grGlobals gGlobals)
 
-    globals <- liftIO $ do
-      newIdSeq <- newIORef 0
-      newGraphMap <- HT.new
-      newSStack <- IOGS.new
-      newBStack <- IOGS.new
-      newIVector <- HT.new
-      newScntxs <- HT.new
-      newLowerEqMap <- MM.empty
-      newLowerLiveVars <- newIORef Set.empty
-      newEps <- newIORef defaultTolerance
-      return GR.WeightedGRobals { GR.idSeq = newIdSeq
-                                , GR.graphMap = newGraphMap
-                                , GR.sStack = newSStack
-                                , GR.bStack = newBStack
-                                , GR.iVector = newIVector
-                                , GR.successorsCntxs = newScntxs
-                                , GR.eqMap = (newLowerEqMap, newLowerLiveVars)
-                                , GR.actualEps = newEps
-                                , GR.stats = stats
-                                }
+    lenHashtables <- liftSTtoIO $ GR.nrSemiconfs (grGlobals gGlobals)
+    globals <- GR.newWeightedGRobals lenHashtables stats
 
     logInfoN "Encoding conditions (2b) and (2c)"
     -- encodings (2b) and (2c)
