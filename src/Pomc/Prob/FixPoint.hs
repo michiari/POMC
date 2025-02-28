@@ -14,7 +14,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , LEqSys
                           , ProbVec
                           , addFixpEq
-                          , deleteFixpEq
+                          , addFixpEqs
                           , toLiveEqMapWith
                           , evalEqSys
                           , approxFixpFrom
@@ -32,7 +32,7 @@ module Pomc.Prob.FixPoint ( VarKey
 import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
 import Pomc.LogUtils (MonadLogger)
 
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 import Data.Ratio (approxRational)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.IORef (modifyIORef', readIORef, IORef)
@@ -50,8 +50,9 @@ import Data.Foldable (foldl', foldMap')
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Data.Monoid (Sum(..))
-import Data.IntMap (IntMap)
 import Data.IntSet (IntSet)
+import qualified Data.IntMap as Map
+import qualified Debug.Trace as DBG
 
 type VarKey = (Int, Int)
 
@@ -82,10 +83,15 @@ addFixpEq (eqMap, lEqs) varKey eq = liftIO $ do
   uncurry (MM.insert eqMap) varKey eq
   modifyIORef' lEqs (Set.insert varKey)
 
-deleteFixpEq :: MonadIO m => AugEqMap n -> VarKey -> m ()
-deleteFixpEq (eqMap, lEqs) varKey = liftIO $ do
-  MM.delete eqMap varKey
-  modifyIORef' lEqs (Set.delete varKey)
+addFixpEqs :: (MonadIO m) => AugEqMap n -> Int -> Map.IntMap (FixpEq n) -> m ()
+addFixpEqs  (eqMap, lEqs) semiconfId_ eqs = liftIO $ do
+  MM.insertMap eqMap semiconfId_ eqs
+  let isPopEq (PopEq _) = True 
+      isPopEq _ = False
+      liveVarKeys = [(semiconfId_, rc) | rc <- Map.keys . Map.filter (not . isPopEq) $ eqs]
+      popVarKeys = [(semiconfId_, rc) | rc <- Map.keys . Map.filter (isPopEq) $ eqs]
+  modifyIORef' lEqs (Set.union . Set.fromList $ liveVarKeys)
+  modifyIORef' lEqs (\s -> Set.difference s (Set.fromList popVarKeys))
 
 constructEitherWith :: (MonadIO m, Fractional k) => AugEqMap n -> VarKey -> Set VarKey -> (n -> k) -> m (Either Int k)
 constructEitherWith (eqMap, _) k lVars f
@@ -138,7 +144,7 @@ approxFixpFrom leqMap eps maxIters probVec
           else approxFixpFrom leqMap eps (maxIters - 1) newProbVec
 
 -- determine variables for which zero is a fixpoint
-preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
+preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
                       => AugEqMap k -> (k -> n) -> n -> Int -> m ([(VarKey, n)], [VarKey])
 preprocessApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
   lVars <- liftIO $ readIORef lVarsRef
@@ -186,7 +192,6 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
           zeroVars = M.fromList . V.toList . V.map (\(k,_,p) -> (k,p)) $ zeroVec
           nonZeroVars = V.toList . V.map (\(k,eq, _) -> (k,eq)) $ nonZeroVec
           (upVars, newLiveVars) = go (isLiveSys, zeroVars, nonZeroVars)
-
       return (upVars, newLiveVars)
 
 approxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
