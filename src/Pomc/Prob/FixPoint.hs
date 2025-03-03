@@ -33,7 +33,7 @@ module Pomc.Prob.FixPoint ( VarKey
 import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
 import Pomc.LogUtils (MonadLogger)
 
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 import Data.Ratio (approxRational)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.IORef (modifyIORef', readIORef, IORef)
