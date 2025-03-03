@@ -1,4 +1,5 @@
 {-# LANGUAGE HexFloatLiterals #-}
+{-# LANGUAGE TupleSections #-}
 {- |
    Module      : Pomc.Prob.FixPoint
    Copyright   : 2023 Michele Chiari
@@ -14,7 +15,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , LEqSys
                           , ProbVec
                           , addFixpEq
-                          , deleteFixpEq
+                          , addFixpEqs
                           , toLiveEqMapWith
                           , evalEqSys
                           , approxFixpFrom
@@ -25,7 +26,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , preprocessApproxFixp
                           , containsEquation
                           , retrieveEquation
-                          , retrieveEquationsIds
+                          , retrieveRightContexts
                           , liveVariables
                           ) where
 
@@ -49,12 +50,14 @@ import Data.Foldable (foldl', foldMap')
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
+
 import Data.Monoid (Sum(..))
-import Data.IntMap (IntMap)
+
 import Data.IntSet (IntSet)
+import Data.IntMap(IntMap)
+import qualified Data.IntMap as Map
 
 type VarKey = (Int, Int)
-
 data FixpEq n = PushEq [(Prob, VarKey, VarKey)]
               | ShiftEq [(Prob, VarKey)]
               | PopEq n
@@ -82,10 +85,14 @@ addFixpEq (eqMap, lEqs) varKey eq = liftIO $ do
   uncurry (MM.insert eqMap) varKey eq
   modifyIORef' lEqs (Set.insert varKey)
 
-deleteFixpEq :: MonadIO m => AugEqMap n -> VarKey -> m ()
-deleteFixpEq (eqMap, lEqs) varKey = liftIO $ do
-  MM.delete eqMap varKey
-  modifyIORef' lEqs (Set.delete varKey)
+addFixpEqs :: (MonadIO m) => AugEqMap n -> Int -> IntMap (FixpEq n) -> m ()
+addFixpEqs  (eqMap, lEqs) semiconfId_ eqs = liftIO $ do
+  MM.insertMap eqMap semiconfId_ eqs
+  let isPopEq (PopEq _) = True 
+      isPopEq _ = False
+      (popEqs, liveEqs) = Map.partition isPopEq eqs
+  modifyIORef' lEqs (Set.union . Set.fromList . map (semiconfId_, ) . Map.keys $ liveEqs)
+  modifyIORef' lEqs (\s -> Set.difference s (Set.fromList . map (semiconfId_, ) . Map.keys $ popEqs))
 
 constructEitherWith :: (MonadIO m, Fractional k) => AugEqMap n -> VarKey -> Set VarKey -> (n -> k) -> m (Either Int k)
 constructEitherWith (eqMap, _) k lVars f
@@ -138,7 +145,7 @@ approxFixpFrom leqMap eps maxIters probVec
           else approxFixpFrom leqMap eps (maxIters - 1) newProbVec
 
 -- determine variables for which zero is a fixpoint
-preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
+preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
                       => AugEqMap k -> (k -> n) -> n -> Int -> m ([(VarKey, n)], [VarKey])
 preprocessApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
   lVars <- liftIO $ readIORef lVarsRef
@@ -186,7 +193,6 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
           zeroVars = M.fromList . V.toList . V.map (\(k,_,p) -> (k,p)) $ zeroVec
           nonZeroVars = V.toList . V.map (\(k,eq, _) -> (k,eq)) $ nonZeroVec
           (upVars, newLiveVars) = go (isLiveSys, zeroVars, nonZeroVars)
-
       return (upVars, newLiveVars)
 
 approxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
@@ -211,8 +217,8 @@ containsEquation (eqMap, _) varKey = liftIO $ uncurry (MM.member eqMap) varKey
 retrieveEquation :: (MonadIO m) => AugEqMap n -> VarKey -> m (Maybe (FixpEq n))
 retrieveEquation (eqMap, _) varKey = liftIO $ uncurry (MM.lookupValue eqMap) varKey
 
-retrieveEquationsIds :: (MonadIO m) => AugEqMap n -> Int -> m IntSet
-retrieveEquationsIds (eqMap, _) semiconfId_ = liftIO $ MM.lookupKeys eqMap semiconfId_
+retrieveRightContexts :: (MonadIO m) => AugEqMap n -> Int -> m IntSet
+retrieveRightContexts (eqMap, _) semiconfId_ = liftIO $ MM.lookupKeys eqMap semiconfId_
 
 liveVariables :: (MonadIO m) => AugEqMap n ->  m (Vector VarKey)
 liveVariables (_,lVarsRef) = V.fromList . Set.toList <$> liftIO (readIORef lVarsRef)

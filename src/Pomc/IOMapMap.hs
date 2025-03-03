@@ -8,6 +8,7 @@
 module Pomc.IOMapMap ( IOMapMap
                    , insert
                    , insertWith
+                   , insertMap
                    , lookup
                    , lookupKeys
                    , lookupValue
@@ -55,6 +56,24 @@ insert mmref idx key val = do
                }
 
 -- insert a pair (key, value) into the IOMapMap
+-- ensures: it replaces the existing mapping, if existing
+insertMap :: IORef (IOMapMap v) -> Int -> IntMap v -> IO ()
+insertMap mmref idx m = do
+  mm <- readIORef mmref
+  let len = MV.length mm
+  if idx < len
+    -- union is left-biased, so we prefer new values to old ones in case of overlapping keys
+    then MV.unsafeModify mm (Map.union m) idx
+    else let newLen = computeLen len idx
+             computeLen size newIdx | newIdx < size = size
+                                    | otherwise = computeLen (size*2) newIdx
+         in do { grown <- MV.grow mm (newLen-len)
+               ; mapM_ (\i -> MV.unsafeWrite grown i Map.empty) [len..(newLen-1)]
+               ; MV.unsafeModify grown (Map.union m) idx
+               ; writeIORef mmref grown
+               }
+
+-- insert a pair (key, value) into the IOMapMap
 -- ensures: it uses the supplied combining function if the mapping is already present
 insertWith :: IORef (IOMapMap v) -> Int -> (v -> v -> v) -> Int -> v -> IO ()
 insertWith mmref idx f key val = do
@@ -91,7 +110,7 @@ lookupValue mmref idx mapIdx = do
   if idx < MV.length mm
     then Map.lookup mapIdx <$> MV.read mm idx
     else return Nothing
- 
+
 delete :: IORef (IOMapMap v) -> (Int, Int) -> IO ()
 delete mmref (idx, mapIdx) = do
   mm <- readIORef mmref
@@ -112,8 +131,8 @@ empty = do
   newIORef mm
 
 foldMaps :: IORef (IOMapMap v) -> IO (Map (Int,Int) v)
-foldMaps mmref = do 
-  mm <- readIORef mmref 
+foldMaps mmref = do
+  mm <- readIORef mmref
   MV.ifoldl' (\acc idx m -> GM.union acc . GM.fromList . map (\(k, i) -> ((idx, k), i)) . Map.toList $ m) GM.empty mm
 
 -- for debugging purposes
