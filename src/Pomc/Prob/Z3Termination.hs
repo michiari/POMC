@@ -444,6 +444,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
       eqs = eqMap globals
       mkComp = (if exactEq then mkEq else mkGe)
       createC = do
+        liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
         liftIO $ ZS.pop_ (bStack globals)
         sSize <- liftIO $ ZS.size $ sStack globals
         poppedEdges <- liftIO $ ZS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
@@ -476,9 +477,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
             liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
             actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop (varMap, IntSet.singleton 0, encodeInitial)  globals precFun (useZ3, exactEq)
             return (popContxs, actualMustReachPop)
-          else do
-            liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
-            return (popContxs, False)
+          else return (popContxs, False)
       cases
         | iVal /= topB = return (popContxs, dMustReachPop)
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop

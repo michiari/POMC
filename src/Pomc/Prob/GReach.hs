@@ -460,6 +460,7 @@ createComponent globals sIdGen delta supports popContxs semiconfId = do
   topB <- liftIO . IOGS.peek $ bStack globals
   iVal <- liftIO $ lookupIValue globals semiconfId
   let createC = liftIO $ do
+        liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
         IOGS.pop_ (bStack globals)
         sSize <- IOGS.size $ sStack globals
         poppedSemiconfs <- IOGS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
@@ -480,16 +481,12 @@ createComponent globals sIdGen delta supports popContxs semiconfId = do
             let eqs = IntMap.fromSet (const (PushEq [])) popContxs
             in addFixpEqs (eqMap globals) id_ eqs)
           forM_ toEncode $ \qv -> encode qv globals sIdGen delta supports sccMembers
-
         solveSCCQuery sccMembers globals
-        return popContxs
-      doNotEncode _ = do
-          liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
-          return popContxs
+        return popContxs      
       cases
         | iVal /= topB = return popContxs
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
-        | otherwise = createC >>= doNotEncode -- cannot reach a pop
+        | otherwise = createC >> return popContxs -- cannot reach a pop
   cases
 
 
