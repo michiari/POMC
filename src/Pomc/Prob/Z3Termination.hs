@@ -577,8 +577,15 @@ solveSCCQuery suppGraph dMustReachPop varMap@(m,  sccMembers, _) globals precFun
         return $ V.toList upperBoundWithKeys
 
   -- preprocessing phase
-  (solvedLVars, _) <- preprocessApproxFixp eqs fst defaultEps (sccLen + 1)
-  (solvedUvars, unsolvedVars) <- preprocessApproxFixp eqs snd defaultEps (sccLen + 1)
+  -- preprocessing to solve variables that do not need ovi
+  zeroVars <- preprocessZeroApproxFixp eqs fst defaultEps (sccLen + 1)
+  forM_ zeroVars $ \(k, v) -> do
+    pAST <- mkRealNum (v :: Double)
+    liftIO $ HT.insert m k pAST
+    addFixpEq eqs k (PopEq (v, v))
+
+  (solvedLVars, _) <- preprocessApproxFixp eqs fst
+  (solvedUvars, unsolvedVars) <- preprocessApproxFixp eqs snd
 
   let zipSolved = zip solvedLVars solvedUvars
   forM_ zipSolved $ \((varKey, l), (_, u)) -> do

@@ -69,7 +69,6 @@ import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Maybe
 import Data.Hashable(Hashable)
 import Data.Bifunctor(first)
-import Data.List(zip4)
 
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as BC
@@ -565,12 +564,12 @@ encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMe
                     else IntSet.intersection suppEndsIds encodedRCs
       return (p, id_, prob_, encodedRCs, rcs)
 
-    suppInfo <- forM suppEnds $ \s -> 
+    suppInfo <- forM suppEnds $ \s ->
       let suppEndsId = decodeStateId s
-          suppDecodedSemiconf = (, a, b) suppEndsId 
-      in do 
-        id_ <- fromJust <$> HT.lookup (graphMap globals) suppDecodedSemiconf 
-        encodedRCs <- retrieveRightContexts (eqMap globals) id_ 
+          suppDecodedSemiconf = (suppEndsId, a, b)
+      in do
+        id_ <- fromJust <$> HT.lookup (graphMap globals) suppDecodedSemiconf
+        encodedRCs <- retrieveRightContexts (eqMap globals) id_
         let rcs = if IntSet.member id_ sccMembers
                     then rightCnxts
                     else IntSet.intersection rightCnxts encodedRCs
@@ -582,7 +581,7 @@ encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMe
                                 let toEncodeRCs = IntSet.difference rcs encodedRCs,
                                 not $ IntSet.null toEncodeRCs
                               ]
-        suppVarKeystoEncode = [ QuantVariable (s,g) id_ toEncodeRCs | 
+        suppVarKeystoEncode = [ QuantVariable (s,g) id_ toEncodeRCs |
                                 (s, _, id_, encodedRCs, rcs) <- suppInfo,
                                 IntSet.member id_ sccMembers,
                                 let toEncodeRCs = IntSet.difference rcs encodedRCs,
@@ -653,7 +652,7 @@ encodeShift globals sIdGen delta supports _ g qState semiconfId_ rightCnxts sccM
   let qProps = getStateProps (bitenc delta) qState
       newG = Just (qProps, snd . fromJust $ g)
   in do
-    shiftInfo <- forM ((deltaShift delta) qState) $ \(unwrapped, prob_) -> do 
+    shiftInfo <- forM ((deltaShift delta) qState) $ \(unwrapped, prob_) -> do
       p <- stToIO (wrapState sIdGen unwrapped)
       let dest = (p, Just (qProps, snd . fromJust $ g))
           decoded = decode dest
@@ -663,8 +662,8 @@ encodeShift globals sIdGen delta supports _ g qState semiconfId_ rightCnxts sccM
                       then rightCnxts
                       else IntSet.intersection rightCnxts encodedRCs
       return (p, id_, prob_, encodedRCs, rcs)
-  
-    let shiftVarKeystoEncode = [ QuantVariable (p, newG) shiftId_ toEncodeRCs | 
+
+    let shiftVarKeystoEncode = [ QuantVariable (p, newG) shiftId_ toEncodeRCs |
                                 (p, shiftId_, _, encodedRCs, rcs) <- shiftInfo,
                                 IntSet.member shiftId_ sccMembers,
                                 let toEncodeRCs = IntSet.difference rcs encodedRCs,
@@ -697,8 +696,12 @@ solveSCCQuery sccMembers globals = do
   let iterEps = min defaultEps $ currentEps * currentEps
 
   -- preprocessing to solve variables that do not need ovi
-  (solvedLVars, _) <- preprocessApproxFixp eqs fst iterEps (sccLen + 1)
-  (solvedUvars, unsolvedVars) <- preprocessApproxFixp eqs snd iterEps (sccLen + 1)
+  zeroVars <- preprocessZeroApproxFixp eqs fst iterEps (sccLen + 1)
+  liftIO $ forM_ zeroVars $ \(k, v) -> do
+    addFixpEq eqs k (PopEq (v, v))
+
+  (solvedLVars, _) <- preprocessApproxFixp eqs fst
+  (solvedUvars, unsolvedVars) <- preprocessApproxFixp eqs snd
 
   let zipSolved = zip solvedLVars solvedUvars
   liftIO $ forM_ zipSolved $ \((k1, l), (_, u)) -> do
