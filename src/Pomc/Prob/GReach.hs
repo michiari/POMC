@@ -560,36 +560,30 @@ encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMe
       let decoded = (decodeStateId p, c, d)
       id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
       encodedRCs <- retrieveRightContexts (eqMap globals) id_
-      return (p, id_, prob_, encodedRCs)
+      let rcs = if IntSet.member id_ sccMembers
+                    then suppEndsIds
+                    else IntSet.intersection suppEndsIds encodedRCs
+      return (p, id_, prob_, encodedRCs, rcs)
 
     suppInfo <- forM suppEnds $ \s -> 
       let suppEndsId = decodeStateId s
           suppDecodedSemiconf = (, a, b) suppEndsId 
       in do 
-        suppSemiconfsId <- fromJust <$> HT.lookup (graphMap globals) suppDecodedSemiconf 
-        encodedContexts <- retrieveRightContexts (eqMap globals) suppSemiconfsId 
-        return (s, suppEndsId, suppSemiconfsId, encodedContexts)
+        id_ <- fromJust <$> HT.lookup (graphMap globals) suppDecodedSemiconf 
+        encodedRCs <- retrieveRightContexts (eqMap globals) id_ 
+        let rcs = if IntSet.member id_ sccMembers
+                    then rightCnxts
+                    else IntSet.intersection rightCnxts encodedRCs
+        return (s, suppEndsId, id_, encodedRCs, rcs)
 
-    let pushVarKeys = [(p, prob_, encodedRCs, id_, rcs) |
-                        (p, id_, prob_, encodedRCs) <- pushInfo,
-                        let rcs = if IntSet.member id_ sccMembers
-                                        then suppEndsIds
-                                        else IntSet.intersection suppEndsIds encodedRCs
-                      ]
-        pushVarKeystoEncode = [ QuantVariable (p, newG) id_ toEncodeRCs |
-                                (p, _, encodedRCs, id_, rcs) <- pushVarKeys,
+    let pushVarKeystoEncode = [ QuantVariable (p, newG) id_ toEncodeRCs |
+                                (p, id_, _, encodedRCs, rcs) <- pushInfo,
                                 IntSet.member id_ sccMembers,
                                 let toEncodeRCs = IntSet.difference rcs encodedRCs,
                                 not $ IntSet.null toEncodeRCs
                               ]
-        suppVarKeys = [(s, sId, id_, encodedRCs, rcs) | 
-                      (s, sId, id_, encodedRCs) <- suppInfo,
-                       let rcs = if IntSet.member id_ sccMembers
-                                        then rightCnxts
-                                        else IntSet.intersection rightCnxts encodedRCs
-                      ]
         suppVarKeystoEncode = [ QuantVariable (s,g) id_ toEncodeRCs | 
-                                (s, _, id_, encodedRCs, rcs) <- suppVarKeys,
+                                (s, _, id_, encodedRCs, rcs) <- suppInfo,
                                 IntSet.member id_ sccMembers,
                                 let toEncodeRCs = IntSet.difference rcs encodedRCs,
                                 not $ IntSet.null toEncodeRCs
@@ -597,9 +591,9 @@ encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMe
         toEncode = suppVarKeystoEncode ++ pushVarKeystoEncode
         createTerm suppRC =
           let term = [(prob_, (pushId, pushRC), (suppId, suppRC)) |
-                      (_, suppSId, suppId, _, suppRCs) <- suppVarKeys,
+                      (_, suppSId, suppId, _, suppRCs) <- suppInfo,
                       IntSet.member suppRC suppRCs,
-                      (_, prob_, _, pushId, pushRCs) <- pushVarKeys,
+                      (_, pushId, prob_, _, pushRCs) <- pushInfo,
                       pushRC <- IntSet.toList pushRCs,
                       pushRC == suppSId
                     ]
@@ -665,26 +659,22 @@ encodeShift globals sIdGen delta supports _ g qState semiconfId_ rightCnxts sccM
           decoded = decode dest
       id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
       encodedRCs <- retrieveRightContexts (eqMap globals) id_
-      return (p, id_, prob_, encodedRCs)
+      let rcs = if IntSet.member id_ sccMembers
+                      then rightCnxts
+                      else IntSet.intersection rightCnxts encodedRCs
+      return (p, id_, prob_, encodedRCs, rcs)
   
-    let shiftVarKeys = [(p, id_, prob_, encodedRCs, rcs) |
-                        (p, id_, prob_, encodedRCs) <- shiftInfo,
-                        let rcs = if IntSet.member id_ sccMembers
-                                        then rightCnxts
-                                        else IntSet.intersection rightCnxts encodedRCs
-                      ]
-        shiftVarKeystoEncode = [ QuantVariable (p, newG) shiftId_ toEncodeRCs | 
-                                (p, shiftId_, _, encodedRCs, rcs) <- shiftVarKeys,
+    let shiftVarKeystoEncode = [ QuantVariable (p, newG) shiftId_ toEncodeRCs | 
+                                (p, shiftId_, _, encodedRCs, rcs) <- shiftInfo,
                                 IntSet.member shiftId_ sccMembers,
                                 let toEncodeRCs = IntSet.difference rcs encodedRCs,
                                 not $ IntSet.null toEncodeRCs
                               ]
-        createTerm rc =
-          let term = [(prob_, (shiftId_, rc)) |
-                      (_, shiftId_, prob_, _, rcs) <- shiftVarKeys,
-                      IntSet.member rc rcs
-                    ]
-            in ShiftEq term
+        createTerm rc = ShiftEq [ (prob_, (shiftId_, rc)) |
+                                  (_, shiftId_, prob_, _, rcs) <- shiftInfo,
+                                  IntSet.member rc rcs
+                                ]
+
         terms = IntMap.fromSet createTerm rightCnxts
 
     addFixpEqs (eqMap globals) semiconfId_ terms
