@@ -48,9 +48,6 @@ import qualified Pomc.IOMapMap as IOMM
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 
-import qualified Data.IntMap as Map
-
-
 import qualified Data.Map as GeneralMap
 
 import Data.Vector(Vector)
@@ -397,7 +394,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
         | precRel == Just Take = IntSet.fromList <$>
             mapM (\(unwrapped, _) -> getId <$> liftSTtoIO (wrapState sIdGen unwrapped)) ((deltaPop delta) qState gState)
 
-        | otherwise = return IntSet.empty
+        | otherwise = error "unreachable error"
 
       cases nextSemiconf nSCId iVal
         | (iVal == 0) = do

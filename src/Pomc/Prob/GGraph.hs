@@ -520,7 +520,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
   (computedGraph, iniCount) <- liftSTtoIO $ buildGGraph gGlobals delta phiInitials suppGraph (pendVector V.!) sIdMap
   logInfoN $ "Graph G has " ++ show (MV.length computedGraph) ++ " nodes."
 
-  liftSTtoIO $ modifySTRef' stats (\s -> s {gGraphSize = (MV.length computedGraph) })
+  liftSTtoIO $ modifySTRef' stats (\s -> s {gGraphSize = MV.length computedGraph})
   logInfoN "Analyzing graph G..."
 
   -- globals data structures for qualitative model checking
@@ -640,8 +640,10 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
 
     startSol <- startTimer
     mapM_ assert encs1 >> mapM_ assert encs2 >> mapM_ assert encs3
-    logInfoN "Calling Z3 to solve quantitative model checking..."
-    (lb, ub) <- fromJust . snd <$> withModel (\model -> do
+    logInfoN "Calling Z3 to solve the linear program for quantitative model checking..."
+    let parseResult (Sat, bounds) = fromJust bounds
+        parseResult _ = error "the linear program for quantitative model checking has no solution."
+    (lb, ub) <- parseResult <$> withModel (\model -> do
       l <- extractLowerProb . fromJust =<< eval model sumlVar
       u <- extractUpperProb . fromJust =<< eval model sumuVar
       logInfoN $ "Computed lower bound on the quantitative probability: " ++ show l
