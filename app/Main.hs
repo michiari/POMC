@@ -164,7 +164,7 @@ main = do
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
                        , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
-                       , "\nSize of graph G: ", show $ gGraphSize stats 
+                       , "\nSize of graph G: ", show $ gGraphSize stats
                        ])
       return time
 
@@ -172,9 +172,10 @@ main = do
       putStr (concat [ "\nQuantitative Probabilistic Model Checking\nQuery: ", show phi
                      , "\nResult:  "
                      ])
-      ((tres, stats, _), time) <- timeAction fst3 $ selectLogVerbosity logLevel
+      ((tres@(lb,ub), stats, _), time) <- timeAction fst3 $ selectLogVerbosity logLevel
         $ quantitativeModelCheckProgram solver phi prog
       putStr $ show tres
+      putStr ("\nFloating Point Result:  " ++ show (fromRational lb, fromRational ub))
       putStrLn (concat [ "\nElapsed time: "
                        , timeToString time, " (total), "
                        , showEFloat (Just 4) (upperBoundTime stats) " s (upper bounds), "
@@ -189,7 +190,7 @@ main = do
                        , "\nSCC count in the support graph: ", show $ sccCount stats
                        , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
                        , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
-                       , "\nSize of graph G: ", show $ gGraphSize stats 
+                       , "\nSize of graph G: ", show $ gGraphSize stats
                        --
                        , "\nEquations solved for quant mc: ", show $ equationsCountQuant stats
                        , "\nNon-trivial equations solved for quant mc: ", show $ nonTrivialEquationsCountQuant stats
@@ -199,8 +200,8 @@ main = do
                        ])
       return time
 
-    runUnfoldAndExport logLevel phi prog depth fname = do 
-      putStr (concat [ "\nUnfolding the stack into this model and exporting a Markov Chain [max stack depth = ", show depth, "]", 
+    runUnfoldAndExport logLevel phi prog depth fname = do
+      putStr (concat [ "\nUnfolding the stack into this model and exporting a Markov Chain [max stack depth = ", show depth, "]",
                        "\nQuery: ", show phi
                      ])
       (_, time) <- timeAction id $ selectLogVerbosity logLevel
