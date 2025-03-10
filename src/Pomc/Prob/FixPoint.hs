@@ -27,6 +27,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , preprocessZeroApproxFixp
                           , containsEquation
                           , retrieveEquation
+                          , retrieveEquations
                           , retrieveRightContexts
                           , liveVariables
                           ) where
@@ -229,6 +230,9 @@ retrieveEquation (eqMap, _) varKey = liftIO $ uncurry (MM.lookupValue eqMap) var
 
 retrieveRightContexts :: (MonadIO m) => AugEqMap n -> Int -> m IntSet
 retrieveRightContexts (eqMap, _) semiconfId_ = liftIO $ MM.lookupKeys eqMap semiconfId_
+
+retrieveEquations :: (MonadIO m) => AugEqMap n -> Int -> m [(Int, FixpEq n)]
+retrieveEquations (eqMap, _) semiconfId_ = liftIO $ MM.lookup eqMap semiconfId_
 
 liveVariables :: (MonadIO m) => AugEqMap n ->  m (Vector VarKey)
 liveVariables (_,lVarsRef) = V.fromList . Set.toList <$> liftIO (readIORef lVarsRef)

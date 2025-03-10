@@ -30,7 +30,6 @@ module Pomc.Prob.ProbUtils ( Prob
                            , decode
                            , defaultTolerance
                            , defaultRTolerance
-                           , encodeInitialSemiconf
                            , solver
                            , toBool
                            , toTermResult
@@ -209,11 +208,6 @@ data TermQuery = CompQuery Comp Prob Solver
   deriving (Show, Eq)
 
 data Comp = Lt | Le | Gt | Ge deriving (Show, Eq)
-
-encodeInitialSemiconf :: TermQuery -> Bool
-encodeInitialSemiconf (ApproxSingleQuery _) = True
-encodeInitialSemiconf (CompQuery{}) = True
-encodeInitialSemiconf _ = False
 
 solver :: TermQuery -> Solver
 solver (CompQuery _ _ s) = s

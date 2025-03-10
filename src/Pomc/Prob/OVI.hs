@@ -21,7 +21,7 @@ import Pomc.Prob.FixPoint
 import Pomc.LogUtils (MonadLogger, logDebugN)
 
 import Data.Ratio ((%), approxRational)
-import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad.IO.Class (MonadIO())
 
 import Witch.Instances (realFloatToRational)
 import Data.Either (isLeft)
@@ -43,7 +43,7 @@ data OVISettings n = OVISettings { oviMaxIters :: Int
 
 defaultOVISettingsDouble :: OVISettings Double
 defaultOVISettingsDouble = OVISettings
-  { oviMaxIters = 20
+  { oviMaxIters = 50
   , oviMaxKleeneIters = 100000000
   , oviDampingFactor = 0.5
   , oviKleeneEps = 1e-4

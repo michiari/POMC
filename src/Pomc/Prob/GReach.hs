@@ -79,6 +79,7 @@ import Data.Ratio (approxRational, (%))
 
 import Control.Applicative ((<|>))
 import qualified Data.IntMap as IntMap
+import qualified Debug.Trace as DBG
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
@@ -342,7 +343,7 @@ weightQuerySCC globals sIdGen delta supports current target = do
       liftIO $ HT.insert (graphMap globals) decodedSemiconf newId
       liftIO $ addtoPath globals semiconf newId
       -- encoding the whole support
-      _ <- dfs globals sIdGen delta supports semiconf (newId, targetId) True
+      _ <- dfs globals sIdGen delta supports semiconf (newId, targetId)
       eps <- liftIO $ readIORef (actualEps globals)
       liftIO $ approx eps <$> retrieveValue globals sIdGen delta q targetId
 
@@ -359,19 +360,14 @@ dfs :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show
     -> Delta state
     -> Vector (Set(StateId state))
     -> (StateId state, Stack state) -- current semiconf
-    -> (Int, Int) -- target
-    -> Bool
+    -> (Int, Int)
     -> m PopCnxts
-dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
+dfs globals sIdGen delta supports (q,g) (semiconfId, target) =
   let qState = getState q
       gState = getState . snd . fromJust $ g
       qProps = getStateProps (bitenc delta) qState
       precRel = (prec delta) (fst . fromJust $ g) qProps
       transitionCases
-        -- semiconfigurations with empty stack but not the initial one
-        | (isNothing g) && not encodeNothing = do
-          unless ((consistentFilter delta) qState) $ error "semiconfigurations with empty stack but inconsistent states"
-          return IntSet.empty
 
         -- this case includes the initial push
         | (isNothing g) || precRel == Just Yield = do
@@ -399,7 +395,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) encodeNothing =
       cases nextSemiconf nSCId iVal
         | (iVal == 0) = do
             liftIO $ addtoPath globals nextSemiconf nSCId
-            dfs globals sIdGen delta supports nextSemiconf (nSCId, target) False
+            dfs globals sIdGen delta supports nextSemiconf (nSCId, target)
         | (iVal < 0)  = liftIO $ lookupCntxs globals nSCId
         | (iVal > 0)  = liftIO $ merge globals nextSemiconf nSCId >> return IntSet.empty
         | otherwise = error "unreachable error"
@@ -597,7 +593,6 @@ encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMe
 
     addFixpEqs (eqMap globals) semiconfId_ terms
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
-    --DBG.traceM $ "Encoding push: " ++ show semiconfId_ ++ " = PushEq " ++ show showTerms
     -- encoding new variables (these PushEq are needed as placeholders to avoid repeatedly encode them)
     forM_ toEncode $ \(QuantVariable _ id_ toBeEncoded) ->
       let eqs = IntMap.fromSet (const (PushEq [])) toBeEncoded in
@@ -715,11 +710,11 @@ solveSCCQuery sccMembers globals = do
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
     oviRes <- ovi defaultOVISettingsDouble eqs snd
+    unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
 
     -- certify the result and compute some statistics
     rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
     unless rCertified $ error $ "Cannot deduce a rational certificate for this SCC when computing fraction f: " ++ show sccMembers
-    unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
     logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
     tWeights <- stopTimer startWeights rCertified
     liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { quantWeightTime = quantWeightTime s + tWeights })
