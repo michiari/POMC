@@ -15,7 +15,7 @@ import Pomc.Test.OPMs (stlV3Alphabet, makeInputSet)
 import Data.Maybe (fromJust, isJust)
 import Pomc.Prob.ProbModelChecker (ExplicitPopa(..), quantitativeModelCheckExplicitGen)
 import Pomc.Prob.ProbUtils (Solver(..))
-import Pomc.LogUtils (selectLogVerbosity)
+import Pomc.LogUtils (selectLogVerbosity, LogLevel(..))
 
 
 -- import the models
@@ -45,7 +45,7 @@ makeTestCase :: ExplicitPopa Word String
   -> TestTree
 makeTestCase popa solv ((name, phi), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") $ do
-    (res, _, info) <- selectLogVerbosity Nothing $ quantitativeModelCheckExplicitGen solv phi popa
+    (res, _, info) <- selectLogVerbosity Nothing $ quantitativeModelCheckExplicitGen solv phi popa -- (Just LogLevel Debug)
     let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
     assertBool debugMsg (checkApproxResult res expected)
 

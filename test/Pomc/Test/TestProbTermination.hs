@@ -18,7 +18,7 @@ import Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   )
 
 import Pomc.Prob.ProbUtils (Solver(..), Stats)
-import Pomc.LogUtils (MonadLogger, LoggingT, selectLogVerbosity)
+import Pomc.LogUtils (MonadLogger, LoggingT, selectLogVerbosity, LogLevel(..))
 import Control.Monad.IO.Class (MonadIO)
 import Data.Ratio ((%))
 
@@ -61,7 +61,7 @@ exactTerminationProbabilities =
   , (nonTerminating, 0, "Non terminating POPA")
   , (callRetEx, 1 % 4, "Call-ret example")
   , (callRetLoop1, 1 % 4, "Call-ret Loop 1")
-  , (callRetLoop2, 0, "Call-ret Loop 2")
+  , (callRetLoop2, 1 % 4, "Call-ret Loop 2")
   , (loopFunShort, 1 % 2, "Recursive loop with function call short")
   , (loopFunStm, 1 % 2, "Recursive loop with function call and stm")
   ]
@@ -76,7 +76,7 @@ makeTestCase :: (Show a, Show b)
              -> (TestCase (LoggingT IO) a, b)
              -> TestTree
 makeTestCase consistent popa ((name, query), expected) = testCase name $ do
-  (res, _, info) <- selectLogVerbosity Nothing $ query popa
+  (res, _, info) <- selectLogVerbosity Nothing $ query popa -- -- (Just LevelDebug)
   let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
   assertBool debugMsg (res `consistent` expected)
 
