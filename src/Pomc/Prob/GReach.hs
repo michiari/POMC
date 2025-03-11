@@ -79,7 +79,6 @@ import Data.Ratio (approxRational, (%))
 
 import Control.Applicative ((<|>))
 import qualified Data.IntMap as IntMap
-import qualified Debug.Trace as DBG
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.

@@ -125,7 +125,6 @@ retrieveInitialPush eps eqs gn = let
   toRationalLB b = approxRational (b - eps) eps
   toRationalUB b = approxRational (b + eps) eps
   in do
-    logDebugN $ "Transitions of initial push: " ++ show (Set.toList $ internalEdges gn)
     (lb, ub) <- foldM (\(accLB, accUB) e -> do
       pushEqs <- retrieveEquations eqs (to e)
       let newAccUB = updateUB e pushEqs accUB

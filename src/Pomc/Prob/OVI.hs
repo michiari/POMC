@@ -25,6 +25,8 @@ import Control.Monad.IO.Class (MonadIO())
 
 import Witch.Instances (realFloatToRational)
 import Data.Either (isLeft)
+import Data.Monoid (Sum(..))
+import Data.Foldable (foldMap')
 
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -105,7 +107,7 @@ evalMonomial v m = case m of
   Const c -> c
 
 evalPolynomial :: (Num n) => Polynomial2 n -> ProbVec n -> n
-evalPolynomial p v = sum . map (evalMonomial v) $ p
+evalPolynomial p v = getSum $ foldMap' (Sum . evalMonomial v) p
 
 evalPolySys :: (Ord n, Fractional n) => PolyVector n -> ProbVec n -> ProbVec n
 evalPolySys polySys src = V.map (`evalPolynomial` src) polySys

@@ -123,13 +123,14 @@ toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
 evalEqSys :: (Ord n, Fractional n)
           => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
 evalEqSys leqMap checkRes src =
-  let computEq (PushLEq terms) = getSum $ foldMap' 
-            (\(p, k1, k2) -> Sum $ p * (either (src V.!) id k1) * (either (src V.!) id k2)
-            ) terms
-      computEq (ShiftLEq terms) = getSum $ foldMap'
-            (\(p, k1) -> Sum $ p * either (src V.!) id k1) terms
+  let getV i j = if j < i then dest V.! j else src V.! j
+      computEq idx (PushLEq terms) = getSum $ foldMap' 
+              (\(p, k1, k2) -> Sum $ p * (either (getV idx) id k1) * (either (getV idx) id k2)
+              ) terms
+      computEq idx (ShiftLEq terms) = getSum $ foldMap'
+            (\(p, k1) -> Sum $ p * either (getV idx) id k1) terms
 
-      dest = V.map computEq leqMap
+      dest = V.imap computEq leqMap
       checkDest = V.and (V.zipWith checkRes dest src)
   in (checkDest, dest)
 
