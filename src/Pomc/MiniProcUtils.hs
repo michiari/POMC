@@ -15,6 +15,7 @@ module Pomc.MiniProcUtils ( VarValuation(..)
                           , wholeArrayAssign
                           , evalExpr
                           , toBool
+                          , groupByExpr
                           ) where
 
 import Pomc.MiniIR
@@ -128,3 +129,13 @@ evalExpr gvii vval (Trunc size op) = evalExpr gvii vval op B.@@ (size - 1, 0)
 
 toBool :: IntValue -> Bool
 toBool v = B.nat v /= 0
+
+groupByExpr :: VarIdInfo -> Expr -> [VarState] -> [(IntValue, [VarState])]
+groupByExpr gvii expr = foldl sortState []
+  where sortState sortedVStates vs@(_, vval) = go sortedVStates
+          where
+            exprValue = evalExpr gvii vval expr
+            go (vals@(val, vstates):rest)
+              | val == exprValue = (val, vs:vstates):rest
+              | otherwise = vals:(go rest)
+            go [] = [(exprValue, [vs])]

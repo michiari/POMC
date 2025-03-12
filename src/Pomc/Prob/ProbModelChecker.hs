@@ -150,7 +150,7 @@ terminationExplicit query popa =
 programTermination :: (MonadIO m, MonadFail m, MonadLogger m)
                    => Solver -> Program -> m (TermResult, Stats, String)
 programTermination solver prog =
-  let (_, popa) = programToPopa prog Set.empty
+  let (_, _, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
       (bitenc, precFunc, _, _, _, _, _, _) =
         makeOpa T IsProb (tsls, tprec) (\_ _ -> True)
@@ -257,7 +257,7 @@ qualitativeModelCheckProgram :: (MonadIO m, MonadFail m, MonadLogger m)
                              -> m (Bool, Stats, String)
 qualitativeModelCheckProgram solver phi prog =
   let
-    (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
+    (pconv, _, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
   in qualitativeModelCheck solver transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
@@ -390,7 +390,7 @@ quantitativeModelCheckProgram :: (MonadIO m, MonadFail m, MonadLogger m)
                               -> m ((Prob, Prob), Stats, String)
 quantitativeModelCheckProgram solver phi prog =
   let
-    (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
+    (pconv, _, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
   in quantitativeModelCheck solver transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
@@ -470,7 +470,7 @@ exportMarkovChain :: (MonadIO m, MonadFail m, MonadLogger m)
             -> m ()
 exportMarkovChain phi prog depth transFile labFile =
   let
-    (pconv, popa) = programToPopa prog (Set.fromList $ getProps phi)
+    (pconv, _, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
     (bitencPhi, precFunc, _, (_, _), _, _, _, _) =
       makeOpa transPhi IsProb (popaAlphabet popa) (\_ _ -> True)

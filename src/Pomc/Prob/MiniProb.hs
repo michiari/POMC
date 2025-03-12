@@ -353,6 +353,7 @@ lowerBlock sks thisFinfo linkPred0 block = foldM foldBlock (linkPred0, Thunk id)
 -- Conversion of the Extended pOPA to a plain pOPA
 programToPopa :: Program -> Set (Prop ExprProp)
               -> ( PropConv ExprProp
+                 , (Expr -> [VarState] -> [(IntValue, [VarState])])
                  , Popa VarState APType
                  )
 programToPopa prog additionalProps =
@@ -389,6 +390,7 @@ programToPopa prog additionalProps =
                                      }
 
   in ( pconv
+     , groupByExpr gvii
      , Popa { popaAlphabet = encodeAlphabet pconv miniProbAlphabet
             , popaInitial = (\bitenc -> (eInitial, pStateToLabel bitenc pconv allProps gvii localsInfo ini $ snd eInitial))
             , popaDeltaPush = applyDeltaInput pconv allProps gvii localsInfo
