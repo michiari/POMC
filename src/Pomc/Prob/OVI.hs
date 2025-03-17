@@ -27,8 +27,6 @@ import Witch.Instances (realFloatToRational)
 import Data.Either (isLeft)
 import Data.Monoid (Sum(..))
 import Data.Foldable (foldMap')
-
-import Data.Vector (Vector)
 import qualified Data.Vector as V
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
@@ -91,15 +89,6 @@ data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviUpperBound :: ProbVec n
                              }
 
--- Int values are variables' indexes in the current src 
--- n are constant coefficients
-data Monomial2 n = Quad n Int Int
-                 | Lin n Int
-                 | Const n
-                 deriving Show
-type Polynomial2 n = [Monomial2 n]
-type PolyVector n = Vector (Polynomial2 n)
-
 evalMonomial :: (Num n) => ProbVec n -> Monomial2 n -> n
 evalMonomial v m = case m of
   Quad c k1 k2 -> c * (v V.! k1) * (v V.! k2)
@@ -127,23 +116,19 @@ monomialDerivative m x = case m of -- ugly but it works
 -- I is the identity matrix, and x is the vector of all variables
 jacobiTimesX :: (Num n) => LEqSys n -> ProbVec n -> PolyVector n
 jacobiTimesX leqSys v =
-  let jtxMonomial lmon (Left key) = [Lin coeff key]
-        where coeff = evalMonomial v (monomialDerivative lmon key)
-      jtxMonomial _ _ = []
+  let jtxMonomial lmon k = Lin coeff k
+        where coeff = evalMonomial v (monomialDerivative lmon k)
 
-      constructPoly k (PushLEq terms) = (Lin 1 k :) . concatMap
-        (\(p, k1, k2) ->
-            let build (Left k1)   (Left k2) = Quad p k1 k2
-                build (Left k1)   (Right val) = Lin (p * val) k1
-                build (Right val) (Left k1)  = Lin (p * val) k1
-                build _ _ = error "unexpected"
-                pm = build k1 k2
-                m1 = jtxMonomial pm k1
-                m2 = jtxMonomial pm k2
-            in  m1 ++ m2
-        ) $ filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms
-      constructPoly k (ShiftLEq terms) = (Lin 1 k :) . concatMap
-        (\(p, Left k1) -> jtxMonomial (Lin p k1) (Left k1))
+      build (p, Left k1, Left k2) = [jtxMonomial pm k1, jtxMonomial pm k2]
+        where pm = Quad p k1 k2
+      build (p, Left k1, Right val) = [jtxMonomial (Lin (p * val) k1) k1]
+      build (p, Right val, Left k1)  = [jtxMonomial (Lin (p * val) k1) k1]
+      build _ = error "unexpected"
+
+      constructPoly k (PushLEq terms) = (Lin 1 k :) . concatMap build 
+        $ filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms
+      constructPoly k (ShiftLEq terms) = (Lin 1 k :) . map
+        (\(p, Left k1) -> jtxMonomial (Lin p k1) k1)
         $ filter (\(_, eitherP) -> isLeft eitherP) terms
 
   in V.imap constructPoly leqSys

@@ -14,6 +14,9 @@ module Pomc.Prob.FixPoint ( VarKey
                           , LiveEq(..)
                           , LEqSys
                           , ProbVec
+                          , Monomial2(..)
+                          , Polynomial2
+                          , PolyVector
                           , addFixpEq
                           , addFixpEqs
                           , toLiveEqMapWith
@@ -80,6 +83,15 @@ data LiveEq n = PushLEq [(n, Either Int n, Either Int n)]
 type LEqSys n = Vector (LiveEq n)
 type ProbVec n = Vector n
 
+-- Int values are variables' indexes in the current src 
+-- n are constant coefficients
+data Monomial2 n = Quad n Int Int
+                 | Lin n Int
+                 | Const n
+                 deriving Show
+type Polynomial2 n = [Monomial2 n]
+type PolyVector n = Vector (Polynomial2 n)
+
 addFixpEq :: MonadIO m => AugEqMap n -> VarKey -> FixpEq n -> m ()
 addFixpEq (eqMap, lEqs) varKey eq@(PopEq _) = liftIO $ do
   uncurry (MM.insert eqMap) varKey eq
@@ -123,13 +135,13 @@ toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
 evalEqSys :: (Ord n, Fractional n)
           => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
 evalEqSys leqMap checkRes src =
-  let getV i j = if j < i then dest V.! j else src V.! j
+  let -- Gauss-Seidel update (read from dest values for already evaluated eqs)
+      -- for plain value iteration, always read from search
+      getV i j = if j < i then dest V.! j else src V.! j
       computEq idx (PushLEq terms) = getSum $ foldMap' 
-              (\(p, k1, k2) -> Sum $ p * (either (getV idx) id k1) * (either (getV idx) id k2)
-              ) terms
+        (\(p, k1, k2) -> Sum $ p * (either (getV idx) id k1) * (either (getV idx) id k2)) terms
       computEq idx (ShiftLEq terms) = getSum $ foldMap'
-            (\(p, k1) -> Sum $ p * either (getV idx) id k1) terms
-
+        (\(p, k1) -> Sum $ p * either (getV idx) id k1) terms
       dest = V.imap computEq leqMap
       checkDest = V.and (V.zipWith checkRes dest src)
   in (checkDest, dest)
@@ -161,7 +173,7 @@ preprocessZeroApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
           zeroVec = V.toList . V.filter (\(_,p) -> p == 0) $ V.zip (V.fromList $ Set.toList lVars) probVec
       return zeroVec
 
-
+-- preprocess live equations by propagating found values, until no value can be propagated anymore
 preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
                       => AugEqMap k -> (k -> n) -> m ([(VarKey, n)], [VarKey])
 preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
@@ -202,7 +214,6 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
 
             ) (False, updatedVars, []) liveVars
 
-          -- preprocess live equations by propagating found values, until no value
           nonZeroVars = zip (Set.toList lVars) (V.toList leqMap)
           (upVars, newLiveVars) = go (True, M.empty, nonZeroVars)
       return (upVars, newLiveVars)
