@@ -89,13 +89,13 @@ data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviUpperBound :: ProbVec n
                              }
 
-evalMonomial :: (Num n) => ProbVec n -> Monomial2 n -> n
+evalMonomial :: Num n => ProbVec n -> Monomial2 n -> n
 evalMonomial v m = case m of
   Quad c k1 k2 -> c * (v V.! k1) * (v V.! k2)
   Lin c k1 -> c * (v V.! k1)
   Const c -> c
 
-evalPolynomial :: (Num n) => Polynomial2 n -> ProbVec n -> n
+evalPolynomial :: Num n => Polynomial2 n -> ProbVec n -> n
 evalPolynomial p v = getSum $ foldMap' (Sum . evalMonomial v) p
 
 evalPolySys :: (Ord n, Fractional n) => PolyVector n -> ProbVec n -> ProbVec n
@@ -114,13 +114,14 @@ monomialDerivative m x = case m of -- ugly but it works
 
 -- compute (J|v + I) x, where J|v is the Jacobian of leqSys evaluated on v,
 -- I is the identity matrix, and x is the vector of all variables
-jacobiTimesX :: (Num n) => LEqSys n -> ProbVec n -> PolyVector n
+jacobiTimesX :: Num n => LEqSys n -> ProbVec n -> PolyVector n
 jacobiTimesX leqSys v =
   let jtxMonomial lmon k = Lin coeff k
         where coeff = evalMonomial v (monomialDerivative lmon k)
-
-      build (p, Left k1, Left k2) = [jtxMonomial pm k1, jtxMonomial pm k2]
-        where pm = Quad p k1 k2
+      build (p, Left k1, Left k2) 
+        | k1 == k2 = [jtxMonomial pm k1]
+        | otherwise = [jtxMonomial pm k1, jtxMonomial pm k2]
+          where pm = Quad p k1 k2
       build (p, Left k1, Right val) = [jtxMonomial (Lin (p * val) k1) k1]
       build (p, Right val, Left k1)  = [jtxMonomial (Lin (p * val) k1) k1]
       build _ = error "unexpected"
@@ -251,7 +252,7 @@ oviToRational settings augEqMap@(_, _) f oviRes = do
         in if inductive
           then (inductive, maxIters - kIters + 1)
           else checkWithKInd newRub (kIters - 1)
-      (successF1, itersF1) =  checkWithKInd initialRub1 maxIters
+      (successF1, itersF1) = checkWithKInd initialRub1 maxIters
       (successF2, itersF2) = checkWithKInd initialRub2 maxIters
   if successF1
     then do
