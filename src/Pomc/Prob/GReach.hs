@@ -683,32 +683,31 @@ solveSCCQuery sccMembers globals = do
   currentEps <- liftIO $ readIORef epsVar
   let iterEps = min defaultEps $ currentEps * currentEps
 
-  -- preprocessing to solve variables that do not need ovi
-  zeroVars <- preprocessZeroApproxFixp eqs fst iterEps (sccLen + 1)
-  liftIO $ forM_ zeroVars $ \(k, v) -> do
-    addFixpEq eqs k (PopEq (v, v))
-
-  (solvedLVars, _) <- preprocessApproxFixp eqs fst
-  (solvedUvars, unsolvedVars) <- preprocessApproxFixp eqs snd
-
+  -- preprocess by propagating already known values
+  solvedLVars <- preprocessApproxFixp eqs fst
+  solvedUvars <- preprocessApproxFixp eqs snd
   let zipSolved = zip solvedLVars solvedUvars
-  liftIO $ forM_ zipSolved $ \((k1, l), (_, u)) -> do
-    addFixpEq eqs k1 (PopEq (l,u))
+  forM_ zipSolved $ \((k1, l), (_, u)) -> addFixpEq eqs k1 (PopEq (l,u))
+
+  prepApprox <- preprocessZeroApproxFixp eqs fst iterEps (sccLen + 1)
+  varKeys <- liveVariables eqs
+  let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
+  forM_ zeroVars $ \(k, v) -> addFixpEq eqs k (PopEq (v, v))
 
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCountQuant = acc} -> s{largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
 
-  unless (null unsolvedVars) $ do
+  unless (V.null unsolvedVars) $ do
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCountQuant = acc} -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars}
     liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCountQuant = acc } -> s{ largestSCCNonTrivialEqsCountQuant = max acc (length unsolvedVars) }
     startWeights <- startTimer
 
     -- compute lower bounds
-    approxVec <- approxFixp eqs fst iterEps defaultMaxIters
+    approxVec <- approxFixpWithHint eqs fst iterEps (V.map snd unsolvedVars) defaultMaxIters 
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
-    oviRes <- ovi defaultOVISettingsDouble eqs snd
+    oviRes <- ovi defaultOVISettingsDouble eqs snd approxVec
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
 
     -- certify the result and compute some statistics

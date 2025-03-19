@@ -159,15 +159,13 @@ computeEigen leqSys eps maxIters lowerApprox eigenVec =
   in (newEigenVec, eigenVal - 1, iters) -- -1 because we added the identity matrix
 
 ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n, Num n)
-    => OVISettings n -> AugEqMap k -> (k -> n) -> m (OVIResult n)
-ovi settings augEqMap f = do
+    => OVISettings n -> AugEqMap k -> (k -> n) -> ProbVec n -> m (OVIResult n)
+ovi settings augEqMap f lowerApproxInitial = do
   -- create system containing only live equations
   leqSys <- toLiveEqMapWith augEqMap f
   logDebugN $ "Identified " ++ show (V.length leqSys) ++ " live variables..."
   let
     vecLength = V.length leqSys
-    lowerApproxInitial = V.replicate vecLength 0
-    upperApproxInitial = V.replicate vecLength 0
     eigenVecInitial = V.replicate vecLength 1
     go _ _ lowerApprox upperApprox 0 _ = return OVIResult { oviSuccess  = False
                                 , oviIters = oviMaxIters settings
@@ -226,7 +224,7 @@ ovi settings augEqMap f = do
              (maxIters - 1)
              newEigenVec
 
-  go (oviKleeneEps settings) (oviPowerIterEps settings) lowerApproxInitial upperApproxInitial (oviMaxIters settings) eigenVecInitial
+  go (oviKleeneEps settings) (oviPowerIterEps settings) lowerApproxInitial lowerApproxInitial (oviMaxIters settings) eigenVecInitial
 
 oviToRational :: (MonadIO m, MonadLogger m, Ord n, RealFrac n, Show n, RealFloat n)
                        => OVISettings n -> AugEqMap k -> (k -> n) -> OVIResult n -> m Bool

@@ -22,7 +22,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , toLiveEqMapWith
                           , evalEqSys
                           , approxFixpFrom
-                          , approxFixp
+                          , approxFixpWithHint
                           , defaultEps
                           , defaultMaxIters
                           , toRationalProbVec
@@ -160,26 +160,24 @@ approxFixpFrom leqMap eps maxIters probVec
           then newProbVec
           else approxFixpFrom leqMap eps (maxIters - 1) newProbVec
 
--- determine variables for which zero is a fixpoint
+-- determine variables for which zero is a fixpoint by iterating a few times the system
 preprocessZeroApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
-                      => AugEqMap k -> (k -> n) -> n -> Int -> m [(VarKey, n)]
+                      => AugEqMap k -> (k -> n) -> n -> Int -> m (ProbVec n)
 preprocessZeroApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
   lVars <- liftIO $ readIORef lVarsRef
   if Set.null lVars
-    then return []
+    then return V.empty
     else do
       leqMap <- toLiveEqMapWith augEqMap f
-      let probVec = approxFixpFrom leqMap eps maxIters (V.replicate (Set.size lVars) 0)
-          zeroVec = V.toList . V.filter (\(_,p) -> p == 0) $ V.zip (V.fromList $ Set.toList lVars) probVec
-      return zeroVec
+      return $ approxFixpFrom leqMap eps maxIters (V.replicate (Set.size lVars) 0)
 
 -- preprocess live equations by propagating found values, until no value can be propagated anymore
 preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
-                      => AugEqMap k -> (k -> n) -> m ([(VarKey, n)], [VarKey])
+                      => AugEqMap k -> (k -> n) -> m [(VarKey, n)]
 preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
   lVars <- liftIO $ readIORef lVarsRef
   if Set.null lVars
-    then return ([],[])
+    then return []
     else do
       leqMap <- toLiveEqMapWith augEqMap f
       let solveShift _ Nothing _ = Nothing
@@ -214,15 +212,15 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
 
             ) (False, updatedVars, []) liveVars
 
-          nonZeroVars = zip (Set.toList lVars) (V.toList leqMap)
-          (upVars, newLiveVars) = go (True, M.empty, nonZeroVars)
-      return (upVars, newLiveVars)
+          vars = zip (Set.toList lVars) (V.toList leqMap)
+          (upVars, _) = go (True, M.empty, vars)
+      return upVars
 
-approxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
-           => AugEqMap k -> (k -> n) -> n -> Int -> m (ProbVec n)
-approxFixp augEqMap f eps maxIters = do
+approxFixpWithHint :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
+           => AugEqMap k -> (k -> n) -> n -> ProbVec n -> Int -> m (ProbVec n)
+approxFixpWithHint augEqMap f eps hint maxIters = do
   leqMap <- toLiveEqMapWith augEqMap f
-  return $ approxFixpFrom leqMap eps maxIters (V.replicate (V.length leqMap) 0)
+  return $ approxFixpFrom leqMap eps maxIters hint
    
 defaultEps :: EqMapNumbersType
 defaultEps = 0x1p-26 -- ~ 1e-8

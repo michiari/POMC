@@ -457,9 +457,9 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) s
       sccLen = IntSet.size sccMembers
       cases unsolvedVars
         | null unsolvedVars = logDebugN "No equation system has to be solved here, just propagated all the values." >> return []
-        | useZ3 = updateLowerBound >>= updateUpperBoundsZ3
-        | otherwise = updateLowerBound >>= updateUpperBoundsOVI
-      updateLowerBound = approxFixp eqs fst defaultEps defaultMaxIters
+        | useZ3 = updateLowerBound unsolvedVars >>= updateUpperBoundsZ3
+        | otherwise = updateLowerBound unsolvedVars >>= updateUpperBoundsOVI
+      updateLowerBound unsolvedVars = approxFixpWithHint eqs fst defaultEps (V.map snd unsolvedVars) defaultMaxIters
       --
       doAssert approxFracVec currentEps = do
         push -- create a backtracking point
@@ -486,7 +486,7 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) s
       updateUpperBoundsZ3 lowerBound = do
         startUpper <- startTimer
         logDebugN "Approximating via Value Iteration + z3"
-        approxVec <- approxFixp eqs snd defaultEps defaultMaxIters
+        approxVec <- approxFixpWithHint eqs snd defaultEps lowerBound defaultMaxIters
         let approxFracVec = toRationalProbVec defaultEps approxVec
         logDebugN "Asserting lower and upper bounds computed from value iteration, and getting a model"
         varKeys <- liveVariables eqs
@@ -509,7 +509,7 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) s
       updateUpperBoundsOVI lowerBound = do
         startUpper <- startTimer
         logDebugN "Using OVI to update upper bounds"
-        oviRes <- ovi defaultOVISettingsDouble eqs snd
+        oviRes <- ovi defaultOVISettingsDouble eqs snd lowerBound
         rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
         unless rCertified $ error "cannot deduce a rational certificate for this semiconf"
         unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bound on the termination probabilities"
@@ -530,26 +530,26 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) s
 
   -- preprocessing phase
   -- preprocessing to solve variables that do not need ovi
-  zeroVars <- preprocessZeroApproxFixp eqs fst defaultEps (sccLen + 1)
-  forM_ zeroVars $ \(k, v) -> do
-    pAST <- mkRealNum (v :: Double)
-    liftIO $ HT.insert tVarMap k pAST
-    addFixpEq eqs k (PopEq (v, v))
-
-  (solvedLVars, _) <- preprocessApproxFixp eqs fst
-  (solvedUvars, unsolvedVars) <- preprocessApproxFixp eqs snd
-
+  solvedLVars <- preprocessApproxFixp eqs fst
+  solvedUvars <- preprocessApproxFixp eqs snd
   let zipSolved = zip solvedLVars solvedUvars
   forM_ zipSolved $ \((varKey, l), (_, u)) -> do
     pAST <- mkRealNum (u :: Double)
     liftIO $ HT.insert tVarMap varKey pAST
     addFixpEq eqs varKey (PopEq (l,u))
 
+  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps (sccLen + 1)
+  varKeys <- liveVariables eqs
+  let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
+  forM_ zeroVars $ \(k, v) -> do
+    pAST <- mkRealNum (v :: Double)
+    liftIO $ HT.insert tVarMap k pAST
+    addFixpEq eqs k (PopEq (v, v))
+
   -- lEqMap and uEqMap have the same unsolved equations
   logDebugN $ "Number of live equations to be solved: " ++ show (length unsolvedVars) ++ " - unsolved variables: " ++ show unsolvedVars
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCount = acc } -> s{ largestSCCNonTrivialEqsCount = max acc (length unsolvedVars) }
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCount = acc} -> s{nonTrivialEquationsCount = acc + length unsolvedVars}
-
 
   -- find bounds for this SCC
   upperBound <- cases unsolvedVars
