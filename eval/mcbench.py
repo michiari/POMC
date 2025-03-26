@@ -84,7 +84,7 @@ def exec_bench(fname, args):
             '--machine-readable',
             '-RTS'
         ] + \
-        (['--noovi'] if args.noovi else []),
+        (['--noovi'] if args.noovi else []) + \
         (['--newton'] if args.newton else []),
         capture_output=True
     )
