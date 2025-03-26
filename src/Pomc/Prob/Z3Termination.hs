@@ -280,7 +280,8 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   emptyMustReachPop <- liftIO $ newIORef IntSet.empty
   newRewVarMap <- liftIO HT.new
   newEps <- liftIO $ newIORef defaultEps
-  let globals = DeficientGlobals { sStack = newSS
+  let gn = suppGraph ! 0
+      globals = DeficientGlobals { sStack = newSS
                                 , bStack = newBS
                                 , iVector = newIVec
                                 , successorsCntxs = newSuccessorsCntxs
@@ -294,14 +295,8 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   -- setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
 
   -- perform the Gabow algorithm to compute all termination probabilities
-  let (useZ3, exactEq) = case solver query of
-        OVI -> (False, False)
-        SMTWithHints -> (True, False)
-        ExactSMTWithHints -> (True, True)
-      gn = suppGraph ! 0
-
   addtoPath globals gn
-  (_, isAST) <- dfs suppGraph globals precFun (useZ3, exactEq) gn
+  (_, isAST) <- dfs suppGraph globals precFun (solver query) gn
   logInfoN $ "Is AST: " ++ show isAST
 
   -- returning the computed values
@@ -331,15 +326,16 @@ terminationQuerySCC suppGraph precFun query oldStats = do
       readResults (ApproxAllQuery ExactSMTWithHints) = readResults (ApproxAllQuery SMTWithHints)
       readResults (ApproxSingleQuery ExactSMTWithHints) = readResults (ApproxSingleQuery SMTWithHints)
       readResults (CompQuery comp bound ExactSMTWithHints) = readResults (CompQuery comp bound SMTWithHints)
-      readResults (ApproxAllQuery OVI) = liftIO $ do
+      -- results computed with OVI
+      readResults (ApproxAllQuery _) = liftIO $ do
         probMap <- GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newEqMap
         let upperProbRationalMap = GeneralMap.map approxU probMap
         let lowerProbRationalMap = GeneralMap.map approxL probMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
-      readResults (ApproxSingleQuery OVI) = do
+      readResults (ApproxSingleQuery _) = do
         (lb, ub) <- unlessAST $ retrieveInitialPush actualEps (eqMap globals) gn
         return (ApproxSingleResult (lb, ub), mustReachPopIdxs)
-      readResults (CompQuery comp bound OVI) = do
+      readResults (CompQuery comp bound _) = do
         (lb, ub) <- unlessAST $ retrieveInitialPush actualEps (eqMap globals) gn
         return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
 
@@ -349,12 +345,12 @@ dfs :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show
     => SupportGraph state
     -> DeficientGlobals state
     -> EncPrecFunc
-    -> (Bool, Bool)
+    -> Pomc.Prob.ProbUtils.Solver
     -> GraphNode state
     -> z3 (SuccessorsPopContexts, Bool)
-dfs suppGraph globals precFun (useZ3, exactEq) gn =
+dfs suppGraph globals precFun solv gn =
   let cases nextNode iVal
-        | (iVal == 0) = addtoPath globals nextNode >> dfs suppGraph globals precFun (useZ3, exactEq) nextNode
+        | (iVal == 0) = addtoPath globals nextNode >> dfs suppGraph globals precFun solv nextNode
         | (iVal < 0)  = liftIO $ do
             popCntxs <-  MV.unsafeRead (successorsCntxs globals) (gnId nextNode)
             mrPop <- IntSet.member (gnId nextNode) <$> readIORef (mustReachPop globals)
@@ -376,7 +372,7 @@ dfs suppGraph globals precFun (useZ3, exactEq) gn =
           | not . Map.null $ popContexts gn = return (IntSet.fromList . Map.keys $ popContexts gn, True)
           | otherwise = return (dPopCntxs, dMustReachPop)
     (dActualPopCntxs, dActualMustReachPop) <- computeActualRes
-    createComponent suppGraph globals gn (dActualPopCntxs, dActualMustReachPop) precFun (useZ3, exactEq)
+    createComponent suppGraph globals gn (dActualPopCntxs, dActualMustReachPop) precFun solv
 
 -- helpers
 addtoPath :: MonadZ3 z3 => DeficientGlobals state -> GraphNode state -> z3 ()
@@ -398,14 +394,14 @@ createComponent :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable
                 -> GraphNode state
                 -> (SuccessorsPopContexts, Bool)
                 -> EncPrecFunc
-                -> (Bool, Bool)
+                -> Pomc.Prob.ProbUtils.Solver
                 -> z3 (SuccessorsPopContexts, Bool)
-createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, exactEq) = do
+createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun solv = do
   topB <- liftIO $ ZS.peek $ bStack globals
   iVal <- liftIO $ MV.unsafeRead (iVector globals) (gnId gn)
   let tVarMap = varMap globals
       eqs = eqMap globals
-      mkComp = (if exactEq then mkEq else mkGe)
+      mkComp = (if exactComputation solv then mkEq else mkGe)
       createC = do
         liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
         liftIO $ ZS.pop_ (bStack globals)
@@ -426,17 +422,17 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
           liftIO $ HT.insert tVarMap key var
         -- delete previous assertions and encoding the new ones
         reset
-        eqsCount <- encode toEncode tVarMap eqs suppGraph precFun mkComp useZ3 sccMembers 0
+        eqsCount <- encode toEncode tVarMap eqs suppGraph precFun mkComp (useZ3 solv) sccMembers 0
         liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
         logDebugN $ "Must reach pop of descendant: " ++ show dMustReachPop
-        actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) sccMembers
+        actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers
         when actualMustReachPop $ forM_ poppedEdges $ \e -> liftIO $ modifyIORef' (mustReachPop globals) $ IntSet.insert e
         return (popContxs, actualMustReachPop)
       cases
         | iVal /= topB = return (popContxs, dMustReachPop)
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
         | gnId gn == 0 = return (popContxs, dMustReachPop) -- cannot reach a pop
-        | otherwise = createC >> return (popContxs, False) 
+        | otherwise = createC >> return (popContxs, False)
   cases
 
 -- params:
@@ -444,8 +440,8 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun (useZ3, 
 -- (graph :: SupportGraph state :: ) = the graph
 -- (varMap :: VarMap) = mapping (semiconf, rightContext) -> Z3 var
 solveSCCQuery :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)
-              => SupportGraph state -> Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> (Bool, Bool) -> IntSet -> z3 Bool
-solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) sccMembers = do
+              => SupportGraph state -> Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> Pomc.Prob.ProbUtils.Solver -> IntSet -> z3 Bool
+solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = do
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
   liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCount = acc} -> s{largestSCCSemiconfsCount = max acc (IntSet.size sccMembers)}
   --logDebugN $ "New variables of this SCC: " ++ show variables
@@ -457,9 +453,12 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) s
       sccLen = IntSet.size sccMembers
       cases unsolvedVars
         | null unsolvedVars = logDebugN "No equation system has to be solved here, just propagated all the values." >> return []
-        | useZ3 = updateLowerBound unsolvedVars >>= updateUpperBoundsZ3
+        | useZ3 solv = updateLowerBound unsolvedVars >>= updateUpperBoundsZ3
         | otherwise = updateLowerBound unsolvedVars >>= updateUpperBoundsOVI
-      updateLowerBound unsolvedVars = approxFixpWithHint eqs fst defaultEps (V.map snd unsolvedVars) defaultMaxIters
+      updateLowerBound unsolvedVars
+        | useNewton solv = approxFixpNewtonWithHint eqs fst (1000 * defaultEps) defaultEps defaultMaxIters defaultMaxIters (V.map snd unsolvedVars)
+        | otherwise = approxFixpWithHint eqs fst defaultEps defaultMaxIters (V.map snd unsolvedVars)
+
       --
       doAssert approxFracVec currentEps = do
         push -- create a backtracking point
@@ -486,7 +485,8 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) s
       updateUpperBoundsZ3 lowerBound = do
         startUpper <- startTimer
         logDebugN "Approximating via Value Iteration + z3"
-        approxVec <- approxFixpWithHint eqs snd defaultEps lowerBound defaultMaxIters
+        -- we don't allow using Newton here, as it is definitively worthless.
+        approxVec <- approxFixpWithHint eqs snd defaultEps defaultMaxIters lowerBound
         let approxFracVec = toRationalProbVec defaultEps approxVec
         logDebugN "Asserting lower and upper bounds computed from value iteration, and getting a model"
         varKeys <- liveVariables eqs
@@ -568,7 +568,7 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun (useZ3, exactEq) s
       exactASTprobs = all (\(_,ub) -> ub > 1 - defaultTolerance) upperBoundsTermProbs
       pASTCertCases
         | null unsolvedVars = return dMustReachPop -- just propagating
-        | exactEq = return exactASTprobs
+        | exactComputation solv = return exactASTprobs
         | not dMustReachPop && aSTprobs =
           error $ "Descendants are not PAST but these semiconfs have termination upper bounds equal to 1: " ++ show upperBoundsTermProbs
         | nonASTprobs = logDebugN "The upper bound is enough to prove non AST" >> return False

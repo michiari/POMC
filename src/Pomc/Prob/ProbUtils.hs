@@ -30,6 +30,9 @@ module Pomc.Prob.ProbUtils ( Prob
                            , decode
                            , defaultTolerance
                            , defaultRTolerance
+                           , exactComputation
+                           , useZ3
+                           , useNewton
                            , solver
                            , toBool
                            , toTermResult
@@ -190,7 +193,22 @@ decodeFullStack (s1, s) = (getId s1, map dec s)
 -- Strategy to use to compute the result
 -- SMTWithHints: compute a lower approximation of the solution
 --               with an iterative method and use it as a hint for the SMT solver
-data Solver = SMTWithHints | ExactSMTWithHints | OVI deriving (Eq, Show)
+-- OVIGS : use Value Iteration with Gauss-Seidel update for iterating fixpoint equations
+-- OVINewton: use the Newton Method for iterating fixpoint equations
+data Solver = SMTWithHints | ExactSMTWithHints | OVIGS | OVINewton deriving (Eq, Show)
+
+exactComputation :: Solver -> Bool 
+exactComputation ExactSMTWithHints = True 
+exactComputation _ = False
+
+useZ3 :: Solver -> Bool 
+useZ3 SMTWithHints = True 
+useZ3 ExactSMTWithHints = True
+useZ3 _ = False
+
+useNewton :: Solver -> Bool 
+useNewton OVINewton = True 
+useNewton _ = False 
 
 defaultTolerance :: EqMapNumbersType
 defaultTolerance = 1e-7

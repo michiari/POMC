@@ -17,12 +17,18 @@ module Pomc.Prob.FixPoint ( VarKey
                           , Monomial2(..)
                           , Polynomial2
                           , PolyVector
+                          , evalMonomial
+                          , evalPolynomial
+                          , evalPolySys
+                          , jacobiTimesX
+                          , pminusXjacobi
                           , addFixpEq
                           , addFixpEqs
                           , toLiveEqMapWith
                           , evalEqSys
                           , approxFixpFrom
                           , approxFixpWithHint
+                          , approxFixpNewtonWithHint
                           , defaultEps
                           , defaultMaxIters
                           , toRationalProbVec
@@ -49,19 +55,21 @@ import qualified Pomc.IOMapMap as MM
 import Data.Set (Set)
 import qualified Data.Set as Set
 
--- a Map that is really strict
 import qualified Data.Strict.Map as M
 import Data.Foldable (foldl', foldMap')
-
+import Data.Either (isLeft)
+import Data.Monoid (Sum(..))
+import Data.Bifunctor(second)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 
-import Data.Monoid (Sum(..))
-
 import Data.IntSet (IntSet)
-
 import Data.IntMap(IntMap)
-import qualified Data.IntMap as Map
+import qualified Data.IntMap as IntMap
+
+import qualified Numeric.LinearAlgebra as LA
+import qualified Numeric.LinearAlgebra.Data as LAD
+import qualified Debug.Trace as DBG
 
 type VarKey = (Int, Int)
 data FixpEq n = PushEq [(Prob, VarKey, VarKey)]
@@ -82,15 +90,71 @@ data LiveEq n = PushLEq [(n, Either Int n, Either Int n)]
 
 type LEqSys n = Vector (LiveEq n)
 type ProbVec n = Vector n
+type SparseMatrix n = [((Int,Int), Polynomial2 n)]
+type EvalSparseMatrix n = [((Int,Int), n)]
 
 -- Int values are variables' indexes in the current src 
 -- n are constant coefficients
-data Monomial2 n = Quad n Int Int
-                 | Lin n Int
+data Monomial2 n = Lin n Int
                  | Const n
                  deriving Show
 type Polynomial2 n = [Monomial2 n]
 type PolyVector n = Vector (Polynomial2 n)
+
+evalMonomial :: Num n => ProbVec n -> Monomial2 n -> n
+evalMonomial v m = case m of
+  Lin c k1 -> c * (v V.! k1)
+  Const c -> c
+
+evalPolynomial :: Num n => Polynomial2 n -> ProbVec n -> n
+evalPolynomial p v = getSum $ foldMap' (Sum . evalMonomial v) p
+
+evalPolySys :: (Ord n, Fractional n) => PolyVector n -> ProbVec n -> ProbVec n
+evalPolySys polySys src = V.map (`evalPolynomial` src) polySys
+
+evalSparseMatrix :: (Ord n, Fractional n) => SparseMatrix n -> ProbVec n -> EvalSparseMatrix n
+evalSparseMatrix m src = map (second (`evalPolynomial` src)) m
+
+-- compute (J|v + I) x, where J|v is the Jacobian of leqSys evaluated on v,
+-- I is the identity matrix, and x is the vector of all variables
+jacobiTimesX :: Num n => LEqSys n -> ProbVec n -> PolyVector n
+jacobiTimesX leqSys v =
+  let jtxMonomial dPdx = Lin coeff
+        where coeff = evalMonomial v dPdx
+      jtxPush (p, Left k1, Left k2)
+        | k1 == k2 = [jtxMonomial (Lin ((2 * p)) k1) k1]
+        | otherwise = [jtxMonomial (Lin p k2) k1, jtxMonomial (Lin p k1) k2]
+      jtxPush (p, Left k1, Right val) = [jtxMonomial (Const (p * val)) k1]
+      jtxPush (p, Right val, Left k1)  = [jtxMonomial (Const (p * val)) k1]
+      jtxPush _ = error "unexpected"
+
+      sparseJTimesX k (PushLEq terms) = (Lin 1 k :) . concatMap jtxPush
+        $ filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms
+      sparseJTimesX k (ShiftLEq terms) = (Lin 1 k :) . map
+        (\(p, Left k1) -> jtxMonomial (Const p) k1)
+        $ filter (\(_, eitherP) -> isLeft eitherP) terms
+
+  in V.imap sparseJTimesX leqSys
+
+-- compute symbolically (i.e., not evaluated) J(P - x), the Jacobian J of leqSys P minus the vector of all variables x
+pminusXjacobi :: Num n => LEqSys n -> SparseMatrix n
+pminusXjacobi leqSys =
+  let addMonomial dPdx k = M.insertWith (++) k [dPdx]
+
+      jPush acc (p, Left k1, Left k2)
+        | k1 == k2 =  addMonomial (Lin (2 * p) k1) k1 acc
+        | otherwise = addMonomial (Lin p k2) k1 (addMonomial (Lin p k1) k2 acc)
+      jPush acc (p, Left k1, Right val) = addMonomial (Const (p * val)) k1 acc
+      jPush acc (p, Right val, Left k1) = addMonomial (Const (p * val)) k1 acc
+      jPush acc _ = acc
+
+      jShift acc (p, Left k1) = addMonomial (Const p) k1 acc
+      jShift acc _ = acc
+
+      sparseJacobi k (PushLEq terms) = M.toList . M.mapKeys (k,) . foldl' jPush (M.singleton k [Const (-1)]) $ terms
+      sparseJacobi k (ShiftLEq terms) =  M.toList . M.mapKeys (k,) . foldl' jShift (M.singleton k [Const (-1)]) $ terms
+
+  in concat . V.imap sparseJacobi $ leqSys
 
 addFixpEq :: MonadIO m => AugEqMap n -> VarKey -> FixpEq n -> m ()
 addFixpEq (eqMap, lEqs) varKey eq@(PopEq _) = liftIO $ do
@@ -103,11 +167,11 @@ addFixpEq (eqMap, lEqs) varKey eq = liftIO $ do
 addFixpEqs :: (MonadIO m) => AugEqMap n -> Int -> IntMap (FixpEq n) -> m ()
 addFixpEqs  (eqMap, lEqs) semiconfId_ eqs = liftIO $ do
   MM.insertMap eqMap semiconfId_ eqs
-  let isPopEq (PopEq _) = True 
+  let isPopEq (PopEq _) = True
       isPopEq _ = False
-      (popEqs, liveEqs) = Map.partition isPopEq eqs
-  modifyIORef' lEqs (Set.union . Set.fromList . map (semiconfId_, ) . Map.keys $ liveEqs)
-  modifyIORef' lEqs (\s -> Set.difference s (Set.fromList . map (semiconfId_, ) . Map.keys $ popEqs))
+      (popEqs, liveEqs) = IntMap.partition isPopEq eqs
+  modifyIORef' lEqs (Set.union . Set.fromList . map (semiconfId_, ) . IntMap.keys $ liveEqs)
+  modifyIORef' lEqs (\s -> Set.difference s (Set.fromList . map (semiconfId_, ) . IntMap.keys $ popEqs))
 
 constructEitherWith :: (MonadIO m, Fractional k) => AugEqMap n -> VarKey -> Set VarKey -> (n -> k) -> m (Either Int k)
 constructEitherWith (eqMap, _) k lVars f
@@ -132,13 +196,63 @@ toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
           _ -> error "A supposed live variable is actually dead"
   V.mapM createEq (V.fromList $ Set.toList lVars)
 
-evalEqSys :: (Ord n, Fractional n)
+evalEqSysNewton :: SparseMatrix Double -> LEqSys Double
+  -> (Double -> Double -> Bool) -> ProbVec Double -> (Bool, ProbVec Double)
+evalEqSysNewton jMatrix leqMap checkRes src =
+  let computEq oldV (PushLEq terms) = oldV - getSum (foldMap'
+        (\(p, k1, k2) -> Sum $ p * (either (src V.!) id k1) * (either (src V.!) id k2)) terms)
+      computEq oldV (ShiftLEq terms)  = oldV - getSum (foldMap'
+        (\(p, k1) -> Sum $ p * either (src V.!) id k1) terms)
+
+      rhs = V.zipWith computEq src leqMap -- x - P(x) (right-hand-side)
+      jacobiEval = evalSparseMatrix jMatrix src -- J(P(x) - x) (matrix of coefficients in sparse form)
+      delta = V.fromList . LAD.toList . 
+        LA.cgSolve False (LAD.mkSparse jacobiEval) 
+        . LAD.vector . V.toList $ rhs -- delta = x(k+1) - src
+      checkNaN = isNaN $ delta V.! 0 -- either all NaN or none
+
+      dest = V.zipWith (+) src delta
+      (checkDest, evalDest) = evalEqSys leqMap checkRes dest
+
+      msg = "NaN result." ++ "\nSource: " ++ show src ++ "\nDelta: " ++ show delta 
+        ++  "\nRHS: " ++ show rhs ++ "\nJacobiEval: " ++ show jacobiEval ++ "\nJMatrix:" ++ show jMatrix
+
+  in if checkNaN
+      then error msg
+      else (checkDest, evalDest)
+
+checkIterNewton :: Double -> Double -> Double -> Bool 
+checkIterNewton newtonEps newV oldV =
+  -- delta <= eps -- absolute error
+  (newV - oldV) / newV <= newtonEps -- relative error 
+
+approxFixpFromNewton :: SparseMatrix Double -> LEqSys Double -> Double -> Double -> Int -> Int -> ProbVec Double -> ProbVec Double
+approxFixpFromNewton _ leqMap _ viEps 0 maxItersVI probVec = approxFixpFrom leqMap viEps maxItersVI probVec
+approxFixpFromNewton jMatrix leqMap newtonEps viEps maxItersNewton maxItersVI probVec =
+  let (lessThanEps, newProbVec) = evalEqSysNewton jMatrix leqMap (checkIterNewton newtonEps) probVec
+    in if lessThanEps
+        then approxFixpFrom leqMap viEps maxItersVI newProbVec
+        else approxFixpFromNewton jMatrix leqMap newtonEps viEps (maxItersNewton - 1) maxItersVI newProbVec
+
+approxFixpNewtonWithHint :: (MonadIO m, MonadLogger m)
+           => AugEqMap k -> (k -> Double) -> Double -> Double -> Int -> Int -> ProbVec Double -> m (ProbVec Double)
+approxFixpNewtonWithHint augEqMap f eps viEps maxIters maxItersVI hint = do
+  leqMap <- toLiveEqMapWith augEqMap f
+  let (checkHint, evalHint) = evalEqSys leqMap (checkIterNewton viEps) hint
+      jMatrix = pminusXjacobi leqMap
+      approxVec = approxFixpFromNewton jMatrix leqMap eps viEps maxIters maxItersVI evalHint
+  if checkHint -- the Newton method cannot deal with hints already at the fixpoint
+    then return evalHint
+    else return approxVec
+
+-- Gauss-Seidel method --
+evalEqSys :: (Show n, Ord n, Fractional n)
           => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
 evalEqSys leqMap checkRes src =
   let -- Gauss-Seidel update (read from dest values for already evaluated eqs)
-      -- for plain value iteration, always read from search
+      -- for plain value iteration, always read from source
       getV i j = if j < i then dest V.! j else src V.! j
-      computEq idx (PushLEq terms) = getSum $ foldMap' 
+      computEq idx (PushLEq terms) = getSum $ foldMap'
         (\(p, k1, k2) -> Sum $ p * (either (getV idx) id k1) * (either (getV idx) id k2)) terms
       computEq idx (ShiftLEq terms) = getSum $ foldMap'
         (\(p, k1) -> Sum $ p * either (getV idx) id k1) terms
@@ -148,19 +262,26 @@ evalEqSys leqMap checkRes src =
 
 approxFixpFrom :: (Ord n, Fractional n, Show n)
                => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
-approxFixpFrom leqMap eps maxIters probVec
-  | maxIters <= 0 = probVec
-  | otherwise =
-      -- should be newV >= oldV
-      let checkIter newV oldV =
-            -- newV - oldV <= eps -- absolute error
-            newV == 0 || (newV - oldV) / newV <= eps -- relative error
-          (lessThanEps, newProbVec) = evalEqSys leqMap checkIter probVec
-      in if lessThanEps
-          then newProbVec
-          else approxFixpFrom leqMap eps (maxIters - 1) newProbVec
+approxFixpFrom _ _ 0 probVec = probVec
+approxFixpFrom leqMap eps maxIters probVec =
+  -- should be newV >= oldV
+  let checkIter newV oldV =
+        -- newV - oldV <= eps -- absolute error
+        newV == 0 || (newV - oldV) / newV <= eps -- relative error
+      (lessThanEps, newProbVec) = evalEqSys leqMap checkIter probVec
+  in if lessThanEps
+      then newProbVec
+      else  approxFixpFrom leqMap eps (maxIters - 1) newProbVec
+
+approxFixpWithHint :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
+           => AugEqMap k -> (k -> n) -> n -> Int -> ProbVec n -> m (ProbVec n)
+approxFixpWithHint augEqMap f eps maxIters hint = do
+  leqMap <- toLiveEqMapWith augEqMap f
+  return $ approxFixpFrom leqMap eps maxIters hint
 
 -- determine variables for which zero is a fixpoint by iterating a few times the system
+-- Note that we are not allowed to use the Newton method here, as it is not guaranteed to converge for non clean systems 
+-- (cit. Computing the Least Fixed Point of Positive Polynomial Systems)
 preprocessZeroApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
                       => AugEqMap k -> (k -> n) -> n -> Int -> m (ProbVec n)
 preprocessZeroApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
@@ -209,19 +330,12 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
             case solveEq updatedVars eq of
               Nothing -> (recurse, upVars, (varKey, eq):lVars)
               Just v  -> (True, M.insert varKey v upVars, lVars)
-
             ) (False, updatedVars, []) liveVars
 
           vars = zip (Set.toList lVars) (V.toList leqMap)
           (upVars, _) = go (True, M.empty, vars)
       return upVars
 
-approxFixpWithHint :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n)
-           => AugEqMap k -> (k -> n) -> n -> ProbVec n -> Int -> m (ProbVec n)
-approxFixpWithHint augEqMap f eps hint maxIters = do
-  leqMap <- toLiveEqMapWith augEqMap f
-  return $ approxFixpFrom leqMap eps maxIters hint
-   
 defaultEps :: EqMapNumbersType
 defaultEps = 0x1p-26 -- ~ 1e-8
 

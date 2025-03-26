@@ -24,9 +24,6 @@ import Data.Ratio ((%), approxRational)
 import Control.Monad.IO.Class (MonadIO())
 
 import Witch.Instances (realFloatToRational)
-import Data.Either (isLeft)
-import Data.Monoid (Sum(..))
-import Data.Foldable (foldMap')
 import qualified Data.Vector as V
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
@@ -89,51 +86,6 @@ data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviUpperBound :: ProbVec n
                              }
 
-evalMonomial :: Num n => ProbVec n -> Monomial2 n -> n
-evalMonomial v m = case m of
-  Quad c k1 k2 -> c * (v V.! k1) * (v V.! k2)
-  Lin c k1 -> c * (v V.! k1)
-  Const c -> c
-
-evalPolynomial :: Num n => Polynomial2 n -> ProbVec n -> n
-evalPolynomial p v = getSum $ foldMap' (Sum . evalMonomial v) p
-
-evalPolySys :: (Ord n, Fractional n) => PolyVector n -> ProbVec n -> ProbVec n
-evalPolySys polySys src = V.map (`evalPolynomial` src) polySys
-
--- compute dm/dx
-monomialDerivative :: Num n => Monomial2 n -> Int -> Monomial2 n
-monomialDerivative m x = case m of -- ugly but it works
-  Quad c k1 k2 | k1 == k2 && k2 == x -> Lin (2 * c) x -- square
-               | k1 == x -> Lin c k2
-               | k2 == x -> Lin c k1
-               | otherwise -> Const 0
-  Lin c k | k == x -> Const c
-          | otherwise -> Const 0
-  Const _ -> Const 0
-
--- compute (J|v + I) x, where J|v is the Jacobian of leqSys evaluated on v,
--- I is the identity matrix, and x is the vector of all variables
-jacobiTimesX :: Num n => LEqSys n -> ProbVec n -> PolyVector n
-jacobiTimesX leqSys v =
-  let jtxMonomial lmon k = Lin coeff k
-        where coeff = evalMonomial v (monomialDerivative lmon k)
-      build (p, Left k1, Left k2) 
-        | k1 == k2 = [jtxMonomial pm k1]
-        | otherwise = [jtxMonomial pm k1, jtxMonomial pm k2]
-          where pm = Quad p k1 k2
-      build (p, Left k1, Right val) = [jtxMonomial (Lin (p * val) k1) k1]
-      build (p, Right val, Left k1)  = [jtxMonomial (Lin (p * val) k1) k1]
-      build _ = error "unexpected"
-
-      constructPoly k (PushLEq terms) = (Lin 1 k :) . concatMap build 
-        $ filter (\(_, eitherK1, eitherK2) -> isLeft eitherK1 || isLeft eitherK2) terms
-      constructPoly k (ShiftLEq terms) = (Lin 1 k :) . map
-        (\(p, Left k1) -> jtxMonomial (Lin p k1) k1)
-        $ filter (\(_, eitherP) -> isLeft eitherP) terms
-
-  in V.imap constructPoly leqSys
-
 powerIterate :: (Fractional n, Ord n, Show n)
              => n -> Int -> PolyVector n -> ProbVec n -> (ProbVec n, n, Int)
 powerIterate eps maxIters matrix oldEV =
@@ -158,8 +110,8 @@ computeEigen leqSys eps maxIters lowerApprox eigenVec =
       (newEigenVec, eigenVal, iters) = powerIterate eps maxIters matrix eigenVec
   in (newEigenVec, eigenVal - 1, iters) -- -1 because we added the identity matrix
 
-ovi :: (MonadIO m, MonadLogger m, Fractional n, Ord n, Show n, Num n)
-    => OVISettings n -> AugEqMap k -> (k -> n) -> ProbVec n -> m (OVIResult n)
+ovi :: (MonadIO m, MonadLogger m)
+    => OVISettings Double -> AugEqMap k -> (k -> Double) -> ProbVec Double -> m (OVIResult Double)
 ovi settings augEqMap f lowerApproxInitial = do
   -- create system containing only live equations
   leqSys <- toLiveEqMapWith augEqMap f
@@ -185,14 +137,13 @@ ovi settings augEqMap f lowerApproxInitial = do
                 [ "Power iteration converged after ", show ((oviMaxPowerIters settings) - iters)
                 , " iterations. Eigenvalue: ", show eigenVal
                 ]
-          zippedEigenLowerApprox = V.zip newEigenVec newLowerApprox
           guessAndCheckInductive 0 = (False, V.empty)
           guessAndCheckInductive maxGuesses =
             let currentGuess = currentIter + 1 - maxGuesses
                 scaleFactor = oviPowerIterEps settings *
                   (oviDampingFactor settings)^currentGuess
             -- upperApprox <- lowerApprox + eigenVal * scaleFactor
-                newUpperApprox = V.map (\(eigenV, l) -> l + (eigenV * scaleFactor)) zippedEigenLowerApprox
+                newUpperApprox = V.zipWith (\eigenV l -> l + (eigenV * scaleFactor)) newEigenVec newLowerApprox
 
             -- check if upperApprox is inductive
                 (inductive, _) = evalEqSys leqSys (<=) newUpperApprox

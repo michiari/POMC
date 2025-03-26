@@ -323,8 +323,9 @@ weightQuerySCC :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable 
                -> Vector (Set(StateId state))
                -> state -- current state
                -> state -- target state
+               -> Bool
                -> m (Prob, Prob)
-weightQuerySCC globals sIdGen delta supports current target = do
+weightQuerySCC globals sIdGen delta supports current target useNewton = do
   q <- liftSTtoIO $ wrapState sIdGen current
   targetState <- liftSTtoIO $ wrapState sIdGen target
   let semiconf = (q, Nothing)
@@ -342,7 +343,7 @@ weightQuerySCC globals sIdGen delta supports current target = do
       liftIO $ HT.insert (graphMap globals) decodedSemiconf newId
       liftIO $ addtoPath globals semiconf newId
       -- encoding the whole support
-      _ <- dfs globals sIdGen delta supports semiconf (newId, targetId)
+      _ <- dfs globals sIdGen delta supports semiconf (newId, targetId) useNewton
       eps <- liftIO $ readIORef (actualEps globals)
       liftIO $ approx eps <$> retrieveValue globals sIdGen delta q targetId
 
@@ -360,8 +361,9 @@ dfs :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show
     -> Vector (Set(StateId state))
     -> (StateId state, Stack state) -- current semiconf
     -> (Int, Int)
+    -> Bool
     -> m PopCnxts
-dfs globals sIdGen delta supports (q,g) (semiconfId, target) =
+dfs globals sIdGen delta supports (q,g) (semiconfId, target) useNewton =
   let qState = getState q
       gState = getState . snd . fromJust $ g
       qProps = getStateProps (bitenc delta) qState
@@ -394,7 +396,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) =
       cases nextSemiconf nSCId iVal
         | (iVal == 0) = do
             liftIO $ addtoPath globals nextSemiconf nSCId
-            dfs globals sIdGen delta supports nextSemiconf (nSCId, target)
+            dfs globals sIdGen delta supports nextSemiconf (nSCId, target) useNewton
         | (iVal < 0)  = liftIO $ lookupCntxs globals nSCId
         | (iVal > 0)  = liftIO $ merge globals nextSemiconf nSCId >> return IntSet.empty
         | otherwise = error "unreachable error"
@@ -405,7 +407,7 @@ dfs globals sIdGen delta supports (q,g) (semiconfId, target) =
 
   in do
     popContxs <- transitionCases
-    createComponent globals sIdGen delta supports popContxs semiconfId
+    createComponent globals sIdGen delta supports popContxs semiconfId useNewton
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
 lookupIValue globals semiconfId = do
@@ -450,8 +452,9 @@ createComponent :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable
   -> Vector (Set(StateId state))
   -> PopCnxts
   -> Int
+  -> Bool
   -> m PopCnxts
-createComponent globals sIdGen delta supports popContxs semiconfId = do
+createComponent globals sIdGen delta supports popContxs semiconfId useNewton = do
   topB <- liftIO . IOGS.peek $ bStack globals
   iVal <- liftIO $ lookupIValue globals semiconfId
   let createC = liftIO $ do
@@ -476,7 +479,7 @@ createComponent globals sIdGen delta supports popContxs semiconfId = do
             let eqs = IntMap.fromSet (const (PushEq [])) popContxs
             in addFixpEqs (eqMap globals) id_ eqs)
           forM_ toEncode $ \qv -> encode qv globals sIdGen delta supports sccMembers
-        solveSCCQuery sccMembers globals
+        solveSCCQuery sccMembers globals useNewton
         return popContxs      
       cases
         | iVal /= topB = return popContxs
@@ -674,8 +677,8 @@ encodeShift globals sIdGen delta supports _ g qState semiconfId_ rightCnxts sccM
     forM_ shiftVarKeystoEncode $ \qv -> encode qv globals sIdGen delta supports sccMembers
 
 solveSCCQuery :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
-              => IntSet -> WeightedGRobals state -> m ()
-solveSCCQuery sccMembers globals = do
+              => IntSet -> WeightedGRobals state -> Bool -> m ()
+solveSCCQuery sccMembers globals useNewton = do
   let sccLen = IntSet.size sccMembers
       epsVar = actualEps globals
       eqs = eqMap globals
@@ -703,7 +706,9 @@ solveSCCQuery sccMembers globals = do
     startWeights <- startTimer
 
     -- compute lower bounds
-    approxVec <- approxFixpWithHint eqs fst iterEps (V.map snd unsolvedVars) defaultMaxIters 
+    approxVec <- if useNewton
+      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) iterEps defaultMaxIters defaultMaxIters (V.map snd unsolvedVars)
+      else approxFixpWithHint eqs fst iterEps defaultMaxIters (V.map snd unsolvedVars)
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
