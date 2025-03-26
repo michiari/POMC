@@ -85,6 +85,7 @@ def exec_bench(fname, args):
             '-RTS'
         ] + \
         (['--noovi'] if args.noovi else []),
+        (['--newton'] if args.newton else []),
         capture_output=True
     )
     raw_stdout = raw_res.stdout.decode('utf-8')
