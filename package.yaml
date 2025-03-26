@@ -61,6 +61,7 @@ library:
   - witch
   - monad-logger
   - strict-containers
+  - hmatrix
   # - rounded
 
 executables:
