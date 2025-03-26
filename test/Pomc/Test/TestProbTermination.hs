@@ -34,7 +34,7 @@ tests = testGroup "ProbModelChecking.hs Termination Tests" $
     ]
   , testGroup "Estimating Termination Probabilities with OVI"
     $ flip excludeIndices [2,4]
-    $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' OVI), expected)) exactTerminationProbabilities
+    $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' OVIGS), expected)) exactTerminationProbabilities
   , testGroup "Estimating Termination Probabilities with SMTWithHints"
     $ flip excludeIndices [2,4, 7, 8]
     $ map (\(popa, expected, s) -> makeTestCase checkApproxResult popa ((s, \popa' -> terminationApproxExplicit popa' SMTWithHints), expected)) exactTerminationProbabilities

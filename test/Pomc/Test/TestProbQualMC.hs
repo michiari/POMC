@@ -25,7 +25,7 @@ import Pomc.LogUtils (selectLogVerbosity)
 tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Qualitative Tests" $
   [ testGroup "ProbModelChecking.hs Qualitative Tests OVI" $
-    map (\t -> t OVI)
+    map (\t -> t OVIGS)
       [ biasedRandomWalkTests
       , nonTerminatingTests
       , maybeTerminatingTests

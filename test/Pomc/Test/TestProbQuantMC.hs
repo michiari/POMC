@@ -34,7 +34,7 @@ type Prob = Rational
 tests :: TestTree
 tests = testGroup "ProbModelChecking.hs Quantitative Tests" $
   [ testGroup "ProbModelChecking.hs Quantitative Tests ExactSMTWithHints" $
-    [ nonTerminatingTests OVI, loopySamplingTests OVI
+    [ nonTerminatingTests OVIGS, loopySamplingTests OVIGS
     --, symmetricRandomWalkTests ExactSMTWithHints
     ]
   ]
@@ -45,7 +45,7 @@ makeTestCase :: ExplicitPopa Word String
   -> TestTree
 makeTestCase popa solv ((name, phi), expected) =
   testCase (name ++ " (" ++ show phi ++ ")") $ do
-    (res, _, info) <- selectLogVerbosity Nothing $ quantitativeModelCheckExplicitGen solv phi popa -- (Just LogLevel Debug)
+    (res, _, info) <- selectLogVerbosity Nothing $ quantitativeModelCheckExplicitGen solv phi popa -- (Just LevelDebug)
     let debugMsg = "Expected " ++ show expected ++ " but got " ++ show res ++ ". Additional diagnostic information: " ++ info
     assertBool debugMsg (checkApproxResult res expected)
 

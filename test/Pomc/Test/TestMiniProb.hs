@@ -63,7 +63,7 @@ basicSMTWithHintsTests = testGroup "Basic SMTWithHints Tests"
   $ excludeIndices (basicTestCases SMTWithHints) [8]
 
 basicOVITests :: TestTree
-basicOVITests = testGroup "Basic OVI Tests" $ basicTestCases OVI
+basicOVITests = testGroup "Basic OVI Tests" $ basicTestCases OVIGS
 
 basicTestCases :: Solver -> [TestTree]
 basicTestCases solver =
