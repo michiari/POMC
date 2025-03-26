@@ -40,6 +40,7 @@ data PomcArgs = PomcArgs
   { finite :: Bool
   , infinite :: Bool
   , noovi :: Bool
+  , newton :: Bool
   , verbose :: Int
   , maxDepth :: Int
   , fileName :: FilePath
@@ -50,6 +51,7 @@ pomcArgs = PomcArgs
   { finite = False &= help "Use finite-word semantics"
   , infinite = False &= help "Use infinite-word (omega) semantics (default)"
   , noovi = False &= help "Use z3 instead of Optimistic Value Iteration for probabilistic model checking"
+  , newton = False &= help "Use the Newton method to iterate fixpoint equations for probabilistic model checking"
   , verbose = 0 &= help "Print more info about model checking progress. 0 = no logging (default), 1 = show info, 2 = debug mode"
   , maxDepth = 100 &= help "Max stack depth when exporting a Markov Chain representation of the input program with unfolded stack (default = 100)"
   , fileName = def &= args &= typFile -- &= help "Input file"
@@ -62,12 +64,11 @@ pomcArgs = PomcArgs
 main :: IO ()
 main = do
   pargs <- cmdArgs pomcArgs
-  if infinite pargs && finite pargs
-    then die "--finite and --infinite cannot be specified together."
-    else return ()
+  when (infinite pargs && finite pargs) $ die "--finite and --infinite cannot be specified together."
   let isOmega = not $ finite pargs
       probSolver | noovi pargs = SMTWithHints
-                 | otherwise = OVI
+                 | newton pargs = OVINewton
+                 | otherwise = OVIGS
       depth = maxDepth pargs
       fname = fileName pargs
       logLevel = case verbose pargs of
