@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -fno-cse #-}
 {- |
    Module      : Main
-   Copyright   : 2020-2023 Davide Bergamaschi, Michele Chiari
+   Copyright   : 2020-2025 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
@@ -13,7 +13,7 @@ import Pomc.Check (fastcheckGen)
 import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram, exportMarkovChain)
 import Pomc.Prob.ProbUtils (Solver(..), Stats(..))
-import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), includeP)
+import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), preprocess)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
 import Pomc.TimeUtils (timeAction, timeFunApp, timeToString)
@@ -230,16 +230,3 @@ main = do
       $ map (\(q, b) -> (q, if S.null b
                             then [summaryToken]
                             else map (showp showap) $ S.toList b)) trace
-
-
-preprocess :: String -> T.Text -> IO T.Text
-preprocess fname content = do
-  processed <- mapM (include fname) (T.lines content)
-  return $ T.unlines processed
-
-include :: String -> T.Text -> IO T.Text
-include fname line =
-  case parse (spaceP *> includeP) fname line of
-    Left  _    -> return line
-    Right path -> readFile (takeDirectory fname </> path)
-

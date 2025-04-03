@@ -11,9 +11,10 @@ module Pomc.Parse.Parser ( checkRequestP
                          , spaceP
                          , CheckRequest(..)
                          , includeP
+                         , preprocess
                          ) where
 
-import Prelude hiding (GT, LT)
+import Prelude hiding (GT, LT, readFile)
 
 import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
@@ -25,10 +26,13 @@ import Pomc.Prob.ProbUtils (Solver(..), Comp(..), TermQuery(..))
 
 import Data.Void (Void)
 import Data.Text (Text, pack)
+import qualified Data.Text as T
+import Data.Text.IO (readFile)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Ratio ((%))
 
+import System.FilePath (takeDirectory, (</>))
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -369,3 +373,15 @@ includeP = do
   path <- quotesP . some $ anySingleBut '"'
   _ <- symbolP ";"
   return path
+
+
+include :: String -> Text -> IO Text
+include fname line =
+  case parse (spaceP *> includeP) fname line of
+    Left  _    -> return line
+    Right path -> readFile (takeDirectory fname </> path)
+
+preprocess :: String -> Text -> IO Text
+preprocess fname content = do
+  processed <- mapM (include fname) (T.lines content)
+  return $ T.unlines processed

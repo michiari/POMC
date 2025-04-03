@@ -35,12 +35,8 @@ packages:
 #
 extra-deps:
   - git: git@github.com:michiari/haskell-z3.git
-    commit: 493a6574eaad539028fd0fa2ec8d86c14e4d9528
+    commit: 493a6574eaad539028fd0fa2ec8d86c14e4d9528 # z3 4.8.x
   - strict-containers-0.2.1
-  # - rounded-1.1.1
-  # - hgmp-0.1.2.1 # Needs CFLAGS=-Wno-error
-  # - long-double-0.1.1.1
-# - z3-408.2
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
