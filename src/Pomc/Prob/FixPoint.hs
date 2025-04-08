@@ -69,7 +69,6 @@ import qualified Data.IntMap as IntMap
 
 import qualified Numeric.LinearAlgebra as LA
 import qualified Numeric.LinearAlgebra.Data as LAD
-import qualified Debug.Trace as DBG
 
 type VarKey = (Int, Int)
 data FixpEq n = PushEq [(Prob, VarKey, VarKey)]
@@ -206,9 +205,11 @@ evalEqSysNewton jMatrix leqMap checkRes src =
 
       rhs = V.zipWith computEq src leqMap -- x - P(x) (right-hand-side)
       jacobiEval = evalSparseMatrix jMatrix src -- J(P(x) - x) (matrix of coefficients in sparse form)
-      delta = V.fromList . LAD.toList . 
-        LA.cgSolve False (LAD.mkSparse jacobiEval) 
-        . LAD.vector . V.toList $ rhs -- delta = x(k+1) - src
+      delta = V.fromList . LAD.toList
+        . LA.cgSolve False (LAD.mkSparse jacobiEval) 
+        . LAD.vector . V.toList 
+        $ rhs -- delta = x(k+1) - src
+        
       checkNaN = isNaN $ delta V.! 0 -- either all NaN or none
 
       dest = V.zipWith (+) src delta

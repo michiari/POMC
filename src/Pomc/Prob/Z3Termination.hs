@@ -50,7 +50,6 @@ import Data.IORef (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 
 import Data.STRef (STRef, modifySTRef')
 import qualified Pomc.IOMapMap as MM
--- import qualified Debug.Trace as DBG
 
 -- a map Key: (gnId GraphNode, getId StateId) - value : Z3 variables (represented as ASTs)
 -- each Z3 variable represents [[q,b | p ]]
