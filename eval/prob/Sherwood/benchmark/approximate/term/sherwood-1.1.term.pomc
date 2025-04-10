@@ -23,9 +23,8 @@ B(List<T> a, T val, int left, int right){
 Reference: F. Olmedo et al., Reasoning about Recursive Probabilistic Programs, LICS 2016.
 */
 
-probabilistic query: qualitative;
-formula = G ((call And B And sorted And (~ valOccurs) And [B|left <= right]) --> XNu ( ~ correctIndex));
-// S2: Dual Partial Correctness
+probabilistic query: approximate;
+
 
 program:
 u4[7] a;
@@ -37,11 +36,11 @@ main() {
     u4 left, right, temp, max_array_value, max_array_index;
     s5 counter;
 
-    // Elements domain bits: K = 4;
-    max_array_value = 15u4;
+    // Elements domain bits: K = 1;
+    max_array_value = 1u4;
 
-    // Array length: M = 6;
-    max_array_index = 5u4;
+    // Array length: M = 1;
+    max_array_index = 0u4;
 
     // initialization of left and right 
     uniformSample(left, 0u4, max_array_index);
