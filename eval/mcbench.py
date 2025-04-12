@@ -13,7 +13,8 @@ import csv
 time_pattern = re.compile(r"Total elapsed time: .+ \(([0-9]+\.[0-9]+e[\+\-0-9]+) s\)")
 mem_pattern = re.compile(r"Max memory used \(KB\): ([0-9]+)")
 result_pattern = re.compile(r"Result:  ((True)|(False))")
-quant_result_pattern = re.compile(r"Result:  (\([0-9]+ % [0-9]+\,[0-9]+ % [0-9]+\))")
+#quant_result_pattern = re.compile(r"Result:  (\([0-9]+ % [0-9]+\,[0-9]+ % [0-9]+\))")
+quant_result_pattern = re.compile(r"Floating Point Result:  (\(\S+\,\S+\))")
 states_pattern = re.compile(r"Input (OPA|pOPA) state count: ([0-9]+)")
 supp_pattern = re.compile(r"Support graph size: ([0-9]+)")
 eqs_pattern = re.compile(r"Equations solved for termination probabilities: ([0-9]+)")
@@ -38,7 +39,8 @@ quant_eqs_time_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(eq system 
 memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
 
-sherwood_pattern = re.compile(r".*sherwood-([0-9]+)\.([0-9]+)\.S([0-9]+).pomc$")
+sherwood_pattern = re.compile(r".*sherwood-([0-9]+)\.([0-9]+)\.(\S+).pomc$")
+benchmark_pattern = re.compile(r".*/((schelling|tic\-tac\-toe|virus)/\S+).pomc$")
 
 if platform.system() == 'Darwin':
     time_bin = 'gtime'
@@ -76,9 +78,8 @@ def exec_bench(fname, args):
             'stack',
             'exec',
             '--',
-            'pomc',
+            'popacheck',
             fname,
-            '--finite' if args.finite else '--infinite',
             '+RTS',
             '-t',
             '--machine-readable',
@@ -124,9 +125,10 @@ def exec_bench(fname, args):
     memgc_match = memgc_pattern.search(raw_stderr)
 
     sherwood_match = sherwood_pattern.search(fname)
-
+    benchmark_match = benchmark_pattern.search(fname)
     check_match = lambda m, groupno=1, err=-1: m.group(groupno) if m else err
     record = {
+        'name': str(check_match(sherwood_match,3, check_match(benchmark_match,1,fname))),
         'time': float(check_match(time_match)),
         'ub_time': float(check_match(ub_match)),
         'past_time': float(check_match(past_match)),
@@ -154,8 +156,8 @@ def exec_bench(fname, args):
     if raw_res.returncode != 0:
         if raw_res.returncode == -9:
             return record | { 'result': 'TO', 'quant_result': 'TO'}
-        elif raw_res.returncode == 137:
-            return record | { 'result': 'OOM', 'quant_result': 'OOM' }
+        elif raw_res.returncode in [135,137,139]:
+            return record | { 'result': 'OOM', 'quant_result': 'OOM'}
         return record | { 'result': 'Error {:d}'.format(raw_res.returncode),  'quant_result': '-' }
     return record | { 'result': check_match(result_match),  'quant_result': check_match(quant_result_match) }
 
@@ -163,7 +165,7 @@ def iter_bench(fname, args):
     get_column = lambda rows, i: [r[i] for r in rows]
     results = [exec_bench(fname, args) for _ in range(0, args.iters)]
     return {
-        'name': fname,
+        'name': results[0]['name'],
         'k' : results[0]['k'],
         'm' : results[0]['m'],
         'time': statistics.mean(get_column(results, 'time')),
