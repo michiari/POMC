@@ -3,12 +3,16 @@
 import argparse
 from mcbench import exec_all, expand_files, to_list
 import csv
+import tabulate
 
 # print to csv the whole table of results (for any benchmark)
-def pretty_print_raw(results, csvfile):
+def pretty_print_raw(results, csvfile, terminal):
     key_list = ['name', 'k', 'm', 'states', 'supp_size', 'eqs', 'non_trivial_eqs', 'sccs', 'maxscc', 'maxeqs', 'g_size', 'quant_eqs', 'non_trivial_quant_eqs', 'quant_sccs', 'quant_maxscc', 'quant_maxeqs', 'ub_time', 'past_time', 'gg_time', 'quant_OVI_time', 'quant_eqs_time', 'time', 'mem_tot', 'result', 'quant_result']
     results_matrix = to_list(results, list(map(lambda k: (k,  lambda x: x), key_list)))
     header = ["Name", "Array_values_bits(K)", "Array_length(M)", "|Q_A|", "|SG|", "|f|", "|f_NT|", "#SCC", "|SCC|max", "|f(SCC)_NT|max", "|G|", "|f|(quant)", "|f_NT|(quant)", "#SCC(quant)", "|SCC|max(quant)", "|f(SCC)_NT|max(quant)", "UB Time (s)", "PAST Time (s)", "G Time (s)", "quant OVI (s)", "quant Eqs (s)", "Time (s)", "Memory (KiB)", "Holds AS", "Prob"]
+
+    if terminal:
+        print(tabulate(results_matrix, headers=header))
 
     with open(csvfile, 'w', newline='') as f:
         cw = csv.writer(f)
@@ -34,5 +38,5 @@ if __name__ == '__main__':
 
     # store raw results somewhere
     if args.raw_csv:
-        pretty_print_raw(results, args.raw_csv)
+        pretty_print_raw(results, args.raw_csv, args.print)
          
