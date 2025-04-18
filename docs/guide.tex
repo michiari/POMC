@@ -9,15 +9,19 @@
 \usepackage{mathrsfs}
 \usepackage{multirow}
 \usepackage{rotating}
+\usepackage{mathtools}
 \usepackage{subcaption}
 \usepackage[colorlinks]{hyperref}
+\usepackage{wrapfig}
+
+\usepackage{soul}
 
 \usepackage{todonotes}
 
 \input{macros}
 
-\title{POMC User's Guide}
-\author{Michele Chiari}
+\title{POPACheck User's Guide}
+\author{Michele Chiari, Francesco Pontiggia}
 \date{}
 
 \begin{document}
@@ -25,297 +29,154 @@
 \maketitle
 
 \begin{abstract}
-POMC is an implementation of the automaton construction for formulas
-of Precedence-Oriented Temporal Logic (POTL), and the model checking
-procedure thereof.
-This document is a reference guide to its input and output formats,
-and also describes at a high level its architecture and source code.
+POPACheck is an extension of the POMC model checker towards probabilistic recursive programs, modelled as probabilistic Operator Precedence Automata (pOPA). As specification formalisms, it supports Linear Temporal Logic (LTL) and a fragment of Precedence-Oriented Temporal Logic (POTL), a logic for context-free properties such as pre/post-conditioning. Given a pOPA and a formula, it can solve both qualitative and quantitative model check queries. Additionally, it can approximate the termination probability of a pOPA. Computing Termination probabilities are a central problem in probabilistic pushdown model checking, and amounts at solving positive polynomial systems.
+This document is a reference guide to its input and output formats, and also describes at a high level its architecture and source code.
 \end{abstract}
 
 \section{Introduction}
-
-Precedence-Oriented Temporal Logic (POTL) \cite{ChiariMP21} is a novel temporal
-logic formalism based on the family of Operator Precedence Languages (OPL),
+Precedence-Oriented Temporal Logic~(POTL) \cite{ChiariMP21,ChiariMP21b} is an established temporal
+logic formalism based on the family of Operator Precedence Languages~(OPL)~\cite{MP18},
 a subclass of deterministic context-free languages.
-POTL is strictly more expressive than LTL and other temporal logics based
-on subfamilies of context-free languages, such as CaRet \cite{AlurEM04}
-and NWTL \cite{lmcs/AlurABEIL08}.
-In particular, POTL reasons on an algebraic structure equipped with,
-besides the usual linear order, a binary nesting relation between word positions,
-which can be one-to-one, one-to-many, or many-to-one.
-Such a relation is more general than the one found in Nested Words \cite{jacm/AlurM09},
-because the latter may only be one-to-one.
-POTL can be applied to the specification of several kinds of requirements
-on procedural programs with exceptions.
+Given a POTL formula, the POMC tool can translate it into an Operator Precedence Büchi Automaton~(OPBA), a class of~(nondeterministic, non-probabilistic) Pushdown Automata.
 
-Besides some results concerning its expressiveness,
-we introduced an automata-based model checking procedure for POTL.
-This procedure consists in building an Operator Precedence Automaton (OPA),
-the class of pushdown automata that identifies OPL,
-accepting the language denoted by a given POTL formula.
-The size of the generated automaton is exponential in the length of the formula,
-which is asymptotically comparable with other linear-time temporal logic
-formalisms such as LTL, CaRet, and NWTL.
+pOPA~\cite{abs-2404-03515} are a class of probabilistic pushdown automata based on OPLs. While they do not read an input, which would make any model checking problem undecidable, the (infinite-length) traces of state labels collected in the paths of a given pOPA constitute an OPL. POPACheck exploits the fact that OPL are closed by Boolean operations (including intersection, complementation \dots). Roughly speaking, POPACheck takes as input a formula and a program in a custom DSL called MiniProb, it translates the program into a pOPA, it uses POMC modules to translate the formula into an OPBA, and finally verifies the pOPA against the OPBA via automata-based model checking, i.e., via a cross-product. Involved technicalities arise due to the fact that the pOPA is equipped with an unbounded stack, and that we do not perform determinization of the specification OPBA. We'll skip them here. We just mention that the pOPA can be represented by a finite-state Markov Chain called \emph{support chain}. The support chain can be computed by solving (nonlinear) positive polynomial systems of equations. Solutions to these systems are called \emph{termination probabilities}. Due to their nonlinearity, they cannot be solved exactly. Our tool computed sound lower and upper bounds to termination probabilities. While it computes lower bound always via numerical methods, it offers two approaches for upper bounds: one is purely numerical, and it is called OVI; the other one relies on the SMT solver Z3.
 
-POMC is a tool that implements the automaton construction
-for POTL, and a model checking procedure for it.
-Given a POTL formula $\varphi$ and an input OPA modeling some system,
-POMC builds the OPA equivalent to $\neg \varphi$, computes its intersection
-with the input OPA, and checks the emptiness of the resulting OPA.
-Both the OPA construction and the intersection are done on-the-fly.
-POMC also supports providing input models in MiniProc,
-a simple procedural programming language with exceptions.
-MiniProc programs are automatically translated into equivalent OPA.
+Similar equation systems arise in quantitative model checking - we call them \emph{fractions} due to technical reasons reported in \cite{POPACheck}. Similarly POPACheck compute lower and upper bounds to the solutions of these systems (in this case always via OVI). This means that when running quantitative model checking POPACheck will return a lower and an upper bound to the satisfaction probability.
 
-All steps of the model checking process have been implemented
-for the infinite-word case too, using $\omega$OPBA instead of OPA.
-
-We used POMC to prove some interesting properties of programs which we
-modeled both as OPA and MiniProc programs. Such experiments are contained in
-\texttt{\hyphenchar\font=`\-
-  \hyphenpenalty=10000
-  \exhyphenpenalty=-50
-  pomc}
-files in the \texttt{eval} subdirectory.
-
-We show how to use POMC in Section~\ref{sec:quick-start}.
+We show how to use POPACheck in Section~\ref{sec:quick-start}.
 If you wish to examine the input formulas and OPA for the experiments more carefully,
-or to write your own, we describe the format of POMC input files in Section~\ref{sec:format}.
-We also demonstrate the use of the tool with a few experiments in Section~\ref{sec:exp}.
+or to write your own, we describe the format of POMC input files in Sections~\ref{sec:format},~\ref{sec:queries}, and~\ref{sec:output}.
 Finally, Section~\ref{sec:sources} contains a high-level description of the source code.
-
 
 \section{Quick-Start Guide}
 \label{sec:quick-start}
 
-POMC has been developed in the Haskell programming language,
+POPACheck, just like POMC, has been developed in the Haskell programming language,
 and packaged with the Haskell Tool Stack\footnote{\url{https://www.haskellstack.org/}}.
-POMC can be built from sources by typing the following commands in a shell:
+POPACheck has a few dependencies:
+\begin{itemize}
+    \item \href{https://microsoft.github.io/z3guide/z3}{Z3} for solving (nonlinear) equations systems.
+    \item \href{https://www.netlib.org/lapack/}{BLAS/LAPACK} for approximating solutions to equation systems via iterative fixpoint numerical methods (the Newton method).
+\end{itemize}
+On a UNIX-like system, they can be resolved by running:
 \begin{verbatim}
-$ cd ~/path/to/POMC-sources
+sudo apt install libz3-dev libgsl0-dev liblapack-dev libatlas-base-dev
+\end{verbatim}
+
+The Z3 library requires special care, as it might conflict with the underlying OS. The current version of the tool (14.04.2025) has been fully tested with Z3 version 4.8.12 and Ubuntu 24. Note that version 4.8.12 is the one installed by default by the APT package index on Ubuntu 24. On the other side, we experienced some issues on Ubuntu 22, where Z3 sometimes returns error \verb|Z3: invalid argument|. Please report to the POPACheck team in case you experience some issue.
+
+After having resolved the dependencies, POPACheck can be built from sources by typing the following commands in a shell:
+\begin{verbatim}
+$ cd ~/path/to/POPACheck-sources
 $ stack setup
 $ stack build
 \end{verbatim}
-Then, POMC can be executed on an input file \verb|file.pomc| as follows:
+Then, POPACheck can be executed on an input file \verb|file.pomc| as follows:
 \begin{verbatim}
-$ stack exec pomc -- file.pomc
+$ stack exec popacheck -- file.pomc {args}
 \end{verbatim}
 
-By default, POMC will perform infinite-word model checking.
-The optional arguments \verb|--finite| and \verb|--infinite|
-can be used to control this behavior manually.
-
-Directory \verb|eval| contains several POMC input files. Such files
-contain POTL formulas and OPA to be checked against them. For more
-details on the format of POMC input files, see
-Section~\ref{sec:format}.
-
-Directory \verb|eval| also contains the Python script \verb|mcbench.py|,
-which may be useful to evaluate POMC input files, as it also prints
-a summary of the resources used by POMC.
-It must be executed with a subdirectory of \verb|~/path/to/POMC-sources|
-as its working directory.
-If invoked with no arguments, it executes POMC on all input files in the current
-working directory with the infinite-word semantics. E.g.,
-\begin{verbatim}
-$ cd ~/path/to/POMC-sources/eval
-$ ./mcbench.py opa-cav
-\end{verbatim}
-evaluates all \verb|*.pomc| files in directory \verb|~/path/to/POMC-sources/eval/opa-cav|.
-The script can also be invoked with POMC files as its arguments,
-which are then evaluated. E.g.,
-\begin{verbatim}
-$ cd ~/path/to/POMC-sources/eval/opa-cav
-$ ./mcbench.py 1-generic-small.pomc 2-generic-medium.pomc
-\end{verbatim}
-executes POMC on files \verb|1-generic-small.pomc| and \verb|2-generic-medium.pomc|.
-\texttt{mcbench.py} can be invoked with the following optional flags:
-\begin{description}
-\item[\texttt{-f, -{}-finite}]
-  Only check finite execution traces (infinite-word model checking is the default)
-\item[\texttt{-i, -{}-iters <\#iters>}]
-  Number of iterations of the benchmarks to be performed.
-  The final table printed by the script contains the mean time
-  and memory values computed on all iterations. (Default: 1)
-\item[\texttt{-j, -{}-jobs <\#jobs>}]
-  Number of benchmarks to be run in parallel.
-  If you provide a value greater than 1, make sure you have
-  enough CPU cores on your machine.
-  (Default: 1)
-\item[\texttt{-m, -{}-ms}]
-  Output time in milliseconds instead of seconds.
-\item[\texttt{-v, -{}-verbose <level>}]
-  Verbosity level can be 0 (no additional info),
-  1 (print POMC output, e.g.\ counterexamples), or
-  2 (print POMC output and time/memory statistics).
-\end{description}
-
-
-\section{POMC Input/Output Format}
-\label{sec:format}
-
-\begin{figure}
-\begin{subfigure}{.5\linewidth}
-\[
-\begin{array}{r | c c c c}
-         & \lcall   & \lret   & \lhandle & \lthrow \\
-\hline
-\lcall   & \lessdot & \doteq  & \lessdot & \gtrdot \\
-\lret    & \gtrdot  & \gtrdot & \gtrdot  & \gtrdot \\
-\lhandle & \lessdot & \gtrdot & \lessdot & \doteq \\
-\lthrow  & \gtrdot  & \gtrdot & \gtrdot  & \gtrdot \\
-\end{array}
-\]
-\caption{OPM $M_\lcall$}
-\label{fig:mcall}
-\end{subfigure}
-\begin{subfigure}{.5\linewidth}
-\[
-\begin{array}{r | c c c c c}
-         & \lcall   & \lret   & \lhandle & \lthrow & \lstmt \\
-\hline
-\lcall   & \lessdot & \doteq  & \lessdot & \gtrdot & \lessdot \\
-\lret    & \gtrdot  & \gtrdot & \gtrdot  & \gtrdot & \gtrdot \\
-\lhandle & \lessdot & \gtrdot & \lessdot & \doteq  & \lessdot \\
-\lthrow  & \gtrdot  & \gtrdot & \gtrdot  & \gtrdot & \gtrdot \\
-\lstmt   & \gtrdot  & \gtrdot & \gtrdot  & \gtrdot & \gtrdot \\
-\end{array}
-\]
-\caption{OPM $M_\lstmt$}
-\label{fig:mstm}
-\end{subfigure}
-\caption{}
-\label{fig:opms}
-\end{figure}
-
-POMC takes in input plain text files of two possible formats.
-
-\subsection{Providing input models as OPA}
-
-The first input format contains a requirement specification in terms of a list of
-POTL formulas, and an OPA to be checked against them:
-\begin{verbatim}
-formulas = FORMULA [, FORMULA ...] ;
-prec = SL PR SL [, SL PR SL ...] ;
-opa:
-  initials = STATE_SET ;
-  finals = STATE_SET ;
-  deltaPush = (STATE, AP_SET, STATE_SET)
-                [, (STATE, AP_SET, STATE_SET) ...] ;
-  deltaShift = (STATE, AP_SET, STATE_SET)
-                [, (STATE, AP_SET, STATE_SET) ...] ;
-  deltaPop = (STATE, STATE, STATE_SET)
-                [, (STATE, STATE, STATE_SET) ...] ;
-\end{verbatim}
-where \texttt{STATE\_SET} is either a single state, or a space-separated list of states,
-surrounded by parentheses.
-States are non-negative integer numbers (e.g. \texttt{(0 1 ...)}).
-\texttt{AP\_SET} is a space-separated list of atomic propositions, surrounded by parentheses
-(e.g. \texttt{(call p1)} or \texttt{("call" "p1")}).
-In more detail:
+POPACheck stack commands take a few interesting arguments:
 \begin{itemize}
-\item \texttt{prec}
-  is followed by a comma-separated list of precedence relations between structural labels,
-  that make up an Operator Precedence Matrix.
-  The list is terminated by a semicolon.
-  Precedence relations (\texttt{PR}) can be one of \texttt{<}, \texttt{=}, or \texttt{>},
-  which respectively mean $\lessdot$, $\doteq$, and $\gtrdot$.
-  Structural labels (\texttt{SL}) can be any sequence of alphabetic characters.
-\item \texttt{formulas}
-  is followed by a comma-separated, semicolon-terminated list of POTL formulas.
-  The syntax of such formulas is defined later in this section.
-\item \texttt{opa}
-  is followed by the explicit description of an OPA or an $\omega$OPBA.
-  The list of initial and final states must be given, as well as the transition relations.
-  Whether the given automaton is to be interpreted as an OPA or $\omega$OPBA is decided
-  by the \verb|--finite| and \verb|--infinite| command-line arguments.
+    \item \verb|--noovi| [default: False]. When set, POPACheck uses Z3 instead of OVI for computing upper bounds to termination probabilities. As the experimental evaluation of \cite{POPACheck} suggests, this leads almost always to timeouts.
+    \item \verb|--newton| [default: False]. When set, POPACheck uses the Newton method for computing lower bounds to termination probabilities, and to fractions in quantitative model checking. We refer to PreMo \cite{WojtczakE07,Wojtczak09} for a detailed description of these two numerical methods. In our experiments, the Newton method tends to be slightly faster than Gauss-Seidel, hence we encourage users to set this flag.
+    \item $\texttt{-verbose}$ [default: 0]. Logging level. 0 = no logging, 1 = show info, 2 = debug mode.
 \end{itemize}
 
-Additionally, POMC input files may contain C++-style single-line comments
-starting with \verb|\\|, and C-style multi-line comments enclosed in
-\verb|/*| and \verb|*/|.
+Directory \verb|eval| contains the Python script \verb|probbench.py|,
+which may be useful to evaluate POPACheck input files, as it also prints
+a summary of the resources used by POPACheck.
+It must be executed with a subdirectory of \verb|~/path/to/POPACheck-sources| as its working directory, and either \verb|--print| to print the results in the shell, or \verb|--raw_csv file_name| for saving the results in csv format in \verb|file_name|.
 
-External files can be included with
 \begin{verbatim}
-include = "path/to/file.inc";
+$ cd ~/path/to/POPACheck-sources/eval
+$ ./probbench.py prob/established/qualitative --print
 \end{verbatim}
-where the path is relative to the \texttt{pomc} file location.
-
-POTL formulas can be written by using the operators in the ``POMC Operator'' column
-of Table~\ref{tab:potl-syntax}, following the same syntax rules as in \cite{ChiariMP21}.
-Normal and structural labels can be expressed as normal atomic propositions.
-
-Once POMC is executed on an input file in the format above,
-it checks whether the given OPA satisfies the given formulas,
-one by one.
-
-Consider the example input file \texttt{1-generic-small.pomc}, reported below:
-\begin{verbatim}
-prec = call < call, call = ret, call < han, call > exc,
-       ret > call,  ret > ret,  ret > han,  ret > exc,
-       han < call,  han > ret,  han < han,  han = exc,
-       exc > call,  exc > ret,  exc > han,  exc > exc;
-
-formulas = G ((call And pb And (T Sd (call And pa)))
-                 --> (PNu exc Or XNu exc));
-
-opa:
-  initials = 0;
-  finals = 10;
-  deltaPush =
-    (0, (call pa),   1),
-    (1, (han),       2),
-    (2, (call pb),   3),
-    (3, (call pc),   4),
-    (4, (call pc),   4),
-    (6, (call perr), 7),
-    (8, (call perr), 7);
-  deltaShift =
-    (4, (exc),       5),
-    (7, (ret perr),  7),
-    (9, (ret pa),    11);
-  deltaPop =
-    (4, 2, 4),
-    (4, 3, 4),
-    (4, 4, 4),
-    (5, 1, 6),
-    (7, 6, 8),
-    (7, 8, 9),
-    (11, 0, 10);
-\end{verbatim}
-First, OPM $M_\lcall$ from \cite{ChiariMP21} (Figure~\ref{fig:mcall}) is chosen.
-
-The meaning of the formula
-\texttt{G ((call And pb And (T Sd (call And pa))) --> (PNu exc Or XNu exc))},
-or
-\(
-  \llglob \big((\lcall \land \mathrm{p}_B \land
-    \lcallsince(\top, \mathrm{p}_A))
-    \implies \lthrnext(\top) \big)
-\),
-is explained in the paper.
-
-POMC will check the OPA against the formula, yielding the following output:
-\begin{verbatim}
-Model Checking
-Formula: G ((("call" And "pb") And (T Sd ("call" And "pa")))
-                --> ((PNu "exc") Or (XNu "exc")))
-Input OPA state count: 12
-Result:  True
-Elapsed time: 14.59 s
+evaluates all \verb|*.pomc| files in directory \\ \verb|~/path/to/POPACheck-sources/eval/prob/established/qualitative|.
 
 
-Total elapsed time: 14.59 s (1.4593e1 s)
-\end{verbatim}
-Indeed, the OPA does satisfy the formula.
-POMC also outputs the time taken by each acceptance check and,
-when a formula is rejected, a (partial) counterexample trace.
+\begin{figure}
+\begin{align*}
+\mathit{prog} \coloneqq & \; [\mathit{decl} ; \dots] \; \mathit{func} \; [\mathit{func} \dots] \\
+\mathit{decl} \coloneqq & \; \mathit{type \; identifier} \; [, \mathit{identifier} \dots] \\
+\mathit{type} \coloneqq & \; \mathtt{bool} \mid \mathtt{u}\mathit{int} \mid \mathtt{s}\mathit{int} \mid \mathtt{u}\mathit{int}[\mathit{int}] \mid \mathtt{s}\mathit{int}[\mathit{int}] \\
+\mathit{func} \coloneqq & \; f \texttt{(}\mathit{type} \; [\&] x_1 \; [, \mathit{type} \; [\&] x_2 \dots]\texttt{)} \\
+  &\; \{ [\mathit{decl} ; \dots] \; \mathit{block} \} \\
+\mathit{stmt} \coloneqq
+    & \; \mathit{lval} = e \\
+    &\mid \mathit{lval} = \mathtt{Distribution}\texttt{(} \dots \texttt{)} \\
+    &\mid \mathit{lval} = e_1 \{ e_2 : e_3 \} [e_4 \{ e_5 : e_6 \} \dots] e_n \\
+%    &\mid f\texttt{(}e_1 \mid \mathit{lval}_1 \; [, e_2 \mid \mathit{lval}_2 \dots]\texttt{)} \\
+    &\mid [\texttt{query}] \; f\texttt{(}e_1 \mid \mathit{lval}_1 \; [, e_2 \mid \mathit{lval}_2 \dots]\texttt{)} \\
+    &\mid \mathtt{if} \; \texttt{(}e\texttt{)} \; \{ \mathit{block} \} \ \mathtt{else} \ \{ \mathit{block} \} \\
+    &\mid \mathtt{while} \; \texttt{(}e\texttt{)} \; \{ \mathit{block} \} \\
+    &\mid \mathtt{observe} \; \texttt{(}e\texttt{)} \\
+\mathit{block} \coloneqq & \; \mathit{stmt} ; [\mathit{stmt} \dots ; ] \\
+\mathit{lval} \coloneqq & \; \mathit{identifier} \mid \mathit{identifier}[e]
+\end{align*}
+\caption{MiniProb syntax.}
+\label{fig:miniprob}
+\end{figure}
+
+\section{Input Language}
+\label{sec:format}
+
+POPACheck analyzes programs written in MiniProb, a simple probabilistic programming language (Fig.~\ref{fig:miniprob}). MiniProb programs are written in files with extension \verb|.pomc|.
+MiniProb supports (un)signed integer variables of arbitrary width
+(\texttt{u8} is an 8-bit unsigned type) and fixed-size arrays.
+Functions take parameters by value or value-result (with \&).
+Actual parameters can only be variable identifiers for value-result parameters,
+and any expression if passed by value.
+Expressions consist of variables, array indexing, integer constants, and the usual arithmetic and Boolean operators, including comparisons.
+Boolean operators handle integers (0 means false, everything else true).
+Programs may sample from $\texttt{Bernoulli(} e_1, e_2 \texttt{)}$,
+% what about "where p = e1 / e2" magari killiamo la vedova
+which returns 1 with probability $p = e_1 / e_2$, and 0 with probability $1-p$,
+or from $\texttt{Uniform(} e_1, e_2 \texttt{)}$,
+which samples uniformly among integers from $e_1$ to $e_2 - 1$.
+Random assignments of the form $x = e_1 \{ e_2 / e_3 \} e_4$ mean that $x$ is assigned
+the value of $e_1$ with probability $e_2 / e_3$, and $e_4$ with probability $1 - e_2 / e_3$.
+Finally, functions can \texttt{query} the distribution on value-result parameters of another function, and condition on a Boolean expression with \texttt{observe}.
+
+\section{Queries}
+\label{sec:queries}
+A model check query must be put at the beginning of a \verb|.pomc| file, before the program. It follows the syntax: 
+\begin{center}
+    $\texttt{probabilistic query:} \, \, q \texttt{;}$
+\end{center}
+where $q$ is one of the queries of Table \ref{tab:queries}. When a formula is needed, it has to be placed in a new line with syntax:
+\begin{center}
+    $\texttt{formula:} \, \, f \texttt{;}$
+\end{center}
+where $f$ follows the syntax of Table \ref{tab:potl-syntax}. For some technical reasons explained in \cite{abs-2404-03515}, POPACheck does not support the whole POTL logic. In a nutshell, this is due to the fact that the model check algorithm avoids determinization of the specification automata. We do support full LTL though. To get a idea of queries, consider inspecting different experiments in \verb|eval/prob/established/|, where the same programs are verified against different queries.
+
+Plain reachability queries are supported through the LTL $\texttt{Eventually}$ operator at the moment. We plan to optimize it in future work, as it could be encoded as a termination query. 
+
+POPACheck supports also the query $\texttt{unfold\&export}$, which constructs a Markov Chain in explicit \href{https://www.stormchecker.org/documentation/background/languages.html}{Storm} format for a given program by unfolding the program's stack. Argument \verb|maxDepth| to the stack command specifies the maximum stack depth to unfold [default: 100]. When \verb|maxDepth| is reached, recursion is not unfolded anymore, and a simple self-loop is added. Note that \verb|.pomc| programs may have infinite recursion. We use this feature for testing purposes, and do not advertise users to try it out.
+
+\begin{table}
+\centering
+\begin{tabular}{| l | l | l |}
+\hline
+ query & explanation & Formula? \\
+\hline
+\hline
+$\texttt{approximate}$ & what is the termination probability of the program? & No \\ 
+$\texttt{qualitative}$ & Does the program satisfy $f$ almost surely? & Yes \\ 
+$\texttt{quantitative}$ & What is the probability that the program satisfies $f$? & Yes \\ 
+
+
+\hline
+\end{tabular}
+\caption{Available queries.}
+\label{tab:queries}
+\end{table}
 
 \begin{table}
 \centering
 \begin{tabular}{| c | l | l | l | l |}
 \hline
-Group & POTL Operator & POMC Operator & Notation & Associativity \\
+Group & POTL (or LTL) Operator & POPACheck Operator & Notation & Associativity \\
 \hline
 \hline
 \multirow{15}{*}{\rotatebox[origin=c]{90}{Unary}}
@@ -326,24 +187,26 @@ Group & POTL Operator & POMC Operator & Notation & Associativity \\
 & $\luback$ & \texttt{PBu}           & Prefix & -- \\
 & $\lcdnext$ & \texttt{XNd}           & Prefix & -- \\
 & $\lcunext$ & \texttt{XNu}           & Prefix & -- \\
-& $\lcdback$ & \texttt{XBd}           & Prefix & -- \\
-& $\lcuback$ & \texttt{XBu}           & Prefix & -- \\
-& $\lhdnext$ & \texttt{HNd}           & Prefix & -- \\
-& $\lhunext$ & \texttt{HNu}           & Prefix & -- \\
-& $\lhdback$ & \texttt{HBd}           & Prefix & -- \\
-& $\lhuback$ & \texttt{HBu}           & Prefix & -- \\
-& $\lleven$ & \texttt{F}, \texttt{Eventually} & Prefix & -- \\
-& $\llglob$ & \texttt{G}, \texttt{Always}     & Prefix & -- \\
+& \st{$\lcdback$} & \st{\texttt{XBd}}           & \st{Prefix} & -- \\
+& \st{$\lcuback$} & \st{\texttt{XBu}}           & \st{Prefix} & -- \\
+& \st{$\lhdnext$} & \st{\texttt{HNd}}           & \st{Prefix} & -- \\
+& \st{$\lhunext$} & \st{\texttt{HNu}}          & \st{Prefix} & -- \\
+& \st{$\lhdback$} & \st{\texttt{HBd}}          & \st{Prefix} & -- \\
+& \st{$\lhuback$} & \st{\texttt{HBu}}          & \st{Prefix} & -- \\
+& $\lleven \,$ (LTL)& \texttt{F}, \texttt{Eventually}  & Prefix & -- \\
+& $\lnext \,$ (LTL)& \texttt{N} & Prefix & -- \\
+& $\mathcal{U} \,$ (LTL)& \texttt{U} & Infix & Right \\
+& $\llglob \, $ (LTL)& \texttt{G}, \texttt{Always} & Prefix & -- \\
 \hline
 \multirow{8}{*}{\rotatebox[origin=c]{90}{POTL Binary}}
 & $\lcduntil{}{}$ & \texttt{Ud}            & Infix  & Right \\
 & $\lcuuntil{}{}$ & \texttt{Uu}            & Infix  & Right \\
-& $\lcdsince{}{}$ & \texttt{Sd}            & Infix  & Right \\
-& $\lcusince{}{}$ & \texttt{Su}            & Infix  & Right \\
-& $\lhduntil{}{}$ & \texttt{HUd}           & Infix  & Right \\
-& $\lhuuntil{}{}$ & \texttt{HUu}           & Infix  & Right \\
-& $\lhdsince{}{}$ & \texttt{HSd}           & Infix  & Right \\
-& $\lhusince{}{}$ & \texttt{HSu}           & Infix  & Right \\
+& \st{$\lcdsince{}{}$} & \st{\texttt{Sd}}            & \st{Infix}  & \st{Right} \\
+& \st{$\lcusince{}{}$} & \st{\texttt{Su}}            & \st{Infix}  & \st{Right} \\
+& \st{$\lhduntil{}{}$} & \st{\texttt{HUd}}           & \st{Infix}  & \st{Right} \\
+& \st{$\lhuuntil{}{}$} & \st{\texttt{HUu}}           & \st{Infix}  & \st{Right} \\
+& \st{$\lhdsince{}{}$} & \st{\texttt{HSd}}           & \st{Infix}  & \st{Right} \\
+& \st{$\lhusince{}{}$} & \st{\texttt{HSu}}           & \st{Infix}  & \st{Right} \\
 \hline
 \multirow{5}{*}{\rotatebox[origin=c]{90}{Prop.\ Binary}}
 & $\land$ & \texttt{And}, \verb!&&! & Infix  & Left \\
@@ -353,436 +216,66 @@ Group & POTL Operator & POMC Operator & Notation & Associativity \\
 & $\iff$ & \texttt{Iff}, \verb!<-->!     & Infix  & Right \\
 \hline
 \end{tabular}
-\caption{This table contains all currently supported POTL operators, in descending order
+\caption{This table contains all POTL and LTL operators, in descending order
 of precedence. Operators listed on the same line are synonyms. Operators in the
-same group have the same precedence. Note that operators are case sensitive.}
+same group have the same precedence. Note that operators are case sensitive. \textbf{Operators not in the fragment supported by POPACheck are crossed out.}}
 \label{tab:potl-syntax}
 \end{table}
 
-\subsection{Providing MiniProc input models}
-
-The second kind of input files also contain POTL formulas,
-and a program in the \emph{MiniProc} language to be checked against them.
-MiniProc is a simplified procedural programming language,
-where variables are all fixed-size (note that MiniProc is not Turing-complete,
-so any use of the word `program' when referring to it is a deliberate abuse of terminology).
-This limitation allows POMC to translate every MiniProc program into an OPA,
-that is then checked against the supplied formulas.
-This kind of input files have this form:
+\clearpage
+\section{Interpreting the output}
+The output of running a query is quite verbose at the moment. For example: 
 \begin{verbatim}
-formulas = FORMULA [, FORMULA ...] ;
-program:
-PROGRAM
+$ stack exec -- popacheck prob/established/quantitative/schelling/Q03.pomc --newton
 \end{verbatim}
-The syntax of MiniProc programs is reported in Figure~\ref{fig:miniproc-syntax}.
-\begin{figure}
+prints 
 \begin{verbatim}
-PROGRAM := [DECL; ...] FUNCTION [FUNCTION ...]
-DECL := TYPE IDENTIFIER [, IDENTIFIER ...]
-TYPE := bool | uINT | sINT | uINT[INT] | sINT[INT]
-FUNCTION := IDENTIFIER ([FARG, ...]) { [DECL; ...] STMT; [STMT; ...] }
-FARG := TYPE IDENTIFIER | TYPE & IDENTIFIER
-STMT := LVALUE = BEXPR
-      | LVALUE = *
-      | while (GUARD) { [STMT; ...] }
-      | if (GUARD) { [STMT; ...] } else { [STMT; ...] }
-      | try { [STMT; ...] } catch { [STMT; ...] }
-      | IDENTIFIER([EXPR, ...])
-      | throw
-GUARD := * | EXPR
-LVALUE := IDENTIFIER | IDENTIFIER[EXPR]
-EXPR := EXPR || CONJ | CONJ
-CONJ := CONJ && BTERM | BTERM
-BTERM := IEXPR COMP IEXPR | IEXPR
-COMP := == | != | < | <= | > | >=
-IEXPR := IEXPR + PEXPR | IEXPR - PEXPR | PEXPR
-PEXPR := PEXPR * ITERM | PEXPR / ITERM | ITERM
-ITERM := !ITERM | (EXPR) | IDENTIFIER | IDENTIFIER[EXPR] | LITERAL
-LITERAL := [+|-] INT[u|s]INT | true | false
+Quantitative Probabilistic Model Checking
+Query: G (((call And alice) And [| (p == [4]4)]) --> (~ (XNu obs)))
+Result:  (5064173399 % 5660011320,6145 % 6868)
+Floating Point Result:  (0.8947284930518479,0.894729178800233)
+Elapsed time: 20.74 s (total), 2.3883e-2 s (upper bounds), 2.8956e-2 s (PAST certificates), 1.1778e0 s (graph analysis),1.1905e1 s (upper bounds with OVI for quant MC),7.5453e-4 s (eq system for quant MC).
+Input pOPA state count: 311
+Support graph size: 682
+Equations solved for termination probabilities: 1230
+Non-trivial equations solved for termination probabilities: 266
+SCC count in the support graph: 1117
+Size of the largest SCC in the support graph: 24
+Largest number of non trivial equations in an SCC in the Support Graph: 52
+Size of graph G: 44
+Equations solved for quant mc: 893036
+Non-trivial equations solved for quant mc: 68226
+SCC count in quant mc weight computation: 336410
+Size of the largest SCC in quant mc weight computation: 144
+Largest number of non trivial equations in an SCC in quant mc weight computation: 7318
+
 \end{verbatim}
-\caption{MiniProc syntax.}
-\label{fig:miniproc-syntax}
-\end{figure}
-In the definition, non-terminal symbols are uppercase, and keywords lowercase.
-Parts surrounded by square brackets are optional, and ellipses mean that the enclosing
-group can be repeated zero or more times.
-An \texttt{IDENTIFIER} is any sequence of letters, numbers, or characters `\texttt{.}',
-`\texttt{:}' and `\texttt{\_}', starting with a letter or an underscore.
-
-The program starts with a variable declaration, which must include all global variables used in the program.
-Variables can be Boolean, or of signed or unsigned fixed-width integer types,
-or fixed-size arrays thereof.
-Then, a sequence of functions are defined, the first one being the entry-point to the program.
-Functions can have formal parameters that are passed by value or by value-result,%
-\footnote{When a parameter is passed by value-result, the actual parameter is copied into
-the formal parameter when the function is called and,
-when the function returns, the value of the formal parameter
-is copied back into the actual parameter (which must be a variable).}
-the latter being marked with the \texttt{\&} symbol.
-Function bodies consist of semicolon-separated statements,
-which start after zero or more lists of local variables.
-Assignments, while loops and ifs have the usual semantics.
-The try-catch statement executes the catch block whenever an exception is thrown by any statement
-in the try block (or any function it calls).
-Exceptions are thrown by the \texttt{throw} statement, and they are not typed
-(i.e., there is no way to distinguish different kinds of exceptions).
-Functions can be called by prepending their name to actual parameters enclosed in parentheses.
-Actual parameters passed by value-result can only be variable names.
-Expressions can be made of the usual arithmetic operations when they involve integer variables,
-and arrays can be indexed by integer expressions enclosed in square brackets,
-both for assigning and reading them.
-Integer literals can be specified by a decimal number followed by the type of the literal
-(e.g., \texttt{u8} for an 8-bit unsigned integer,
-\texttt{s16} for a 16-bit signed integer, etc.),
-possibly preceded by its sign.
-Boolean expressions can contain comparisons between integers,
-and can be composed through the logical and (\texttt{\&\&}),
-or (\texttt{||}) and negation (\texttt{!}) operators.
-
-POMC automatically translates such programs into OPA or $\omega$OPBA,
-depending on whether finite- or infinite-word model checking has been chosen.
-The way this is done is detailed in Appendix~\ref{sec:miniproc-to-opa}.
-
-It is possible to declare \emph{modules} by including a double colon (\texttt{::})
-in function names. E.g., function \texttt{A::B::C()} is contained in module \texttt{A::B},
-which is contained in \texttt{A}. In the OPA resulting from the program, the module
-names hold whenever a contained function is called or returns.
-This is useful for referring to multiple functions at once in POTL formulas, hence drastically
-reducing formula length and closure size.
-
-When providing input models as programs,
-it is possible to use MiniProc expressions as atomic propositions in POTL formulas
-by using the syntax
-\begin{center}
-\verb![ IDENTIFIER | EXPR ]!
-\end{center}
-where \verb!IDENTIFIER!, which is optional, is a function name
-and \verb!EXPR! is any MiniProc expression as defined in Figure~\ref{fig:miniproc-syntax}.
-The expression will be evaluated in the scope of the specified function,
-or in the global scope if none is given;
-it will evaluate to false during the execution of all other functions.
-The expression may only refer to variables either global or local to the specified function,
-and an error is raised otherwise.
-
-An example input file is given below:
+Most of lines just print statistics about the experiment. An user may only read
 \begin{verbatim}
-formulas = G ((call And pb And (call Sd (call And pa)))
-                --> (PNu exc Or XNu exc));
-
-program:
-var foo;
-
-pa() {
-  foo = false;
-  try {
-    pb();
-  } catch {
-    pc();
-  }
-}
-
-pb() {
-  if (foo) {
-    throw;
-  } else {}
-}
-
-pc() { }
+Floating Point Result:  (0.8947284930518479,0.894729178800233)
 \end{verbatim}
-
-POMC prints the following:
-\begin{verbatim}
-Model Checking
-Formula: G ((("call" And "pb") And ("call" Sd ("call" And "pa")))
-  --> ((PNu "exc") Or (XNu "exc")))
-Input OPA state count: 28
-Result:  True
-Elapsed time: 803.7 ms
-
-
-Total elapsed time: 803.7 ms (8.0370e-1 s)
-\end{verbatim}
-
-
-\section{Some experiments}
-\label{sec:exp}
-
-In this section we report the results of some experiments
-provided in the \texttt{eval} directory.
-The experiments were executed on a laptop with a 2.2 GHz Intel processor
-and 15 GiB of RAM, running Ubuntu GNU/Linux 20.04.
-
-These are only a few of the experiments shipped with this repository,
-and this section is intended to provide a sample of them,
-so it will not be updated frequently.
-
-\subsection{Directory \texttt{automata/opa-cav}}
-\label{sec:exp-opa}
-
-This directory contains a few programs modeled as OPA,
-on which POMC proves or disproves some interesting specifications.
-The resources employed by POMC on such tasks are reported in Table~\ref{tab:eval}.
-If you wish to repeat such experiments, you may run the following
-commands:
-\begin{verbatim}
-$ cd ~/path/to/POMC-sources/eval
-$ ./mcbench.py -f automata/opa-cav
-\end{verbatim}
-
-\begin{table}
-  \centering
-  \begin{tabular}{| r | l | r | r | r | r | l |}
-    \hline
-    & Benchmark name & \# states & Time (ms) & \multicolumn{2}{c|}{Memory (KiB)} & Result \\
-    \cline{5-6}
-    & & & & Total & MC only & \\
-    \hline
-    1 & generic small & 12 & 867 & 70,040 & 10,166 & True \\
-    2 & generic medium & 24 & 673 & 70,064 & 4,043 & False \\
-    3 & generic larger & 30 & 1,014 & 70,063 & 14,160 & True \\
-    4 & Jensen & 42 & 305 & 70,050 & 3,154 & True \\
-    5 & unsafe stack & 63 & 1,493 & 109,610 & 43,177 & False \\
-    6 & safe stack & 77 & 637 & 70,089 & 7,234 & True \\
-    7 & unsafe stack neutrality & 63 & 5,286 & 383,312 & 167,654 & True \\
-    8 & safe stack neutrality & 77 & 840 & 70,077 & 16,773 & True \\
-    \hline
-  \end{tabular}
-  \caption{Results of the evaluation.}
-  \label{tab:eval}
-\end{table}
-
-\paragraph{Generic procedural programs.}
-Formula
-\[
-  \llglob \big((\lcall \land \mathrm{p}_B \land
-    \lcallsince(\top, \mathrm{p}_A))
-    \implies \lthrnext(\top) \big)
-\]
-means that whenever procedure $\mathrm{p}_B$ is executed and at least
-one instance of $\mathrm{p}_A$ is on the stack, $\mathrm{p}_B$ is
-terminated by an exception.  We checked it against three OPA
-representing some simple procedural programs with exceptions and
-recursive procedures.  The formula holds on benchmarks no.\ 1 and 3,
-but not on no.\ 2.
-
-\paragraph{Stack Inspection.}
-\cite{JensenLT99} contains an example Java program for managing a bank
-account, which uses the security framework of the Java Development Kit
-to enforce user permissions. The program allows the user to check the
-account balance, and to withdraw money. To perform such tasks, the
-invoking program must have been granted permissions \texttt{CanPay}
-and \texttt{Debit}, respectively.  We modeled such program as an OPA
-(bench.\ 4), and proved that the program enforces such security
-measures effectively by checking it against the formula
-\[
-\llglob (\lcall \land \mathtt{read} \implies
-  \neg (\lcdsince{\top}{(\lcall \land
-                         \neg \mathtt{CanPay}
-                         \land \neg \mathtt{read})}))
-\]
-meaning that the account balance cannot be read if some function in
-the stack lacks the \texttt{CanPay} permission (a similar formula
-checks the \texttt{Debit} permission).
-
-\paragraph{Exception Safety.}
-\cite{Sutter97} is a tutorial on how to make exception-safe generic
-containers in C++. It presents two implementations of a generic stack
-data structure, parametric on the element type \texttt{T}. The first
-one is not exception-safe: if the constructor of \texttt{T} throws an
-exception during a pop action, the topmost element is removed, but it
-is not returned, and it is lost.  This violates the strong exception
-safety \cite{Abrahams00} requirement that each operation is rolled
-back if an exception is thrown. The second version of the data
-structure instead satisfies such requirement.
-
-While exception safety is, in general, undecidable, it is possible to
-prove the stronger requirement that each modification to the data
-structure is only committed once no more exceptions can be thrown.
-We modeled both versions as OPA, and checked
-such requirement with the following formula:
-\[
-\llglob (\lthrow \implies
-         \neg ((\luback \mathtt{modified} \lor
-               \lcuback \mathtt{modified})
-         \land \lcuback (\mathtt{Stack::push} \lor \mathtt{Stack::pop})))
-\]
-POMC successfully found a counterexample for the first implementation (5),
-and proved the safety of the second one (6).
-
-Additionally, we proved that both implementations are
-\emph{exception neutral} (7, 8), i.e.\ they do not block exceptions
-thrown by the underlying types.
-
-
-\subsection{Directory \texttt{automata/opa-more}}
-
-\begin{table}[tb]
-\centering
-\fontsize{9pt}{10pt}\selectfont
-\begin{tabular}{| l | r | r | r | l |}
-\hline
-Formula	& Time & \multicolumn{2}{c|}{Memory (KiB)} & Res- \\
-\cline{3-4}
-& (ms) & Tot. & MC & ult \\
-\hline
-$\lcdnext \mathrm{p}_\mathit{Err}$ 	&	1.1	&	70,095	&	175	&	False	\\
-$\ldnext (\ldnext (\lcall \land \lcunext \lthrow))$ 	&	21.0	&	70,095	&	1,290	&	False	\\
-$\ldnext (\lhandle \land (\lcdnext (\lthrow \land \lcuback \lcall)))$ 	&	42.2	&	70,088	&	2,297	&	False	\\
-$\llglob (\lthrow \implies \lcuback \lcall)$ 	&	10.7	&	70,099	&	839	&	True	\\
-$\lcduntil{\top}{\lthrow}$ 	&	2.2	&	70,093	&	121	&	False	\\
-$\ldnext (\ldnext (\lcduntil{\top}{\lthrow}))$ 	&	4.3	&	70,094	&	113	&	False	\\
-$\llglob ((\lcall \land \mathrm{p}_A \land (\lcduntil{\neg \lret}{\mathrm{WRx}})) \implies \lcunext \lthrow)$ 	&	3,257.7	&	238,833	&	102,582	&	True	\\
-$\ldnext (\lunext \lcall)$ 	&	0.7	&	70,094	&	139	&	False	\\
-$\ldnext (\ldnext (\ldnext (\luback \lcall)))$ 	&	3.4	&	70,108	&	126	&	False	\\
-$\lcdnext (\ldnext (\luback \lcall))$ 	&	1.3	&	70,096	&	137	&	False	\\
-$\llglob ((\lcall \land \mathrm{p}_A \land \lthrnext(\top)) \implies \lthrnext(\mathrm{e}_B))$ 	&	7,793.7	&	402,420	&	173,639	&	False	\\
-$\lleven (\lhdnext \mathrm{p}_B)$ 	&	2.1	&	70,097	&	114	&	False	\\
-$\lleven (\lhdback \mathrm{p}_B)$ 	&	2.8	&	70,097	&	114	&	False	\\
-$\lleven (\mathrm{p}_A \land (\lhduntil{\lcall}{\mathrm{p}_C}))$ 	&	594.9	&	77,806	&	29,786	&	True	\\
-$\lleven (\mathrm{p}_C \land (\lhdsince{\lcall}{\mathrm{p}_A}))$ 	&	676.6	&	96,296	&	37,949	&	True	\\
-$\llglob ((\mathrm{p}_C \land \lcunext \lthrow) \implies (\lhdsince{\neg \mathrm{p}_A}{\mathrm{p}_B}))$ 	&	---	&	---	&	---	&	OOM	\\
-$\llglob (\lcall \land \mathrm{p}_B \implies \lhuuntil{\neg \mathrm{p}_C}{\mathrm{p}_\mathit{Err}})$ 	&	198.2	&	70,088	&	10,606	&	True	\\
-$\lleven (\lhunext \mathrm{p}_\mathit{Err})$ 	&	1.1	&	70,093	&	114	&	False	\\
-$\lleven (\lhuback \mathrm{p}_\mathit{Err})$ 	&	1.2	&	70,089	&	114	&	False	\\
-$\lleven (\mathrm{p}_A \land (\lhuuntil{\lcall}{\mathrm{p}_B}))$ 	&	10.3	&	70,105	&	115	&	False	\\
-$\lleven (\mathrm{p}_B \land (\lhusince{\lcall}{\mathrm{p}_A}))$ 	&	10.8	&	70,095	&	115	&	False	\\
-$\llglob (\lcall \implies \lcdnext \lret)$ 	&	3.0	&	70,095	&	112	&	False	\\
-$\llglob (\lcall \implies \neg \lunext \lthrow)$ 	&	1.9	&	70,106	&	113	&	False	\\
-$\llglob (\lcall \land \mathrm{p}_A \implies \neg \lthrnext(\top))$ 	&	110.7	&	70,094	&	4,937	&	False	\\
-$\llglob (\lthrow \implies \neg (\luback (\lcall \land \mathrm{p}_A) \lor \lcuback (\lcall \land \mathrm{p}_A)))$ 	&	28.9	&	70,095	&	112	&	False	\\
-$\llglob ((\lcall \land \mathrm{p}_B \land (\lcdsince{\lcall}{(\lcall \land \mathrm{p}_A)})) \implies \lthrnext(\top)$ 	&	926.1	&	70,104	&	13,310	&	True	\\
-$\llglob (\lhandle \implies \lcunext \lret)$ 	&	17.0	&	70,079	&	1,252	&	True	\\
-$\lcuuntil{\top}{\lthrow}$ 	&	7.7	&	70,101	&	121	&	True	\\
-$\ldnext (\ldnext (\lcuuntil{\top}{\lthrow}))$ 	&	44.6	&	70,104	&	2,376	&	True	\\
-$\ldnext (\ldnext (\ldnext (\lcuuntil{\top}{\lthrow})))$ 	&	123.7	&	70,090	&	5,261	&	False	\\
-$\llglob (\lcall \land \mathrm{p}_C \implies (\lcuuntil{\top}{\lthrow \land \lcdback \lhandle}))$ 	&	92.9	&	70,096	&	1,346	&	False	\\
-$\lcduntil{\lcall}{(\lret \land \mathrm{p}_\mathit{Err})}$ 	&	1.8	&	70,107	&	114	&	False	\\
-$\lcdnext (\lcall \land (\lcusince{(\lcall \lor \lthrow)}{\mathrm{p}_B}))$ 	&	10.8	&	70,086	&	117	&	False	\\
-$\ldnext (\ldnext (\lcuuntil{(\lcall \lor \lthrow)}{\lret}))$ 	&	5.3	&	70,094	&	114	&	False	\\
-\hline
-\end{tabular}
-\caption{Results of the additional experiments on OPA ``generic larger''.}
-\label{tab:more-exp-large}
-\end{table}
-
-This directory contains more experiments devised with the purpose of
-testing all POTL operators, also in order to find the most critical
-cases.  In fact, the complexity of POTL model checking is exponential
-in the length of the formula.  This is of course unsurprising, since
-it subsumes logics such as LTL and NWTL, whose model checking is also
-exponential.  Actually, model checking is feasible for many
-specifications useful in practice.  There are, however, some cases in
-which the exponentiality of the construction becomes evident.
-
-In Table~\ref{tab:more-exp-large} we show the results of model checking numerous
-POTL formulas on one of the OPA representing generic procedural programs.
-Some of them are checked very quickly,
-while others require a long execution time and a very large amount of
-memory. POMC runs out of memory on one of such formulas.
-We were able to run it in 367 seconds on a server with
-a 2.0 GHz 16-core AMD CPU and 500 GB of RAM.
-If you wish to repeat such experiments, you may run the following
-commands:
-\begin{verbatim}
-$ cd ~/path/to/POMC-sources/eval
-$ ./mcbench.py -f opa-more/generic-larger
-\end{verbatim}
-Of course, a machine with an appropriate amount of RAM is needed.
-
-
-\subsection{Directory \texttt{miniproc/finite}}
-
-This directory contains a few verification tasks in which the model
-has been expressed as a MiniProc program.
-Each file in this directory contains multiple formulas.
-
-\texttt{jensen.pomc}, \texttt{stackUnsafe.pomc} and \texttt{stackSafe.pomc}
-contain the same tasks as those with the same name described in Section~\ref{sec:exp-opa}.
-This time, however, models are expressed as MiniProc programs, and the resulting
-OPA contain many more states.
-
-Other files contain simpler programs, checked against all formulas form
-Table~\ref{tab:more-exp-large}.
-
-Table~\ref{tab:exp-miniproc} reports the results of such experiments.
-When more than one formula is checked in a single file, the reported result is True
-only if all formulas are verified, False if at least one of them is not.
-
-\begin{table}
-  \centering
-  \begin{tabular}{| l | r | r | r | r | l |}
-    \hline
-    Benchmark name & \# states & Time (s) & \multicolumn{2}{c|}{Memory (KiB)} & Result \\
-    \cline{4-5}
-    & & & Total & MC only & \\
-    \hline
-    doubleHan      &   22 & 52.96 & 2,091,256 &   869,661 & False \\
-    jensen         & 1236 &  1.97 &    73,712 &    17,339 & True \\
-    simpleExc      &   19 & 65.42 & 3,278,876 & 1,353,000 & False \\
-    simpleExcNoHan &   12 & 37.72 & 1,510,524 &   656,422 & False \\
-    simpleIfElse   &   28 & 27.62 &   942,280 &   383,231 & False \\
-    simpleIfThen   &   28 & 30.67 & 1,046,584 &   415,648 & False \\
-    simpleWhile    &   16 &  0.09 &    73,768 &     3,251 & True \\
-    stackSafe      &  340 & 31.51 &   653,616 &   265,363 & True \\
-    stackUnsafe    &  162 & 16.48 &   532,736 &   224,573 & False \\
-    \hline
-  \end{tabular}
-  \caption{Results of the evaluation of \texttt{miniproc} files.}
-  \label{tab:exp-miniproc}
-\end{table}
-
+which are, respectively, a lower and an upper bound to the probability that the schelling model satisfies formula Q03. It might be of general interest to inspect the overall number of equation solved, 893036 in this case.
 
 \section{Source Code}
 \label{sec:sources}
 
-The source code of POMC is contained in the \texttt{src/Pomc} directory.
+POPACheck is open source. The source code of POPACheck is contained in directory \texttt{src/Pomc/Prob}. We refer to the documentation of POMC for the other modules.
 We describe the contents of each file below.
 \begin{description}
-\item[Check.hs] This file contains the data structures and functions
-  that implement the translation of POTL formulas into OPA.
-  The \texttt{check} and \texttt{fastcheck} functions build the OPA
-  and check for string acceptance. \texttt{makeOpa} returns
-  a thunk containing an un-evaluated OPA, which is built on-the-fly
-  while the calling context evaluates the transition functions.
-\item[DoubleSet.hs] a data structure used by the SCC-finding algorithm.
-\item[Encoding.hs] contains a data structure that represents a set of POTL
-  formulas as a bit vector. We use it to encode OPA states in a
-  memory-efficient form in Check.hs.
-\item[GStack.hs] contains a custom implementation of a LIFO stack
-  for the $\omega$OPBA emptiness algorithms.
-\item[MaybeMap.hs] contains another helper data structure for the emptiness algorithms.
-\item[MiniProc.hs] contains code that translates MiniProc programs into OPA.
-\item[MiniProcParse.hs] contains a parser for MiniProc programs.
-\item[ModelChecker.hs] contains the model checking launcher functions,
-  and a data structure to represent the input OPA to be checked explicitly.
-  It calls \texttt{makeOpa} to translate the negation of the specification
-  into an equivalent OPA, creates a thunk representing an un-evaluated
-  intersection of the two OPA, and then uses the reachability algorithm from
-  Satisfiability.hs to determine emptiness.
-\item[Opa.hs] contains an implementation of OPA, which is used to test
-  string acceptance.
-\item[OpaGen.hs] contains a simple automated OPA generator (still experimental).
-\item[Parse.hs] contains a parser for POMC input files.
-\item[Potl.hs] defines the datatype for POTL formulas.
-\item[Prec.hs] defines the data type for precedence relations.
-\item[Prop.hs] defines the data type for atomic propositions.
-\item[PropConv.hs] contains dome functions useful to change the representation
-  of atomic propositions from strings to unsigned integers.
-  This is used by other parts of the program to achieve better performances,
-  as strings are represented as lists of char in Haskell, which is quite
-  inefficient.
-\item[Satisfiability.hs] contains the reachability algorithms used in the
-  model checker to decide OPA emptiness. They can also be use to decide
-  satisfiability of a formula.
-\item[SatUtil.hs] contains utility data structures for the satisfiability algorithms.
-\item[SCCAlgorithm.hs] contains the implementation of the algorithm for finding strongly
-  connected components in $\omega$OPBA employed for the emptiness check.
-\item[SetMap.hs] contains another helper data structure for satisfiability.
-\item[State.hs] contains the data type used to represent OPA states.
-\item[TripleHashTable.hs] contains a hash table used in the emptiness check.
-\item[Util.hs] contains various functions used in other parts of the code.
+\item[FixPoint.hs] contains the data structures to represent and store sparse systems of positive polynomial systems, and vectors of solutions (termination probabilities). Given a system, it keeps track of those equations that are not solved, and allows to approximating their solutions via either the Gauss-Seidel method or the Newton method.
+\item[GGraph.hs]  contains the implementation of qualitative and quantitative model checking. It also contains some functions for building the cross-product between the formula's automaton and the support chain of the pOPA (what is called graph $G$ in \cite{abs-2404-03515}).
+\item[GReach.hs] contains functions for exploring edges in graph $G$ that correspond to support edges in the summary chain of the pOPA. For qualitative model checking, it has a simple reachability algorithm for building these edges. For quantitative model checking, it has a SCC-based algorithm for computing (bounds to) the fraction associated with each edge via OVI. This amounts at solving positive polynomial systems in the same vein as termination probabilities.
+\item[MiniProb.hs] This file contains the parser and the implementation of the MiniProc programming language.
+\item[OVI.hs] contains our implementation of Optimistic Value Iteration (OVI) for computing upper bounds to the solution of positive polynomial systems.
+\item[ProbEncoding.hs] contains functions for generating a encoding of formulae satisfied in a path via bitvectors.
+\item[ProbModelChecking.hs] exposes all our probabilistic model checking APIs.
+\item[ProbUtils.hs] contains various utility functions.
+\item[SupportGraph.hs] contains a function for building the support graph of an input pOPA, an intermediate formalism for the computation of the support chain. 
+\item[Z3Termination.hs] contains the function for computing termination probabilities of a pOPA, either via OVI or via Z3, and certifying via Z3 that such probabilities are exactly equal to one when needed, according to the semialgorithm of \cite{POPACheck}. 
+
 \end{description}
 
+\subsection{Test Suite}
 The \texttt{test} directory contains regression tests based on the HUnit
 provider of the Tasty\footnote{\url{https://github.com/UnkindPartition/tasty}} framework.
 They can be run with
@@ -794,89 +287,13 @@ To learn how to execute just some of them, please consult the \texttt{README.md}
 file in the \texttt{test} directory.
 
 \section*{Acknowledgements}
-
-We are grateful to Davide Bergamaschi for developing an early prototype of this tool,
-and to Francesco Pontiggia for implementing the model checking algorithms
-for infinite words and performance optimizations.
-
+We are thankful to Tobias Winkler and Joost-Pieter Katoen (RWTH Aachen)
+for the fruitful discussions and for the advice on implementing OVI.
 
 \bibliographystyle{abbrv}
 \bibliography{pomc}
 
 \appendix
-
-\section{From MiniProc to OPA}
-\label{sec:miniproc-to-opa}
-
-A MiniProc program can be converted to an equivalent OPA or $\omega$OPBA.
-This is done in two stages: first, we build an \emph{extended} OPA whose transitions are labeled with Boolean expressions and assignments; then, we convert such OPA to a normal one, ready for model checking.
-Note that this construction is outdated as it does not explain how we deal with things such as integer variables and function arguments, but it should still give a good overview of the process.
-
-\subsection{Extended OPA}
-Given a MiniProc program $P$ and the set $I_P$ of identifiers in $P$,
-we call $L_P = \mathit{BExp}_P \cup \mathit{Ass}_P$ the set of labels on $P$,
-where $\mathit{BExp}_P$ and $\mathit{Ass}_P$ are resp.\ the sets of Boolean expressions and assignments on $I_P$.
-We build the extended OPA
-\[\mathcal{A}^E_P = (\Sigma_P, \allowbreak M_\lcall, \allowbreak Q^E_P, \allowbreak \{q_0\}, \allowbreak \{q_f\}, \allowbreak \delta^E_P)\]
-with $\Sigma_P = \Sigma_\lcall \cup L_P$.
-$Q_P$ and $\delta^E_P$ are built inductively on the program structure.
-For each statement $s$ in $P$, we define the set of entry state/label pairs $\mathit{En}_s \subseteq Q_P \times L_P$.
-Each entry state is labeled with an element form either $\mathit{BExp}_P$ or $\mathit{Ass}_P$, but not both.
-\begin{description}
-\item[Functions]
-For each function $f$ in $P$ we define a set of entry states $\mathit{En}_f = \mathit{En}_s$, where $s$ is the first statement in the function's body; we also add transitions and states $q^l_f \vshift{\lret \ f} q^r_f$, to which we link the last statement in $f$,
-and $q^t_f \vshift{\lthrow} q^e_f$, which implements \texttt{throw} statements.
-
-\item[Function Call]
-For a call $s$ to function $f$, we add $q_s \va{\lcall \ f \ l} q$ for all $(q, l) \in \mathit{En}_f$, and $q^t_f \flush{q_s} q^t_{f'}$, where $f'$ is the function containing $s$.
-Let $s'$ be the successor of $s$: we add $q^r_f \flush{q_s \ l} q$ for all $(q, l) \in \mathit{En}_s$.
-
-\item[Assignments]
-For each assignment $s$ we add $q_s \va{\lstmt \ s}{q_s}$, and set $\mathit{En}_s = \mathit{Ex}_s = \{(q_s, \top)\}$. Let $s'$ be the successor of $s$: we add $q_s \flush{(q_s, l)} q$ for all $(q, l) \in \mathit{En}_s$.
-
-\item[If-then-else]
-For each statement $s$ of the form \texttt{if} $b_s$ \texttt{then \{} $s_1; \dots; s_n$ \texttt{\} else \{} $s_{n+1}; \dots; s_m$ \texttt{\}}
-we have $\mathit{En}_s = \{(q, b_s \land l) \mid (q, l) \in \mathit{En}_{s_1}\} \cup \{(q, \neg b_s \land l) \mid (q, l) \in \mathit{En}_{s_{n+1}}\}$.
-
-\item[While]
-For a statement $s$ of the form \texttt{while} $b_s$ \texttt{\{} $s_1; \dots; s_n$ \texttt{\}} we set $\mathit{En}_s = \{(q, b_s \land l) \mid (q, l) \in \mathit{En}_{s_1}\} \cup \{(q, \neg b_s \land l) \mid (q, l) \in \mathit{En}_{s_{n+1}}\}$, where $s_{n+1}$ is the successor of $s$.
-Also, both $s_{n+1}$ and $s$ itself are considered as successors of $s_n$, and their entry sets are merged.
-
-\item[Throw]
-For a \texttt{throw} statement $s$ in a function $f$ we just set $\mathit{En}_s = \{(q^t_f, \top)\}$.
-
-\item[Try-Catch]
-For a statement $s$ in function $f$ of the form \texttt{try \{} $s_1; \dots; s_n$ \texttt{\} catch \{} $s_{n+1}; \dots; s_m$ \texttt{\}},
-we add a new state $q_s$ and set $\mathit{En}_s = \{(q_s, \top)\}$, and a push transition $q_s \va{\lhandle \ l} q$ for each $(q, l) \in \mathit{En}_{s_1}$ that installs the handler.
-We first deal with the case when an exception is caught.
-We add pop transitions $q^e_f \flush{q_s \ l} q$ for each $(q, l) \in \mathit{En}_{s_{n+1}}$ that pop the handler when an exception is thrown in the try block, and pass the execution flow to the catch block.
-Then, statement $s_m$ is linked to the entry states of $s'$, the first statement after $s$ (how this is done depends on what kind of statement $s_m$ is).
-For the case when no exception is thrown, we add a shift transition that simulates a dummy \texttt{throw} statement $t$ after $s_n$, to uninstall the handler.
-When lowering $s_n$, we consider $t$ as its next statement, add states $q_t$ and $q'_t$, and set $\mathit{En}_t = \{(q_t, \top)\}$.
-Then we add $q_t \vshift{\lthrow \ \mathit{dummy}} q'_t$, and $q'_t \flush{q_s \ l} q$ for all $(q, l) \in \mathit{En}_{s'}$, which pop the handler and continue the execution with the first statement after $s$.
-\end{description}
-
-Finally, if $f_0$ is the first function listed in the MiniProc program, we add transitions $q_0 \va{\lcall \ f_0 \ l} q$ for all $(q, l) \in \mathit{En}_{f_0}$, and $q^r_{f_0} \flush{q_0} q_f$.
-
-\subsection{From extended OPA to OPA}
-We expand states of $\mathcal{A}^E_P$ with all possible variable valuations, to obtain OPA
-\[\mathcal{A}_P = (\Sigma_\lcall \times I_P, M_\lcall, Q_P, \{q_0\} \times \{0, 1\}^{|I_P|}, \{q_f\} \times \{0, 1\}^{|I_P|}, \delta_P),\]
-where $Q_P \subseteq Q^E_P \times \{0, 1\}^{|I_P|}$.
-Each state is a pair $(q, v)$ with $q \in Q^E_P$ and $v$ is a bitvector representing a possible valuation of variables that hold in $q$.
-By $v \models l$ we mean that the variable valuation $v \in \{0, 1\}^{|I_P|}$ satisfies Boolean expression $l \in \mathit{BExp}_P$; if $l = (x := e) \in \mathit{Ass}_P$ with $x \in I_P$ and $e \in \mathit{BExp}_P$ we mean $v \models x \iff e$. By $\operatorname{vars}(v)$ we denote the set of variables satisfied by $v \in \{0, 1\}^{|I_P|}$.
-We define $Q_P := \bigcup_{i \in \mathbb{N}} Q_P^i$ inductively through the following equations:
-\begin{align*}
-  &Q_P^0 := \{q_0\} \times \{0, 1\}^{|I_P|} \\
-  &Q_P^{n+1} := \{(q, v) \mid q' \in Q_P^n, \ (q', a \ l, q) \in \delta^E_P, \ v \models l\}
-\end{align*}
-This is implemented through a depth-first visit of $\mathcal{A}^E_P$, from which we derive
-\begin{align*}
-  \delta_P :=
-    & \{q \va{a \ \operatorname{vars(v)}} q' \mid q \va{a \ l} q' \in \delta^E_P, \ q, q' \in Q_P\} \\
-    & \cup \{q \vshift{a \ \operatorname{vars(v)}} q' \mid q \vshift{a \ l} q' \in \delta^E_P, \ q, q' \in Q_P\} \\
-    & \cup \{q \flush{p} q' \mid q \flush{p \ l} q' \in \delta^E_P, \ q, q', p \in Q_P\}
-\end{align*}
-Note that $\mathcal{A}_P$ has size exponential in $|I_P|$ in the worst case, but not in general, since only reachable variable assignments are considered.
 
 
 
