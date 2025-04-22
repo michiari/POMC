@@ -2,7 +2,7 @@
 
 {- |
    Module      : Pomc.Prob.ProbUtils.hs
-   Copyright   : 2023 Francesco Pontiggia
+   Copyright   : 2023-2025 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}

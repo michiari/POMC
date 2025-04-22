@@ -2,9 +2,9 @@
 -- {-# LANGUAGE DataKinds #-} -- For Rounded
 {- |
    Module      : Pomc.Prob.OVI
-   Copyright   : 2023 Michele Chiari
+   Copyright   : 2023-2025 Michele Chiari, Francesco Pontiggia
    License     : MIT
-   Maintainer  : Michele Chiari
+   Maintainer  : Francesco Pontiggia
 -}
 
 module Pomc.Prob.OVI ( ovi

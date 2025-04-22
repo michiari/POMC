@@ -2,7 +2,7 @@
 {-# LANGUAGE TupleSections #-}
 {- |
    Module      : Pomc.GReach
-   Copyright   : 2023 Francesco Pontiggia
+   Copyright   : 2023-2025 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
@@ -31,7 +31,6 @@ import Pomc.Encoding (BitEncoding)
 import Pomc.Prec (Prec(..))
 import Pomc.Check(EncPrecFunc)
 import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
-
 import Pomc.SatUtil
 
 import Pomc.IOStack(IOStack)
@@ -48,8 +47,8 @@ import qualified Pomc.IOMapMap as IOMM
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 
-import qualified Data.Map as GeneralMap
-
+import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
 import Data.Vector(Vector)
 import qualified Data.Vector as V
 
@@ -59,7 +58,6 @@ import qualified Data.Set as Set
 import Control.Monad.ST (ST, RealWorld)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, newSTRef, writeSTRef, readSTRef, modifySTRef')
-
 import Control.Monad(unless, when, foldM, forM_, forM)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 
@@ -73,12 +71,10 @@ import qualified Data.HashTable.IO as HT
 
 import qualified Data.Vector.Mutable as MV
 import GHC.IO (stToIO)
-
 import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef', newIORef)
 import Data.Ratio (approxRational, (%))
-
 import Control.Applicative ((<|>))
-import qualified Data.IntMap as IntMap
+
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
@@ -129,10 +125,10 @@ nrSemiconfs :: GRobals s state -> ST.ST s Int
 nrSemiconfs grobals = BH.size (visited grobals)
 
 reachableStates :: (SatState state, Eq state, Hashable state, Show state)
-   => GRobals s state
-   -> Delta state -- delta relation of the opa
-   -> state -- current state
-   -> ST s [(state, ProbEncodedSet)]
+  => GRobals s state
+  -> Delta state -- delta relation of the opa
+  -> state -- current state
+  -> ST s [(state, ProbEncodedSet)]
 reachableStates globals delta state = do
   q <- wrapState (sIdGen globals) state
   currentSuppEnds <- MM.lookup (suppEnds globals) (getId q)
@@ -147,11 +143,11 @@ reachableStates globals delta state = do
       return $ filter ((consistentFilter delta) . fst) .  map (first getState) $ updatedSuppEnds
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
-      => GRobals s state -- global variables of the algorithm
-      -> Delta state -- delta relation of the opa
-      -> (StateId state, Stack state) -- current semiconfiguration
-      -> ProbEncodedSet -- current satset
-      -> ST s ()
+  => GRobals s state -- global variables of the algorithm
+  -> Delta state -- delta relation of the opa
+  -> (StateId state, Stack state) -- current semiconfiguration
+  -> ProbEncodedSet -- current satset
+  -> ST s ()
 reach globals delta (q,g) pathSatSet = do
   let qState = getState q
       qProps = getStateProps (bitenc delta) qState
@@ -163,7 +159,6 @@ reach globals delta (q,g) pathSatSet = do
 
         -- this case includes the initial push
         | (isNothing g) || (precRel == Just Yield ) =
-            -- sanity check
             --unless ((consistentFilter delta) qState) $ error $ "inconsistent AugState in a push in GReach " ++  show qState ++ "; " ++ show g ++ ";\n\n\nPREC " ++ show precRel
             reachPush globals delta q g qState pathSatSet
 
@@ -175,6 +170,7 @@ reach globals delta (q,g) pathSatSet = do
             reachPop globals delta q g qState pathSatSet
 
         | otherwise = return ()
+
   iniId <- readSTRef (currentInitial globals)
   cases iniId
 
@@ -211,9 +207,7 @@ reachShift :: (SatState state, Eq state, Hashable state, Show state)
 reachShift globals delta _ g qState pathSatSet =
   let qProps = getStateProps (bitenc delta) qState
       doShift p = reachTransition globals delta (Just pathSatSet) Nothing (p, Just (qProps, snd . fromJust $ g))
-  in do
-    newStates <- wrapStates (sIdGen globals) $ map fst $ (deltaShift delta) qState
-    mapM_ doShift newStates
+  in wrapStates (sIdGen globals) (map fst $ (deltaShift delta) qState) >>= mapM_ doShift
 
 reachPop :: (SatState state, Eq state, Hashable state, Show state)
     => GRobals s state
@@ -230,18 +224,15 @@ reachPop globals delta _ g qState pathSatSet =
             pState = getState p
             pProps = getStateProps (bitenc delta) pState
             isConsistentOrPop g' = (isJust g' && prec delta (fst . fromJust $ g') pProps == Just Take)
-                || (consistentFilter delta) pState
+              || (consistentFilter delta) pState
             closeSupports g' = when (isConsistentOrPop g') $ do
-                  lcSatSet <- fromJust <$> BH.lookup (visited globals) (decode (r,g'))
-                  reachTransition globals delta (Just lcSatSet) (Just pathSatSet) (p, g')
+              lcSatSet <- fromJust <$> BH.lookup (visited globals) (decode (r,g'))
+              reachTransition globals delta (Just lcSatSet) (Just pathSatSet) (p, g')
         in do
           MM.insertWith (suppEnds globals) (getId r) PE.union p pathSatSet
           currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
           mapM_ closeSupports currentSuppStarts
-  in do
-    newStates <- wrapStates (sIdGen globals) $ map fst $
-      (deltaPop delta) qState gState
-    mapM_  doPop newStates
+  in wrapStates (sIdGen globals) (map fst ((deltaPop delta) qState gState)) >>= mapM_ doPop
 
 -- handling the transition to a new semiconfiguration
 reachTransition :: (SatState state, Eq state, Hashable state, Show state)
@@ -274,7 +265,7 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
 freezeSuppEnds :: GRobals RealWorld state -> IO (Vector (Set (StateId state)))
 freezeSuppEnds globals = stToIO $ do
   computedSuppEnds <- readSTRef (suppEnds globals)
-  V.generateM (MV.length computedSuppEnds) (fmap GeneralMap.keysSet . MV.unsafeRead computedSuppEnds)
+  V.generateM (MV.length computedSuppEnds) (fmap Map.keysSet . MV.unsafeRead computedSuppEnds)
 
 type PopCnxts = IntSet
 data QuantVariable state = QuantVariable (StateId state, Stack state) Int PopCnxts
@@ -317,14 +308,14 @@ newWeightedGRobals len stats = liftIO $ do
 
 -- compute weigths of a support edge in H with respect to the support transition
 weightQuerySCC :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show state)
-               => WeightedGRobals state
-               -> SIdGen RealWorld state
-               -> Delta state -- delta relation of the augmented opa
-               -> Vector (Set(StateId state))
-               -> state -- current state
-               -> state -- target state
-               -> Bool
-               -> m (Prob, Prob)
+  => WeightedGRobals state
+  -> SIdGen RealWorld state
+  -> Delta state -- delta relation of the augmented opa
+  -> Vector (Set(StateId state))
+  -> state -- current state
+  -> state -- target state
+  -> Bool
+  -> m (Prob, Prob)
 weightQuerySCC globals sIdGen delta supports current target useNewton = do
   q <- liftSTtoIO $ wrapState sIdGen current
   targetState <- liftSTtoIO $ wrapState sIdGen target
@@ -350,16 +341,17 @@ weightQuerySCC globals sIdGen delta supports current target useNewton = do
   let truncatedLB = min 1 lb
       truncatedUB = min 1 ub
   logInfoN $ "Returning weights: " ++ show (truncatedLB, truncatedUB)
-  when (lb > ub || lb > 1 || ub - lb > 1 % 50) $ error $ "unsound or too loose bounds on weights for this summary transition: " ++ show (lb,ub)
+  when (lb > ub || lb > 1 || ub - lb > 1 % 50) $ 
+    error $ "unsound or too loose bounds on weights for this summary transition: " ++ show (lb,ub)
   return (truncatedLB, truncatedUB)
 
 retrieveValue :: (SatState state, Eq state, Hashable state, Show state)
-    => WeightedGRobals state
-    -> SIdGen RealWorld state
-    -> Delta state
-    -> StateId state
-    -> Int
-    -> IO (EqMapNumbersType,EqMapNumbersType)
+  => WeightedGRobals state
+  -> SIdGen RealWorld state
+  -> Delta state
+  -> StateId state
+  -> Int
+  -> IO (EqMapNumbersType,EqMapNumbersType)
 retrieveValue globals sIdGen delta q suppId =
     let qState = getState q
         qProps = getStateProps (bitenc delta) qState
@@ -381,21 +373,20 @@ retrieveValue globals sIdGen delta q suppId =
 
 -- functions for Gabow algorithm
 dfs :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show state)
-    => WeightedGRobals state
-    -> SIdGen RealWorld state
-    -> Delta state
-    -> Vector (Set(StateId state))
-    -> (StateId state, Stack state) -- current semiconf
-    -> (Int, Int)
-    -> Bool
-    -> m PopCnxts
+  => WeightedGRobals state
+  -> SIdGen RealWorld state
+  -> Delta state
+  -> Vector (Set(StateId state))
+  -> (StateId state, Stack state) -- current semiconf
+  -> (Int, Int)
+  -> Bool
+  -> m PopCnxts
 dfs globals sIdGen delta supports (q,g) (semiconfId, target) useNewton =
   let qState = getState q
       gState = getState . snd . fromJust $ g
       qProps = getStateProps (bitenc delta) qState
       precRel = (prec delta) (fst . fromJust $ g) qProps
       transitionCases
-
         -- this case includes the initial push
         | (isNothing g) || precRel == Just Yield = do
           unless ((consistentFilter delta) qState) $ error "inconsistent state in a push"
@@ -442,8 +433,8 @@ lookupIValue globals semiconfId = do
 
 lookupCntxs :: WeightedGRobals state -> Int -> IO IntSet
 lookupCntxs globals semiconfId = do
-    maybeCntxs <- HT.lookup (successorsCntxs globals) semiconfId
-    maybe (return IntSet.empty) return maybeCntxs
+  maybeCntxs <- HT.lookup (successorsCntxs globals) semiconfId
+  maybe (return IntSet.empty) return maybeCntxs
 
 lookupSemiconf :: WeightedGRobals state -> (StateId state, Stack state) -> IO Int
 lookupSemiconf globals semiconf = do
@@ -497,9 +488,6 @@ createComponent globals sIdGen delta supports popContxs semiconfId useNewton = d
         let toEncode = [QuantVariable s semiconfId_ popContxs | (s, semiconfId_) <- poppedSemiconfs]
             sccMembers = IntSet.fromList . map snd $ poppedSemiconfs
         liftIO $ do
-          -- this sanity check has been removed for performance reasons
-          -- insertedVars <- map (snd . fromJust) <$> forM toEncode (\(s, _, rc) -> lookupVar sccMembers globals (decode s) rc)
-          -- when (or insertedVars) $ error "inserting a variable that has already been encoded"
           -- little optimization trick
           forM_ toEncode (\ (QuantVariable _ id_ popContxs) ->
             let eqs = IntMap.fromSet (const (PushEq [])) popContxs
@@ -538,10 +526,13 @@ encode (QuantVariable (q,g) id_ popContexts) globals sIdGen delta supports sccMe
 
           | precRel == Just Take = do
               distr <- mapM
-                (\(unwrapped, e) -> do p <- stToIO $ wrapState sIdGen unwrapped; return (getId p, PopEq (fromRational e, fromRational e)))
-                $ (deltaPop delta) qState gState
+                (\(unwrapped, e) -> do 
+                  p <- stToIO $ wrapState sIdGen unwrapped
+                  return (getId p, PopEq (fromRational e, fromRational e))
+                ) $ (deltaPop delta) qState gState
               addFixpEqs (eqMap globals) id_ (IntMap.fromList distr)
-              liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + (length distr)}
+              liftSTtoIO $ modifySTRef' (stats globals) $ 
+                \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + length distr}
 
           | otherwise = fail "unexpected prec rel"
     in cases
@@ -577,7 +568,8 @@ encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMe
       encodedRCs <- retrieveRightContexts (eqMap globals) id_
       let rcs = if IntSet.member id_ sccMembers
                     then suppEndsIds -- I might discover new variables
-                    else IntSet.intersection suppEndsIds encodedRCs -- not all encoded RCs build a support for the current left context
+                    -- not all encoded RCs build a support for the current left context
+                    else IntSet.intersection suppEndsIds encodedRCs 
       return (p, id_, prob_, encodedRCs, rcs)
 
     suppInfo <- forM suppEnds $ \s ->
@@ -591,26 +583,28 @@ encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMe
                     else IntSet.intersection rightCnxts encodedRCs -- I might not need all encoded right contexts
         return (s, suppEndsId, id_, encodedRCs, rcs)
 
-    let pushVarKeystoEncode = [ QuantVariable (p, newG) id_ toEncodeRCs |
-                                (p, id_, _, encodedRCs, rcs) <- pushInfo,
-                                IntSet.member id_ sccMembers, -- to optimize filtering
-                                let toEncodeRCs = IntSet.difference rcs encodedRCs,
-                                not $ IntSet.null toEncodeRCs
-                              ]
-        suppVarKeystoEncode = [ QuantVariable (s,g) id_ toEncodeRCs |
-                                (s, _, id_, encodedRCs, rcs) <- suppInfo,
-                                IntSet.member id_ sccMembers, -- to optimize filtering
-                                let toEncodeRCs = IntSet.difference rcs encodedRCs,
-                                not $ IntSet.null toEncodeRCs
-                              ]
+    let pushVarKeystoEncode = 
+          [ QuantVariable (p, newG) id_ toEncodeRCs |
+              (p, id_, _, encodedRCs, rcs) <- pushInfo
+            , IntSet.member id_ sccMembers -- to optimize filtering
+            , let toEncodeRCs = IntSet.difference rcs encodedRCs
+            , not $ IntSet.null toEncodeRCs
+          ]
+        suppVarKeystoEncode = 
+          [ QuantVariable (s,g) id_ toEncodeRCs |
+            (s, _, id_, encodedRCs, rcs) <- suppInfo
+            , IntSet.member id_ sccMembers -- to optimize filtering
+            , let toEncodeRCs = IntSet.difference rcs encodedRCs
+            , not $ IntSet.null toEncodeRCs
+          ]
         toEncode = suppVarKeystoEncode ++ pushVarKeystoEncode
         createTerm suppRC =
           let term = [(prob_, (pushId, pushRC), (suppId, suppRC)) |
-                      (_, suppSId, suppId, _, suppRCs) <- suppInfo,
-                      IntSet.member suppRC suppRCs,
-                      (_, pushId, prob_, _, pushRCs) <- pushInfo,
-                      pushRC <- IntSet.toList pushRCs,
-                      pushRC == suppSId
+                        (_, suppSId, suppId, _, suppRCs) <- suppInfo
+                      , IntSet.member suppRC suppRCs
+                      ,  (_, pushId, prob_, _, pushRCs) <- pushInfo
+                      , pushRC <- IntSet.toList pushRCs
+                      , pushRC == suppSId
                     ]
             in if null term
               then PopEq (0,0)
@@ -618,7 +612,8 @@ encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMe
         terms = IntMap.fromSet createTerm rightCnxts
 
     addFixpEqs (eqMap globals) semiconfId_ terms
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
+    liftSTtoIO $ modifySTRef' (stats globals) $ 
+      \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
     -- encoding new variables (these PushEq are needed as placeholders to avoid repeatedly encode them)
     forM_ toEncode $ \(QuantVariable _ id_ toBeEncoded) ->
       let eqs = IntMap.fromSet (const (PushEq [])) toBeEncoded in
@@ -652,12 +647,13 @@ encodeShift globals sIdGen delta supports _ g qState semiconfId_ rightCnxts sccM
                       else IntSet.intersection rightCnxts encodedRCs
       return (p, id_, prob_, encodedRCs, rcs)
 
-    let shiftVarKeystoEncode = [ QuantVariable (p, newG) shiftId_ toEncodeRCs |
-                                (p, shiftId_, _, encodedRCs, rcs) <- shiftInfo,
-                                IntSet.member shiftId_ sccMembers, -- to optimize filtering
-                                let toEncodeRCs = IntSet.difference rcs encodedRCs,
-                                not $ IntSet.null toEncodeRCs
-                              ]
+    let shiftVarKeystoEncode = 
+          [QuantVariable (p, newG) shiftId_ toEncodeRCs |
+              (p, shiftId_, _, encodedRCs, rcs) <- shiftInfo
+            , IntSet.member shiftId_ sccMembers -- to optimize filtering
+            , let toEncodeRCs = IntSet.difference rcs encodedRCs
+            , not $ IntSet.null toEncodeRCs
+          ]
         createTerm rc = ShiftEq [ (prob_, (shiftId_, rc)) |
                                   (_, shiftId_, prob_, _, rcs) <- shiftInfo,
                                   IntSet.member rc rcs
@@ -666,7 +662,8 @@ encodeShift globals sIdGen delta supports _ g qState semiconfId_ rightCnxts sccM
         terms = IntMap.fromSet createTerm rightCnxts
 
     addFixpEqs (eqMap globals) semiconfId_ terms
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
+    liftSTtoIO $ modifySTRef' (stats globals) 
+      $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
     --DBG.traceM $ "Encoding shift: " ++ show semiconfId_ ++ " = ShiftEq " ++ show terms
     -- encoding new variables (these PushEq are needed as placeholders to avoid repeatedly encode them)
     forM_ shiftVarKeystoEncode $ \(QuantVariable _ id_ toBeEncoded) ->
@@ -674,7 +671,8 @@ encodeShift globals sIdGen delta supports _ g qState semiconfId_ rightCnxts sccM
         addFixpEqs (eqMap globals) id_ eqs
     forM_ shiftVarKeystoEncode $ \qv -> encode qv globals sIdGen delta supports sccMembers
 
--- note that we consider SCCs in the semiconfiguration graph: each SCC in the graph might correspond to multiple SCCs in the equation system
+-- note that we consider SCCs in the semiconfiguration graph: 
+-- each SCC in the graph might correspond to multiple SCCs in the equation system
 solveSCCQuery :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
               => IntSet -> WeightedGRobals state -> Bool -> m ()
 solveSCCQuery sccMembers globals useNewton = do
@@ -696,12 +694,15 @@ solveSCCQuery sccMembers globals useNewton = do
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, v) -> addFixpEq eqs k (PopEq (v, v))
 
-  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
-  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCountQuant = acc} -> s{largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
+  liftSTtoIO $ modifySTRef' (stats globals) $ 
+    \s@Stats{sccCountQuant = acc1, largestSCCSemiconfsCountQuant = acc} 
+    -> s{sccCountQuant = acc1 + 1, largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
 
   unless (V.null unsolvedVars) $ do
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{nonTrivialEquationsCountQuant = acc} -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars}
-    liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{ largestSCCNonTrivialEqsCountQuant = acc } -> s{ largestSCCNonTrivialEqsCountQuant = max acc (length unsolvedVars) }
+    liftSTtoIO $ modifySTRef' (stats globals) $ 
+      \s@Stats{nonTrivialEquationsCountQuant = acc, largestSCCNonTrivialEqsCountQuant = acc2} 
+      -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars, 
+          largestSCCNonTrivialEqsCountQuant = max acc2 (length unsolvedVars)}
     startWeights <- startTimer
 
     -- compute lower bounds
