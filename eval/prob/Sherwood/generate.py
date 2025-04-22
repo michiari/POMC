@@ -3,8 +3,10 @@ import fileinput
 import math
 import os
 
+# compute termination probabilities of programs
 term_benchmark = [('', "term")]
 
+# benchmark for qualitative model checking
 qual_benchmark = [
     ("G ((call And B And sorted And valOccurs And [B|left <= right]) --> XNu correctIndex);\n// S1: Partial Correctness", "S1"), # partial correctness
     ("G ((call And B And sorted And (~ valOccurs) And [B|left <= right]) --> XNu ( ~ correctIndex));\n// S2: Dual Partial Correctness", "S2"), # dual partial correctness
@@ -15,6 +17,7 @@ qual_benchmark = [
     #("G ((call And B And sorted And (~ valOccurs) And [B|left < right]) --> XNd (call And B));\n// S4: Stack inspection (v2)", "S6"), # stack inspection (v2)
     ]
 
+# benchmark for quantitative model checking
 quant_benchmark = [
     #("G ((call And B And sorted And valOccurs And [B|left <= right]) --> XNu correctIndex);\n// S1: Partial Correctness", "S1"), # partial correctness
     #("G ((call And B And sorted And (~ valOccurs) And [B|left <= right]) --> XNu ( ~ correctIndex));\n// S2: Dual Partial Correctness", "S2"), # dual partial correctness
@@ -46,7 +49,7 @@ def build_query(query, exp):
         return 'probabilistic query: ' + query + ';\nformula = ' + exp
     else: return 'probabilistic query: ' + query + ';\n'
 
-# model file
+# model sketch file
 filein = 'Sherwood.txt'
 
 # remove benchmark folder if already present
@@ -75,6 +78,6 @@ for (query, valuations, bench) in queries:
                             )
                             
 # Checking Sherwood properties with Storm
-# Q19: storm --explicit sherwood-1.2.Q20.tra sherwood-1.2.Q20.lab --prop "P=? [G ((\"call\" & \"b\" & \"sorted\" & \"valoccurs\" & \"bleftright\") => X (F (\"call\" & \"b\")))]"
-# Q20: storm --explicit sherwood-1.7.Q20.tra sherwood-1.2.Q20.lab --prop "P=? [G ( (! (\"call\" & \"b\" & \"sorted\" & (! \"valoccurs\") & \"bleftright\")) | (X (F (\"call\" & \"b\"))))]"
+# storm --explicit sherwood-1.2.Q20.tra sherwood-1.2.Q20.lab --prop "P=? [G ((\"call\" & \"b\" & \"sorted\" & \"valoccurs\" & \"bleftright\") => X (F (\"call\" & \"b\")))]"
+# storm --explicit sherwood-1.7.Q20.tra sherwood-1.2.Q20.lab --prop "P=? [G ( (! (\"call\" & \"b\" & \"sorted\" & (! \"valoccurs\") & \"bleftright\")) | (X (F (\"call\" & \"b\"))))]"
 
