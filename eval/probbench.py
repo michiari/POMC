@@ -3,7 +3,7 @@
 import argparse
 from mcbench import exec_all, expand_files, to_list
 import csv
-import tabulate
+from tabulate import tabulate
    
 if __name__ == '__main__':
     argp = argparse.ArgumentParser()
