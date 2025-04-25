@@ -34,10 +34,10 @@ data POPACheckArgs = POPACheckArgs
 
 popacheckArgs :: POPACheckArgs
 popacheckArgs = POPACheckArgs
-  { noovi = False &= help "Use z3 instead of Optimistic Value Iteration for probabilistic model checking"
-  , newton = False &= help "Use the Newton method to iterate fixpoint equations for probabilistic model checking"
+  { noovi = False &= help "Use z3 instead of Optimistic Value Iteration for computing upper bounds to the Least Fixed Point solution of the equation systems for pOPA's termination probabilities"
+  , newton = False &= help "Use Newton's method instead of Gauss-Seidel Value Iteration to iterate the Least Fixed point solution of the equation systems for pOPA's termination probabilities and for quantitative model checking"
   , verbose = 0 &= help "Print more info about model checking progress. 0 = no logging (default), 1 = show info, 2 = debug mode"
-  , maxDepth = 100 &= help "Max stack depth when exporting a Markov Chain representation of the input program with unfolded stack (default = 100)"
+  , maxDepth = 100 &= help "Max stack depth when exporting a Markov Chain representation of the input program with unfolded stack (default = 100) [test feature only]"
   , fileName = def &= args &= typFile -- &= help "Input file"
   }
   &= summary "POPACheck v2.9.0"
