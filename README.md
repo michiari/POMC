@@ -26,4 +26,4 @@ Then, POPACheck can be executed on an input file `file.pomc` as follows:
 $ stack exec -- popacheck file.pomc
 ```
 
-For more info, please refer to the User's Guide in `docs`.
+For more info, please refer to the User's Guide in `docs`. We recommend running POPACheck on Ubuntu 24. At the moment, POPACheck is reported to have issues on Ubuntu 22, and it might be the case for other not tested yet OS's. 
