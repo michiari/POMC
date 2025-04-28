@@ -13,6 +13,7 @@
 \usepackage{subcaption}
 \usepackage[colorlinks]{hyperref}
 \usepackage{wrapfig}
+\usepackage{url}
 
 \usepackage{soul}
 
@@ -22,30 +23,46 @@
 
 \title{POPACheck User's Guide}
 \author{Michele Chiari, Francesco Pontiggia}
-\date{}
+\date{28.04.2025}
 
 \begin{document}
 
 \maketitle
 
+
 \begin{abstract}
-POPACheck is an extension of the POMC model checker towards probabilistic recursive programs, modelled as probabilistic Operator Precedence Automata (pOPA). As specification formalisms, it supports Linear Temporal Logic (LTL) and a fragment of Precedence-Oriented Temporal Logic (POTL), a logic for context-free properties such as pre/post-conditioning. Given a pOPA and a formula, it can solve both qualitative and quantitative model check queries. Additionally, it can approximate the termination probability of a pOPA. Computing Termination probabilities are a central problem in probabilistic pushdown model checking, and amounts at solving positive polynomial systems.
+POPACheck is an extension of the POMC model checker towards probabilistic recursive programs, modelled as probabilistic Operator Precedence Automata (pOPA). It supports model checking of temporal logic formalism Linear Temporal Logic (LTL), and additionally a fragment of Precedence-Oriented Temporal Logic (POTL), a logic for context-free properties such as pre/post-conditions. The fragment is called POTLf$\chain$. Given a pOPA and a formula in either LTL or POTLf$\chain$, POPACheck can solve both qualitative and quantitative model check queries. Additionally, it can compute (approximately) the termination probability of the pOPA. Computing termination probabilities are a central problem in probabilistic pushdown model checking, preliminary to any kind of analysis, and amounts at computing the Least Fixed Point solution of a Positive Polynomial System (PPS).
 This document is a reference guide to its input and output formats, and also describes at a high level its architecture and source code.
 \end{abstract}
 
 \section{Introduction}
-Precedence-Oriented Temporal Logic~(POTL) \cite{ChiariMP21,ChiariMP21b} is an established temporal
-logic formalism based on the family of Operator Precedence Languages~(OPL)~\cite{MP18},
+pOPA~\cite{abs-2404-03515} are a class of probabilistic pushdown automata based on the family of Operator Precedence Languages~(OPLs)~\cite{MP18},
 a subclass of deterministic context-free languages.
-Given a POTL formula, the POMC tool can translate it into an Operator Precedence Büchi Automaton~(OPBA), a class of~(nondeterministic, non-probabilistic) Pushdown Automata.
+While they do not read an input, which would make any model checking problem undecidable, the (infinite-length) traces of state labels collected in the paths of a given pOPA constitute an OPL.
 
-pOPA~\cite{abs-2404-03515} are a class of probabilistic pushdown automata based on OPLs. While they do not read an input, which would make any model checking problem undecidable, the (infinite-length) traces of state labels collected in the paths of a given pOPA constitute an OPL. POPACheck exploits the fact that OPL are closed by Boolean operations (including intersection, complementation \dots). Roughly speaking, POPACheck takes as input a formula and a program in a custom DSL called MiniProb, it translates the program into a pOPA, it uses POMC modules to translate the formula into an OPBA, and finally verifies the pOPA against the OPBA via automata-based model checking, i.e., via a cross-product. Involved technicalities arise due to the fact that the pOPA is equipped with an unbounded stack, and that we do not perform determinization of the specification OPBA. We'll skip them here. We just mention that the pOPA can be represented by a finite-state Markov Chain called \emph{support chain}. The support chain can be computed by solving (nonlinear) positive polynomial systems of equations. Solutions to these systems are called \emph{termination probabilities}. Due to their nonlinearity, they cannot be solved exactly. Our tool computed sound lower and upper bounds to termination probabilities. While it computes lower bound always via numerical methods, it offers two approaches for upper bounds: one is purely numerical, and it is called OVI; the other one relies on the SMT solver Z3.
+Precedence-Oriented Temporal Logic~(POTL)~\cite{ChiariMP21,ChiariMP21b} is an established temporal
+logic formalism for expressing many fundamental properties on programs with recursive procedures, such as partial and total correctness, and Hoare-style pre/post conditions.
+Given a POTL formula, the POMC~\cite{ChiariMPP23} tool can translate it into an Operator Precedence Büchi Automaton~(OPBA), the class of (nondeterministic, non probabilistic) Pushdown Automata recognizing OPLs.
 
-Similar equation systems arise in quantitative model checking - we call them \emph{fractions} due to technical reasons reported in \cite{POPACheck}. Similarly POPACheck compute lower and upper bounds to the solutions of these systems (in this case always via OVI). This means that when running quantitative model checking POPACheck will return a lower and an upper bound to the satisfaction probability.
+POPACheck exploits the fact that OPLs are closed by Boolean operations (e.g., intersection, complementation \dots). Roughly speaking, POPACheck:
+\begin{itemize}
+    \item takes as input a formula and a program in a custom Domain-Specific Language called MiniProb.
+    \item translates the program into a (explicitly represented) pOPA.
+    \item uses POMC modules to translate the formula into an OPBA.
+    \item model-checks the pOPA against the OPBA via automata-based model checking, i.e., via a cross-product.
+\end{itemize} 
+Involved technicalities arise due to the facts that:
+\begin{itemize}
+    \item pOPAs are equipped with an unbounded stack, hence they are infinite-state models.
+    \item we do not perform determinization of the specification OPBA, as canonical in probabilistic model checking.
+\end{itemize}
+We'll skip their treatment here, and refer to ~\cite{abs-2404-03515}. We just mention that pOPA infinite runs can be represented (or `summarized') by a finite-state Markov Chain called \emph{support chain}. The support chain of a pOPA can be computed by solving (nonlinear) Positive Polynomial Systems (PPSs) of equations for their Least Fixed Point. Solutions to these systems are called \emph{termination probabilities}. Due to their nonlinearity, they cannot be computed exactly, i.e. solutions may be irrational, and not even expressible by radicals~\cite{EtessamiY09}. Our tool deals with this issue by computing sound lower and upper rational bounds to termination probabilities. While it computes lower bound always via numerical methods, it offers two approaches for upper bounds: one is purely numerical, and it is called Optimistic Value Iteration (OVI); the other one relies on the SMT solver Z3~\cite{z3}. OVI has been introduced originally by Winkler and Katoen~\cite{WinklerK23a} in the tool Pray.
+
+Similar equation systems arise in quantitative model checking. Likewise, POPACheck computes lower and upper bounds to the Least Fixed Point solutions of these systems - in this case, always via OVI. This means that for quantitative model check queries POPACheck will return a lower and an upper bound to the satisfaction probability.
 
 We show how to use POPACheck in Section~\ref{sec:quick-start}.
 If you wish to examine the input formulas and OPA for the experiments more carefully,
-or to write your own, we describe the format of POMC input files in Sections~\ref{sec:format},~\ref{sec:queries}, and~\ref{sec:output}.
+or to write your own, we describe the format of POPACheck input files in Sections~\ref{sec:format},~\ref{sec:queries}, and~\ref{sec:output}.
 Finally, Section~\ref{sec:sources} contains a high-level description of the source code.
 
 \section{Quick-Start Guide}
@@ -56,12 +73,15 @@ and packaged with the Haskell Tool Stack\footnote{\url{https://www.haskellstack.
 POPACheck has a few dependencies:
 \begin{itemize}
     \item \href{https://microsoft.github.io/z3guide/z3}{Z3} for solving (nonlinear) equations systems.
-    \item \href{https://www.netlib.org/lapack/}{BLAS/LAPACK} for approximating solutions to equation systems via iterative fixpoint numerical methods (the Newton method).
+    \item \href{https://www.netlib.org/lapack/}{BLAS/LAPACK}, \href{ttps://www.gnu.org/software/gsl/}{GSL} and \href{https://www.gnu.org/software/glpk/}{GLPK} for approximating solutions to PPSs via iterative fixpoint numerical methods (Newton's method), which are used in the Haskell \href{https://hackage.haskell.org/package/hmatrix}{hmatrix} package.
 \end{itemize}
-On a UNIX-like system, they can be resolved by running:
+On a UNIX-like system, they can be installed by running:
 \begin{verbatim}
 sudo apt install libz3-dev libgsl0-dev liblapack-dev libatlas-base-dev
 \end{verbatim}
+
+\href{https://github.com/haskell-numerics/hmatrix/blob/master/INSTALL.md}{This link} contains some information on how to install hmatrix dependencies on other systems.
+Haskell bindings to Z3 are hosted on the Github repository \href{https://github.com/michiari/haskell-z3}{haskell-z3}.
 
 The Z3 library requires special care, as it might conflict with the underlying OS. The current version of the tool (14.04.2025) has been fully tested with Z3 version 4.8.12 and Ubuntu 24. Note that version 4.8.12 is the one installed by default by the APT package index on Ubuntu 24. On the other side, we experienced some issues on Ubuntu 22, where Z3 sometimes returns error \verb|Z3: invalid argument|. Please report to the POPACheck team in case you experience some issue.
 
@@ -76,23 +96,23 @@ Then, POPACheck can be executed on an input file \verb|file.pomc| as follows:
 $ stack exec popacheck -- file.pomc {args}
 \end{verbatim}
 
-POPACheck stack commands take a few interesting arguments:
+POPACheck stack commands take a few arguments:
 \begin{itemize}
-    \item \verb|--noovi| [default: False]. When set, POPACheck uses Z3 instead of OVI for computing upper bounds to termination probabilities. As the experimental evaluation of \cite{POPACheck} suggests, this leads almost always to timeouts.
-    \item \verb|--newton| [default: False]. When set, POPACheck uses the Newton method for computing lower bounds to termination probabilities, and to fractions in quantitative model checking. We refer to PreMo \cite{WojtczakE07,Wojtczak09} for a detailed description of these two numerical methods. In our experiments, the Newton method tends to be slightly faster than Gauss-Seidel, hence we encourage users to set this flag.
+    \item \verb|--noovi| [default: False]. When set, POPACheck uses Z3 instead of OVI for computing upper bounds to termination probabilities. As the experimental evaluation of \cite{POPACheck} suggests, this leads almost always to timeouts, and will probably will be removed in then near future.
+    \item \verb|--newton| [default: False]. When set, POPACheck uses Newton's iterative method for computing lower bounds to termination probabilities, and to fractions in quantitative model checking. The default method is Value Iteration with Gauss-Seidel updates. We refer to PreMo publications \cite{WojtczakE07,Wojtczak09} for a detailed description of these two numerical methods. In our experiments, the Newton method tends to be slightly faster than Gauss-Seidel Value Iteration, hence we encourage users to set this flag.
     \item $\texttt{-verbose}$ [default: 0]. Logging level. 0 = no logging, 1 = show info, 2 = debug mode.
 \end{itemize}
 
 Directory \verb|eval| contains the Python script \verb|probbench.py|,
 which may be useful to evaluate POPACheck input files, as it also prints
 a summary of the resources used by POPACheck.
-It must be executed with a subdirectory of \verb|~/path/to/POPACheck-sources| as its working directory, and either \verb|--print| to print the results in the shell, or \verb|--raw_csv file_name| for saving the results in csv format in \verb|file_name|.
+It must be executed with a subdirectory of \verb|~/path/to/POPACheck-sources| as its working directory, and either \verb|--print| to print the results in the shell, or \\ \verb|--raw_csv file_name| for saving results in .csv format in \verb|file_name|.
 
 \begin{verbatim}
 $ cd ~/path/to/POPACheck-sources/eval
-$ ./probbench.py prob/established/qualitative --print
+$ ./probbench.py prob/established/qualitative/schelling --print
 \end{verbatim}
-evaluates all \verb|*.pomc| files in directory \\ \verb|~/path/to/POPACheck-sources/eval/prob/established/qualitative|.
+evaluates all \verb|*.pomc| files in directory \\ \verb|~/path/to/POPACheck-sources/eval/prob/established/qualitative/schelling|.
 
 
 \begin{figure}
@@ -138,21 +158,33 @@ Random assignments of the form $x = e_1 \{ e_2 / e_3 \} e_4$ mean that $x$ is as
 the value of $e_1$ with probability $e_2 / e_3$, and $e_4$ with probability $1 - e_2 / e_3$.
 Finally, functions can \texttt{query} the distribution on value-result parameters of another function, and condition on a Boolean expression with \texttt{observe}.
 
-\section{Queries}
+\section{Model Check Queries}
 \label{sec:queries}
 A model check query must be put at the beginning of a \verb|.pomc| file, before the program. It follows the syntax: 
 \begin{center}
     $\texttt{probabilistic query:} \, \, q \texttt{;}$
 \end{center}
-where $q$ is one of the queries of Table \ref{tab:queries}. When a formula is needed, it has to be placed in a new line with syntax:
+where $q$ is one of the queries of Table \ref{tab:queries}. When a formula is needed, it has to be placed on a new line with syntax:
 \begin{center}
     $\texttt{formula:} \, \, f \texttt{;}$
 \end{center}
-where $f$ follows the syntax of Table \ref{tab:potl-syntax}. For some technical reasons explained in \cite{abs-2404-03515}, POPACheck does not support the whole POTL logic. In a nutshell, this is due to the fact that the model check algorithm avoids determinization of the specification automata. We do support full LTL though. To get a idea of queries, consider inspecting different experiments in \verb|eval/prob/established/|, where the same programs are verified against different queries.
+where $f$ follows the syntax of Table \ref{tab:potl-syntax}. For some technical reasons explained in \cite{abs-2404-03515}, POPACheck does not support the whole POTL logic. In a single line, this is due to the fact that the model check algorithm avoids determinization of the specification automata. Though, POPACheck supports full LTL. To get an idea of queries, consider inspecting different experiments in \verb|eval/prob/established/|, where the same programs are verified against different queries.
 
-Plain reachability queries are supported through the LTL $\texttt{Eventually}$ operator at the moment. We plan to optimize it in future work, as it could be encoded as a termination query. 
+Plain reachability queries are supported through the LTL $\texttt{Eventually}$ operator at the moment. We plan to optimize it in future work, as they could be encoded as a termination query. 
 
-POPACheck supports also the query $\texttt{unfold\&export}$, which constructs a Markov Chain in explicit \href{https://www.stormchecker.org/documentation/background/languages.html}{Storm} format for a given program by unfolding the program's stack. Argument \verb|maxDepth| to the stack command specifies the maximum stack depth to unfold [default: 100]. When \verb|maxDepth| is reached, recursion is not unfolded anymore, and a simple self-loop is added. Note that \verb|.pomc| programs may have infinite recursion. We use this feature for testing purposes, and do not advertise users to try it out.
+Additionally, POPACheck supports also the query $\texttt{unfold\&export}$, which constructs a Markov Chain in explicit \href{https://www.stormchecker.org/documentation/background/languages.html}{Storm} format for a given program by unfolding the program's stack. Argument \verb|maxDepth| to the stack command specifies the maximum stack depth to unfold [default: 100]. When \verb|maxDepth| is reached, recursion is not unfolded anymore, and a simple self-loop is added. Note that \verb|.pomc| programs may have infinite recursion. We use this feature for testing purposes, and do not advertise users to try it out.
+
+\subsection{An example: Pre/Post Conditions.}
+With POTLf$\chain$ it is possible to express and check automatically pre/post conditions on recursive programs. Consider the following Hoare triple:
+\begin{center}
+    $\varphi \, \, \{ \, P \, \} \,\, \theta$
+\end{center}
+where $P$ is a potentially recursive program. We want to check whether, if $\varphi$ holds at a call of $P$ (\emph{pre-condition}), then $\theta$ holds at the corresponding return (\emph{post-condition}). This requirement cannot be expressed with LTL as it is a context-free requirement, but it can be expressed with POTLf$\chain$ via: 
+\begin{center}
+    $\texttt{probabilistic query: qualitative;}$
+    $\texttt{formula: G ((call And P And } \varphi \texttt{) Implies (XNu (ret And P And } \theta \texttt{)))}$
+\end{center}
+which means that \emph{always} (\texttt{G)}, \emph{if} the program is in a state calling $P$ and where $\varphi$ holds, \emph{then} (\texttt{Implies}) this call has a matching return (\texttt{XNu (ret And P)}) where $\theta$ holds. Note that this formula does not hold almost surely if $P$ has non zero probability of non terminating - nonterminating runs do not have a matching return.
 
 \begin{table}
 \centering
@@ -164,8 +196,6 @@ POPACheck supports also the query $\texttt{unfold\&export}$, which constructs a 
 $\texttt{approximate}$ & what is the termination probability of the program? & No \\ 
 $\texttt{qualitative}$ & Does the program satisfy $f$ almost surely? & Yes \\ 
 $\texttt{quantitative}$ & What is the probability that the program satisfies $f$? & Yes \\ 
-
-
 \hline
 \end{tabular}
 \caption{Available queries.}
@@ -216,14 +246,15 @@ Group & POTL (or LTL) Operator & POPACheck Operator & Notation & Associativity \
 & $\iff$ & \texttt{Iff}, \verb!<-->!     & Infix  & Right \\
 \hline
 \end{tabular}
-\caption{This table contains all POTL and LTL operators, in descending order
+\caption{All POTL and LTL operators, in descending order
 of precedence. Operators listed on the same line are synonyms. Operators in the
-same group have the same precedence. Note that operators are case sensitive. \textbf{Operators not in the fragment supported by POPACheck are crossed out.}}
+same group have the same precedence. Note that operators are case sensitive. \textbf{Operators not in the fragment POTLf$\chain$ supported by POPACheck are crossed out.}}
 \label{tab:potl-syntax}
 \end{table}
 
 \clearpage
 \section{Interpreting the output}
+\label{sec:output}
 The output of running a query is quite verbose at the moment. For example: 
 \begin{verbatim}
 $ stack exec -- popacheck prob/established/quantitative/schelling/Q03.pomc --newton
@@ -234,7 +265,8 @@ Quantitative Probabilistic Model Checking
 Query: G (((call And alice) And [| (p == [4]4)]) --> (~ (XNu obs)))
 Result:  (5064173399 % 5660011320,6145 % 6868)
 Floating Point Result:  (0.8947284930518479,0.894729178800233)
-Elapsed time: 20.74 s (total), 2.3883e-2 s (upper bounds), 2.8956e-2 s (PAST certificates), 1.1778e0 s (graph analysis),1.1905e1 s (upper bounds with OVI for quant MC),7.5453e-4 s (eq system for quant MC).
+Elapsed time: 20.74 s (total), 2.3883e-2 s (upper bounds), 2.8956e-2 s (PAST certificates), 1.1778e0 s (graph analysis),1.1905e1 s 
+(upper bounds with OVI for quant MC),7.5453e-4 s (eq system for quant MC).
 Input pOPA state count: 311
 Support graph size: 682
 Equations solved for termination probabilities: 1230
@@ -254,24 +286,23 @@ Most of lines just print statistics about the experiment. An user may only read
 \begin{verbatim}
 Floating Point Result:  (0.8947284930518479,0.894729178800233)
 \end{verbatim}
-which are, respectively, a lower and an upper bound to the probability that the schelling model satisfies formula Q03. It might be of general interest to inspect the overall number of equation solved, 893036 in this case.
+which are, respectively, a lower and an upper bound to the probability that the Schelling model satisfies formula Q03. It might be of general interest to inspect the overall number of equations solved (i.e., the size of the PPS), \verb|893036| in this case, or the number of states in the input model, \verb|311|.
 
 \section{Source Code}
 \label{sec:sources}
-
 POPACheck is open source. The source code of POPACheck is contained in directory \texttt{src/Pomc/Prob}. We refer to the documentation of POMC for the other modules.
 We describe the contents of each file below.
 \begin{description}
-\item[FixPoint.hs] contains the data structures to represent and store sparse systems of positive polynomial systems, and vectors of solutions (termination probabilities). Given a system, it keeps track of those equations that are not solved, and allows to approximating their solutions via either the Gauss-Seidel method or the Newton method.
-\item[GGraph.hs]  contains the implementation of qualitative and quantitative model checking. It also contains some functions for building the cross-product between the formula's automaton and the support chain of the pOPA (what is called graph $G$ in \cite{abs-2404-03515}).
-\item[GReach.hs] contains functions for exploring edges in graph $G$ that correspond to support edges in the summary chain of the pOPA. For qualitative model checking, it has a simple reachability algorithm for building these edges. For quantitative model checking, it has a SCC-based algorithm for computing (bounds to) the fraction associated with each edge via OVI. This amounts at solving positive polynomial systems in the same vein as termination probabilities.
-\item[MiniProb.hs] This file contains the parser and the implementation of the MiniProc programming language.
-\item[OVI.hs] contains our implementation of Optimistic Value Iteration (OVI) for computing upper bounds to the solution of positive polynomial systems.
-\item[ProbEncoding.hs] contains functions for generating a encoding of formulae satisfied in a path via bitvectors.
+\item[FixPoint.hs] contains the data structures to represent sparse PPSs, and vectors of solutions (termination probabilities). Given a PPS, it keeps track of those equations that are not solved, and allows to obtain a lower bound to their Least Fixed Point solution via either the Gauss-Seidel method or the Newton's method.
+\item[GGraph.hs]  contains the implementation of main qualitative and quantitative model checking routines. It also contains some procedures for building the cross-product between the formula's automaton and the support chain of the pOPA (what is called graph $G$ in \cite{abs-2404-03515}).
+\item[GReach.hs] contains functions for exploring edges in graph $G$ that underpin support edges in the summary chain of the pOPA. For qualitative model checking, it offers a simple reachability algorithm for building these edges. For quantitative model checking, it offers a SCC-based algorithm for computing both lower and upper bounds to the fraction associated with each edge via OVI. This amounts at solving PPSs strictly resembling those for termination probabilities.
+\item[MiniProb.hs] contains the implementation of the MiniProb programming language.
+\item[OVI.hs] contains our implementation of Optimistic Value Iteration (OVI) for computing upper bounds to the Least Fixed Point solution of PPSs.
+\item[ProbEncoding.hs] contains routines for generating a Bitvector encoding of formulae satisfied in a summary edge in the cross-product graph.
 \item[ProbModelChecking.hs] exposes all our probabilistic model checking APIs.
 \item[ProbUtils.hs] contains various utility functions.
 \item[SupportGraph.hs] contains a function for building the support graph of an input pOPA, an intermediate formalism for the computation of the support chain. 
-\item[Z3Termination.hs] contains the function for computing termination probabilities of a pOPA, either via OVI or via Z3, and certifying via Z3 that such probabilities are exactly equal to one when needed, according to the semialgorithm of \cite{POPACheck}. 
+\item[Z3Termination.hs] contains routines for computing termination probabilities of a pOPA, either via OVI or via Z3, and certifying via Z3 that such probabilities are exactly equal to one when needed, according to the semialgorithm of \cite{POPACheck}. 
 
 \end{description}
 
@@ -287,15 +318,11 @@ To learn how to execute just some of them, please consult the \texttt{README.md}
 file in the \texttt{test} directory.
 
 \section*{Acknowledgements}
-We are thankful to Tobias Winkler and Joost-Pieter Katoen (RWTH Aachen)
+We are thankful to Tobias Winkler and Prof. Joost-Pieter Katoen (RWTH Aachen)
 for the fruitful discussions and for the advice on implementing OVI.
 
-\bibliographystyle{abbrv}
+\bibliographystyle{plainurl}
 \bibliography{pomc}
-
-\appendix
-
-
 
 \end{document}
 
