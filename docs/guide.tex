@@ -83,7 +83,7 @@ sudo apt install libz3-dev libgsl0-dev liblapack-dev libatlas-base-dev
 \href{https://github.com/haskell-numerics/hmatrix/blob/master/INSTALL.md}{This link} contains some information on how to install hmatrix dependencies on other systems.
 Haskell bindings to Z3 are hosted on the Github repository \href{https://github.com/michiari/haskell-z3}{haskell-z3}.
 
-The Z3 library requires special care, as it might conflict with the underlying OS. The current version of the tool (14.04.2025) has been fully tested with Z3 version 4.8.12 and Ubuntu 24. Note that version 4.8.12 is the one installed by default by the APT package index on Ubuntu 24. On the other side, we experienced some issues on Ubuntu 22, where Z3 sometimes returns error \verb|Z3: invalid argument|. Please report to the POPACheck team in case you experience some issue.
+The Z3 library requires special care, as it might conflict with the underlying OS. The current version of the tool (29.04.2025) has been fully tested with Z3 version 4.8.12 and Ubuntu 24. Note that version 4.8.12 is the one installed by default by the APT package index on Ubuntu 24. On the other side, we experienced some issues on Ubuntu 22 with the default version (still 4.8.12), where Z3 sometimes returns error \verb|Z3: invalid argument|. Please report to the POPACheck team in case you experience some issue.
 
 After having resolved the dependencies, POPACheck can be built from sources by typing the following commands in a shell:
 \begin{verbatim}
@@ -91,6 +91,7 @@ $ cd ~/path/to/POPACheck-sources
 $ stack setup
 $ stack build
 \end{verbatim}
+This command automatically clones and builds also the bindings from \href{https://github.com/michiari/haskell-z3}{haskell-z3}.
 Then, POPACheck can be executed on an input file \verb|file.pomc| as follows:
 \begin{verbatim}
 $ stack exec popacheck -- file.pomc {args}
