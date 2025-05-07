@@ -1,2 +1,8 @@
-*.pomc -linguist-detectable
-*.inc -linguist-detectable
+*.pomc text -linguist-detectable
+*.inc text -linguist-detectable
+*.hs text
+*.py text
+*.sh text
+*.yaml text
+*.tex text
+*.md text

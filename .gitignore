@@ -4,7 +4,9 @@ session.vim
 pomc.cabal
 stack.yaml.lock
 dist
+dist-newstyle
 /references
+*/__pycache__
 
 # History files
 .Rhistory

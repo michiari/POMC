@@ -1,0 +1,30 @@
+probabilistic query: approximate;
+
+program:
+young() {
+  u2 y, e;
+  y = 0u2 {1u3 : 4u3} 1u2 {1u3 : 4u3} 2u2 {1u3 : 4u3} 3u2;
+  while (y > 0u2) {
+    young();
+    y = y - 1u2;
+  }
+  e = 0u2 {1u3 : 3u3} 1u2 {1u3 : 3u3} 2u2;
+  while (e > 0u2) {
+    elder();
+    e = e - 1u2;
+  }
+}
+
+elder() {
+  u3 y, e;
+  y = 0u3 {1u2 : 2u2} 1u3;
+  while (y > 0u3) {
+    young();
+    y = y - 1u3;
+  }
+  e = 0u3 {1u3 : 5u3} 1u3 {1u3 : 5u3} 2u3 {1u3 : 5u3} 3u3 {1u3 : 5u3} 4u3;
+  while (e > 0u3) {
+    elder();
+    e = e - 1u3;
+  }
+}

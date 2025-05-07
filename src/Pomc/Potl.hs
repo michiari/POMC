@@ -13,8 +13,6 @@ module Pomc.Potl ( Dir(..)
                  , getProps
                    -- * Predicates on formulas
                  , atomic
-                 , unAtomic
-                 , future
                  , negative
                    -- * Operations on formulas
                  , negation
@@ -73,6 +71,7 @@ data Formula a =
   | Always       (Formula a)
   | Once         (Formula a)
   | Historically (Formula a)
+  | GUntil       (Formula a) (Formula a)
   -- Auxiliary
   | AuxBack Dir (Formula a)  -- AuxBack Up is NEVER used
   deriving (Eq, Ord, Generic)
@@ -125,6 +124,7 @@ instance (Show a) => Show (Formula a) where
     Always g          -> concat ["G ", showp g]
     Once g            -> concat ["O ", showp g]
     Historically g    -> concat ["H ", showp g]
+    GUntil g h        -> concat [showp g, " U " , showp h]
     AuxBack Down g    -> concat ["AuxBd ", showp g]
     AuxBack Up g      -> concat ["AuxBu ", showp g]
     where showp T = "T"
@@ -168,8 +168,8 @@ instance Functor Formula where
     Always g         -> Always (fmap func g)
     Once g           -> Once (fmap func g)
     Historically g   -> Historically (fmap func g)
+    GUntil g h       -> GUntil (fmap func g) (fmap func h)
     AuxBack dir g    -> AuxBack dir (fmap func g)
-
 
 transformFold :: (Formula a -> b -> (Formula a, b)) -> b -> Formula a
               -> (Formula a, b)
@@ -205,6 +205,7 @@ transformFold t e f = uncurry t $ case f of
   Always g         -> goUnary Always g
   Once g           -> goUnary Once g
   Historically g   -> goUnary Historically g
+  GUntil g h       -> goBinary GUntil g h
   AuxBack dir g    -> goUnary (AuxBack dir) g
   where goUnary constr g = let (newG, gRes) = transformFold t e g
                            in (constr newG, gRes)
@@ -248,32 +249,12 @@ getProps formula = nub $ collectProps formula
           Always g       -> getProps g
           Once g         -> getProps g
           Historically g -> getProps g
+          GUntil g h     -> getProps g ++ getProps h
           AuxBack _ g    -> getProps g
 
 atomic :: Formula a -> Bool
 atomic (Atomic _) = True
 atomic _ = False
-
-unAtomic :: Formula a -> Prop a
-unAtomic (Atomic p) = p
-unAtomic _ = error "Not an Atomic formula."
-
-future :: Formula a -> Bool
-future (PNext      {}) = True
-future (XNext      {}) = True
-future (HNext      {}) = True
-future (Until      {}) = True
-future (HUntil     {}) = True
-future (WPNext     {}) = True
-future (WXNext     {}) = True
-future (WHNext     {}) = True
-future (Release    {}) = True
-future (HRelease   {}) = True
-future (Next       {}) = True
-future (WNext      {}) = True
-future (Eventually {}) = True
-future (Always     {}) = True
-future _ = False
 
 negative :: Formula a -> Bool
 negative (Not _) = True
@@ -341,6 +322,7 @@ normalize f = case f of
   Always g             -> Not . Eventually . normalize . Not $ g
   Once g               -> Once (normalize g)
   Historically g       -> Not . Historically . normalize . Not $ g
+  GUntil g h           -> GUntil (normalize g) (normalize h)
   AuxBack dir g        -> AuxBack dir (normalize g)
 
 -- to positive normal form
@@ -377,6 +359,7 @@ pnf f = case f of
   Always g           -> Always (pnf g)
   Once g             -> Once (pnf g)
   Historically g     -> Historically (pnf g)
+  GUntil g h         -> GUntil (pnf g) (pnf h)
   AuxBack dir g      -> AuxBack dir (pnf g)
   -- Negated operators
   Not T                   -> f
@@ -410,5 +393,5 @@ pnf f = case f of
   Not (Always g)          -> Eventually (pnf $ Not g)
   Not (Once g)            -> Historically (pnf $ Not g)
   Not (Historically g)    -> Once (pnf $ Not g)
+  Not (GUntil _g _h)      -> error "LTL release operator not supported yet."
   Not (AuxBack _dir _g)   -> error "Negated auxiliary operators cannot be normalized."
-

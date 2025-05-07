@@ -1,0 +1,22 @@
+formulas = ~ (F (ret And test));
+
+include = "Mcall.inc";
+
+opa:
+  initials = 0;
+  finals = 9;
+  deltaPush =
+    (0, (call pa),   1),
+    (1, (call pb),   2),
+    (0, (call pa),   4),
+    (4, (call test),   5),
+    (9, (call pa), 1),
+    (9, (call pa), 4);
+  deltaShift = (2, (ret pb), 3),
+  (5, (ret test),   6),
+  (7, (ret pa),     8);
+  deltaPop = 
+    (6, 4, 1),
+    (3, 1, 7),
+    (8, 0, 9),
+    (8, 9, 9);

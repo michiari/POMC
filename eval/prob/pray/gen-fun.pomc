@@ -1,0 +1,28 @@
+probabilistic query: approximate;
+
+program:
+gen_fun() {
+  gen_op();
+  gen_expr();
+  gen_expr();
+}
+
+gen_expr() {
+  u2 x;
+  u4 y;
+  x = 0u2 {4u4 : 10u4} 1u2 {3u4 : 10u4} 2u2;
+  if (x == 0u2) {
+    y = 0u4 {1u4 : 10u4} 1u4 {1u4 : 10u4} 2u4 {1u4 : 10u4} 3u4 {1u4 : 10u4} 4u4 {1u4 : 10u4} 5u4 {1u4 : 10u4} 5u4 {1u4 : 10u4} 6u4 {1u4 : 10u4} 7u4 {1u4 : 10u4} 8u4 {1u4 : 10u4} 9u4;
+  } else {
+    if (x == 1u2) {
+      gen_op();
+      gen_expr();
+      gen_expr();
+    } else { }
+  }
+}
+
+gen_op() {
+  u2 x;
+  x = 0u2 {1u3 : 4u3} 1u2 {1u3 : 4u3} 2u2 {1u3 : 4u3} 3u2;
+}

@@ -1,0 +1,16 @@
+probabilistic query: approximate;
+
+program:
+offspring() {
+  bool x;
+  x = 1u1 {2u3 : 5u3} 0u1;
+  while (x) {
+    offspring();
+    x = 1u1 {3u3 : 5u3} 0u1;
+    while (x) {
+      offspring();
+      x = 1u1 {3u3 : 5u3} 0u1;
+    }
+    x = 1u1 {2u3 : 5u3} 0u1;
+  }
+}

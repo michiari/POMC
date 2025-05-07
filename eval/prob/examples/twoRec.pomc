@@ -1,0 +1,19 @@
+probabilistic query: approximate;
+
+// probabilistic query: qualitative;
+// formula = ~ (F (qry And ~ (XNd (call And ~ (XNu obs))) And ~ (PNd (call And ~ (XNu obs)))));
+// formula = F (G (~ obs));
+
+program:
+main() {
+  query f();
+}
+
+f() {
+  u1 y;
+  y = true {2 : 3} false;
+  if (y) {
+    query f();
+    query f();
+  } else { }
+}

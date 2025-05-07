@@ -1,8 +1,13 @@
-# POMC
+# POMC Model Checking Tool Suite
 [![Release](https://img.shields.io/github/v/release/michiari/POMC?include_prereleases)](https://github.com/michiari/POMC/releases)
 [![License](https://img.shields.io/github/license/michiari/POMC)](COPYING.md)
 
-A model-checking tool for verifying procedural programs with exceptions against POTL (Precedence Oriented Temporal Logic) specifications.
+This project contains two tools: POMC and POPACheck
+
+
+## POMC
+
+POMC is a model-checking tool for verifying procedural programs with exceptions against POTL (Precedence Oriented Temporal Logic) specifications.
 POTL is a temporal logic capable of expressing context-free specifications, particularly well-suited for verifying procedural programs with exceptions.
 It can express properties such as:
 - Stack inspection
@@ -11,15 +16,32 @@ It can express properties such as:
 - No-throw guarantee (for exceptions)
 - Exception safety
 
+
+## POPACheck
+
+POAPACheck is a model-checking tool for recursive probabilistic programs formally modelled as probabilistic Operator Precedence Automata (pOPA), a subclass of probabilistic Pushdown Automata.
+POPACheck support model checking of the temporal logics LTL and a fragment of POTL.
+
+
 For usage info, including input/output formats, see the [User Guide](docs/guide.pdf) and related [Publications](#publications).
+
 
 ## Build
 
-POMC requires the [Z3 Theorem Prover](https://github.com/Z3Prover/z3)'s library development files to be built (package `libz3-dev` on Debian-based systems).
-The current version of POMC has been tested with Z3 4.8.12.
+The suite has been packaged with the [Haskell Tool Stack](https://www.haskellstack.org/).
 
-POMC has been packaged with the [Haskell Tool Stack](https://www.haskellstack.org/).
-To build it, after cloning the repository just type the following commands in a terminal:
+It requires development files of the following libraries
+- [Z3 Theorem Prover](https://github.com/Z3Prover/z3) (tested with versions 4.11.2, 4.14.1)
+- [BLAS/LAPACK](https://www.netlib.org/lapack/)
+- [GSL](https://www.gnu.org/software/gsl/)
+- [GLPK](https://www.gnu.org/software/glpk/)
+
+On most Debian-based GNU/Linux distributions (including Ubuntu), they can be installed with:
+```sh
+sudo apt install libz3-dev libgsl0-dev liblapack-dev libatlas-base-dev
+```
+
+To build the suite, after cloning the repository type the following commands in a terminal:
 ```sh
 stack setup
 stack build
@@ -30,12 +52,26 @@ Then, POMC can be executed on an input file `file.pomc` as follows:
 stack exec -- pomc file.pomc
 ```
 
+And POPACheck as follows:
+```sh
+stack exec -- popacheck file.pomc
+```
+
+For more info, please refer to the User's Guide in `docs`.
+We tested the suite mostly on Ubuntu 24.04/24.10.
+It may not work on other OS's, and issues have been reported on Ubuntu 22.04.
+
+
 ## Publications
 
-Main reference for the explicit-state model checker:
+Main reference for the explicit-state model checker (`pomc --explicit`):
 
 1. Chiari, M., Mandrioli, D., Pontiggia, F., & Pradella, M. (2023). A model checker for operator precedence languages. ACM Transactions on Programming Languages and Systems, 45(3), 1-66. [doi:10.1145/3608443](https://doi.org/10.1145/3608443)
 
-Reference for the SMT-based model checker:
+Reference for the SMT-based model checker (`pomc --smt`):
 
 2. Chiari, M., Geatti, L., Gigante, N., & Pradella, M. (2024). SMT-Based Symbolic Model-Checking for Operator Precedence Languages. CAV 2024. LNCS, 14681, 387-408. Springer, Cham. [doi:10.1007/978-3-031-65627-9_19](https://doi.org/10.1007/978-3-031-65627-9_19)
+
+Reference for the probabilistic model checker (`popacheck`):
+
+3. Pontiggia, F., Bartocci, E., & Chiari, M. (2025). POPACheck: a Model Checker for probabilistic Pushdown Automata. CAV 2025. LNCS, to appear. [arXiv:2502.03956](https://doi.org/10.48550/arXiv.2502.03956)

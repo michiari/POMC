@@ -17,16 +17,21 @@ module Pomc.Satisfiability ( Delta(..)
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Prec(..), Alphabet)
 import Pomc.Potl (Formula(..))
-import Pomc.Check (EncPrecFunc, makeOpa)
+import Pomc.Check (EncPrecFunc, makeOpa, InitialsComputation(..))
 import Pomc.PropConv (APType, PropConv(..), convProps)
 import Pomc.State (Input, State(..), showState, showAtom)
 import Pomc.Encoding (PropSet, BitEncoding, extractInput, decodeInput)
+
 import Pomc.OmegaEncoding (OmegaEncodedSet, OmegaBitencoding)
 import qualified Pomc.OmegaEncoding as OE
 import Pomc.SatUtil
 import Pomc.SCCAlgorithm
-import Pomc.SetMap
+
+import Pomc.SetMap (SetMap)
 import qualified Pomc.SetMap as SM
+
+import Pomc.MapMap (MapMap)
+import qualified Pomc.MapMap as MM
 
 import Control.Monad (foldM, forM_)
 import Control.Monad.ST (ST)
@@ -57,8 +62,8 @@ data Globals s state = FGlobals
   , suppEnds :: STRef s (SetMap s (StateId state))
   } | WGlobals
   { sIdGen :: SIdGen s state
-  , wsuppStarts :: STRef s (SetMap s (SuppContext (Stack state))) -- we store also the formulae satisfied by the suspended search
-  , wSuppEnds :: STRef s (SetMap s (SuppContext (StateId state))) -- we store the formulae satisfied in the chain
+  , suppStarts :: STRef s (SetMap s (Stack state))
+  , wSuppEnds :: STRef s (MapMap s (StateId state) OmegaEncodedSet) -- we store the formulae satisfied in the support
   , graph :: Graph s state
   }
 
@@ -258,12 +263,12 @@ isEmptyOmega delta initialOpbaStates obitenc = (not $
   ST.runST (do
                newSig <- initSIdGen -- a variable to keep track of state to id relation
                emptySuppStarts <- SM.empty
-               emptySuppEnds <- SM.empty
+               emptySuppEnds <- MM.empty
                initialsId <- wrapStates newSig initialOpbaStates
                initials <- V.mapM (\sId -> return (sId, Nothing)) initialsId
                gr <- newGraph initials obitenc
                let globals = WGlobals { sIdGen = newSig
-                                      , wsuppStarts = emptySuppStarts
+                                      , suppStarts = emptySuppStarts
                                       , wSuppEnds = emptySuppEnds
                                       , graph = gr
                                       }
@@ -351,16 +356,16 @@ reachOmegaPush globals delta (q,g) qState pathSatSet =
       doPush True _ = return True
       doPush False p = reachTransition globals delta (p,Just (qProps, q)) Nothing Nothing
   in do
-    SM.insert (wsuppStarts globals) (getId q) (SuppContext g pathSatSet)
+    SM.insert (suppStarts globals) (getId q) g
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState qProps
     pushReached <- V.foldM' doPush False newStates
     if pushReached
       then return True
       else do
-      currentSuppEnds <- SM.lookup (wSuppEnds globals) (getId q)
-      foldM (\acc (SuppContext s supportSatSet)  -> if acc
-                                                      then return True
-                                                      else reachTransition globals delta (s,g) (Just pathSatSet) (Just supportSatSet))
+      currentSuppEnds <- MM.lookup (wSuppEnds globals) (getId q)
+      foldM (\acc (s, supportSatSet)  -> if acc
+                                            then return True
+                                            else reachTransition globals delta (s,g) (Just pathSatSet) (Just supportSatSet))
         False
         currentSuppEnds
 
@@ -371,11 +376,11 @@ reachOmegaShift :: (SatState state, Ord state, Hashable state, Show state)
            -> state
            -> OmegaEncodedSet
            -> ST s Bool
-reachOmegaShift globals delta (_,g) qState tracesatSet =
+reachOmegaShift globals delta (_,g) qState pathSatSet =
   let qProps = getStateProps (bitenc delta) qState
       doShift True _ = return True
       doShift False p =
-        reachTransition globals delta (p, Just (qProps, (snd . fromJust $ g))) (Just tracesatSet) Nothing
+        reachTransition globals delta (p, Just (qProps, (snd . fromJust $ g))) (Just pathSatSet) Nothing
   in do
     newStates <- wrapStates (sIdGen globals) $ (deltaShift delta) qState qProps
     V.foldM' doShift False newStates
@@ -390,10 +395,10 @@ reachOmegaPop :: (SatState state, Ord state, Hashable state, Show state)
 reachOmegaPop globals delta (_,g) qState pathSatSet =
   let doPop p =
         let r = snd . fromJust $ g
-            closeSupports (SuppContext g' recordedSatSet) = insertSummary (graph globals) (r,g') (p,g') pathSatSet recordedSatSet
+            closeSupports g' = insertSummary (graph globals) (r,g') (p,g') pathSatSet
         in do
-          SM.insert (wSuppEnds globals) (getId r) (SuppContext p pathSatSet)
-          currentSuppStarts <- SM.lookup (wsuppStarts globals) (getId r)
+          MM.insertWith (wSuppEnds globals) (getId r) OE.union p pathSatSet
+          currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
           forM_ currentSuppStarts closeSupports
   in do
     newStates <- wrapStates (sIdGen globals) $
@@ -405,8 +410,8 @@ reachTransition :: (SatState state, Ord state, Hashable state, Show state)
                  => Globals s state
                  -> Delta state
                  -> (StateId state, Stack state)
-                 -> Maybe OmegaEncodedSet
-                 -> Maybe OmegaEncodedSet
+                 -> Maybe OmegaEncodedSet -- pathSatSet
+                 -> Maybe OmegaEncodedSet -- supportSatSet for edges
                  -> ST s Bool
 reachTransition globals delta to_semiconf pathSatSet edgeSatSet =
   let execute (Explore ss) = reachOmega globals delta to_semiconf ss
@@ -423,8 +428,11 @@ isSatisfiable :: Bool
               -> Alphabet APType
               -> (Bool, [PropSet])
 isSatisfiable isOmega phi alphabet =
-  let (be, precf, initials, isFinal, dPush, dShift, dPop, cl) =
-        makeOpa phi isOmega alphabet (\_ _ -> True)
+  let encode True = IsOmega
+      encode False = IsFinite
+
+      (be, precf, initials, (isFinalF, isFinalW), dPush, dShift, dPop, cl) =
+        makeOpa phi (encode isOmega) alphabet (\_ _ -> True)
       delta = Delta
         { bitenc = be
         , prec = precf
@@ -432,10 +440,10 @@ isSatisfiable isOmega phi alphabet =
         , deltaShift = (\q _ -> dShift q Nothing)
         , deltaPop = dPop
         }
-      obe = OE.makeOmegaBitEncoding cl (const True) isFinal
+      obe = OE.makeOmegaBitEncoding cl (const True) isFinalW
       (emptyRes, trace) = if isOmega
                           then isEmptyOmega delta initials obe
-                          else isEmpty delta initials (isFinal T)
+                          else isEmpty delta initials isFinalF
 
   in (not emptyRes, map snd $ toInputTrace be trace)
 

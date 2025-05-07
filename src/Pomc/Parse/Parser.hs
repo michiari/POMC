@@ -11,20 +11,28 @@ module Pomc.Parse.Parser ( checkRequestP
                          , spaceP
                          , CheckRequest(..)
                          , includeP
+                         , preprocess
                          ) where
+
+import Prelude hiding (GT, LT, readFile)
 
 import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.Potl as P
-import Pomc.MiniProc (Program(..), ExprProp(..))
+import Pomc.MiniIR (Program(..), ExprProp(..))
 import Pomc.Parse.MiniProc
 import Pomc.ModelChecker (ExplicitOpa(..))
+import Pomc.Prob.ProbUtils (Solver(..), Comp(..), TermQuery(..))
 
 import Data.Void (Void)
 import Data.Text (Text, pack)
+import qualified Data.Text as T
+import Data.Text.IO (readFile)
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Ratio ((%))
 
+import System.FilePath (takeDirectory, (</>))
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -36,14 +44,24 @@ type PFormula = P.Formula Text
 type PropString = [Set (Prop Text)]
 
 data CheckRequest =
-  ExplCheckRequest { ecreqFormulas :: [PFormula]
-                   , ecreqPrecRels :: [StructPrecRel Text]
-                   , ecreqStrings  :: Maybe [PropString]
-                   , ecreqOpa      :: Maybe (ExplicitOpa Word Text)
-                   } |
-  ProgCheckRequest { pcreqFormulas :: [P.Formula ExprProp]
-                   , pcreqMiniProc :: Program
-                   }
+  ExplCheckRequest  { ecreqFormulas :: [PFormula]
+                    , ecreqPrecRels :: [StructPrecRel Text]
+                    , ecreqStrings  :: Maybe [PropString]
+                    , ecreqOpa      :: Maybe (ExplicitOpa Word Text)
+                    } |
+  ProgCheckRequest  { pcreqFormulas :: [P.Formula ExprProp]
+                    , pcreqMiniProc :: Program
+                    } |
+  ProbTermRequest   { ptreqTermQuery :: TermQuery
+                    , ptreqMiniProb  :: Program
+                    } |
+  ProbCheckRequest  { pcreqFormula      :: P.Formula ExprProp
+                    , pcreqMiniProb     :: Program
+                    , pcreqQuantitative :: Bool
+                    } |
+  ProbUnfoldRequest { pcreqFormula      :: P.Formula ExprProp
+                    , pcreqMiniProb     :: Program
+                    }
 
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
@@ -137,6 +155,8 @@ potlP = makeExprParser termParser operatorTable
             , prefix "PBd" (P.PBack P.Down)
             , prefix "PBu" (P.PBack P.Up)
 
+            , prefix "N" P.Next -- LTL next operator
+
             , prefix "XNd" (P.XNext P.Down)
             , prefix "XNu" (P.XNext P.Up)
             , prefix "XBd" (P.XBack P.Down)
@@ -156,6 +176,8 @@ potlP = makeExprParser termParser operatorTable
             , binaryR "Uu" (P.Until P.Up)
             , binaryR "Sd" (P.Since P.Down)
             , binaryR "Su" (P.Since P.Up)
+
+            , binaryR "U" P.GUntil -- LTL Until operator
 
             , binaryR "HUd" (P.HUntil P.Down)
             , binaryR "HUu" (P.HUntil P.Up)
@@ -252,32 +274,91 @@ opaSectionP = do
   _ <- symbolP ";"
   return (ExplicitOpa ([], []) opaInitials opaFinals opaDeltaPush opaDeltaShift opaDeltaPop)
 
+termQueryP :: Parser TermQuery
+termQueryP = do
+  tquery <- boundQueryP <|> (ApproxSingleQuery SMTWithHints <$ symbolP "approximate")
+  _ <- symbolP ";"
+  return tquery
+  where boundQueryP = do
+          comp <- choice [ Le <$ try (symbolP "<=")
+                         , Lt <$ try (symbolP "<")
+                         , Ge <$ try (symbolP ">=")
+                         , Gt <$ try (symbolP ">")
+                         ]
+          prob <- choice [
+            try $ do
+              num <- L.lexeme spaceP L.decimal
+              _ <- symbolP ":"
+              den <- L.lexeme spaceP L.decimal
+              return (num % den)
+            , (0%1) <$ symbolP "0"
+            , (1%1) <$ symbolP "1"
+            ]
+          return $ CompQuery comp prob SMTWithHints
+
+
 checkRequestP :: Parser CheckRequest
-checkRequestP = do
-  fs <- formulaSectionP
-  opaStringP fs <|> progSectionP fs
-  where opaStringP fs = do
-          prs <- precSectionP
-          pss <- optional stringSectionP
-          opa <- optional opaSectionP
-          return ExplCheckRequest { ecreqFormulas = map untypePropFormula fs
-                                  , ecreqPrecRels = prs
-                                  , ecreqStrings = pss
-                                  , ecreqOpa = fullOpa opa prs
-                                  }
+checkRequestP = nonProbModeP <|> probModeP where
+  nonProbModeP = do
+    fs <- formulaSectionP
+    opaStringP fs <|> progSectionP fs
 
-        progSectionP fs = do
-          _ <- symbolP "program"
-          _ <- symbolP ":"
-          prog <- programP
-          return ProgCheckRequest { pcreqFormulas = map (untypeExprFormula prog) fs
-                                  , pcreqMiniProc = prog
-                                  }
+  opaStringP fs = do
+    prs <- precSectionP
+    pss <- optional stringSectionP
+    opa <- optional opaSectionP
+    return ExplCheckRequest { ecreqFormulas = map untypePropFormula fs
+                            , ecreqPrecRels = prs
+                            , ecreqStrings = pss
+                            , ecreqOpa = fullOpa opa prs
+                            }
 
-        untypePropFormula = fmap $ \p -> case p of
-          TextTProp t -> t
-          ExprTProp _ _ ->
-            error "Cannot use expressions in formulas to be checked on OPAs or strings."
+  progSectionP fs = do
+    _ <- symbolP "program"
+    _ <- symbolP ":"
+    prog <- programP
+    return ProgCheckRequest { pcreqFormulas = map (untypeExprFormula prog) fs
+                            , pcreqMiniProc = prog
+                            }
+
+  probModeP = do
+    _ <- symbolP "probabilistic query" >> symbolP ":"
+    termModeP <|> mcModeP
+    where termModeP = do
+            tquery <- termQueryP
+            _ <- symbolP "program" >> symbolP ":"
+            prog <- programP
+            return ProbTermRequest { ptreqTermQuery = tquery
+                                   , ptreqMiniProb  = prog
+                                   }
+          mcModeP = do
+            req <- ((0 :: Integer) <$ symbolP "qualitative")
+                            <|> (1 <$ symbolP "quantitative")
+                            <|> (2 <$ symbolP "unfold&export")
+            _ <- symbolP ";"
+            _ <- symbolP "formula" >> symbolP "="
+            formula <- potlP
+            _ <- symbolP ";"
+            _ <- symbolP "program" >> symbolP ":"
+            prog <- programP
+            case req of 
+              0 -> return ProbCheckRequest { pcreqFormula = untypeExprFormula prog formula
+                                           , pcreqMiniProb = prog
+                                           , pcreqQuantitative = False
+                                           }
+              1 -> return ProbCheckRequest { pcreqFormula = untypeExprFormula prog formula
+                                           , pcreqMiniProb = prog
+                                           , pcreqQuantitative = True
+                                           }
+              2 -> return ProbUnfoldRequest { pcreqFormula = untypeExprFormula prog formula
+                                            , pcreqMiniProb = prog
+                                            }
+              _ -> error "unexpected request id"
+
+  untypePropFormula = fmap $ \p -> case p of
+    TextTProp t -> t
+    ExprTProp _ _ ->
+      error "Cannot use expressions in formulas to be checked on OPAs or strings."
 
 fullOpa :: Maybe (ExplicitOpa Word Text)
         -> [StructPrecRel Text]
@@ -292,3 +373,15 @@ includeP = do
   path <- quotesP . some $ anySingleBut '"'
   _ <- symbolP ";"
   return path
+
+
+include :: String -> Text -> IO Text
+include fname line =
+  case parse (spaceP *> includeP) fname line of
+    Left  _    -> return line
+    Right path -> readFile (takeDirectory fname </> path)
+
+preprocess :: String -> Text -> IO Text
+preprocess fname content = do
+  processed <- mapM (include fname) (T.lines content)
+  return $ T.unlines processed

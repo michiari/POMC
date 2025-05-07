@@ -10,10 +10,13 @@ module Pomc.SatUtil( SatState(..)
                    , Stack
                    , SIdGen
                    , initSIdGen
+                   , wrapState
                    , wrapStates
                    , debug
                    , freshPosId
                    , decode
+                   , decodeStateId
+                   , decodeStack
                    ) where
 
 import Pomc.State(Input, State(..))
@@ -28,6 +31,8 @@ import qualified Data.Vector as V
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
+
+import Debug.Trace(trace)
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
@@ -97,15 +102,22 @@ wrapStates sig states = V.mapM (wrapState sig) (V.fromList states)
 type Stack state = Maybe (Input, StateId state)
 
 debug :: String -> a -> a
+--debug = trace
 debug _ x = x
---debug msg r = trace msg r
 
 freshPosId :: STRef s Int -> ST.ST s Int
 freshPosId idSeq = do
   curr <- readSTRef idSeq
   modifySTRef' idSeq (+1);
-  return $ curr
+  return curr
 
 decode :: (StateId state, Stack state) -> (Int,Int,Int)
 decode (s1, Nothing) = (getId s1, 0, 0)
 decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
+
+decodeStateId :: StateId state -> Int 
+decodeStateId = getId 
+
+decodeStack  :: Stack state -> (Int,Int)
+decodeStack Nothing = (0,0)
+decodeStack (Just (i, s2)) = (nat i, getId s2)
