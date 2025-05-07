@@ -10,8 +10,12 @@ module Pomc.Test.OPMs ( -- * Stack Trace Language V1 precedence function
                       , stlPrecRelV1
                       -- * Stack Trace Language V2 precedence function
                       , stlPrecRelV2
-                      , stlPrecV2sls
+                      , stlPrecV2sls 
                       , stlV2Alphabet
+                      -- * Stack Trace Language V3 precedence function
+                      , stlPrecRelV3
+                      , stlPrecV3sls
+                      , stlV3Alphabet
                       , makeInputSet
                       ) where
 
@@ -84,6 +88,43 @@ stlPrecV2sls = map Prop ["call", "ret", "exc", "han"]
 
 stlV2Alphabet :: Alphabet String
 stlV2Alphabet = (stlPrecV2sls, stlPrecRelV2)
+
+stlPrecRelV3 :: [StructPrecRel String]
+stlPrecRelV3 = map (\(sl1, sl2, pr) -> (Prop sl1, Prop sl2, pr)) precs
+               ++ map (\p -> (Prop p, End, Take)) sl
+   where precs = [ ("call", "call", Yield)
+                 , ("call", "ret",  Equal)
+                 , ("call", "han",  Yield)
+                 , ("call", "exc",  Take)
+                 , ("call", "stm",  Yield)
+                 , ("ret",  "call", Take)
+                 , ("ret",  "ret",  Take)
+                 , ("ret",  "han",  Take)
+                 , ("ret",  "exc",  Take)
+                 , ("ret",  "stm",  Take)
+                 , ("han",  "call", Yield)
+                 , ("han",  "ret",  Take)
+                 , ("han",  "han",  Yield)
+                 , ("han",  "exc",  Equal)
+                 , ("han",  "stm",  Yield)
+                 , ("exc",  "call", Take)
+                 , ("exc",  "ret",  Take)
+                 , ("exc",  "han",  Take)
+                 , ("exc",  "exc",  Take)
+                 , ("exc",  "stm",  Take)
+                 , ("stm",  "call", Take)
+                 , ("stm",  "ret",  Take)
+                 , ("stm",  "han",  Take)
+                 , ("stm",  "exc",  Take)
+                 , ("stm",  "stm",  Take)
+                 ]
+         sl = ["call", "ret", "han", "exc", "stm"]
+
+stlPrecV3sls :: [Prop String]
+stlPrecV3sls = map Prop ["call", "ret", "han", "exc", "stm"]
+
+stlV3Alphabet :: Alphabet String
+stlV3Alphabet = (stlPrecV3sls, stlPrecRelV3)
 
 makeInputSet :: (Ord a) => [a] -> Set (Prop a)
 makeInputSet ilst = Set.fromList $ map Prop ilst

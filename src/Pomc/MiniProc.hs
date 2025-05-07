@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
-
 {- |
    Module      : Pomc.MiniProc
    Copyright   : 2020-2024 Michele Chiari
@@ -7,7 +5,17 @@
    Maintainer  : Michele Chiari
 -}
 
-module Pomc.MiniProc ( Program(..)
+module Pomc.MiniProc ( DeltaTarget(..)
+                     , InputLabel(..)
+                     , LowerState(..)
+                     , Guard(..)
+                     , Action(..)
+                     , sksToExtendedOpa
+                     , programToOpa
+                     , miniProcAlphabet
+                     , stringToExprPropAlphabet
+                     -- Re-exports from MiniIR
+                     , Program
                      , FunctionSkeleton(..)
                      , Statement(..)
                      , Variable(..)
@@ -28,25 +36,16 @@ module Pomc.MiniProc ( Program(..)
                      , scalarType
                      , commonType
                      , varWidth
-                     , programToOpa
                      , IdType
                      , VarIdInfo(..)
                      , addVariables
-
-                     , Guard(..)
-                     , DeltaTarget(..)
-                     , Action(..)
-                     , InputLabel(..)
-                     , LowerState(..)
-                     , sksToExtendedOpa
-                     , miniProcAlphabet
-                     , miniProcStringAlphabet
-                     , stringToExprPropAlphabet
                      ) where
 
+import Pomc.MiniIR
+import Pomc.MiniProcUtils
 import Pomc.Prop (Prop(..), unprop)
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
-import Pomc.Prec (Prec(..), Alphabet)
+import Pomc.Prec (Alphabet, Prec(..))
 import qualified Pomc.Encoding as E
 import Pomc.State (Input, State(..))
 
@@ -56,137 +55,11 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Maybe (isNothing, fromJust, fromMaybe)
-import Data.BitVector (BitVector)
-import qualified Data.BitVector as B
+import Data.Maybe (isNothing, fromJust)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-import GHC.Generics (Generic)
-import Data.Hashable
 
 -- import qualified Debug.Trace as DBG
-
--- Intermediate representation for MiniProc programs
-type IdType = Int
-type FunctionName = Text
-data Type = UInt Int
-          | SInt Int
-          | UIntArray Int Int -- width size
-          | SIntArray Int Int -- width size
-          deriving (Show, Eq, Ord, Generic)
-data Variable = Variable { varId     :: IdType
-                         , varName   :: Text
-                         , varType   :: Type
-                         , varOffset :: IdType
-                         } deriving (Show, Eq, Ord, Generic)
-type IntValue = BitVector
-type ArrayValue = Vector IntValue
-data Expr = Literal IntValue
-          | Term Variable
-          | ArrayAccess Variable Expr
-          -- Boolean operations
-          | Not Expr
-          | And Expr Expr
-          | Or Expr Expr
-          -- Arithmetic operations
-          | Add Expr Expr
-          | Sub Expr Expr
-          | Mul Expr Expr
-          | UDiv Expr Expr
-          | SDiv Expr Expr
-          | URem Expr Expr
-          | SRem Expr Expr
-          -- Comparisons
-          | Eq Expr Expr
-          | ULt Expr Expr
-          | ULeq Expr Expr
-          | SLt Expr Expr
-          | SLeq Expr Expr
-          -- Casts
-          | UExt Int Expr
-          | SExt Int Expr
-          | Trunc Int Expr
-          deriving (Eq, Ord)
-data LValue = LScalar Variable | LArray Variable Expr deriving (Eq, Ord, Show)
-data ActualParam = ActualVal Expr | ActualValRes Variable deriving (Eq, Ord, Show)
-data Statement = Assignment LValue Expr
-               | Nondeterministic LValue
-               | Call FunctionName [ActualParam]
-               | TryCatch [Statement] [Statement]
-               | IfThenElse (Maybe Expr) [Statement] [Statement]
-               | While (Maybe Expr) [Statement]
-               | Throw deriving Show
-data FormalParam = Value Variable | ValueResult Variable deriving (Eq, Ord, Show)
-data FunctionSkeleton = FunctionSkeleton { skName    :: FunctionName
-                                         , skModules :: [FunctionName]
-                                         , skParams  :: [FormalParam]
-                                         , skScalars :: Set Variable
-                                         , skArrays  :: Set Variable
-                                         , skStmts   :: [Statement]
-                                         } deriving Show
-data Program = Program { pGlobalScalars :: Set Variable
-                       , pGlobalArrays  :: Set Variable
-                       , pLocalScalars  :: Set Variable
-                       , pLocalArrays   :: Set Variable
-                       , pSks           :: [FunctionSkeleton]
-                       } deriving Show
-
-data ExprProp = TextProp Text | ExprProp (Maybe FunctionName) Expr deriving (Eq, Ord)
-
-instance Hashable Type
-instance Hashable Variable
-instance Hashable B.BV where
-  hashWithSalt s bv = s `hashWithSalt` B.nat bv `hashWithSalt` B.size bv
-instance Hashable a => Hashable (Vector a) where
-  hashWithSalt s v = V.foldl' hashWithSalt s v
-
-getExpr :: ExprProp -> Expr
-getExpr (ExprProp _ e) = e
-getExpr _ = error "Unexpected TextProp"
-
-isSigned :: Type -> Bool
-isSigned (SInt _) = True
-isSigned (SIntArray _ _) = True
-isSigned _ = False
-
-isScalar :: Type -> Bool
-isScalar (UInt _) = True
-isScalar (SInt _) = True
-isScalar _ = False
-
-isArray :: Type -> Bool
-isArray = not . isScalar
-
-typeWidth :: Type -> Int
-typeWidth (UInt w) = w
-typeWidth (SInt w) = w
-typeWidth (UIntArray w _) = w
-typeWidth (SIntArray w _) = w
-
-arraySize :: Type -> Int
-arraySize (UIntArray _ s) = s
-arraySize (SIntArray _ s) = s
-arraySize _ = error "Scalar types do not have a size."
-
-scalarType :: Type -> Type
-scalarType (UIntArray w _) = UInt w
-scalarType (SIntArray w _) = SInt w
-scalarType scalar = scalar
-
-commonType :: Type -> Type -> Type
-commonType (UInt w0) (UInt w1) = UInt $ max w0 w1
-commonType (UInt w0) (SInt w1) = SInt $ max w0 w1
-commonType (SInt w0) (UInt w1) = SInt $ max w0 w1
-commonType (SInt w0) (SInt w1) = SInt $ max w0 w1
-commonType _ _ = error "Arrays do not have subsuming type."
-
-varWidth :: Variable -> Int
-varWidth = typeWidth . varType
-
-enumerateIntType :: Type -> [IntValue]
-enumerateIntType ty = B.bitVecs len [(0 :: Integer)..((2 :: Integer)^len-1)]
-  where len = typeWidth ty
-
 
 -- Generation of the Extended OPA
 
@@ -347,8 +220,12 @@ lowerStatement sks lowerState0 thisFinfo linkPred (Call fname args) =
                 successorStates (lsDPop lowerState)
           in lowerState { lsDPop = dPop' }
 
+      -- TODO: do we really need to increment lsSid here?
       lowerState3 = lowerState2 { lsDPush = dPush'', lsDPop = dPop'', lsSid = lsSid lowerState2 + 1 }
   in (linkPred lowerState3 [(NoGuard, callSid)], linkCall)
+
+lowerStatement _ _ _ _ (Query _ _) =
+  error "Query statements not allowed in MiniProc."
 
 lowerStatement sks ls0 thisFinfo linkPred0 (TryCatch try catch) =
   let hanSid = lsSid ls0
@@ -413,8 +290,13 @@ lowerStatement sks ls0 thisFinfo linkPred0 (While guard body) =
         in linkBody (linkPred0 lowerState exitEdges) exitEdges
   in (ls1, linkPredWhile)
 
-lowerStatement _ lowerState thisFinfo linkPred Throw =
+lowerStatement _ lowerState thisFinfo linkPred (Throw Nothing) =
   (linkPred lowerState [(NoGuard, fiThrow thisFinfo)], (\ls _ -> ls))
+lowerStatement _ _ _ _ (Throw _) =
+  error "Observe statements not allowed in MiniProc."
+
+lowerStatement _ _ _ _ (Categorical _ _ _) =
+  error "Categorical assignments not allowed in MiniProc."
 
 combGuards :: Expr -> Guard -> Guard
 combGuards bexp1 NoGuard = Guard bexp1
@@ -431,9 +313,9 @@ lowerBlock sks lowerState thisFinfo linkPred block =
   foldBlock lowerState linkPred block
   where foldBlock lowerState1 linkPred1 [] = (lowerState1, linkPred1)
 
-        foldBlock lowerState1 linkPred1 (Throw : _) =
+        foldBlock lowerState1 linkPred1 ((Throw Nothing) : _) =
           let (lowerState2, linkPred2) =
-                lowerStatement sks lowerState1 thisFinfo linkPred1 Throw
+                lowerStatement sks lowerState1 thisFinfo linkPred1 $ Throw Nothing
           in (lowerState2, linkPred2)
 
         foldBlock lowerState1 linkPred1 (stmt : stmts) =
@@ -442,53 +324,6 @@ lowerBlock sks lowerState thisFinfo linkPred block =
           in foldBlock lowerState2 linkPred2 stmts
 
 -- Conversion of the Extended OPA to a plain OPA
-
--- Data structures
-data VarIdInfo = VarIdInfo { scalarOffset :: IdType
-                           , arrayOffset  :: IdType
-                           , varIds       :: IdType
-                           } deriving Show
-
-addVariables :: Bool -> IdType -> VarIdInfo -> (VarIdInfo, [IdType], [IdType])
-addVariables scalar n vii =
-  let prevIds = if scalar then scalarOffset vii else arrayOffset vii
-  in ( if scalar
-       then vii { scalarOffset = prevIds + n, varIds = varIds vii + n }
-       else vii { arrayOffset = prevIds + n, varIds = varIds vii + n }
-     , [prevIds + i | i <- [0..(n - 1)]]
-     , [varIds vii + i | i <- [0..(n - 1)]]
-     )
-
-isGlobal :: VarIdInfo -> Bool -> IdType -> Bool
-isGlobal gvii scalar vid | scalar = vid < scalarOffset gvii
-                         | otherwise = vid < arrayOffset gvii
-
-getLocalIdx :: VarIdInfo -> Bool -> IdType -> Int
-getLocalIdx gvii scalar vid | scalar = vid - scalarOffset gvii
-                            | otherwise = vid - arrayOffset gvii
-
-data VarValuation = VarValuation { vGlobalScalars :: Vector IntValue
-                                 , vGlobalArrays  :: Vector ArrayValue
-                                 , vLocalScalars  :: Vector IntValue
-                                 , vLocalArrays   :: Vector ArrayValue
-                                 } deriving (Show, Eq, Ord, Generic)
-type VarState = (Word, VarValuation)
-
-instance Hashable VarValuation
-
-initialValuation :: (Bool -> IdType -> IdType)
-                 -> Set Variable
-                 -> Set Variable
-                 -> (Vector IntValue, Vector ArrayValue)
-initialValuation getIdx svars avars = (scalars, arrays)
-  where scalars = V.replicate (S.size svars) B.nil  V.//
-          map (\var -> (getIdx True $ varOffset var, initialScalar var)) (S.toList svars)
-        arrays = V.replicate (S.size avars) V.empty V.//
-          map (\var -> (getIdx False $ varOffset var, initialArray var)) (S.toList avars)
-
-        initialScalar = B.zeros . varWidth
-        initialArray var = V.replicate (arraySize . varType $ var) (initialScalar var)
-
 programToOpa :: Bool -> Program -> Set (Prop ExprProp)
              -> ( PropConv ExprProp
                 , Alphabet APType
@@ -643,85 +478,6 @@ computeDsts gvii vval act dsts = concatMap composeDst dsts
           Nondet (LArray var idxExpr) ->
             map (\val -> arrayAssign gvii vval var idxExpr val) $ enumerateIntType (varType var)
 
-scalarAssign :: VarIdInfo
-             -> VarValuation
-             -> Variable
-             -> IntValue
-             -> VarValuation
-scalarAssign gvii vval var val
-  | isGlobal gvii True vid = vval {
-      vGlobalScalars = vGlobalScalars vval V.// [(vid, val)] }
-  | otherwise = vval {
-      vLocalScalars = vLocalScalars vval V.// [(getLocalIdx gvii True vid, val)] }
-  where vid = varOffset var
-
-arrayAssign :: VarIdInfo
-            -> VarValuation
-            -> Variable
-            -> Expr
-            -> IntValue
-            -> VarValuation
-arrayAssign gvii vval var idxExpr val
-  | isGlobal gvii False vid = vval {
-      vGlobalArrays = doAssign (vGlobalArrays vval) vid }
-  | otherwise = vval {
-      vLocalArrays = doAssign (vLocalArrays vval) $ getLocalIdx gvii False vid }
-  where vid = varOffset var
-        idx = fromEnum . B.nat . evalExpr gvii vval $ idxExpr
-        doAssign aval varIdx =
-          aval V.// [(varIdx, (aval V.! varIdx) V.// [(idx, val)])]
-
-wholeArrayAssign :: VarIdInfo
-                 -> VarValuation
-                 -> Variable
-                 -> VarValuation
-                 -> Variable
-                 -> VarValuation
-wholeArrayAssign gvii dstVval dstVar srcVval srcVar
-  | isGlobal gvii False dstVid = dstVval {
-      vGlobalArrays = vGlobalArrays dstVval V.// [(dstVid, srcVal)] }
-  | otherwise = dstVval {
-      vLocalArrays = vLocalArrays dstVval V.// [(getLocalIdx gvii False dstVid, srcVal)] }
-  where dstVid = varOffset dstVar
-        srcVid = varOffset srcVar
-        srcVal | isGlobal gvii False srcVid = vGlobalArrays srcVval V.! srcVid
-               | otherwise = vLocalArrays srcVval V.! getLocalIdx gvii False srcVid
-
-evalExpr :: VarIdInfo -> VarValuation -> Expr -> IntValue
-evalExpr _ _ (Literal val) = val
-evalExpr gvii vval (Term var)
-  | isGlobal gvii True vid = vGlobalScalars vval V.! vid
-  | otherwise = vLocalScalars vval V.! getLocalIdx gvii True vid
-  where vid = varOffset var
-evalExpr gvii vval (ArrayAccess var idxExpr) =
-  arr V.! (fromEnum . B.nat . evalExpr gvii vval $ idxExpr)
-  where vid = varOffset var
-        arr | isGlobal gvii False vid = vGlobalArrays vval V.! vid
-            | otherwise = vLocalArrays vval V.! getLocalIdx gvii False vid
-evalExpr gvii vval (Not bexpr) = B.fromBool . not . toBool $ evalExpr gvii vval bexpr
-evalExpr gvii vval (And lhs rhs) =
-  B.fromBool $ (toBool $ evalExpr gvii vval lhs) && (toBool $ evalExpr gvii vval rhs)
-evalExpr gvii vval (Or lhs rhs) =
-  B.fromBool $ (toBool $ evalExpr gvii vval lhs) || (toBool $ evalExpr gvii vval rhs)
-evalExpr gvii vval (Add lhs rhs) = evalExpr gvii vval lhs + evalExpr gvii vval rhs
-evalExpr gvii vval (Sub lhs rhs) = evalExpr gvii vval lhs - evalExpr gvii vval rhs
-evalExpr gvii vval (Mul lhs rhs) = evalExpr gvii vval lhs * evalExpr gvii vval rhs
-evalExpr gvii vval (UDiv lhs rhs) = evalExpr gvii vval lhs `div` evalExpr gvii vval rhs
-evalExpr gvii vval (SDiv lhs rhs) = evalExpr gvii vval lhs `B.sdiv` evalExpr gvii vval rhs
-evalExpr gvii vval (URem lhs rhs) = evalExpr gvii vval lhs `mod` evalExpr gvii vval rhs
-evalExpr gvii vval (SRem lhs rhs) = evalExpr gvii vval lhs `B.smod` evalExpr gvii vval rhs
-evalExpr gvii vval (Eq lhs rhs) = B.fromBool $ evalExpr gvii vval lhs == evalExpr gvii vval rhs
-evalExpr gvii vval (ULt lhs rhs) = B.fromBool $ evalExpr gvii vval lhs < evalExpr gvii vval rhs
-evalExpr gvii vval (ULeq lhs rhs) = B.fromBool $ evalExpr gvii vval lhs <= evalExpr gvii vval rhs
-evalExpr gvii vval (SLt lhs rhs) = B.fromBool $ evalExpr gvii vval lhs `B.slt` evalExpr gvii vval rhs
-evalExpr gvii vval (SLeq lhs rhs) = B.fromBool $ evalExpr gvii vval lhs `B.sle` evalExpr gvii vval rhs
-evalExpr gvii vval (UExt size op) = B.zeroExtend size $ evalExpr gvii vval op
-evalExpr gvii vval (SExt size op) = B.signExtend size $ evalExpr gvii vval op
-evalExpr gvii vval (Trunc size op) = evalExpr gvii vval op B.@@ (size - 1, 0)
-
-toBool :: IntValue -> Bool
-toBool v = B.nat v /= 0
-
 
 -- OPM
 miniProcAlphabet :: Alphabet ExprProp
@@ -766,34 +522,3 @@ stringToExprPropAlphabet (stringSls, stringPrecRel) = (epSls, epPrecRel) where
   epPrecRel =
     map (\(sl1, sl2, pr) -> (toExprProp sl1, toExprProp sl2, pr)) stringPrecRel
   toExprProp = fmap (TextProp . T.pack)
-
-
--- Show instances
-instance Show ExprProp where
-  show (TextProp t) = T.unpack t
-  show (ExprProp s e) = "[" ++ T.unpack (fromMaybe T.empty s) ++ "| " ++ show e ++ "]"
-
-instance Show Expr where
-  show expr = case expr of
-    Literal v           -> show v
-    Term var            -> T.unpack (varName var)
-    ArrayAccess var idx -> T.unpack (varName var) ++ "[" ++ show idx ++ "]"
-    Not e               -> "! " ++ show e
-    And e1 e2           -> showBin "&&" e1 e2
-    Or e1 e2            -> showBin "||" e1 e2
-    Add e1 e2           -> showBin "+" e1 e2
-    Sub e1 e2           -> showBin "-" e1 e2
-    Mul e1 e2           -> showBin "*" e1 e2
-    UDiv e1 e2          -> showBin "/u" e1 e2
-    SDiv e1 e2          -> showBin "/s" e1 e2
-    URem e1 e2          -> showBin "%u" e1 e2
-    SRem e1 e2          -> showBin "%s" e1 e2
-    Eq e1 e2            -> showBin "==" e1 e2
-    ULt e1 e2           -> showBin "<" e1 e2
-    ULeq e1 e2          -> showBin "<=" e1 e2
-    SLt e1 e2           -> showBin "<" e1 e2
-    SLeq e1 e2          -> showBin "<=" e1 e2
-    UExt w e            -> "(uext " ++ show e ++ " to " ++ show w ++ " bits)"
-    SExt w e            -> "(sext " ++ show e ++ " to " ++ show w ++ " bits)"
-    Trunc w e           -> "(trunc " ++ show e ++ " to " ++ show w ++ " bits)"
-    where showBin op e1 e2 = "(" ++ show e1 ++ " " ++ op ++ " " ++ show e2 ++ ")"

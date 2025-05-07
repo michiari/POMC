@@ -13,9 +13,9 @@ module Pomc.OpaGen ( printFunctions
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
 import Pomc.ModelChecker (ExplicitOpa(..))
-import Pomc.MiniProc ( FunctionSkeleton(..), Statement(..), FunctionName
-                     , DeltaTarget(..), LowerState(..), InputLabel(..), sksToExtendedOpa
-                     , ExprProp(..), miniProcAlphabet
+import Pomc.MiniIR (FunctionSkeleton(..), Statement(..), FunctionName, ExprProp(..))
+import Pomc.MiniProc ( DeltaTarget(..), LowerState(..), InputLabel(..)
+                     , sksToExtendedOpa, miniProcAlphabet
                      )
 
 import System.Random
@@ -76,7 +76,7 @@ genIfThenElse gen fs maxCalls maxDepth =
   in (IfThenElse Nothing thenBlock elseBlock, gen'')
 
 genThrow :: RandomGen g => g -> [FunctionName] -> Int -> Int -> (Statement, g)
-genThrow gen _ _ _ = (Throw, gen)
+genThrow gen _ _ _ = (Throw Nothing, gen)
 
 genSkeletons :: RandomGen g => g -> Int -> Int -> Int -> ([FunctionSkeleton], g)
 genSkeletons gen nf maxCalls maxDepth = foldl foldSkeletons ([], gen) fs

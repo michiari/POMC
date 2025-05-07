@@ -1,0 +1,15 @@
+probabilistic query: approximate;
+
+program:
+main() {
+  f(0u8, 20u8);
+}
+
+f(u8 n, u8 m) {
+  bool x;
+  x = true {(n+1u8) : (n+2u8)} false;
+  if (x) {
+    f((n+1u8) % m, m);
+    f((n+1u8) % m, m);
+  } else { }
+}

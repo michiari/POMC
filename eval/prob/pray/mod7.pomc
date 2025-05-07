@@ -1,0 +1,19 @@
+probabilistic query: approximate;
+
+program:
+main() {
+  f(1s8);
+}
+
+f(s8 n) {
+  bool x;
+  while (n > 0s8) {
+    x = true {2u3 : 3u3} false;
+    if (x) {
+      f(n - 1s8);
+    } else {
+      f((n + 1s8) % 7s8);
+    }
+    n = n - 1s8;
+  }
+}

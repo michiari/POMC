@@ -1,0 +1,27 @@
+probabilistic query: approximate;
+
+program:
+main() {
+  u3 N;
+  bool r;
+  N = 5u3;
+  while (N > 0u3) {
+    f(r);
+    N = N - 1u3;
+  }
+}
+
+f(bool &r) {
+  bool x;
+  x = 1u1 {1u2 : 2u2} 0u1;
+  if (x) {
+    r = 1u1 {1u2 : 2u2} 0u1;
+  } else {
+    f(r);
+    if (r) {
+      f(r);
+    } else {
+      r = 0u1;
+    }
+  }
+}

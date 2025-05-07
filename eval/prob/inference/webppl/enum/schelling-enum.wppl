@@ -1,0 +1,27 @@
+var bob = function(pr) {
+  var prior_bob = sample(Bernoulli({p: 0.55}));
+  var recurse = flip(pr);
+  if (recurse) {
+    var alice_choice = sample(Infer(
+      {method: 'enumerate'},
+      function () {return alice(pr)}));
+    condition(prior_bob == alice_choice);
+  } else {}
+  return prior_bob;
+}
+
+var alice = function(pr) {
+  var prior_alice = sample(Bernoulli({p: 0.55}));
+  var bob_choice = sample(Infer(
+    {method: 'enumerate'},
+    function () {return bob(pr)}));
+  condition(prior_alice == bob_choice);
+  return prior_alice;
+}
+
+var pr = sample(Categorical({ps : [1/3, 1/6, 1/6, 1/6, 1/6], vs: [0,0.1,0.2,0.3,0.4]}));
+var dist = Infer(
+    {method: 'enumerate'},
+    function () {return alice(pr)});
+
+console.log(dist.getDist());

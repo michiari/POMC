@@ -1,0 +1,32 @@
+probabilistic query: qualitative;
+formula = ((~ alice) U (call And alice And (N (N [alice|prior_alice == 1u1])) And (XNu obs))) And F (ret And main And res);
+
+program:
+u4 p;
+main() {
+  bool res;
+  p = 0u4 {2u3 : 6u3} 1u4 {1u3 : 6u3} 2u4 {1u3 : 6u3} 3u4 {1u3 : 6u3} 4u4;
+  query alice(res);
+  // res is which cafè they have gone to
+}
+
+alice(bool &x) {
+    bool prior_alice, bob_choice;
+    // sample according to the prior (0.55)
+    prior_alice = 1u1 {11u5 : 20u5} 0u1;
+    query bob(bob_choice);
+    observe prior_alice == bob_choice;
+    x = prior_alice;
+}
+
+bob(bool &y) {
+    bool prior_bob, recurse, alice_choice;
+    // sample according to the prior (0.55)
+    prior_bob = 1u1 {11u5 : 20u5} 0u1;
+    recurse = 1u1 {p : 10u4} 0u1;
+    if (recurse) {
+        query alice(alice_choice);
+        observe prior_bob == alice_choice;
+    } else {}
+    y = prior_bob;
+}

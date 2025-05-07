@@ -19,9 +19,10 @@ module Pomc.Encoding ( EncodedSet
                      , generateFormulas
                      , powerSet
                      , Pomc.Encoding.null
-                     , Pomc.Encoding.all
+                     , Pomc.Encoding.allSet
                      , member
                      , Pomc.Encoding.any
+                     , Pomc.Encoding.all
                      , Pomc.Encoding.filter
                      , suchThat
                      , intersect
@@ -127,8 +128,8 @@ null (EncodedAtom bv) = bv == BV.nil
 {-# INLINE null #-}
 
 -- test whether all bits are set in the given EncodedAtom
-all :: EncodedAtom -> Bool
-all (EncodedAtom bv) = bv == BV.ones (BV.size bv)
+allSet :: EncodedAtom -> Bool
+allSet (EncodedAtom bv) = bv == BV.ones (BV.size bv)
 
 -- test whether a Formula is part of an EncodedAtom
 member :: BitEncoding -> Formula APType -> EncodedAtom -> Bool
@@ -140,6 +141,11 @@ member bitenc phi (EncodedAtom bv) | negative phi = not $ bv BV.@. (index bitenc
 any :: BitEncoding -> (Formula APType -> Bool) -> EncodedAtom -> Bool
 any bitenc predicate (EncodedAtom bv) = Prelude.any (predicate . (fetch bitenc)) $ listBits bv
 {-# INLINABLE any #-}
+
+-- test whether all formulae in EncodedAtom satisfies rhe predicate
+all :: BitEncoding -> (Formula APType -> Bool) -> EncodedAtom -> Bool
+all bitenc predicate (EncodedAtom bv) = Prelude.all (predicate . (fetch bitenc)) $ listBits bv
+{-# INLINABLE all #-}
 
 -- filter the formulas in an EncodedAtom according to predicate
 filter :: BitEncoding -> (Formula APType -> Bool) -> EncodedAtom -> EncodedAtom

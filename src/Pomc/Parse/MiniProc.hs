@@ -15,7 +15,7 @@ module Pomc.Parse.MiniProc ( programP
                            , typedExprP
                            ) where
 
-import Pomc.MiniProc
+import Pomc.MiniIR
 import Pomc.Potl (Formula)
 
 import Data.Void (Void)
@@ -32,6 +32,7 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Control.Monad.Combinators.Expr
 import qualified Data.BitVector as BV
+import Math.NumberTheory.Logarithms (integerLog2)
 
 type TypedValue = (IntValue, Type)
 data TypedExpr = TLiteral TypedValue
@@ -147,10 +148,14 @@ literalP :: Parser TypedValue
 literalP = boolLiteralP <|> intLiteralP
   where intLiteralP = L.lexeme spaceP $ do
           value <- L.signed spaceP (L.lexeme spaceP L.decimal) :: Parser Integer
-          ty <- intTypeP
-          if value < 0 && not (isSigned ty)
-            then fail "Negative literal declared unsigned"
-            else return (BV.bitVec (typeWidth ty) value, ty)
+          let minWidth = integerLog2 (max 1 $ abs value) + 1 + fromEnum (value < 0)
+          maybeTy <- optional intTypeP
+          ty <- case maybeTy of
+            Just mty | value < 0 && not (isSigned mty) -> fail "Negative literal declared unsigned"
+                     | typeWidth mty < minWidth -> fail "Integer literal type width is too small"
+                     | otherwise -> return mty
+            Nothing -> return $ if value < 0 then SInt minWidth else UInt minWidth
+          return (BV.bitVec (typeWidth ty) value, ty)
 
 variableP :: Maybe (Map Text Variable) -> Parser Variable
 variableP (Just varmap) = identifierP >>= variableLookup
@@ -201,6 +206,13 @@ typedExprP varmap = makeExprParser termP opTable
 
 exprP :: Map Text Variable -> Parser Expr
 exprP varmap = untypeExpr <$> typedExprP (Just varmap)
+
+probExprP :: Map Text Variable -> Parser (Expr, Expr)
+probExprP varmap = do
+  num <- exprP varmap
+  _ <- symbolP ":"
+  den <- exprP varmap
+  return (num, den)
 
 intTypeP :: Parser Type
 intTypeP = try $ fmap UInt (char 'u' *> L.decimal) <|> fmap SInt (char 's' *> L.decimal)
@@ -260,15 +272,40 @@ nondetP varmap = try $ do
   _ <- symbolP ";"
   return $ Nondeterministic lhs
 
-assP :: Map Text Variable -> Parser Statement
-assP varmap = try $ do
+uniformP :: Map Text Variable -> Parser Statement
+uniformP varmap = try $ do
   lhs <- lValueP varmap
   _ <- symbolP "="
-  rhs <- typedExprP $ Just varmap
+  _ <- symbolP "uniform"
+  _ <- symbolP "("
+  lower <- typedExprP $ Just varmap
+  _ <- symbolP ","
+  upper <- typedExprP $ Just varmap
+  _ <- symbolP ")"
   _ <- symbolP ";"
-  return $ Assignment lhs (untypeExprWithCast (lvalType lhs) rhs)
-    where lvalType (LScalar var) = varType var
-          lvalType (LArray var _) = scalarType . varType $ var
+  let lhsType = case lhs of
+        LScalar var -> varType var
+        LArray var _ -> scalarType . varType $ var
+  return $ Uniform lhs (untypeExprWithCast lhsType lower) (untypeExprWithCast lhsType upper)
+
+assOrCatP :: Map Text Variable -> Parser Statement
+assOrCatP varmap = do
+  lhs <- try $ do
+    trylhs <- lValueP varmap
+    _ <- symbolP "="
+    return trylhs
+  firstExpr <- teP
+  maybeCat <- optional $ some ((,) <$> probLitP <*> teP)
+  _ <- symbolP ";"
+  let lhsType = case lhs of
+        LScalar var -> varType var
+        LArray var _ -> scalarType . varType $ var
+  return $ case maybeCat of
+    Nothing -> Assignment lhs (untypeExprWithCast lhsType firstExpr)
+    Just l -> let (probs, exprs) = unzip l
+              in Categorical lhs (map (untypeExprWithCast lhsType) (firstExpr:exprs)) probs
+  where teP = typedExprP $ Just varmap
+        probLitP = between (symbolP "{") (symbolP "}") $ probExprP varmap
 
 callP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 callP varmap = try $ do
@@ -287,11 +324,17 @@ tryCatchP varmap = do
   (catchBlock, catchAparams) <- blockP varmap
   return (TryCatch tryBlock catchBlock, tryAparams ++ catchAparams)
 
+queryP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
+queryP varmap = do
+  _ <- symbolP "query"
+  (Call fname _, aparams) <- callP varmap
+  return (Query fname [], aparams)
+
 iteP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 iteP varmap = do
   _ <- symbolP "if"
   _ <- symbolP "("
-  guard <- ((Nothing <$ symbolP "*") <|> fmap Just (exprP varmap))
+  guard <- (Nothing <$ symbolP "*") <|> (fmap Just (exprP varmap))
   _ <- symbolP ")"
   (thenBlock, thenAparams) <- blockP varmap
   _ <- symbolP "else"
@@ -308,16 +351,26 @@ whileP varmap = do
   return (While guard body, aparams)
 
 throwP :: Parser Statement
-throwP = symbolP "throw" >> symbolP ";" >> return Throw
+throwP = symbolP "throw" >> symbolP ";" >> return (Throw Nothing)
+
+observeP :: Map Text Variable -> Parser Statement
+observeP varmap = do
+  _ <- symbolP "observe"
+  guard <- exprP varmap
+  _ <- symbolP ";"
+  return $ Throw $ Just guard
 
 stmtP :: Map Text Variable -> Parser (Statement, [[TypedExpr]])
 stmtP varmap = choice [ noParams $ nondetP varmap
-                      , noParams $ assP varmap
+                      , noParams $ uniformP varmap
+                      , noParams $ assOrCatP varmap
                       , callP varmap
                       , tryCatchP varmap
+                      , queryP varmap
                       , iteP varmap
                       , whileP varmap
                       , noParams $ throwP
+                      , noParams $ observeP varmap
                       ] <?> "statement"
   where noParams = fmap (\stmt -> (stmt, [[]]))
 
@@ -414,10 +467,26 @@ matchParams sksAparams = mapM skMatchParams sksAparams
         stmtMatchParams (acc, aparams) stmt =
           (\(newStmt, newParams) -> (newStmt : acc, newParams)) <$> doMatchParam stmt aparams
 
-        doMatchParam (Call fname _) (aparam:aparams) = case skMap M.!? fname of
+        doMatchParam (Call fname _) aparams = matchCall Call fname aparams
+        doMatchParam (Query fname _) aparams = matchCall Query fname aparams
+        doMatchParam (TryCatch tryb catchb) aparams = do
+          (tryStmts, tryParams) <- blockMatchParams tryb aparams
+          (catchStmts, catchParams) <- blockMatchParams catchb tryParams
+          return (TryCatch tryStmts catchStmts, catchParams)
+        doMatchParam (IfThenElse g thenb elseb) aparams = do
+          (thenStmts, thenParams) <- blockMatchParams thenb aparams
+          (elseStmts, elseParams) <- blockMatchParams elseb thenParams
+          return (IfThenElse g thenStmts elseStmts, elseParams)
+        doMatchParam (While g body) aparams = do
+          (bodyStmts, bodyParams) <- blockMatchParams body aparams
+          return (While g bodyStmts, bodyParams)
+        doMatchParam stmt (_:aparams) = Right (stmt, aparams)
+        doMatchParam _ _ = error "Statement list and params list are not isomorphic."
+
+        matchCall dataConstr fname (aparam:aparams) = case skMap M.!? fname of
           Just calleeSk
             | length aparam == length calleeParams ->
-                (\newParams -> (Call fname newParams, aparams)) <$>
+                (\newParams -> (dataConstr fname newParams, aparams)) <$>
                 mapM matchParam (zip aparam calleeParams)
             | otherwise -> Left ("Function " ++ show (skName calleeSk) ++ " requires "
                                   ++ show (length calleeParams) ++ " parameters, given: "
@@ -434,19 +503,8 @@ matchParams sksAparams = mapM skMatchParams sksAparams
                     | otherwise = Left "Type mismatch on array parameter."
                   matchParam _ = Left "Value-result actual parameter must be variable names."
           Nothing -> Left $ "Undeclared function identifier: " ++ T.unpack fname
-        doMatchParam (TryCatch tryb catchb) aparams = do
-          (tryStmts, tryParams) <- blockMatchParams tryb aparams
-          (catchStmts, catchParams) <- blockMatchParams catchb tryParams
-          return (TryCatch tryStmts catchStmts, catchParams)
-        doMatchParam (IfThenElse g thenb elseb) aparams = do
-          (thenStmts, thenParams) <- blockMatchParams thenb aparams
-          (elseStmts, elseParams) <- blockMatchParams elseb thenParams
-          return (IfThenElse g thenStmts elseStmts, elseParams)
-        doMatchParam (While g body) aparams = do
-          (bodyStmts, bodyParams) <- blockMatchParams body aparams
-          return (While g bodyStmts, bodyParams)
-        doMatchParam stmt (_:aparams) = Right (stmt, aparams)
-        doMatchParam _ _ = error "Statement list and params list are not isomorphic."
+        matchCall _ _ [] = error "Unexpected lacking params."
+
 
 parseModules :: Text -> [Text]
 parseModules fname = joinModules (head splitModules) (tail splitModules) []

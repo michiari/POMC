@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-22.31
+resolver: lts-22.32
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -35,7 +35,8 @@ packages:
 #
 extra-deps:
   - git: https://github.com/michiari/haskell-z3.git
-    commit: 86e153ede6bcdc5a3492fd37e63fae62dde8d18e
+    commit: 86e153ede6bcdc5a3492fd37e63fae62dde8d18e # z3 >= 4.11.x
+  - strict-containers-0.2.1
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a

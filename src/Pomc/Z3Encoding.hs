@@ -25,6 +25,7 @@ import Pomc.Prec (Prec(..), Alphabet, isComplete)
 import Pomc.TimeUtils (startTimer, stopTimer, timeAction, timeActionAcc)
 import Pomc.LogUtils (LogVerbosity, selectLogVerbosity)
 import qualified Pomc.MiniProc as MP
+import qualified Pomc.MiniIR as MP
 
 import Z3.Monad hiding (Result(..))
 import qualified Z3.Monad as Z3

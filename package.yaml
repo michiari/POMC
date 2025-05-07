@@ -1,5 +1,5 @@
 name:               pomc
-version:            2.2.0
+version:            2.9.0
 synopsis:           A model-checking tool for POTL
 description:        A model-checking tool for POTL
 category:           Formal methods
@@ -7,7 +7,7 @@ category:           Formal methods
 author:             Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
 maintainer:         michele.chiari@polimi.it
 
-copyright:          2020-2024 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
+copyright:          2020-2025 Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
 license:            MIT
 license-file:       COPYING.md
 
@@ -31,9 +31,13 @@ library:
   - Pomc.Parse.MiniProc
   - Pomc.OpaGen
   - Pomc.MiniProc
+  - Pomc.MiniIR
   - Pomc.TimeUtils
   - Pomc.LogUtils
   - Pomc.Z3Encoding
+  - Pomc.Prob.ProbModelChecker
+  - Pomc.Prob.MiniProb
+  - Pomc.Prob.ProbUtils
   ghc-options:
   - -Wall
   - -Wno-incomplete-patterns
@@ -43,6 +47,8 @@ library:
   dependencies:
   - bv
   - containers
+  - mtl
+  - transformers
   - deepseq
   - megaparsec
   - parser-combinators
@@ -55,12 +61,31 @@ library:
   - filepath
   - z3
   - monad-logger
-  - mtl
+  - scientific
+  - integer-logarithms
+  - witch
+  - strict-containers
+  - hmatrix
 
 executables:
   pomc:
     main:           Main.hs
-    source-dirs:    app
+    source-dirs:    pomc
+    ghc-options:
+    - -rtsopts
+    - -with-rtsopts=-H
+    - -Wall
+    - -O2
+    dependencies:
+    - pomc
+    - filepath
+    - megaparsec
+    - text
+    - containers
+    - cmdargs
+  popacheck:
+    main:           Main.hs
+    source-dirs:    popacheck
     ghc-options:
     - -rtsopts
     - -with-rtsopts=-H

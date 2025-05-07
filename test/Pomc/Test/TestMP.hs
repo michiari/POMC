@@ -1001,6 +1001,7 @@ intTests :: TestTree
 intTests = testGroup "Int Variables Tests" [ u8Arith1Tests
                                            , u8Arith2Tests
                                            , arithCastsTests
+                                           , arithCastsAutoLitTests
                                            , nondetTests
                                            , arrayTests
                                            , arrayLoopTests
@@ -1168,6 +1169,39 @@ main() {
 
   assert4 = b * c == 10240s16;
   assert5 = d / b == -1s8;
+}
+|]
+
+arithCastsAutoLitTests :: TestTree
+arithCastsAutoLitTests = testGroup "ArithCasts with untyped int literals"
+  $ map (makeTestCase arithCastsAutoLitSrc) [ arithCastsAssert1
+                                            , arithCastsAssert2
+                                            , arithCastsAssert3
+                                            , arithCastsAssert4
+                                            , arithCastsAssert5
+                                            ]
+
+arithCastsAutoLitSrc :: T.Text
+arithCastsAutoLitSrc = T.pack [r|
+u8 a, b, f;
+s16 c, d;
+s32 e;
+bool assert1, assert2, assert3, assert4, assert5;
+
+main() {
+  a = 255;
+  b = 10;
+  c = 1024;
+  d = -15;
+
+  assert1 = a + c > 1024;
+  assert2 = b + d < 0;
+
+  f = b - d;
+  assert3 = f == 25;
+
+  assert4 = b * c == 10240;
+  assert5 = d / b == -1;
 }
 |]
 

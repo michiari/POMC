@@ -20,7 +20,7 @@ module Pomc.ModelChecker ( ExplicitOpa(..)
 import Pomc.Prop (Prop(..))
 import Pomc.Prec (Alphabet)
 import Pomc.Potl (Formula(..), getProps)
-import Pomc.Check (makeOpa)
+import Pomc.Check (makeOpa, InitialsComputation(..))
 import Pomc.State (Input, State(..))
 import Pomc.SatUtil (SatState(..))
 import Pomc.Satisfiability (isEmpty, isEmptyOmega)
@@ -99,16 +99,19 @@ modelCheck isOmega phi alphabet inputFilter stateFilter
   pconv
 #endif
   =
-  let -- generate the OPA associated to the negation of the input formula
-    (bitenc, precFunc, phiInitials, phiIsFinal, phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
-      makeOpa (Not phi) isOmega alphabet inputFilter
+  let 
+    encode True = IsOmega
+    encode False = IsFinite
+    -- generate the OPA associated to the negation of the input formula
+    (bitenc, precFunc, phiInitials, (phiIsFinalF, phiIsFinalW), phiDeltaPush, phiDeltaShift, phiDeltaPop, cl) =
+      makeOpa (Not phi) (encode isOmega) alphabet inputFilter
 
     -- compute the cartesian product between the initials of the two opas
     cInitials = cartesian opaInitials phiInitials
     -- new isFinal function for the cartesian product:
     -- both underlying opas must be in an acceptance state
-    cIsFinal (MCState q p) = opaIsFinal q && phiIsFinal T p
-    obe = OE.makeOmegaBitEncoding cl (\(MCState q _) -> opaIsFinal q) phiIsFinal
+    cIsFinal (MCState q p) = opaIsFinal q && phiIsFinalF p
+    obe = OE.makeOmegaBitEncoding cl (\(MCState q _) -> opaIsFinal q) phiIsFinalW
 
     cDeltaPush (MCState q p) b =
       cartesianFilter (stateFilter bitenc) (opaDeltaPush bitenc q b) (phiDeltaPush p Nothing)

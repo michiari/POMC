@@ -1,0 +1,17 @@
+probabilistic query: qualitative;
+//formula = ~ (F (qry And ~ (XNd (call And ~ (XNu obs))) And ~ (PNd (call And ~ (XNu obs)))));
+formula = F (G (~ obs));
+
+program:
+main() {
+  query f();
+}
+
+f() {
+  u1 x, y;
+  x = true {1 : 2} false;
+  if (x) {
+    query f();
+  } else { }
+  observe x;
+}

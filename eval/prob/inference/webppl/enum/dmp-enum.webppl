@@ -1,0 +1,141 @@
+var sampleAction = function(current_player) {
+    
+    // sample a choice from the priori
+    var priori = sample( Infer(
+          {method: 'enumerate'},
+        function () {return action_priori(current_player)}));
+    
+    var another_turn = globalStore.u0 == 0 | globalStore.u1 == 0 | globalStore.u2 == 0 | globalStore.m0 == 0 | globalStore.m1 == 0 | globalStore.m2 == 0 | globalStore.l0 == 0 | globalStore.l1 == 0 | globalStore.l2 == 0;
+
+    globalStore.final_winner = winning_condition();
+
+
+// if nobody has won and there is another turn to play...
+    if (globalStore.final_winner == 0 & another_turn) {    
+        // passing the turn
+        var other_player_choices = sample(Infer(
+              {method: 'enumerate'},
+            function () {return sampleAction(current_player == 1? 2 : 1)}));
+    }
+
+// observing according to the utility of the outcome
+    if (globalStore.final_winner == current_player) {
+        // do nothing
+    } else {
+        if (globalStore.final_winner == 0) {
+            observe(Bernoulli({p : 0.5}), 1);
+        } else {
+            observe(Bernoulli({p : 0.1}), 1);
+        }
+    } 
+
+    return priori;
+}
+
+
+var action_priori = function (current_player) {
+    var sampled_row_choice = sample(Categorical({ps : [1/3, 1/3, 1/3], vs: [0,1,2]}));;
+    var sampled_column_choice = sample(Categorical({ps : [1/3, 1/3, 1/3], vs: [0,1,2]}));;
+
+    if (sampled_row_choice == 0) {
+        if (sampled_column_choice == 0) {
+            condition (globalStore.u0 == 0);
+            globalStore.u0 = current_player;
+        } else {
+            if (sampled_column_choice == 1) {
+                condition (globalStore.u1 == 0);
+                globalStore.u1 = current_player;
+            } else {
+                condition (globalStore.u2 == 0);
+                globalStore.u2 = current_player;
+            }
+        }
+    } else {
+        if (sampled_row_choice == 1) {
+            if (sampled_column_choice == 0) {
+                condition (globalStore.m0 == 0);
+                globalStore.m0 = current_player;
+            } else {
+                if (sampled_column_choice == 1) {
+                    condition (globalStore.m1 == 0);
+                    globalStore.m1 = current_player;
+                } else {
+                    condition (globalStore.m2 == 0);
+                    globalStore.m2 = current_player;
+                }
+            }
+        } else {
+            if (sampled_column_choice == 0) {
+                condition (globalStore.l0 == 0);
+                globalStore.l0 = current_player;
+            } else {
+                if (sampled_column_choice == 1) {
+                    condition (globalStore.l1 == 0);
+                    globalStore.l1 = current_player;
+                } else {
+                    condition (globalStore.l2 == 0);
+                    globalStore.l2 = current_player;
+                }
+            }
+        }
+    }
+    return [sampled_row_choice, sampled_column_choice];
+}
+
+var winning_condition = function() {
+    if (globalStore.u0 == globalStore.u1 & globalStore.u1 == globalStore.u2) {
+        return globalStore.u0;
+    } else {
+        if (globalStore.m0 == globalStore.m1 & globalStore.m1 == globalStore.m2) {
+            return globalStore.m0;
+        } else {
+            if (globalStore.l0 == globalStore.l1 & globalStore.l1 == globalStore.l2) {
+                return globalStore.l0;
+            } else {
+                if (globalStore.u0 == globalStore.m0 & globalStore.m0 == globalStore.l0) {
+                    return globalStore.u0;
+                } else {
+                    if (globalStore.u1 == globalStore.m1 & globalStore.m1 == globalStore.l1) {
+                        return globalStore.u1;
+                    } else {
+                        if (globalStore.u2 == globalStore.m2 & globalStore.m2 == globalStore.l2) {
+                            return globalStore.u2;
+                        } else {
+                            if (globalStore.u0 == globalStore.m1 & globalStore.m1 == globalStore.l2) {
+                                return globalStore.u0;
+                            } else {
+                                if (globalStore.u2 == globalStore.m1 & globalStore.m1 == globalStore.l0) {
+                                    return globalStore.u2;
+                                } else {
+                                    return 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+var main = function() {
+    globalStore.u0 = 0;
+    globalStore.u1 = 1;
+    globalStore.u2 = 0;
+    globalStore.m0 = 1;
+    globalStore.m1 = 2;
+    globalStore.m2 = 2;
+    globalStore.l0 = 0;
+    globalStore.l1 = 1;
+    globalStore.l2 = 0;
+    globalStore.final_winner = 0;
+    var plan = sampleAction(2);
+    return plan;
+}
+
+
+var dist = Infer(
+  {method: 'enumerate'},
+  main);
+
+console.log(dist.getDist());
