@@ -78,7 +78,6 @@ executables:
     - -O2
     dependencies:
     - pomc
-    - filepath
     - megaparsec
     - text
     - containers

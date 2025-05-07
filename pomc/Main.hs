@@ -14,19 +14,16 @@ import Pomc.ModelChecker (modelCheckExplicitGen, modelCheckProgram, countStates)
 import qualified Pomc.Z3Encoding as Z3 ( SMTOpts(..), defaultSmtOpts
                                        , modelCheckProgram, SMTResult(..), SMTStatus(..)
                                        )
-import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram, exportMarkovChain)
-import Pomc.Prob.ProbUtils (Solver(..), Stats(..))
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), preprocess)
 import Pomc.Prec (Prec(..))
 import Pomc.Prop (Prop(..))
-import Pomc.TimeUtils (timeAction, timeFunApp, timeToString)
-import Pomc.LogUtils (LogLevel(..), selectLogVerbosity)
+import Pomc.TimeUtils (timeFunApp, timeToString)
+import Pomc.LogUtils (LogLevel(..))
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat)
 
 import System.Exit
-import System.FilePath
 import System.Console.CmdArgs hiding (explicit)
 
 import Text.Megaparsec
@@ -47,9 +44,6 @@ data PomcArgs = PomcArgs
   , explicit :: Bool
   , smt      :: Word64
   , smt_use_array_theory :: Bool
-  , noovi :: Bool
-  , newton :: Bool
-  , maxDepth :: Int
   , verbose :: Int
   , fileName :: FilePath
   } deriving (Data,Typeable,Show,Eq)
@@ -61,9 +55,6 @@ pomcArgs = PomcArgs
   , explicit = False &= help "Use the explicit-state model checking engine (default)"
   , smt = 0 &= help "Use the SMT-based model checking engine, specifying the maximum trace length"
   , smt_use_array_theory = False &= help "Encode arrays using the SMT theory of arrays (generally slower) instead of uninterpreted functions. Defaults to false."
-  , noovi = False &= help "Use z3 instead of Optimistic Value Iteration for probabilistic model checking"
-  , newton = False &= help "Use the Newton method to iterate fixpoint equations for probabilistic model checking"
-  , maxDepth = 100 &= help "Max stack depth when exporting a Markov Chain representation of the input program with unfolded stack (default = 100)"
   , verbose = 0 &= help "Print more info about model checking progress. 0 = no logging (default), 1 = show info, 2 = debug mode"
   , fileName = def &= args &= typFile -- &= help "Input file"
   }
@@ -82,10 +73,6 @@ main = do
     $ die "--explicit and --smt cannot be specified together."
   let isOmega = not $ finite pargs
       isExplicit = smt pargs == 0
-      probSolver | noovi pargs = SMTWithHints
-                 | newton pargs = OVINewton
-                 | otherwise = OVIGS
-      depth = maxDepth pargs
       fname = fileName pargs
       logLevel = case verbose pargs of
         0 -> Nothing
@@ -114,14 +101,10 @@ main = do
           return $ sum stringTimes + sum mcTimes
       | otherwise -> putStrLn "String and OPA checking not supported in SMT mode."
                      >> return 0
-
     ProgCheckRequest phis prog -> sum <$> forM phis
       (runProg isOmega isExplicit logLevel (smt pargs) (smt_use_array_theory pargs) prog)
 
-    ProbTermRequest _ prog -> runProbTerm logLevel probSolver prog
-    ProbCheckRequest phi prog False -> runQualProbCheck logLevel probSolver phi prog
-    ProbCheckRequest phi prog True -> runQuantProbCheck logLevel probSolver phi prog
-    ProbUnfoldRequest phi prog -> runUnfoldAndExport logLevel phi prog depth fname
+    _ -> die "POMC only supports non-probabilistic queries. Please use the POPACheck executable for probabilistic model checking."
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
@@ -174,95 +157,7 @@ main = do
                         ]
       return time
     runProg True False _ _ _ _ _ =
-      error "Infinite-word model checking not yet supported in SMT mode."
-
-    runProbTerm logLevel solver prog = do
-      putStr (concat [ "\nProbabilistic Termination Checking\nQuery: ApproxSingleQuery ", show solver
-                     , "\nResult:  "
-                     ])
-      ((tres, stats, _), time) <- timeAction fst3 $ selectLogVerbosity logLevel
-        $ programTermination solver prog
-      putStr $ show tres
-      putStrLn (concat [ "\nElapsed time: "
-                      , timeToString time, " (total), "
-                      , showEFloat (Just 4) (upperBoundTime stats) " s (upper bounds), "
-                      , showEFloat (Just 4) (pastTime stats) " s (PAST certificates), "
-                      , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis)."
-                      , "\nInput pOPA state count: ", show $ popaStatesCount stats
-                      , "\nSupport graph size: ", show $ suppGraphLen stats
-                      , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
-                      , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
-                      , "\nSCC count in the support graph: ", show $ sccCount stats
-                      , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-                      , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
-                      ])
-      return time
-
-    runQualProbCheck logLevel solver phi prog = do
-      putStr (concat [ "\nQualitative Probabilistic Model Checking\nQuery: ", show phi
-                     , "\nResult:  "
-                     ])
-      ((tres, stats, _), time) <- timeAction fst3 $ selectLogVerbosity logLevel
-        $ qualitativeModelCheckProgram solver phi prog
-      putStr $ show tres
-      putStrLn (concat [ "\nElapsed time: "
-                       , timeToString time, " (total), "
-                       , showEFloat (Just 4) (upperBoundTime stats) " s (upper bounds), "
-                       , showEFloat (Just 4) (pastTime stats) " s (PAST certificates), "
-                       , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis)."
-                       , "\nInput pOPA state count: ", show $ popaStatesCount stats
-                       , "\nSupport graph size: ", show $ suppGraphLen stats
-                       , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
-                       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
-                       , "\nSCC count in the support graph: ", show $ sccCount stats
-                       , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-                       , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
-                       , "\nSize of graph G: ", show $ gGraphSize stats
-                       ])
-      return time
-
-    runQuantProbCheck logLevel solver phi prog = do
-      putStr (concat [ "\nQuantitative Probabilistic Model Checking\nQuery: ", show phi
-                     , "\nResult:  "
-                     ])
-      ((tres@(lb,ub), stats, _), time) <- timeAction fst3 $ selectLogVerbosity logLevel
-        $ quantitativeModelCheckProgram solver phi prog
-      putStr $ show tres
-      putStr ("\nFloating Point Result:  " ++ show (fromRational lb, fromRational ub))
-      putStrLn (concat [ "\nElapsed time: "
-                       , timeToString time, " (total), "
-                       , showEFloat (Just 4) (upperBoundTime stats) " s (upper bounds), "
-                       , showEFloat (Just 4) (pastTime stats) " s (PAST certificates), "
-                       , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis),"
-                       , showEFloat (Just 4) (quantWeightTime stats) " s (upper bounds with OVI for quant MC),"
-                       , showEFloat (Just 4) (quantSolTime stats) " s (eq system for quant MC)."
-                       , "\nInput pOPA state count: ", show $ popaStatesCount stats
-                       , "\nSupport graph size: ", show $ suppGraphLen stats
-                       , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
-                       , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
-                       , "\nSCC count in the support graph: ", show $ sccCount stats
-                       , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-                       , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
-                       , "\nSize of graph G: ", show $ gGraphSize stats
-                       --
-                       , "\nEquations solved for quant mc: ", show $ equationsCountQuant stats
-                       , "\nNon-trivial equations solved for quant mc: ", show $ nonTrivialEquationsCountQuant stats
-                       , "\nSCC count in quant mc weight computation: ", show $ sccCountQuant stats
-                       , "\nSize of the largest SCC in quant mc weight computation: ", show $ largestSCCSemiconfsCountQuant stats
-                       , "\nLargest number of non trivial equations in an SCC in quant mc weight computation: ", show $ largestSCCNonTrivialEqsCountQuant stats
-                       ])
-      return time
-
-    runUnfoldAndExport logLevel phi prog depth fname = do
-      putStr (concat [ "\nUnfolding the stack into this model and exporting a Markov Chain [max stack depth = ", show depth, "]",
-                       "\nQuery: ", show phi
-                     ])
-      (_, time) <- timeAction id $ selectLogVerbosity logLevel
-        $ exportMarkovChain phi prog depth (replaceExtension fname ".tra") (replaceExtension fname ".lab")
-      putStr "\nFiles exported correctly."
-      return time
-
-    fst3 (a, _, _) = a
+      error "Infinite-word model checking not yet supported in SMT mode. Please run with --finite."
 
     addEndPrec precRels = noEndPR
                           ++ map (\p -> (End, p, Yield)) sl
