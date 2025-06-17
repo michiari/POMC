@@ -22,9 +22,9 @@
 
 \input{macros}
 
-\title{POMC User's Guide}
+\title{OPPAS User's Guide}
 \author{Michele Chiari, Francesco Pontiggia}
-\date{28.04.2025}
+\date{17.06.2025}
 
 \begin{document}
 
@@ -32,7 +32,7 @@
 
 
 \begin{abstract}
-POMC is tool suite that includes two tools: POMC and POPACheck.
+OPPAS (Operator-Precedence Program Analysis Suite) is tool suite that includes two tools: POMC and POPACheck.
 
 POMC is a model checker that models procedural programs as pushdown automata,
 and checks them against formulas of Precedence-Oriented Temporal Logic (POTL).
@@ -41,7 +41,8 @@ POPACheck is an extension of POMC towards probabilistic recursive programs, mode
 It supports model checking of Linear Temporal Logic (LTL), and a fragment of POTL, called POTLf$\chain$.
 Given a pOPA and a formula in either LTL or POTLf$\chain$, POPACheck can solve both qualitative and quantitative model check queries.
 Additionally, it can compute (approximately) the termination probability of the pOPA.
-Computing termination probabilities is a central problem in probabilistic pushdown model checking, preliminary to any kind of analysis, and amounts at computing the Least Fixed Point solution of a Positive Polynomial System (PPS).
+Computing termination probabilities is a central problem in probabilistic pushdown model checking,
+ preliminary to any kind of analysis, and amounts at computing the Least Fixed Point solution of a Positive Polynomial System (PPS).
 
 This document is a reference guide to their input and output formats,
 and also describes at a high level its architecture and source code.
@@ -52,7 +53,8 @@ and also describes at a high level its architecture and source code.
 \subsection{POTL}
 
 Precedence-Oriented Temporal Logic~(POTL)~\cite{ChiariMP21,ChiariMP21b} is an established temporal
-logic formalism for expressing many fundamental properties on programs with recursive procedures, such as partial and total correctness, and Hoare-style pre/post conditions.
+logic formalism for expressing many fundamental properties on programs with recursive procedures,
+such as partial and total correctness, and Hoare-style pre/post conditions.
 POTL is based on the family of Operator Precedence Languages (OPL)~\cite{MP18},
 a subclass of deterministic context-free languages.
 POTL is strictly more expressive than LTL and other temporal logics based
@@ -128,7 +130,7 @@ Finally, Section~\ref{sec:sources} contains a high-level description of the sour
 \section{Quick-Start Guide}
 \label{sec:quick-start}
 
-POPACheck, just like POMC, has been developed in the Haskell programming language,
+OPPAS has been developed in the Haskell programming language,
 and packaged with the Haskell Tool Stack\footnote{\url{https://www.haskellstack.org/}}.
 
 POPACheck has a few dependencies:
@@ -142,15 +144,14 @@ sudo apt install libz3-dev libgsl0-dev liblapack-dev libatlas-base-dev
 \end{verbatim}
 
 \href{https://github.com/haskell-numerics/hmatrix/blob/master/INSTALL.md}{This link} contains some information on how to install hmatrix dependencies on other systems.
-Haskell bindings to Z3 are hosted on the Github repository \href{https://github.com/michiari/haskell-z3}{haskell-z3}.
+Haskell bindings to Z3 are hosted on the GitHub repository \href{https://github.com/michiari/haskell-z3}{haskell-z3}.
 
 The Z3 library requires special care, because some features used by POPACheck are buggy in older versions.
-The current version of the tool (29.04.2025) has been fully tested with Z3 version 4.8.12 and Ubuntu 24.04/10.
-Note that version 4.8.12 is the one installed by default by the APT package index on Ubuntu 24.04/10.
-On the other hand, we experienced some issues on Ubuntu 22.04 with the default version (still 4.8.12), where Z3 sometimes returns error \verb|Z3: invalid argument|.
-Please report to the POMC team in case you experience some issue.
+The current version of the tool (3.0.0) has been fully tested with Z3 versions 4.11.2 and 4.14.1 on Ubuntu 24.10 and 25.04.
+We experienced some issues on with other versions of Z3 (e.g., 4.8.12), where Z3 sometimes returns error \verb|Z3: invalid argument|.
+Please report to the OPPAS development team in case you experience issues.
 
-After having resolved the dependencies, the POMC suite can be built from sources by typing the following commands in a shell:
+After having resolved the dependencies, the OPPAS suite can be built from sources by typing the following commands in a shell:
 \begin{verbatim}
 $ cd ~/path/to/POPACheck-sources
 $ stack setup

@@ -1,11 +1,13 @@
-# POMC Model Checking Tool Suite
+# OPPAS
 [![Release](https://img.shields.io/github/v/release/michiari/POMC?include_prereleases)](https://github.com/michiari/POMC/releases)
 [![License](https://img.shields.io/github/license/michiari/POMC)](COPYING.md)
 
-This project contains two tools: POMC and POPACheck
+*Operator-Precedence Program Analysis Suite*
+
+OPPAS contains two tools: POMC and POPACheck.
 
 
-## POMC
+## POMC 🔎
 
 POMC is a model-checking tool for verifying procedural programs with exceptions against POTL (Precedence Oriented Temporal Logic) specifications.
 POTL is a temporal logic capable of expressing context-free specifications, particularly well-suited for verifying procedural programs with exceptions.
@@ -17,7 +19,7 @@ It can express properties such as:
 - Exception safety
 
 
-## POPACheck
+## POPACheck 🎲
 
 POAPACheck is a model-checking tool for recursive probabilistic programs formally modelled as probabilistic Operator Precedence Automata (pOPA), a subclass of probabilistic Pushdown Automata.
 POPACheck support model checking of the temporal logics LTL and a fragment of POTL.
@@ -26,7 +28,7 @@ POPACheck support model checking of the temporal logics LTL and a fragment of PO
 For usage info, including input/output formats, see the [User Guide](docs/guide.pdf) and related [Publications](#publications).
 
 
-## Build
+## Build 🏗️
 
 The suite has been packaged with the [Haskell Tool Stack](https://www.haskellstack.org/).
 
@@ -59,10 +61,10 @@ stack exec -- popacheck file.pomc
 
 For more info, please refer to the User's Guide in `docs`.
 We tested the suite mostly on Ubuntu 24.04/24.10.
-It may not work on other OS's, and issues have been reported on Ubuntu 22.04.
+Please let us know if you have issues running it on other OSes.
 
 
-## Publications
+## Publications 📖
 
 Main reference for the explicit-state model checker (`pomc --explicit`):
 
