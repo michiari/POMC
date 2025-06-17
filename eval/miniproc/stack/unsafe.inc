@@ -15,7 +15,7 @@ main() {{
   Stack::pop(a);
 
   modified = false;
-  Stack::push(42u{width:d});
+  Stack::push(42);
 
   modified = false;
   // T::Tcp();
@@ -25,8 +25,8 @@ main() {{
 }}
 
 Stack::Stack() {{
-  vsize = 2u{width:d};
-  vused = 0u{width:d};
+  vsize = 2;
+  vused = 0;
   T::operator_new(vsize);
 }}
 
@@ -48,21 +48,21 @@ Stack::operator=() {{
 Stack::push(u{width:d} t) {{
   u{width:d} x;
   if (vused == vsize) {{
-    Stack::NewCopy(vsize, vsize + 2u{width:d});
+    Stack::NewCopy(vsize, vsize + 2);
     T::operator_delete();
-    vsize = vsize + 2u{width:d};
+    vsize = vsize + 2;
   }} else {{}}
   T::operator=(t, x);
   v[vused] = x; // TODO: allow array access in ref parameter
   modified = true;
-  vused = vused + 1u{width:d};
+  vused = vused + 1;
 }}
 
 Stack::pop(u{width:d} &topv) {{
   if (vused == 0u{width:d}) {{
     throw;
   }} else {{
-    vused = vused - 1u{width:d};
+    vused = vused - 1;
     modified = true;
     T::Tcp(v[vused], topv);
   }}

@@ -15,7 +15,7 @@ main() {{
   Stack::pop();
 
   modified = false;
-  Stack::push(42u{width:d});
+  Stack::push(42);
 
   // modified = false;
   // T::Tcp();
@@ -42,7 +42,7 @@ StackImpl::swap() {{
 }}
 
 Stack::Stack() {{
-  StackImpl::StackImpl(2u{width:d});
+  StackImpl::StackImpl(2);
 }}
 
 Stack::Stackcp() {{
@@ -73,7 +73,7 @@ Stack::push(u{width:d} t) {{
       i = i + 1u{width:d};
     }}
     oldvused = vused;
-    StackImpl::StackImpl(vsize + 2u{width:d});
+    StackImpl::StackImpl(vsize + 2);
     while (vused < oldvused) {{
       Stack::push(oldv[vused]);
       vused = vused + 1u{width:d};
