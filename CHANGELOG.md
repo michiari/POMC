@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.0.0 (TBD)
+
+- Add POPACheck
+- Support for probabilistic pushdown model checking
+- Support for MiniProb inputs (MiniProc + probabilistic assignments and observations)
+
 ## v2.2.0 (2024/08/02)
 
 - Add SMT-based model checking engine (only for finite-word model checking)

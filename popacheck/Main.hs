@@ -40,7 +40,7 @@ popacheckArgs = POPACheckArgs
   , maxDepth = 100 &= help "Max stack depth when exporting a Markov Chain representation of the input program with unfolded stack (default = 100) [test feature only]"
   , fileName = def &= args &= typFile -- &= help "Input file"
   }
-  &= summary "POPACheck v2.9.0"
+  &= summary "POPACheck v3.0.0"
   &= details [ "Only one input file can be specified." ]
 
 main :: IO ()

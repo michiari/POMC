@@ -2,7 +2,7 @@
 [![Release](https://img.shields.io/github/v/release/michiari/POMC?include_prereleases)](https://github.com/michiari/POMC/releases)
 [![License](https://img.shields.io/github/license/michiari/POMC)](COPYING.md)
 
-*Operator-Precedence Program Analysis Suite*
+**Operator-Precedence Program Analysis Suite**
 
 OPPAS contains two tools: POMC and POPACheck.
 

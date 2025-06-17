@@ -58,7 +58,7 @@ pomcArgs = PomcArgs
   , verbose = 0 &= help "Print more info about model checking progress. 0 = no logging (default), 1 = show info, 2 = debug mode"
   , fileName = def &= args &= typFile -- &= help "Input file"
   }
-  &= summary "POMC v2.9.0"
+  &= summary "POMC v3.0.0"
   &= details [ "Only one input file can be specified."
              , "--finite and --infinite cannot be specified together."
              , "--explicit and --smt cannot be specified together."
