@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Test.TestProbTermination
-   Copyright   : 2024 Francesco Pontiggia and Michele Chiari
+   Copyright   : 2024-2025 Francesco Pontiggia and Michele Chiari
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}

@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.IOIOSetMap
-   Copyright   : 2024 Francesco Pontiggia
+   Copyright   : 2024-2025 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}

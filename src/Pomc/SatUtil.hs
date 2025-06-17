@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.SatUtil
-   Copyright   : 2021-2024 Michele Chiari and Francesco Pontiggia
+   Copyright   : 2021-2025 Michele Chiari and Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}

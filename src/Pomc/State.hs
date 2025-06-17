@@ -2,7 +2,7 @@
 
 {- |
    Module      : Pomc.State
-   Copyright   : 2021-2024 Francesco Pontiggia
+   Copyright   : 2021-2025 Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}

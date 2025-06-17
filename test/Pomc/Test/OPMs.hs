@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Test.OPMs
-   Copyright   : 2020-2024 Davide Bergamaschi, Michele Chiari
+   Copyright   : 2020-2025 Davide Bergamaschi, Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

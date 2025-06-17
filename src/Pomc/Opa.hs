@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Opa
-   Copyright   : 2020-2024 Davide Bergamaschi and Michele Chiari
+   Copyright   : 2020-2025 Davide Bergamaschi and Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}

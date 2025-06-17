@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Satisfiability
-   Copyright   : 2020-2024 Michele Chiari, Francesco Pontiggia
+   Copyright   : 2020-2025 Michele Chiari, Francesco Pontiggia
    License     : MIT
    Maintainer  : Michele Chiari
 -}

@@ -1,6 +1,6 @@
 {- |
    Module      : Bench
-   Copyright   : 2021-24 Michele Chiari
+   Copyright   : 2021-2025 Michele Chiari
    License     : MIT
    Maintainer  : Michele Chiari
 -}
