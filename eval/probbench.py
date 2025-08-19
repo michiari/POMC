@@ -23,7 +23,9 @@ sccs_pattern = re.compile(r"SCC count in the support graph: ([0-9]+)")
 maxscc_pattern = re.compile(r"Size of the largest SCC in the support graph: ([0-9]+)")
 maxeqs_pattern = re.compile(r"Largest number of non trivial equations in an SCC in the Support Graph: ([0-9]+)")
 
-g_size_pattern = re.compile(r"Size of graph G: ([0-9]+)" )
+g_size_pattern_qual = re.compile(r"Size of (the explored portion of) graph G:  ([0-9]+)" )
+g_size_pattern_quant = re.compile(r"Size of graph G:  ([0-9]+)" )
+
 
 quant_eqs_pattern = re.compile(r"Equations solved for quant mc: ([0-9]+)")
 non_trivial_quant_eqs_pattern = re.compile(r"Non-trivial equations solved for quant mc: ([0-9]+)")
@@ -87,7 +89,7 @@ def exec_bench(fname, args):
             '-RTS'
         ] + \
         (['--noovi'] if args.noovi else []) + \
-        (['--newton'] if args.newton else []),
+        (['--gauss'] if args.gauss else []),
         capture_output=True
     )
     raw_stdout = raw_res.stdout.decode('utf-8')
@@ -110,7 +112,9 @@ def exec_bench(fname, args):
     maxscc_match = maxscc_pattern.search(raw_out)
     maxeqs_match = maxeqs_pattern.search(raw_out)
 
-    g_size_match = g_size_pattern.search(raw_out)
+    g_size_match_qual = g_size_pattern_qual.search(raw_out)
+    g_size_match_quant = g_size_pattern_quant.search(raw_out)
+
 
     quant_eqs_match = quant_eqs_pattern.search(raw_out)
     non_trivial_quant_eqs_match = non_trivial_quant_eqs_pattern.search(raw_out)
@@ -143,7 +147,7 @@ def exec_bench(fname, args):
         'sccs': int(check_match(sccs_match)),
         'maxscc': int(check_match(maxscc_match)),
         'maxeqs': int(check_match(maxeqs_match)),
-        'g_size': int(check_match(g_size_match)),
+        'g_size': int(check_match(g_size_match_qual, 1, check_match(g_size_match_quant))),
         'quant_eqs': int(check_match(quant_eqs_match)),
         'non_trivial_quant_eqs': int(check_match(non_trivial_quant_eqs_match)),
         'quant_sccs': int(check_match(quant_sccs_match)),

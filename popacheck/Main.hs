@@ -136,7 +136,7 @@ main = do
              , "\nSCC count in the support graph: ", show $ sccCount stats
              , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
              , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
-             , "\nSize of graph G: ", show $ gGraphSize stats
+             , "\nSize of (the explored portion of) graph G: ", show $ gGraphSize stats -- we may abort exploration if we have already established True.
              ]
         else putChar '\n'
       return time
