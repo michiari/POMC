@@ -133,11 +133,11 @@ data GGlobals s pstate = GGlobals
   , bStack     :: GStack s Int
   , cGabow     :: STRef s Int
   -- bottom SCCs of subgraph H
-  -- in qualitative model checking, we store only those reachable from a not phi initial state
+  -- in qualitative model checking, we store only those reachable from an initial state where input formula phi does not hold
   , bottomHSCCs  :: STRef s (IntMap GraphNodesSCC)
   }
 
--- requires: the initial semiconfiguration has id 0
+-- requires: the initial semiconfiguration has id 0, and it is not reachable from itself
 -- pstate: a parametric type for states of the input popa
 qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate, Show pstate)
   => DeltaWrapper pstate
@@ -270,7 +270,8 @@ reachPush gGlobals delta suppGraph fromPhi isPending sIdMap (gn, p) =
     fSuppAugStates <- if not . null $ fSuppGns
                         then GR.reachableStates (grGlobals gGlobals) cDelta leftContext
                         else return []
-    --unless (all (consistentFilter. fst) fSuppAugStates) $ error "a support Augmented State is inconsistent"
+    -- a sanity check
+    -- unless (all (consistentFilter. fst) fSuppAugStates) $ error "a support Augmented State is inconsistent"
     let fSuppGnodes =
           [(gn1, p1, suppSatSet) |
             (_, gn1) <- fSuppGns
@@ -302,7 +303,6 @@ reachShift gGlobals delta suppGraph fromPhi isPending sIdMap (gn, p) =
     fromId <- fromJust <$> BH.lookup (ggraphMap gGlobals) (gnId gn, p)
     reachEdges gGlobals delta suppGraph fromPhi isPending sIdMap fromId fGnodes []
 
--- decomposing an edge to a new node
 reachEdges :: (Ord pstate, Hashable pstate, Show pstate)
   => GGlobals s pstate -- global variables of the algorithm
   -> DeltaWrapper pstate
@@ -310,7 +310,7 @@ reachEdges :: (Ord pstate, Hashable pstate, Show pstate)
   -> Bool
   -> (Int -> Bool) -- is a semiconf pending?
   -> StrictMap.Map pstate Int
-  -> Int-- id of current node
+  -> Int -- id of current node
   -> [(Prob, GraphNode pstate, State)] -- internal(push/shift) edges
   -> [(GraphNode pstate, State, ProbEncodedSet)] -- support edges
   -> ST s IntSet
@@ -379,7 +379,6 @@ dfs suppGraph gGlobals delta isPending fromPhi sIdMap gnode =
           $ "a pop transition cannot be reached in the augmented graph of pending semiconfs, as it terminates almost surely" ++ show gn
 
         | otherwise = return IntSet.empty
-
   in do
     descendantSCCs <- buildCases
     if fromPhi
@@ -462,14 +461,14 @@ deleteDescendants gGlobals sccSemiconfs descendants = do
   -- returning filtered descendants
   (\m -> IntSet.filter (`StrictIntMap.member` m) descendants) <$> readSTRef (bottomHSCCs gGlobals)
 
--- first necessary condition for an SCC to be in H
+-- first necessary condition for an SCC of G to be a BSCC of H from [Etessami and Yannakakis, TOCL 2012, Theo 30]
 isBottom :: SupportGraph pstate -> IntSet -> (Int -> Bool) -> Bool
 isBottom suppGraph suppGraphSCC isPending =
   let gns = map (suppGraph !) (IntSet.toList suppGraphSCC)
       bottomCheck = all (\e -> IntSet.member (to e) suppGraphSCC) . Set.filter (isPending . to)
   in all (\gn -> (bottomCheck . internalEdges) gn && (bottomCheck . supportEdges) gn) gns
 
--- second necessary condition for an SCC to be in H
+-- third necessary condition for an SCC of G to be a BSCC of H from [Etessami and Yannakakis, TOCL 2012, Theo 30]
 isAccepting :: GGlobals s pstate -> DeltaWrapper pstate -> [HEdge] -> ST s Bool
 isAccepting gGlobals delta sccEdges = do
   gs <- mapM (CM.lookup (gGraph gGlobals) . toG) sccEdges
@@ -478,6 +477,8 @@ isAccepting gGlobals delta sccEdges = do
       maybeSupport (SupportAndInternal _ _ sss) = Just sss
       acceptanceBitVector = PE.unions $ map (PE.encodeSatState (proBitenc delta) . phiNode) gs ++ mapMaybe maybeSupport sccEdges
   return $ PE.isSatisfying acceptanceBitVector
+
+-- condition (2) from [Etessami and Yannakakis, TOCL 2012, Theo 30] is checked via the topological decomposition
 --
 -- end helpers for the construction of subgraph H
 
@@ -527,13 +528,13 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
       phiInitialsFilter s = iniLabel == E.extractInput (bitenc delta) (current s)
       initialStates = filter phiInitialsFilter phiInitials
 
-  -- explore nodes where phi does NOT hold
   phiInitialGNodesIdxs <- catMaybes <$> forM initialStates (\s -> liftSTtoIO $ do
       -- create a new GNode 
     newId <-  freshPosId (idSeq gGlobals)
     BH.insert (ggraphMap gGlobals) (gnId iniGn, s) newId
     let node = GNode {gId= newId, graphNode = gnId iniGn, phiNode = s, edges = Set.empty, iValue = 0, descSccs = IntSet.empty}
     CM.insert (gGraph gGlobals) newId node
+    -- we always set fromPhi to False because we want to keep track of ALL BSCCs of subgraph H, contrarily to qualitative mc.
     addtoPath gGlobals node (Internal 0 newId) >>= dfs suppGraph gGlobals delta (pendVector V.!) False sIdMap >> return ()
     if isPhiState s
       then return (Just newId)
@@ -557,7 +558,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
   -- logDebugN bottomString
 
   -- computing the probability of satisfying the temporal formula
-  let isInH g = not . IntSet.null . IntSet.intersection hSCCs $ descSccs g
+  let isInH = not . IntSet.null . IntSet.intersection hSCCs . descSccs
       genPendProbs bounds = V.generate (V.length suppGraph) (\idx -> 1 - StrictIntMap.findWithDefault 0 idx boundsMap)
         where boundsMap = StrictIntMap.fromListWith (+) . map (first fst) . Map.toList $ bounds
 
@@ -581,7 +582,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
       liftIO $ HT.mutate newlGroupedMap (graphNode g) (insert newlVar)
       liftIO $ HT.mutate newuGroupedMap (graphNode g) (insert newuVar)
 
-    logInfoN "Generated z3 vars for encoding (2)"
+    logInfoN "Generated z3 vars for encoding (2) from [Etessami and Yannakakis, TOCL 2012,Lemmas 34 and 35]"
 
     -- preparing the global variables for the computation of the fractions f
     freezedSuppEnds <- liftIO $ GR.freezeSuppEnds (grGlobals gGlobals)
@@ -589,7 +590,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
     lenHashtables <- liftSTtoIO $ GR.nrSemiconfs (grGlobals gGlobals)
     globals <- GR.newWeightedGRobals lenHashtables stats
 
-    logInfoN "Encoding conditions (2b) and (2c)"
+    logInfoN "Encoding conditions (2b) and (2c) from [Etessami and Yannakakis, TOCL 2012,Lemmas 34 and 35]"
     -- encodings (2b) and (2c)
     encs1 <- concat <$> mapM
       (\gNode -> encode
@@ -598,7 +599,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
           pendProbsLowerBounds pendProbsUpperBounds sIdMap (useNewton solv)
       ) (V.filter isInH freezedGGraph)
 
-    logInfoN "Encoding conditions (2a)"
+    logInfoN "Encoding conditions (2a) from [Etessami and Yannakakis, TOCL 2012,Lemmas 34 and 35]"
     -- encoding (2a) for lower bounds
     groupedlMaptoList <- liftIO (HT.toList newlGroupedMap)
     encs2 <- foldM (\acc (_, vList) -> do
@@ -781,14 +782,16 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
               | (Internal _ _) <- e = encodePushTrans
               | (Support _ _) <- e = encodeSupportTrans
         cases
-        -- end pushEnc
   in do
-    -- a little sanity check
+    -- a sanity check
     --unless (graphNode g == gnId gn) $ error "encodePush corresponding to non consistent pair GNode - graphNode"
     lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
     uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
     if trivialSCC edgesInH
       then do
+        -- this would give an equation x = x, which has necessarily solution 1,
+        -- otherwise it would violate uniqueness of solution
+        -- this constraint is helpful to deal with bounds and approximations
         lEqOne <- mkEq lvar =<< mkRational (1 :: Prob)
         uEqOne <- mkEq uvar =<< mkRational (1 :: Prob)
         return [lEqOne, uEqOne]
@@ -821,18 +824,16 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g pendProbsLB pendProbsUB =
       shiftEnc (Internal prob_ toIdx) = do
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
         touVar <- liftIO $ fromJust <$> HT.lookup uTypVarMap toIdx
-        -- a small trick to be refactored later
         let destG = gGraph V.! toIdx
         lT <- encodeTransition [prob_, pendProbsLB V.! (graphNode destG)] [pendProbsUB V.! (graphNode g)] tolVar
         uT <- encodeTransition [prob_, pendProbsUB V.! (graphNode destG)] [pendProbsLB V.! (graphNode g)] touVar
         return (lT, uT)
 
   in do
-  -- a little sanity check
+  -- a sanity check
   --unless (graphNode g == gnId gn) $ error "encodeShift encountered a non consistent pair GNode - graphNode"
   lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
   uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
-  -- it's greater than zero for sure!
   if trivialSCC edgesInH
     then do
       lEqOne <- mkEq lvar =<< mkRational (1 :: Prob)
