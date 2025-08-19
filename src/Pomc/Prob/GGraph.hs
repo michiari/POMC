@@ -656,12 +656,13 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
 -- every node of graph H is associated with a Z3 var
 type TypicalVarMap = HT.BasicHashTable Int AST
 
-encodeTransition :: MonadZ3 z3 => [Prob] -> [Prob] -> AST -> z3 AST
-encodeTransition probsMul probsDiv toVar = do
-  astProbsMul <- mapM mkRational probsMul
-  astProbsDiv <- mkAdd =<< mapM mkRational probsDiv
-  numerator <- mkMul $ astProbsMul ++ [toVar]
-  mkDiv numerator astProbsDiv
+encodeTransition :: MonadZ3 z3 => Prob -> Prob -> Prob -> AST -> z3 AST
+encodeTransition prob_ num den toVar = do
+  rtNum <- mkRational num
+  rtProb_ <- mkRational prob_
+  rtDen <- mkRational den
+  mul <- mkMul $ rtProb_:rtNum:[toVar]
+  mkDiv mul rtDen
 
 encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
       => GR.WeightedGRobals (AugState pstate)
@@ -726,8 +727,8 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
         let destG = gGraph ! toIdx
             -- push edges in the support Graph
             encodePushTrans = do
-              lT <- encodeTransition [probInt e, pendProbsLB ! (graphNode destG)] [pendProbsUB V.! (graphNode g)] tolVar
-              uT <- encodeTransition [probInt e, pendProbsUB ! (graphNode destG)] [pendProbsLB V.! (graphNode g)] touVar
+              lT <- encodeTransition (probInt e) (pendProbsLB ! (graphNode destG)) (pendProbsUB V.! (graphNode g)) tolVar
+              uT <- encodeTransition (probInt e) (pendProbsUB ! (graphNode destG)) (pendProbsLB V.! (graphNode g)) touVar
               return [(lT, uT)]
             -- supports edges in the Support Graph
             supportGn = suppGraph V.! (graphNode destG)
@@ -771,8 +772,8 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
               logInfoN $ "encountered a support transition - launching call to inner computation of fraction f from H node "
                 ++ show (gId g) ++ " to H node " ++ show toIdx
               (lW, uW) <- GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext useNewton
-              lT <- encodeTransition [lW, pendProbsLB V.! (graphNode destG)] [pendProbsUB V.! (graphNode g)] tolVar
-              uT <- encodeTransition [uW, pendProbsUB V.! (graphNode destG)] [pendProbsLB V.! (graphNode g)] touVar
+              lT <- encodeTransition (lW) (pendProbsLB V.! (graphNode destG)) (pendProbsUB V.! (graphNode g)) tolVar
+              uT <- encodeTransition (uW) (pendProbsUB V.! (graphNode destG)) (pendProbsLB V.! (graphNode g)) touVar
               return [(lT, uT)]
             cases
               | (SupportAndInternal {}) <- e = do
@@ -825,8 +826,8 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g pendProbsLB pendProbsUB =
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
         touVar <- liftIO $ fromJust <$> HT.lookup uTypVarMap toIdx
         let destG = gGraph V.! toIdx
-        lT <- encodeTransition [prob_, pendProbsLB V.! (graphNode destG)] [pendProbsUB V.! (graphNode g)] tolVar
-        uT <- encodeTransition [prob_, pendProbsUB V.! (graphNode destG)] [pendProbsLB V.! (graphNode g)] touVar
+        lT <- encodeTransition (prob_) (pendProbsLB V.! (graphNode destG)) (pendProbsUB V.! (graphNode g)) tolVar
+        uT <- encodeTransition (prob_) (pendProbsUB V.! (graphNode destG)) (pendProbsLB V.! (graphNode g)) touVar
         return (lT, uT)
 
   in do
