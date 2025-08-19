@@ -95,21 +95,21 @@ lookup :: IORef (IOMapMap v) -> Int -> IO [(Int,v)]
 lookup mmref idx = do
   mm <- readIORef mmref
   if idx < MV.length mm
-    then Map.toList <$> MV.read mm idx
+    then Map.toList <$> MV.unsafeRead mm idx
     else return []
 
 lookupKeys :: IORef (IOMapMap v) -> Int -> IO IntSet
 lookupKeys mmref idx = do
   mm <- readIORef mmref
   if idx < MV.length mm
-    then Map.keysSet <$> MV.read mm idx
+    then Map.keysSet <$> MV.unsafeRead mm idx
     else return IntSet.empty
 
 lookupValue :: IORef (IOMapMap v) -> Int -> Int -> IO (Maybe v)
 lookupValue mmref idx mapIdx = do
   mm <- readIORef mmref
   if idx < MV.length mm
-    then Map.lookup mapIdx <$> MV.read mm idx
+    then Map.lookup mapIdx <$> MV.unsafeRead mm idx
     else return Nothing
 
 delete :: IORef (IOMapMap v) -> Int -> Int -> IO ()
