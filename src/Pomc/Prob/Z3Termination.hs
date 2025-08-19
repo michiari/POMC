@@ -253,7 +253,6 @@ data DeficientGlobals state = DeficientGlobals
   { sStack     :: IOStack Int
   , bStack     :: IOStack Int
   , iVector    :: MV.IOVector Int
-  , successorsCntxs :: MV.IOVector SuccessorsPopContexts
   , mustReachPop :: IORef IntSet
   , varMap :: VarMap
   , rewVarMap :: RewVarMap
@@ -272,7 +271,6 @@ terminationQuerySCC suppGraph precFun query oldStats = do
   newSS              <- liftIO ZS.new
   newBS              <- liftIO ZS.new
   newIVec            <- liftIO $ MV.replicate (V.length suppGraph) 0
-  newSuccessorsCntxs <- liftIO $ MV.replicate (V.length suppGraph) IntSet.empty
   newMap <- liftIO HT.new
   newEqMap <- liftIO MM.empty
   newLiveVars <- liftIO $ newIORef Set.empty
@@ -283,7 +281,6 @@ terminationQuerySCC suppGraph precFun query oldStats = do
       globals = DeficientGlobals { sStack = newSS
                                 , bStack = newBS
                                 , iVector = newIVec
-                                , successorsCntxs = newSuccessorsCntxs
                                 , mustReachPop = emptyMustReachPop
                                 , varMap = newMap
                                 , rewVarMap = newRewVarMap
@@ -349,7 +346,7 @@ dfs suppGraph globals precFun solv gn =
   let cases nextNode iVal
         | (iVal == 0) = addtoPath globals nextNode >> dfs suppGraph globals precFun solv nextNode
         | (iVal < 0)  = liftIO $ do
-            popCntxs <-  MV.unsafeRead (successorsCntxs globals) (gnId nextNode)
+            popCntxs <-  retrieveRightContexts (eqMap globals) (gnId nextNode)
             mrPop <- IntSet.member (gnId nextNode) <$> readIORef (mustReachPop globals)
             return (popCntxs, mrPop)
         | (iVal > 0)  = merge globals nextNode >> return (IntSet.empty, True)
@@ -407,9 +404,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun solv = d
         logDebugN $ "Popped Semiconfigurations: " ++ show poppedEdges
         logDebugN $ "Pop contexts: " ++ show popContxs
         logDebugN $ "Length of current SCC: " ++ show (length poppedEdges)
-        forM_ poppedEdges $ \e -> do
-          liftIO $ MV.unsafeWrite (iVector globals) e (-1)
-          liftIO $ MV.unsafeWrite (successorsCntxs globals) e popContxs
+        forM_ poppedEdges $ \e -> liftIO $ MV.unsafeWrite (iVector globals) e (-1)
         return poppedEdges
       doEncode poppedEdges  = do
         let toEncode = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
