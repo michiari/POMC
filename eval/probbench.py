@@ -206,7 +206,7 @@ def to_list(results, key_map_list):
 if __name__ == '__main__':
     argp = argparse.ArgumentParser()
     argp.add_argument('-o', '--noovi', action='store_true', help='Use z3 instead of OVI to compute upper bounds')
-    argp.add_argument('-n', '--newton', action='store_true', help='Use Newton method for iterating fixpoint equations')
+    argp.add_argument('-g', '--gauss', action='store_true', help='Use value iteration with Gauss-Seidl update for iterating fixpoint equations')
     argp.add_argument('-i', '--iters', type=int, default=1, help='Number of executions for each benchmark')
     argp.add_argument('-j', '--jobs', type=int, default=1, help='Maximum number of benchmarks to execute in parallel')
     argp.add_argument('-t', '--timeout', type=int, default=0, help='Timeout in seconds for each benchmark. 0 = no timeout (default)')
