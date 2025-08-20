@@ -1,11 +1,12 @@
 # Changelog
 
-## v3.1.0 (2025/08/12)
+## v3.1.0 (2025/08/20)
 
 - More user-friendly output format for POPACheck
 - Add `--stats` flag to get old POPACheck output format
 - Rename package to `oppas`
 - Performance improvements to the probabilistic model checking engine
+- Refactoring
 - Bug fixes
 
 
