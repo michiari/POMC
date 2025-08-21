@@ -247,7 +247,6 @@ buildSupportTransitions globals probdelta from suppDests =
           CM.insert (graph globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= IntMap.empty, supportEdges = IntSet.empty, popContexts = IntMap.empty}
       return (actualId, if isNothing maybeId then Just dest else Nothing)
   in do
-    -- computing Ids of support edges
     suppEdges <- mapM computeId suppDests
     let suppEds = IntSet.fromList . map fst $ suppEdges
     fromId <- fromJust <$> BH.lookup (graphMap globals) (decode from)
