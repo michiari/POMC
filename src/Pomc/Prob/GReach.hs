@@ -409,7 +409,7 @@ dfs globals sIdGen delta supports (q,g) semiconfId useNewton =
             liftIO $ addtoPath globals nextSemiconf nSCId
             dfs globals sIdGen delta supports nextSemiconf nSCId useNewton
         | (iVal < 0)  = liftIO $ retrieveRightContexts (eqMap globals) nSCId
-        | (iVal > 0)  = liftIO $ merge globals nextSemiconf nSCId >> return IntSet.empty
+        | (iVal > 0)  = liftIO $ merge globals nSCId >> return IntSet.empty
         | otherwise = error "unreachable error"
       follow nextSemiconf = do
         nSCId <- liftIO $ lookupSemiconf globals nextSemiconf
@@ -445,8 +445,8 @@ addtoPath globals semiconf semiconfId = do
   HT.insert (iVector globals) semiconfId sSize
   IOGS.push (bStack globals) sSize
 
-merge ::  WeightedGRobals state -> (StateId state, Stack state) -> Int -> IO ()
-merge globals _ semiconfId = do
+merge ::  WeightedGRobals state -> Int -> IO ()
+merge globals semiconfId = do
   iVal <- lookupIValue globals semiconfId
   -- contract the B stack, that represents the boundaries between SCCs on the current path
   IOGS.popWhile_ (bStack globals) (iVal <)
