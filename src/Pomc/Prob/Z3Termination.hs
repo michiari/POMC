@@ -1,5 +1,4 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 {- |
    Module      : Pomc.Prob.Z3Termination
    Copyright   : 2023-2025 Francesco Pontiggia
@@ -35,6 +34,7 @@ import qualified Data.IntSet as IntSet
 import qualified Data.Set as Set
 import Data.Hashable (Hashable)
 import qualified Data.IntMap.Strict as Map
+import qualified Data.Strict.IntMap as StrictMap
 
 import qualified Data.Map as GeneralMap
 import qualified Data.HashTable.IO as HT
@@ -58,9 +58,9 @@ import qualified Pomc.IOMapMap as MM
 type VarMap = HT.BasicHashTable VarKey AST
 
 --helpers
-encodeTransition :: MonadZ3 z3 => Edge -> AST -> z3 AST
-encodeTransition e toAST = do
-  probReal <- mkRealNum (prob e)
+encodeTransition :: MonadZ3 z3 => Prob -> AST -> z3 AST
+encodeTransition prob_ toAST = do
+  probReal <- mkRealNum prob_
   mkMul [probReal, toAST]
 
 mkOp1 :: MonadZ3 z3 => ([AST] -> z3 AST) -> [AST] -> z3 AST
@@ -98,7 +98,7 @@ encode ((gnId_, rightContext):unencoded) tVarMap eqs graph precFun mkComp useZ3 
             encodeShift tVarMap eqs mkComp gn varKey var useZ3 sccMembers
 
         | precRel == Just Take = do
-            let e = Map.findWithDefault 0 rightContext (popContexts gn)
+            let e = StrictMap.findWithDefault 0 rightContext (popContexts gn)
             when useZ3 $ do
               solvedVar <- mkRealNum e
               liftIO $ HT.insert tVarMap varKey solvedVar
@@ -119,17 +119,17 @@ retrieveInitialPush :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hash
 retrieveInitialPush eps eqs gn = let
   foldUBs prob_ pushEqs = (fromRational prob_) * sum (map (\(_, PopEq (_, n)) -> n) pushEqs)
   foldLBs prob_ pushEqs = (fromRational prob_) * sum (map (\(_, PopEq (n, _)) -> n) pushEqs)
-  updateLB e pushEqs accLB = (accLB + foldLBs (prob e) pushEqs)
-  updateUB e pushEqs accUB = (accUB + foldUBs (prob e) pushEqs)
+  updateLB prob_ pushEqs accLB = (accLB + foldLBs prob_ pushEqs)
+  updateUB prob_ pushEqs accUB = (accUB + foldUBs prob_ pushEqs)
   toRationalLB b = approxRational (b - eps) eps
   toRationalUB b = approxRational (b + eps) eps
   in do
-    (lb, ub) <- foldM (\(accLB, accUB) e -> do
-      pushEqs <- retrieveEquations eqs (to e)
-      let newAccUB = updateUB e pushEqs accUB
-          newAccLB = updateLB e pushEqs accLB
+    (lb, ub) <- foldM (\(accLB, accUB) (idx, prob_) -> do
+      pushEqs <- retrieveEquations eqs idx
+      let newAccUB = updateUB prob_ pushEqs accUB
+          newAccLB = updateLB prob_ pushEqs accLB
       return (newAccLB, newAccUB)
-      ) (0, 0) (Set.toList $ internalEdges gn)
+      ) (0, 0) (StrictMap.toList $ internalEdges gn)
     return (toRationalLB lb, toRationalUB ub)
 
 -- encoding helpers --
@@ -145,8 +145,8 @@ encodePush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
            -> IntSet
            -> z3 [(Int, Int)]
 encodePush graph varMap eqs mkComp  gn varKey@(_, rightContext) var useZ3 sccMembers =
-  let pushSemiconfs = Set.toList $ Set.map (\e -> (gnId $ graph ! to e, prob e)) (internalEdges gn)
-      suppSemiconfs = Set.toList $ Set.map (\e -> graph ! to e) (supportEdges gn)
+  let pushSemiconfs = StrictMap.toList (internalEdges gn)
+      suppSemiconfs = map (graph !) . IntSet.toList $ supportEdges gn
       suppEndsIds = map (getId . fst . semiconf) suppSemiconfs
       suppInfo = zip suppEndsIds (map (\gn -> (gnId gn, rightContext)) suppSemiconfs)
       pushSemiconfswithSuppIds = [((p, rc), prob_) | (p,prob_) <- pushSemiconfs, rc <- suppEndsIds]
@@ -207,7 +207,7 @@ encodePush graph varMap eqs mkComp  gn varKey@(_, rightContext) var useZ3 sccMem
     addFixpEq eqs varKey pushEq
     liftIO $ readIORef newUnencoded
 
-encodeShift :: (MonadZ3 z3, Eq state, Hashable state, Show state)
+encodeShift :: (MonadZ3 z3, MonadLogger z3, Eq state, Hashable state, Show state)
             => VarMap
             -> AugEqMap (EqMapNumbersType, EqMapNumbersType)
             -> (AST -> AST -> z3 AST)
@@ -218,28 +218,25 @@ encodeShift :: (MonadZ3 z3, Eq state, Hashable state, Show state)
             -> IntSet
             -> z3 [(Int, Int)]
 encodeShift varMap eqs mkComp gn varKey@(_, rightContext) var useZ3 sccMembers =
-  let shiftEnc (currs, newVars, terms) e = do
-        let toKey = (to e, rightContext)
+  let shiftEnc (currs, newVars, terms) (idx, prob_) = do
+        let toKey = (idx, rightContext)
         maybeVar <- liftIO $ HT.lookup varMap toKey
         let toVar = fromJust maybeVar
-            prob_ = prob e
             cases
               | isJust maybeVar = do
-                trans <- encodeTransition e toVar
+                trans <- encodeTransition prob_ toVar
                 return (trans:currs, newVars, (prob_, toKey):terms)
               | IntSet.notMember (fst toKey) sccMembers = return (currs, newVars, terms)
               | otherwise = do -- it might happen that we discover new variables
                   newVar <- mkFreshRealVar $ show toKey
                   liftIO $ HT.insert varMap toKey newVar
-                  trans <- encodeTransition e newVar
+                  trans <- encodeTransition prob_ newVar
                   return (trans:currs, toKey:newVars, (prob_, toKey):terms)
         cases
 
   in do
-    (transitions, unencodedVars, terms) <- foldM shiftEnc ([], [], []) (internalEdges gn)
+    (transitions, unencodedVars, terms) <- foldM shiftEnc ([], [], []) (StrictMap.toList $ internalEdges gn)
     when useZ3 $ assert =<< mkComp var =<< mkAdd1 transitions
-
-    -- logDebugN $ show varKey ++ " = ShiftEq " ++ show terms
     addFixpEq eqs varKey (ShiftEq terms)
     return unencodedVars
 
@@ -351,19 +348,19 @@ dfs suppGraph globals precFun solv gn =
             return (popCntxs, mrPop)
         | (iVal > 0)  = merge globals nextNode >> return (IntSet.empty, True)
         | otherwise = error "unreachable error"
-      follow e = liftIO (MV.unsafeRead (iVector globals) (to e)) >>= cases (suppGraph ! to e)
+      follow idx = liftIO (MV.unsafeRead (iVector globals) idx) >>= cases (suppGraph ! idx)
   in do
-    res <- forM (Set.toList $ internalEdges gn) follow
+    res <- forM (StrictMap.keys $ internalEdges gn) follow
     let dPopCntxs = IntSet.unions (map fst res)
         dMustReachPop = all snd res
         computeActualRes
-          | not . Set.null $ supportEdges gn = do
-              newRes <- forM (Set.toList $ supportEdges gn) follow
+          | not . IntSet.null $ supportEdges gn = do
+              newRes <- forM (IntSet.toList $ supportEdges gn) follow
               let actualDPopCntxs = IntSet.unions (map fst newRes)
               if gnId gn == 0
                 then return (actualDPopCntxs, dMustReachPop)
                 else return (actualDPopCntxs, dMustReachPop && all snd newRes)
-          | not . Map.null $ popContexts gn = return (IntSet.fromList . Map.keys $ popContexts gn, True)
+          | not . StrictMap.null $ popContexts gn = return (StrictMap.keysSet $ popContexts gn, True)
           | otherwise = return (dPopCntxs, dMustReachPop)
     (dActualPopCntxs, dActualMustReachPop) <- computeActualRes
     createComponent suppGraph globals gn (dActualPopCntxs, dActualMustReachPop) precFun solv
@@ -642,9 +639,9 @@ encodeRewPush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
               -> AST
               -> z3 [RewVarKey]
 encodeRewPush graph m rVarMap mkComp gn var =
-  let closeSummaries pushGn (currs, unencodedVars) e = do
-        let supportGn = graph ! (to e)
-        maybeTermProb <- liftIO $ HT.lookup m (gnId pushGn, getId . fst . semiconf $ supportGn)
+  let closeSummaries pushIdx (currs, unencodedVars) suppIdx = do
+        let supportGn = graph ! suppIdx
+        maybeTermProb <- liftIO $ HT.lookup m (pushIdx, getId . fst . semiconf $ supportGn)
         if isNothing maybeTermProb
           then return (currs, unencodedVars)
           else do
@@ -653,17 +650,16 @@ encodeRewPush graph m rVarMap mkComp gn var =
             return ( eq:currs
                   ,  if alreadyEncoded then unencodedVars else (gnId supportGn):unencodedVars
                   )
-      pushEnc (currs, vars) e = do
-        let pushGn = graph ! (to e)
-        (pushVar, alreadyEncoded) <- lookupRewVar rVarMap (gnId pushGn)
-        (equations, unencodedVars) <- foldM (closeSummaries pushGn) ([], []) (supportEdges gn)
-        transition <- encodeTransition e =<< mkAdd (pushVar:equations)
+      pushEnc (currs, vars) (pushIdx, prob_) = do
+        (pushVar, alreadyEncoded) <- lookupRewVar rVarMap pushIdx
+        (equations, unencodedVars) <- foldM (closeSummaries pushIdx) ([], []) (IntSet.toList $ supportEdges gn)
+        transition <- encodeTransition prob_ =<< mkAdd (pushVar:equations)
         when (null equations) $ error "a push should terminate somehow, if we want to prove PAST"
         return ( transition:currs
-               , if alreadyEncoded then unencodedVars ++ vars else (gnId pushGn) : (unencodedVars ++ vars)
+               , if alreadyEncoded then unencodedVars ++ vars else pushIdx : (unencodedVars ++ vars)
                )
   in do
-    (transitions, unencodedVars) <- foldM pushEnc ([], []) (internalEdges gn)
+    (transitions, unencodedVars) <- foldM pushEnc ([], []) (StrictMap.toList $ internalEdges gn)
     one <- mkRealNum (1 :: Prob)
     assert =<< mkComp var =<< mkAdd (one:transitions)
     assert =<< mkGe var one
@@ -676,15 +672,14 @@ encodeRewShift :: (MonadZ3 z3, Eq state, Hashable state, Show state)
   -> AST
   -> z3 [RewVarKey]
 encodeRewShift rVarMap mkComp gn var =
-  let shiftEnc (currs, newVars) e = do
-        let target = to e
-        (toVar, alreadyEncoded) <- lookupRewVar rVarMap target
-        trans <- encodeTransition e toVar
+  let shiftEnc (currs, newVars) (idx, prob_) = do
+        (toVar, alreadyEncoded) <- lookupRewVar rVarMap idx
+        trans <- encodeTransition prob_ toVar
         return ( trans:currs
-            , if alreadyEncoded then newVars else target:newVars
+            , if alreadyEncoded then newVars else idx:newVars
             )
   in do
-    (transitions, unencodedVars) <- foldM shiftEnc ([], []) (internalEdges gn)
+    (transitions, unencodedVars) <- foldM shiftEnc ([], []) (StrictMap.toList $ internalEdges gn)
     one <- mkRealNum (1 :: Prob)
     assert =<< mkComp var =<< mkAdd (one:transitions)
     assert =<< mkGe var one

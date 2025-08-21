@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE InstanceSigs #-}
 {- |
    Module      : Pomc.Prob.GGraph
    Copyright   : 2023-2025 Francesco Pontiggia
@@ -26,7 +25,7 @@ import Pomc.GStack(GStack)
 import qualified Pomc.GStack as GS
 import qualified Pomc.CustoMap as CM
 import qualified Pomc.Prob.GReach as GR
-import Pomc.Prob.SupportGraph(GraphNode(..), Edge(..), SupportGraph)
+import Pomc.Prob.SupportGraph(GraphNode(..), SupportGraph)
 import Pomc.Prob.ProbEncoding(ProbEncodedSet)
 import qualified Pomc.Prob.ProbEncoding as PE
 import qualified Pomc.Encoding as E
@@ -117,7 +116,6 @@ data HEdge = Internal {probInt :: Prob, toG :: Int} |
   deriving Show
 
 instance Eq HEdge where
-  (==) :: HEdge -> HEdge -> Bool
   p == q = (toG p) == (toG q)
 
 instance Ord HEdge where
@@ -220,14 +218,13 @@ reachPush :: (Ord pstate, Hashable pstate, Show pstate)
   -> (GraphNode pstate, State) -- current gnode
   -> ST s IntSet
 reachPush gGlobals delta suppGraph fromPhi isPending sIdMap (gn, p) =
-  let getGns = map (\e -> (prob e, suppGraph ! (to e))) . Set.toList . Set.filter (isPending . to)
-      fPushGns = getGns $ internalEdges gn
-      fSuppGns = getGns $ supportEdges gn
+  let fPushGns = map (first (suppGraph !)) . filter (isPending . fst) . StrictIntMap.toList $ internalEdges gn
+      fSuppGns = map (suppGraph !) . filter isPending . IntSet.toList $ supportEdges gn
       fPushPhiStates = (phiDeltaPush delta) p
       currentInput q = E.extractInput (bitenc delta) (current q)
       fPushGnodes =
         [(prob_, gn1, p1) |
-            (prob_, gn1) <- fPushGns, p1 <- fPushPhiStates
+            (gn1, prob_) <- fPushGns, p1 <- fPushPhiStates
           , (getLabel . fst . semiconf $ gn1) == currentInput p1
         ]
       -- for exploring supports
@@ -274,7 +271,7 @@ reachPush gGlobals delta suppGraph fromPhi isPending sIdMap (gn, p) =
     -- unless (all (consistentFilter. fst) fSuppAugStates) $ error "a support Augmented State is inconsistent"
     let fSuppGnodes =
           [(gn1, p1, suppSatSet) |
-            (_, gn1) <- fSuppGns
+            gn1 <- fSuppGns
             , (AugState (StateId _ q _) p1, suppSatSet) <- fSuppAugStates
             , (getState . fst . semiconf $ gn1) == q
           ]
@@ -292,11 +289,11 @@ reachShift :: (Ord pstate, Hashable pstate, Show pstate)
   -> (GraphNode pstate, State) -- current GNopde
   -> ST s IntSet
 reachShift gGlobals delta suppGraph fromPhi isPending sIdMap (gn, p) =
-  let fGns = map (\e -> (prob e, suppGraph ! (to e))) . Set.toList . Set.filter (isPending . to) $ internalEdges gn
+  let fGns = map (first (suppGraph !)) . filter (isPending . fst) . StrictIntMap.toList $ internalEdges gn
       fPhiStates = (phiDeltaShift delta) p
       fGnodes =
         [(prob_, gn1, p1) |
-          (prob_, gn1) <- fGns, p1 <- fPhiStates,
+          (gn1, prob_) <- fGns, p1 <- fPhiStates,
           (getLabel . fst . semiconf $ gn1) == E.extractInput (bitenc delta) (current p1)
         ]
   in do
@@ -375,7 +372,7 @@ dfs suppGraph gGlobals delta isPending fromPhi sIdMap gnode =
         | precRel == Just Equal =
             reachShift gGlobals delta suppGraph fromPhi isPending sIdMap (gn, p)
 
-        | precRel == Just Take = error 
+        | precRel == Just Take = error
           $ "a pop transition cannot be reached in the augmented graph of pending semiconfs, as it terminates almost surely" ++ show gn
 
         | otherwise = return IntSet.empty
@@ -465,8 +462,8 @@ deleteDescendants gGlobals sccSemiconfs descendants = do
 isBottom :: SupportGraph pstate -> IntSet -> (Int -> Bool) -> Bool
 isBottom suppGraph suppGraphSCC isPending =
   let gns = map (suppGraph !) (IntSet.toList suppGraphSCC)
-      bottomCheck = all (\e -> IntSet.member (to e) suppGraphSCC) . Set.filter (isPending . to)
-  in all (\gn -> (bottomCheck . internalEdges) gn && (bottomCheck . supportEdges) gn) gns
+      bottomCheck = all (`IntSet.member` suppGraphSCC) . filter isPending
+  in all (\gn -> (bottomCheck . StrictIntMap.keys . internalEdges) gn && (bottomCheck . IntSet.elems . supportEdges) gn) gns
 
 -- third necessary condition for an SCC of G to be a BSCC of H from [Etessami and Yannakakis, TOCL 2012, Theo 30]
 isAccepting :: GGlobals s pstate -> DeltaWrapper pstate -> [HEdge] -> ST s Bool
