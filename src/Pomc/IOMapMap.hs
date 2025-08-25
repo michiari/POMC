@@ -10,6 +10,7 @@ module Pomc.IOMapMap ( IOMapMap
                    , insertWith
                    , insertMap
                    , lookup
+                   , lookupMap
                    , lookupKeys
                    , lookupValue
                    , member
@@ -97,6 +98,13 @@ lookup mmref idx = do
   if idx < MV.length mm
     then Map.toList <$> MV.unsafeRead mm idx
     else return []
+
+lookupMap :: IORef (IOMapMap v) -> Int -> IO (IntMap v)
+lookupMap mmref idx = do
+  mm <- readIORef mmref
+  if idx < MV.length mm
+    then MV.unsafeRead mm idx
+    else return Map.empty
 
 lookupKeys :: IORef (IOMapMap v) -> Int -> IO IntSet
 lookupKeys mmref idx = do

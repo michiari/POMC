@@ -24,15 +24,17 @@ import qualified Data.Set as Set
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 
-import qualified Data.Strict.IntMap as IntMap
+import qualified Data.Strict.IntMap as StrictIntMap
 import Data.Strict.IntMap(IntMap)
 import Data.Strict.Map(Map)
+
+import qualified Data.IntMap as IntMap
 
 import Control.Monad(when)
 import Data.Bifunctor (first)
 import Control.Monad.ST (ST)
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
-import Data.Maybe (fromJust, isNothing, catMaybes, mapMaybe)
+import Data.Maybe (fromJust, isNothing, mapMaybe)
 
 import Data.Hashable (Hashable)
 import qualified Data.HashTable.ST.Basic as BH
@@ -49,7 +51,7 @@ data GraphNode state = GraphNode
   , supportEdges  :: IntSet
   -- if the semiconf is a pop one, then popContexts represents the probability distribution of the pop transition over "return states", and not semiconfs
   -- otherwise this IntMap is empty
-  , popContexts :: IntMap Prob
+  , popContexts :: IntMap.IntMap Prob
   } deriving Show
 
 instance Eq (GraphNode state) where
@@ -91,7 +93,7 @@ buildSupportGraph probdelta (i, iLabel) stats = do
   emptyGraph <- CM.empty
   initialId <- freshPosId newIdSequence
   BH.insert emptyGraphMap (decode initialNode) initialId
-  CM.insert emptyGraph initialId $ GraphNode {gnId=initialId, semiconf=initialNode, internalEdges= IntMap.empty, supportEdges = IntSet.empty, popContexts = IntMap.empty}
+  CM.insert emptyGraph initialId $ GraphNode {gnId=initialId, semiconf=initialNode, internalEdges= StrictIntMap.empty, supportEdges = IntSet.empty, popContexts = IntMap.empty}
   let globals = Globals { sIdGen = newSig
                         , idSeq = newIdSequence
                         , graphMap = emptyGraphMap
@@ -220,14 +222,14 @@ buildInternalTransitions globals probdelta from intDests =
       actualId <- maybe (freshPosId $ idSeq globals) return maybeId
       when (isNothing maybeId) $ do
           BH.insert (graphMap globals) (decode dest) actualId
-          CM.insert (graph globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= IntMap.empty, supportEdges = IntSet.empty, popContexts = IntMap.empty}
+          CM.insert (graph globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= StrictIntMap.empty, supportEdges = IntSet.empty, popContexts = IntMap.empty}
       return (actualId, prob_, if isNothing maybeId then Just dest else Nothing)
   in do
     intEdges <- mapM computeId intDests
     let -- we use sum here to handle non normalized probability distributions (i.e., multiple probabilities to go to the same state, that have to be summed)
-        intEdgs = IntMap.fromListWith (+) . map (\(id_, prob_, _) -> (id_, prob_)) $ intEdges
+        intEdgs = StrictIntMap.fromListWith (+) . map (\(id_, prob_, _) -> (id_, prob_)) $ intEdges
     fromId <- fromJust <$> BH.lookup (graphMap globals) (decode from)
-    CM.modify (graph globals) (\g@GraphNode{internalEdges = intEdges_} -> g{internalEdges = IntMap.unionWith (+) intEdges_ intEdgs}) fromId
+    CM.modify (graph globals) (\g@GraphNode{internalEdges = intEdges_} -> g{internalEdges = StrictIntMap.unionWith (+) intEdges_ intEdgs}) fromId
     mapM_ (build globals probdelta) $ mapMaybe (\(_,_, maybeDest) -> maybeDest) intEdges
 
 -- decomposing transitions of a semiconf
@@ -244,7 +246,7 @@ buildSupportTransitions globals probdelta from suppDests =
       actualId <- maybe (freshPosId $ idSeq globals) return maybeId
       when (isNothing maybeId) $ do
           BH.insert (graphMap globals) (decode dest) actualId
-          CM.insert (graph globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= IntMap.empty, supportEdges = IntSet.empty, popContexts = IntMap.empty}
+          CM.insert (graph globals) actualId $ GraphNode {gnId=actualId, semiconf=dest, internalEdges= StrictIntMap.empty, supportEdges = IntSet.empty, popContexts = IntMap.empty}
       return (actualId, if isNothing maybeId then Just dest else Nothing)
   in do
     suppEdges <- mapM computeId suppDests

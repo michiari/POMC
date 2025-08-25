@@ -34,6 +34,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , exactComputation
                            , useZ3
                            , useNewton
+                           , isNewton
                            , solver
                            , toBool
                            , toTermResult
@@ -216,6 +217,10 @@ useNewton (SMTWithHints Newton) = True
 useNewton (ExactSMTWithHints Newton) = True
 useNewton (OVI Newton) = True 
 useNewton _ = False 
+
+isNewton :: Update -> Bool 
+isNewton Newton = True 
+isNewton _ = False 
 
 defaultTolerance :: EqMapNumbersType
 defaultTolerance = 1e-7

@@ -33,10 +33,10 @@ import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Set as Set
 import Data.Hashable (Hashable)
-import qualified Data.IntMap.Strict as Map
-import qualified Data.Strict.IntMap as StrictMap
+import qualified Data.IntMap as IntMap
+import qualified Data.Strict.IntMap as StrictIntMap
 
-import qualified Data.Map as GeneralMap
+import qualified Data.Map as Map
 import qualified Data.HashTable.IO as HT
 import Data.Maybe(fromJust, isJust, isNothing)
 import qualified Data.Vector.Mutable as MV
@@ -98,7 +98,7 @@ encode ((gnId_, rightContext):unencoded) tVarMap eqs graph precFun mkComp useZ3 
             encodeShift tVarMap eqs mkComp gn varKey var useZ3 sccMembers
 
         | precRel == Just Take = do
-            let e = StrictMap.findWithDefault 0 rightContext (popContexts gn)
+            let e = IntMap.findWithDefault 0 rightContext (popContexts gn)
             when useZ3 $ do
               solvedVar <- mkRealNum e
               liftIO $ HT.insert tVarMap varKey solvedVar
@@ -129,7 +129,7 @@ retrieveInitialPush eps eqs gn = let
       let newAccUB = updateUB prob_ pushEqs accUB
           newAccLB = updateLB prob_ pushEqs accLB
       return (newAccLB, newAccUB)
-      ) (0, 0) (StrictMap.toList $ internalEdges gn)
+      ) (0, 0) (StrictIntMap.toList $ internalEdges gn)
     return (toRationalLB lb, toRationalUB ub)
 
 -- encoding helpers --
@@ -145,7 +145,7 @@ encodePush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
            -> IntSet
            -> z3 [(Int, Int)]
 encodePush graph varMap eqs mkComp  gn varKey@(_, rightContext) var useZ3 sccMembers =
-  let pushSemiconfs = StrictMap.toList (internalEdges gn)
+  let pushSemiconfs = StrictIntMap.toList (internalEdges gn)
       suppSemiconfs = map (graph !) . IntSet.toList $ supportEdges gn
       suppEndsIds = map (getId . fst . semiconf) suppSemiconfs
       suppInfo = zip suppEndsIds (map (\gn -> (gnId gn, rightContext)) suppSemiconfs)
@@ -235,7 +235,7 @@ encodeShift varMap eqs mkComp gn varKey@(_, rightContext) var useZ3 sccMembers =
         cases
 
   in do
-    (transitions, unencodedVars, terms) <- foldM shiftEnc ([], [], []) (StrictMap.toList $ internalEdges gn)
+    (transitions, unencodedVars, terms) <- foldM shiftEnc ([], [], []) (StrictIntMap.toList $ internalEdges gn)
     when useZ3 $ assert =<< mkComp var =<< mkAdd1 transitions
     addFixpEq eqs varKey (ShiftEq terms)
     return unencodedVars
@@ -245,7 +245,6 @@ encodeShift varMap eqs mkComp gn varKey@(_, rightContext) var useZ3 sccMembers =
 ---------------------------------------------------------------------------------------------------
 
 type SuccessorsPopContexts = IntSet
-
 data DeficientGlobals state = DeficientGlobals
   { sStack     :: IOStack Int
   , bStack     :: IOStack Int
@@ -305,11 +304,11 @@ terminationQuerySCC suppGraph precFun query oldStats = do
       unlessAST f = if isAST then return (1,1) else f
       -- results computed with Z3
       readResults (ApproxAllQuery _) True = do
-        upperProbRationalMap <- GeneralMap.fromList <$> (mapM (\(varKey, varAST) -> do
+        upperProbRationalMap <- Map.fromList <$> (mapM (\(varKey, varAST) -> do
             pRational <- extractUpperProb varAST
             return (varKey, pRational)) =<< liftIO (HT.toList newMap))
-        probMap <- liftIO $ GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newEqMap
-        let lowerProbRationalMap = GeneralMap.map approxL probMap
+        probMap <- liftIO $ Map.map (\(PopEq d) -> d) <$> MM.foldMaps newEqMap
+        let lowerProbRationalMap = Map.map approxL probMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
       readResults (ApproxSingleQuery _) True = do
         (lb, ub) <- unlessAST $ retrieveInitialPush actualEps (eqMap globals) gn
@@ -319,9 +318,9 @@ terminationQuerySCC suppGraph precFun query oldStats = do
         return (toTermResult $ intervalLogic (lb,ub) comp bound, mustReachPopIdxs)
       -- results computed with OVI
       readResults (ApproxAllQuery _) False = liftIO $ do
-        probMap <- GeneralMap.map (\(PopEq d) -> d) <$> MM.foldMaps newEqMap
-        let upperProbRationalMap = GeneralMap.map approxU probMap
-        let lowerProbRationalMap = GeneralMap.map approxL probMap
+        probMap <- Map.map (\(PopEq d) -> d) <$> MM.foldMaps newEqMap
+        let upperProbRationalMap = Map.map approxU probMap
+        let lowerProbRationalMap = Map.map approxL probMap
         return  (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap), mustReachPopIdxs)
       readResults (ApproxSingleQuery _) False = do
         (lb, ub) <- unlessAST $ retrieveInitialPush actualEps (eqMap globals) gn
@@ -350,7 +349,7 @@ dfs suppGraph globals precFun solv gn =
         | otherwise = error "unreachable error"
       follow idx = liftIO (MV.unsafeRead (iVector globals) idx) >>= cases (suppGraph ! idx)
   in do
-    res <- forM (StrictMap.keys $ internalEdges gn) follow
+    res <- forM (StrictIntMap.keys $ internalEdges gn) follow
     let dPopCntxs = IntSet.unions (map fst res)
         dMustReachPop = all snd res
         computeActualRes
@@ -360,7 +359,7 @@ dfs suppGraph globals precFun solv gn =
               if gnId gn == 0
                 then return (actualDPopCntxs, dMustReachPop)
                 else return (actualDPopCntxs, dMustReachPop && all snd newRes)
-          | not . StrictMap.null $ popContexts gn = return (StrictMap.keysSet $ popContexts gn, True)
+          | not . IntMap.null $ popContexts gn = return (IntMap.keysSet $ popContexts gn, True)
           | otherwise = return (dPopCntxs, dMustReachPop)
     (dActualPopCntxs, dActualMustReachPop) <- computeActualRes
     createComponent suppGraph globals gn (dActualPopCntxs, dActualMustReachPop) precFun solv
@@ -421,7 +420,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun solv = d
         | iVal /= topB = return (popContxs, dMustReachPop)
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
         | gnId gn == 0 = return (popContxs, dMustReachPop) -- cannot reach a pop
-        | otherwise = createC >> return (popContxs, False)
+        | otherwise = createC >> return (popContxs, False) -- cannot reach a pop
   cases
 
 -- params:
@@ -543,7 +542,7 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = 
   -- find bounds for this SCC
   upperBound <- cases unsolvedVars
   let upperBoundsTermProbs = Map.toList . Map.fromListWith (+) . map (first fst) $ (upperBound ++ solvedUvars)
-  let upperBounds = GeneralMap.fromList upperBound
+  let upperBounds = Map.fromList upperBound
   logDebugN $ unlines
     [ "Computed upper bounds: " ++ show upperBounds
     , "Computed upper bounds on termination probabilities: " ++ show upperBoundsTermProbs
@@ -659,7 +658,7 @@ encodeRewPush graph m rVarMap mkComp gn var =
                , if alreadyEncoded then unencodedVars ++ vars else pushIdx : (unencodedVars ++ vars)
                )
   in do
-    (transitions, unencodedVars) <- foldM pushEnc ([], []) (StrictMap.toList $ internalEdges gn)
+    (transitions, unencodedVars) <- foldM pushEnc ([], []) (StrictIntMap.toList $ internalEdges gn)
     one <- mkRealNum (1 :: Prob)
     assert =<< mkComp var =<< mkAdd (one:transitions)
     assert =<< mkGe var one
@@ -679,7 +678,7 @@ encodeRewShift rVarMap mkComp gn var =
             , if alreadyEncoded then newVars else idx:newVars
             )
   in do
-    (transitions, unencodedVars) <- foldM shiftEnc ([], []) (StrictMap.toList $ internalEdges gn)
+    (transitions, unencodedVars) <- foldM shiftEnc ([], []) (StrictIntMap.toList $ internalEdges gn)
     one <- mkRealNum (1 :: Prob)
     assert =<< mkComp var =<< mkAdd (one:transitions)
     assert =<< mkGe var one
