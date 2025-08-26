@@ -1,11 +1,10 @@
-probabilistic query: approximate;
-//formula = F (ret And main And [main|row_choice == 0u2] And [main|column_choice == 0u2] And [main|final_winner == 0u2] );
+probabilistic query: inference choice;
 
 program:
-u2[3] upper;
-u2[3] middle;
-u2[3] lower;
-u2 final_winner;
+u4[3] upper;
+u4[3] middle;
+u4[3] lower;
+u4 final_winner;
 
 /*  
     0 = non assigned
@@ -18,8 +17,12 @@ u2 final_winner;
 Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Conditioning: Modeling Theory of Mind with Probabilistic Programs, Cognitive Systems Research 2014.
 */ 
 
+u4 choice;
+
+// choice map: [0,0] -> 0; [0,2] -> 2; [2,0] -> 6; [2,2] -> 8
+
 main (){
-    u2 row_choice, column_choice;
+    u4 row_choice, column_choice;
     upper[0u2] = 0u2;
 	upper[1u2] = 1u2;
 	upper[2u2] = 0u2;
@@ -33,12 +36,14 @@ main (){
     final_winner = 0u2;
     query sampleAction(2u2, row_choice, column_choice);
 
+    choice = column_choice + 3 * row_choice;
+
 }
 
-sampleAction(u2 current_player, u2 &row_choice, u2 &column_choice) {
+sampleAction(u4 current_player, u4 &row_choice, u4 &column_choice) {
     bool another_turn;
-    u2 other_player;
-    u2 otherPlayerRowChoice, otherPlayerColumnChoice; 
+    u4 other_player;
+    u4 otherPlayerRowChoice, otherPlayerColumnChoice; 
     
     // sample a choice from the priori
     query action_priori(current_player, row_choice, column_choice);
@@ -66,8 +71,8 @@ sampleAction(u2 current_player, u2 &row_choice, u2 &column_choice) {
 }
 
 
-action_priori(u2 current_player, u2 &row_choice, u2 &column_choice) {
-    u2 sampled_row_choice, sampled_column_choice;
+action_priori(u4 current_player, u4 &row_choice, u4 &column_choice) {
+    u4 sampled_row_choice, sampled_column_choice;
 
     sampled_row_choice = 0u2 {1u2 : 3u2} 1u2 {1u2: 3u2} 2u2;
     sampled_column_choice = 0u2 {1u2 : 3u2} 1u2 {1u2: 3u2} 2u2;
@@ -89,7 +94,7 @@ action_priori(u2 current_player, u2 &row_choice, u2 &column_choice) {
     column_choice = sampled_column_choice;
 }
 
-expected_utility(u2 current_player) {
+expected_utility(u4 current_player) {
     bool coin_flip;
     u4 utility;
 

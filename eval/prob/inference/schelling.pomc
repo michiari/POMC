@@ -1,11 +1,10 @@
-probabilistic query: approximate;
-//formula = F (ret And main And [main|res == 1u1]);
-
+probabilistic query: inference res;
 
 program:
 u4 p;
+bool res;
+
 main() {
-  bool res;
   p = 0u4 {2u3 : 6u3} 1u4 {1u3 : 6u3} 2u4 {1u3 : 6u3} 3u4 {1u3 : 6u3} 4u4;
   query alice(res);
   // res is which cafè they have gone to
