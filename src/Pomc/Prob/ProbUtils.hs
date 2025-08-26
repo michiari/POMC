@@ -93,7 +93,7 @@ import Pomc.Potl (Formula(..), Prop (Prop, End))
 
 type Prob = Rational
 type EqMapNumbersType = Double
-newtype Distr a = Distr [(a, Prob)] deriving Show
+newtype Distr a = Distr [(a, Prob)] deriving (Generic, Show, NFData)
 -- a distribution over elements of type a
 -- with some additional labels of type b
 type RichDistr a b = [(a, b, Prob)]

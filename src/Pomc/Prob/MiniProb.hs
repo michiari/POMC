@@ -20,7 +20,7 @@ import Pomc.Prop (Prop(..), unprop)
 import Pomc.PropConv (APType, PropConv(..), makePropConv, encodeAlphabet)
 import Pomc.Prec (Prec(..), StructPrecRel, Alphabet)
 import qualified Pomc.Encoding as E
-import Pomc.Prob.ProbUtils (Label, RichDistr)
+import Pomc.Prob.ProbUtils (Label, RichDistr, Distr)
 
 import Data.Ratio ((%))
 import qualified Data.BitVector as B
@@ -353,7 +353,7 @@ lowerBlock sks thisFinfo linkPred0 block = foldM foldBlock (linkPred0, Thunk id)
 -- Conversion of the Extended pOPA to a plain pOPA
 programToPopa :: Program -> Set (Prop ExprProp)
               -> ( PropConv ExprProp
-                 , (Expr -> [VarState] -> [(IntValue, [VarState])])
+                 , Expr -> Distr VarState -> Distr Int
                  , Popa VarState APType
                  )
 programToPopa prog additionalProps =

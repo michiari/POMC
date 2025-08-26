@@ -2,7 +2,7 @@
 
 {- |
    Module      : Pomc.Parse.Parser
-   Copyright   : 2020-2025 Davide Bergamaschi, Michele Chiari
+   Copyright   : 2020-2025 Davide Bergamaschi, Michele Chiari, Francesco Pontiggia
    License     : MIT
    Maintainer  : Michele Chiari
 -}
@@ -19,7 +19,7 @@ import Prelude hiding (GT, LT, readFile)
 import Pomc.Prec (Prec(..), StructPrecRel, extractSLs, addEnd)
 import Pomc.Prop (Prop(..))
 import qualified Pomc.Potl as P
-import Pomc.MiniIR (Program(..), ExprProp(..))
+import Pomc.MiniIR (Program(..), ExprProp(..), Expr, getExpr)
 import Pomc.Parse.MiniProc
 import Pomc.ModelChecker (ExplicitOpa(..))
 
@@ -42,23 +42,26 @@ type PFormula = P.Formula Text
 type PropString = [Set (Prop Text)]
 
 data CheckRequest =
-  ExplCheckRequest  { ecreqFormulas :: [PFormula]
-                    , ecreqPrecRels :: [StructPrecRel Text]
-                    , ecreqStrings  :: Maybe [PropString]
-                    , ecreqOpa      :: Maybe (ExplicitOpa Word Text)
-                    } |
-  ProgCheckRequest  { pcreqFormulas :: [P.Formula ExprProp]
-                    , pcreqMiniProc :: Program
-                    } |
-  ProbTermRequest   { ptreqMiniProb  :: Program
-                    } |
-  ProbCheckRequest  { pcreqFormula      :: P.Formula ExprProp
-                    , pcreqMiniProb     :: Program
-                    , pcreqQuantitative :: Bool
-                    } |
-  ProbUnfoldRequest { pcreqFormula      :: P.Formula ExprProp
-                    , pcreqMiniProb     :: Program
-                    }
+  ExplCheckRequest      { ecreqFormulas :: [PFormula]
+                        , ecreqPrecRels :: [StructPrecRel Text]
+                        , ecreqStrings  :: Maybe [PropString]
+                        , ecreqOpa      :: Maybe (ExplicitOpa Word Text)
+                        } |
+  ProgCheckRequest      { pcreqFormulas :: [P.Formula ExprProp]
+                        , pcreqMiniProc :: Program
+                        } |
+  ProbTermRequest       { ptreqMiniProb  :: Program
+                        } |
+  ProbInferenceRequest  { ptreqMiniProb  :: Program
+                        , pieqExpr :: Expr
+                        } |
+  ProbCheckRequest      { pcreqFormula      :: P.Formula ExprProp
+                        , pcreqMiniProb     :: Program
+                        , pcreqQuantitative :: Bool
+                        } |
+  ProbUnfoldRequest     { pcreqFormula      :: P.Formula ExprProp
+                        , pcreqMiniProb     :: Program
+                        }
 
 spaceP :: Parser ()
 spaceP = L.space space1 (L.skipLineComment "//") (L.skipBlockComment "/*" "*/")
@@ -297,13 +300,23 @@ checkRequestP = nonProbModeP <|> probModeP where
 
   probModeP = do
     _ <- symbolP "probabilistic query" >> symbolP ":"
-    termModeP <|> mcModeP
+    termModeP <|> inferenceModeP <|> mcModeP
     where termModeP = do
             _ <- symbolP "approximate;"
             _ <- symbolP "program" >> symbolP ":"
             prog <- programP
             return ProbTermRequest { ptreqMiniProb  = prog
                                    }
+          inferenceModeP = do 
+            _ <- symbolP "inference "
+            texpr <- P.Atomic <$> typedPropP
+            _ <- symbolP ";"
+            _ <- symbolP "program" >> symbolP ":"
+            prog <- programP
+            let P.Atomic (Prop exprProp) = untypeExprFormula prog texpr
+            return ProbInferenceRequest { ptreqMiniProb  = prog
+                                        , pieqExpr =  getExpr exprProp
+                                        }     
           mcModeP = do
             req <- ((0 :: Integer) <$ symbolP "qualitative")
                             <|> (1 <$ symbolP "quantitative")

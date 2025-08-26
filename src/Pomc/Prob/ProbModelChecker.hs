@@ -10,6 +10,7 @@ module Pomc.Prob.ProbModelChecker ( ExplicitPopa(..)
                                   , programTermination
                                   , qualitativeModelCheckProgram
                                   , quantitativeModelCheckProgram
+                                  , infer
                                   -- testing APIs
                                   , terminationLTExplicit
                                   , terminationLEExplicit
@@ -31,6 +32,7 @@ import Pomc.PropConv (APType, convProps, PropConv(encodeProp, decodeAP), encodeF
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 import qualified Pomc.Encoding as E
+import Pomc.MiniIR (Expr)
 
 import Pomc.Prob.SupportGraph (buildSupportGraph)
 import qualified Pomc.Prob.GGraph as GG
@@ -38,6 +40,7 @@ import qualified Pomc.Prob.ProbEncoding as PE
 import Pomc.Prob.Z3Termination (terminationQuerySCC)
 import Pomc.Prob.ProbUtils hiding (sIdMap)
 import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..), ExprProp)
+import Pomc.Prob.POPAlyzer (inferenceQuery)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -174,6 +177,34 @@ programTermination solv prog =
     logInfoN $ "Computed termination probabilities: " ++ show res
     computedStats <- liftSTtoIO $ readSTRef stats
     return (res, computedStats, show sc)
+
+-- infer the posterior distribution of some expression over GLOBAL program variables
+infer :: (MonadIO m, MonadFail m, MonadLogger m)
+                   => Update -> Program -> Expr -> m ((Distr Int, Distr Int), Stats, String)
+infer updateStrategy prog expr =
+  let (_, groupBy, popa) = programToPopa prog Set.empty
+      (tsls, tprec) = popaAlphabet popa
+      (bitenc, precFunc, _, _, _, _, _, _) =
+        makeOpa T IsProb (tsls, tprec) (\_ _ -> True)
+
+      initial = popaInitial popa bitenc
+      pDelta = Delta
+               { bitenc = bitenc
+               , proBitenc = error "proBitenc used in infer function"
+               , prec = precFunc
+               , deltaPush = popaDeltaPush popa bitenc
+               , deltaShift = popaDeltaShift popa bitenc
+               , deltaPop = popaDeltaPop popa bitenc
+               , phiDeltaPush = error "phiDeltaPush used in infer function"
+               , phiDeltaShift = error "phiDeltaShift used in infer function"
+               , phiDeltaPop = error "phiDeltaPop used in infer function"
+               }
+  in do
+    stats <- liftSTtoIO $ newSTRef newStats
+    (suppGraph, _) <- liftSTtoIO $ buildSupportGraph pDelta initial stats
+    (lb, ub) <- inferenceQuery suppGraph precFunc updateStrategy stats
+    computedStats <- liftSTtoIO $ readSTRef stats
+    return ((groupBy expr lb, groupBy expr ub), computedStats, show suppGraph)
 
 -- QUALITATIVE MODEL CHECKING
 -- is the probability that the POPA satisfies phi equal to 1?

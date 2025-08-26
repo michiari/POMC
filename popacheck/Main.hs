@@ -9,8 +9,8 @@
 
 module Main (main) where
 
-import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram, exportMarkovChain)
-import Pomc.Prob.ProbUtils (Solver(..), Stats(..), Update(..), TermResult(..))
+import Pomc.Prob.ProbModelChecker (programTermination, qualitativeModelCheckProgram, quantitativeModelCheckProgram, exportMarkovChain, infer)
+import Pomc.Prob.ProbUtils (Solver(..), Stats(..), Update(..), TermResult(..), Distr(..))
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), preprocess)
 import Pomc.TimeUtils (timeAction, timeToString)
 import Pomc.LogUtils (LogLevel(..), selectLogVerbosity)
@@ -24,6 +24,7 @@ import System.Console.CmdArgs
 import Control.Monad (when)
 import Text.Megaparsec
 import Data.Text.IO (readFile)
+import Data.Bifunctor(second)
 
 data POPACheckArgs = POPACheckArgs
   { noovi :: Bool
@@ -71,6 +72,7 @@ main = do
             Left  errBundle -> die (errorBundlePretty errBundle)
             Right creq      -> return creq
   totalTime <- case creq of
+    ProbInferenceRequest prog expr -> runProbInference printStats logLevel updateStrategy prog expr
     ProbTermRequest prog -> runProbTerm printStats logLevel probSolver prog
     ProbCheckRequest phi prog False -> runQualProbCheck printStats logLevel probSolver phi prog
     ProbCheckRequest phi prog True -> runQuantProbCheck printStats logLevel probSolver phi prog
@@ -111,6 +113,41 @@ main = do
              , showFFloat (Just 4) (fromRational lb :: Double) ""
              , "\n  Upper bound: "
              , showFFloat (Just 4) (fromRational ub :: Double) ""
+             ]
+      return time
+
+    runProbInference printStats logLevel strat prog expr = do
+      putStrLn "Posterior Distribution Inference Query"
+      when printStats $ putStrLn $ "Query: InferenceQuery " ++ (show strat)
+      putStr "Result: "
+      ((tres@(Distr lb, Distr ub), stats, _), time) <- timeAction fst3
+        $ selectLogVerbosity logLevel
+        $ infer strat prog expr
+      if printStats
+        then do
+        putStr $ show tres
+        putStrLn $ concat
+          [ "\nFloating Point Result:\n Lower bounds Distribution:"
+          , concatMap (\(e, p) -> "\nP(" ++ show e ++ ") = " ++ (showFFloat (Just 4) (fromRational p :: Double) "") ++ ";") lb
+          , "\n Upper bounds Distribution:"
+          , concatMap (\(e, p) -> "\nP(" ++ show e ++ ") = " ++ (showFFloat (Just 4) (fromRational p :: Double) "") ++ ";") ub
+          , "\nElapsed time: "
+          , timeToString time, " (total), "
+          , showEFloat (Just 4) (upperBoundTime stats) " s (upper bounds), "
+          , showEFloat (Just 4) (pastTime stats) " s (PAST certificates), "
+          , "\nInput pOPA state count: ", show $ popaStatesCount stats
+          , "\nSupport graph size: ", show $ suppGraphLen stats
+          , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
+          , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
+          , "\nSCC count in the support graph: ", show $ sccCount stats
+          , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
+          , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
+          ]
+        else putStrLn $ concat
+             [ "\n Lower bounds Distribution:"
+             , concatMap (\(e, p) -> "\nP(" ++ show e ++ ") = " ++ (showFFloat (Just 4) (fromRational p :: Double) "") ++ ";") lb
+             , "\n Upper bounds Distribution:"
+             , concatMap (\(e, p) -> "\nP(" ++ show e ++ ") = " ++ (showFFloat (Just 4) (fromRational p :: Double) "") ++ ";") ub
              ]
       return time
 

@@ -19,6 +19,7 @@ module Pomc.MiniProcUtils ( VarValuation(..)
                           ) where
 
 import Pomc.MiniIR
+import Pomc.Prob.ProbUtils (Distr (..))
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -27,6 +28,7 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import GHC.Generics (Generic)
 import Data.Hashable
+import qualified Data.BitVector as BV
 
 -- Data structures
 data VarValuation = VarValuation { vGlobalScalars :: Vector IntValue
@@ -130,12 +132,12 @@ evalExpr gvii vval (Trunc size op) = evalExpr gvii vval op B.@@ (size - 1, 0)
 toBool :: IntValue -> Bool
 toBool v = B.nat v /= 0
 
-groupByExpr :: VarIdInfo -> Expr -> [VarState] -> [(IntValue, [VarState])]
-groupByExpr gvii expr = foldl sortState []
-  where sortState sortedVStates vs@(_, vval) = go sortedVStates
+groupByExpr :: VarIdInfo -> Expr -> Distr VarState -> Distr Int
+groupByExpr gvii expr (Distr l) = Distr (foldl sortState [] l)
+  where sortState sortedVStates ((_, vval), prob_) = go sortedVStates
           where
-            exprValue = evalExpr gvii vval expr
-            go (vals@(val, vstates):rest)
-              | val == exprValue = (val, vs:vstates):rest
+            exprValue = fromIntegral . BV.nat $ evalExpr gvii vval expr
+            go (vals@(val, acc):rest)
+              | val == exprValue = (val,  prob_ + acc):rest
               | otherwise = vals:(go rest)
-            go [] = [(exprValue, [vs])]
+            go [] = [(exprValue, prob_)]
