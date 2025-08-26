@@ -393,10 +393,12 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun solv = d
       eqs = eqMap globals
       mkComp = (if exactComputation solv then mkEq else mkGe)
       createC = do
-        liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
         liftIO $ ZS.pop_ (bStack globals)
         sSize <- liftIO $ ZS.size $ sStack globals
         poppedEdges <- liftIO $ ZS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
+        liftSTtoIO $ modifySTRef' (stats globals) $ 
+          \s@Stats{sccCount = acc1, largestSCCSemiconfsCount = acc} 
+          -> s{sccCount = acc1 + 1, largestSCCSemiconfsCount = max acc (length poppedEdges)}
         logDebugN $ "Popped Semiconfigurations: " ++ show poppedEdges
         logDebugN $ "Pop contexts: " ++ show popContxs
         logDebugN $ "Length of current SCC: " ++ show (length poppedEdges)
@@ -430,9 +432,6 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun solv = d
 solveSCCQuery :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable state, Show state)
               => SupportGraph state -> Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> Pomc.Prob.ProbUtils.Solver -> IntSet -> z3 Bool
 solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = do
-  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
-  liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{largestSCCSemiconfsCount = acc} -> s{largestSCCSemiconfsCount = max acc (IntSet.size sccMembers)}
-  --logDebugN $ "New variables of this SCC: " ++ show variables
   currentEps <- liftIO $ readIORef (eps globals)
 
   let eqs = eqMap globals

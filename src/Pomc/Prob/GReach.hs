@@ -467,6 +467,9 @@ createComponent globals sIdGen delta supports popContxs semiconfId useNewton = d
         IOGS.pop_ (bStack globals)
         sSize <- IOGS.size $ sStack globals
         poppedSemiconfs <- IOGS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
+        liftSTtoIO $ modifySTRef' (stats globals) $ 
+          \s@Stats{sccCountQuant = acc1, largestSCCSemiconfsCountQuant = acc} 
+          -> s{sccCountQuant = acc1 + 1, largestSCCSemiconfsCountQuant = max acc (length poppedSemiconfs)}
         forM poppedSemiconfs $ \s -> do
           actualId <- fromJust <$> HT.lookup (graphMap globals) (decode s)
           HT.insert (iVector globals) actualId (-1)
@@ -654,7 +657,9 @@ encodePopAndSolveSCC (q,g) id_ globals sIdGen delta =
         qState = getState q
         gState = getState . snd . fromJust $ g
     in do
-      liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCountQuant = acc} -> s{sccCountQuant = acc + 1}
+      liftSTtoIO $ modifySTRef' (stats globals) $ 
+        \s@Stats{sccCountQuant = acc1, largestSCCSemiconfsCountQuant = acc} 
+        -> s{sccCountQuant = acc1 + 1, largestSCCSemiconfsCountQuant = max acc 1}
       IOGS.pop_ (bStack globals)
       IOGS.pop_ (sStack globals)
       HT.insert (iVector globals) id_ (-1)
@@ -692,10 +697,6 @@ solveSCCQuery sccMembers globals useNewton = do
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, _) -> deleteFixpEq eqs k
-
-  liftSTtoIO $ modifySTRef' (stats globals) $ 
-    \s@Stats{sccCountQuant = acc1, largestSCCSemiconfsCountQuant = acc} 
-    -> s{sccCountQuant = acc1 + 1, largestSCCSemiconfsCountQuant = max acc (IntSet.size sccMembers)}
 
   unless (V.null unsolvedVars) $ do
     liftSTtoIO $ modifySTRef' (stats globals) $ 

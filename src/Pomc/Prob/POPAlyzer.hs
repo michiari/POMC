@@ -176,6 +176,9 @@ createComponent globals suppGraph precFun gn popContxs updateStrategy = do
         sSize <- IOGS.size $ sStack globals
         poppedSemiconfs <- IOGS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
         forM_ poppedSemiconfs $ \e -> liftIO $ MV.unsafeWrite (iVector globals) e (-1)
+        liftSTtoIO $ modifySTRef' (stats globals) $
+          \s@Stats{sccCount = acc1, largestSCCSemiconfsCount = acc}
+          -> s{sccCount = acc1 + 1, largestSCCSemiconfsCount = max acc (length poppedSemiconfs)}
         return poppedSemiconfs
       doEncode poppedSemiconfs = do
         let toEncode = [SemiconfVariables gnId_ popContxs | gnId_ <- poppedSemiconfs]
@@ -329,7 +332,9 @@ encodePopAndSolveSCC globals gn =
     let distr = IntMap.map (\n -> PopEq (fromRational n, fromRational n)) $ popContexts gn
         id_ = gnId gn
     in do
-      liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{sccCount = acc} -> s{sccCount = acc + 1}
+      liftSTtoIO $ modifySTRef' (stats globals) $
+        \s@Stats{sccCount = acc1, largestSCCSemiconfsCount = acc}
+        -> s{sccCount = acc1 + 1, largestSCCSemiconfsCount = max acc 1}
       IOGS.pop_ (bStack globals)
       IOGS.pop_ (sStack globals)
       MV.unsafeWrite (iVector globals) id_ (-1)
@@ -359,10 +364,6 @@ solveSCCQuery sccMembers globals useNewton = do
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, _) -> deleteFixpEq eqs k
-
-  liftSTtoIO $ modifySTRef' (stats globals) $
-    \s@Stats{sccCount = acc1, largestSCCSemiconfsCount = acc}
-    -> s{sccCount = acc1 + 1, largestSCCSemiconfsCount = max acc (IntSet.size sccMembers)}
 
   unless (V.null unsolvedVars) $ do
     liftSTtoIO $ modifySTRef' (stats globals) $
