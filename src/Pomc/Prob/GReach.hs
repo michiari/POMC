@@ -74,6 +74,7 @@ import GHC.IO (stToIO)
 import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef', newIORef)
 import Data.Ratio (approxRational, (%))
 import Control.Applicative ((<|>))
+import Pomc.State (Input)
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
@@ -502,14 +503,14 @@ encode :: (SatState state, Eq state, Hashable state, Show state)
   -> IO ()
 encode (QuantVariable (q,g) id_ popContexts) globals sIdGen delta supports sccMembers =
     let qState = getState q
-        qProps = getStateProps (bitenc delta) qState
-        precRel = (prec delta) (fst . fromJust $ g) qProps
+        qLabel = getStateProps (bitenc delta) qState
+        precRel = (prec delta) (fst . fromJust $ g) qLabel
         cases
           | precRel == Just Yield =
-              encodePush globals sIdGen delta supports q g qState id_ popContexts sccMembers
+              encodePush globals sIdGen delta supports q qLabel g qState id_ popContexts sccMembers
 
           | precRel == Just Equal =
-              encodeShift globals sIdGen delta supports q g qState id_ popContexts sccMembers
+              encodeShift globals sIdGen delta supports qLabel g qState id_ popContexts sccMembers
 
           | otherwise = fail "unexpected prec rel"
     in cases
@@ -520,18 +521,18 @@ encodePush :: (SatState state, Eq state, Hashable state, Show state)
   -> Delta state
   -> Vector (Set(StateId state))
   -> StateId state
+  -> Input
   -> Stack state
   -> state
   -> Int
   -> PopCnxts
   -> IntSet
   -> IO ()
-encodePush globals sIdGen delta supports q g qState semiconfId_ rightCnxts sccMembers =
+encodePush globals sIdGen delta supports q qProps g qState semiconfId_ rightCnxts sccMembers =
   let isConsistentOrPop p = let s = getState p in
         (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) s) == Just Take)
         || (consistentFilter delta) s
       (a,b) = decodeStack g -- current stack decoded 
-      qProps = getStateProps (bitenc delta) qState
       newG = Just (qProps, q)
       (c,d) = decodeStack newG
       suppEnds = Set.toList . Set.filter isConsistentOrPop . fromJust $ (supports V.!? getId q) <|> (Just Set.empty)
@@ -599,20 +600,19 @@ encodeShift :: (SatState state, Eq state, Hashable state, Show state)
   -> SIdGen RealWorld state
   -> Delta state
   -> Vector (Set(StateId state))
-  -> StateId state
+  -> Input
   -> Stack state
   -> state
   -> Int
   -> PopCnxts
   -> IntSet
   -> IO ()
-encodeShift globals sIdGen delta supports _ g qState semiconfId_ rightCnxts sccMembers =
-  let qProps = getStateProps (bitenc delta) qState
-      newG = Just (qProps, snd . fromJust $ g)
+encodeShift globals sIdGen delta supports qProps g qState semiconfId_ rightCnxts sccMembers =
+  let newG = Just (qProps, snd . fromJust $ g)
   in do
     shiftInfo <- forM ((deltaShift delta) qState) $ \(unwrapped, prob_) -> do
       p <- stToIO (wrapState sIdGen unwrapped)
-      let dest = (p, Just (qProps, snd . fromJust $ g))
+      let dest = (p, newG)
           decoded = decode dest
       id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
       encodedRCs <- retrieveRightContexts (eqMap globals) id_
