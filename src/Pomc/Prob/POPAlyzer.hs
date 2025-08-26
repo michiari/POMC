@@ -42,7 +42,7 @@ import Data.STRef (STRef, modifySTRef')
 import Control.Monad(unless, foldM, forM_, forM, void)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 
-import Data.Maybe
+import Data.Maybe (fromJust)
 import Data.Hashable(Hashable)
 
 
@@ -53,7 +53,7 @@ import Data.Bifunctor(bimap)
 
 type PopCnxts = IntSet
 type GraphNodeId = Int
-data SemiconfVariables state = SemiconfVariables GraphNodeId PopCnxts
+data SemiconfVariables = SemiconfVariables GraphNodeId PopCnxts
 
 data Globals state = Globals
   { sStack     :: IOStack Int
@@ -117,7 +117,6 @@ retrieveInitialPush eps eqs suppGraph gn = let
     return (createLBDistr lb, createUBDistr ub)
 
 -- functions for Gabow algorithm
----- TO DO
 dfs :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
   => Globals state
   -> SupportGraph state
@@ -198,7 +197,7 @@ createComponent globals suppGraph precFun gn popContxs updateStrategy = do
 
 -- encode = generate equations for termination probabilities
 encode :: (Eq state, Hashable state, Show state)
-  => SemiconfVariables state
+  => SemiconfVariables
   -> Globals state
   -> SupportGraph state
   -> EncPrecFunc
@@ -349,7 +348,6 @@ solveSCCQuery :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state
               => IntSet -> Globals state -> Bool -> m ()
 solveSCCQuery sccMembers globals useNewton = do
   let sccLen = IntSet.size sccMembers
-      iterEps = defaultEps
       eqs = eqMap globals
 
   -- preprocess by propagating already known values
@@ -360,7 +358,7 @@ solveSCCQuery sccMembers globals useNewton = do
       updatEqMap ((k1, l), (_, u)) = addFixpEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
-  prepApprox <- preprocessZeroApproxFixp eqs fst iterEps (sccLen + 1)
+  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps (sccLen + 1)
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, _) -> deleteFixpEq eqs k
@@ -374,8 +372,8 @@ solveSCCQuery sccMembers globals useNewton = do
 
     -- compute lower bounds
     approxVec <- if useNewton
-      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) iterEps defaultMaxIters defaultMaxIters (V.map snd unsolvedVars)
-      else approxFixpWithHint eqs fst iterEps defaultMaxIters (V.map snd unsolvedVars)
+      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) defaultEps defaultMaxIters defaultMaxIters (V.map snd unsolvedVars)
+      else approxFixpWithHint eqs fst defaultEps defaultMaxIters (V.map snd unsolvedVars)
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
