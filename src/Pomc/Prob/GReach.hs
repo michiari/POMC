@@ -275,7 +275,7 @@ data QuantVariable state = QuantVariable (StateId state, Stack state) Int PopCnx
 data WeightedGRobals state = WeightedGRobals
   { idSeq      :: IORef Int
   , graphMap   :: HT.BasicHashTable (Int,Int,Int) Int
-  , sStack     :: IOStack (StateId state, Stack state)
+  , sStack     :: IOStack Int
   , bStack     :: IOStack Int
   , iVector    :: HT.BasicHashTable Int Int
   , eqMap :: AugEqMap (EqMapNumbersType,EqMapNumbersType)
@@ -329,7 +329,7 @@ weightQuerySCC globals sIdGen delta supports current target useNewton = do
     Nothing -> do
       newId <- liftIO $ freshIOPosId (idSeq globals)
       liftIO $ HT.insert (graphMap globals) decodedSemiconf newId
-      liftIO $ addtoPath globals semiconf newId
+      liftIO $ addtoPath globals newId
       -- encoding the whole support
       _ <- dfs globals sIdGen delta supports semiconf newId useNewton
       eps <- liftIO $ readIORef (actualEps globals)
@@ -407,7 +407,7 @@ dfs globals sIdGen delta supports (q,g) semiconfId useNewton =
 
       cases nextSemiconf nSCId iVal
         | (iVal == 0) = do
-            liftIO $ addtoPath globals nextSemiconf nSCId
+            liftIO $ addtoPath globals nSCId
             dfs globals sIdGen delta supports nextSemiconf nSCId useNewton
         | (iVal < 0)  = liftIO $ retrieveRightContexts (eqMap globals) nSCId
         | (iVal > 0)  = liftIO $ merge globals nSCId >> return IntSet.empty
@@ -418,7 +418,7 @@ dfs globals sIdGen delta supports (q,g) semiconfId useNewton =
         cases nextSemiconf nSCId iVal
   in do
     popContxs <- transitionCases
-    createComponent globals sIdGen delta supports popContxs semiconfId useNewton
+    createComponent globals (q,g) sIdGen delta supports popContxs semiconfId useNewton
     return popContxs
 
 lookupIValue :: WeightedGRobals state -> Int -> IO Int
@@ -439,9 +439,9 @@ freshIOPosId idSeq = do
   modifyIORef' idSeq (+1)
   return curr
 
-addtoPath :: WeightedGRobals state -> (StateId state, Stack state) -> Int -> IO ()
-addtoPath globals semiconf semiconfId = do
-  IOGS.push (sStack globals) semiconf
+addtoPath :: WeightedGRobals state-> Int -> IO ()
+addtoPath globals semiconfId = do
+  IOGS.push (sStack globals) semiconfId
   sSize <- IOGS.size $ sStack globals
   HT.insert (iVector globals) semiconfId sSize
   IOGS.push (bStack globals) sSize
@@ -454,6 +454,7 @@ merge globals semiconfId = do
 
 createComponent :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable state, Show state)
   => WeightedGRobals state
+  -> (StateId state, Stack state)
   -> SIdGen RealWorld state
   -> Delta state
   -> Vector (Set(StateId state))
@@ -461,7 +462,7 @@ createComponent :: (MonadIO m, MonadLogger m, SatState state, Eq state, Hashable
   -> Int
   -> Bool
   -> m ()
-createComponent globals sIdGen delta supports popContxs semiconfId useNewton = do
+createComponent globals (q,g) sIdGen delta supports popContxs semiconfId useNewton = do
   topB <- liftIO . IOGS.peek $ bStack globals
   iVal <- liftIO $ lookupIValue globals semiconfId
   let createC = liftIO $ do
@@ -471,19 +472,16 @@ createComponent globals sIdGen delta supports popContxs semiconfId useNewton = d
         liftSTtoIO $ modifySTRef' (stats globals) $ 
           \s@Stats{sccCountQuant = acc1, largestSCCSemiconfsCountQuant = acc} 
           -> s{sccCountQuant = acc1 + 1, largestSCCSemiconfsCountQuant = max acc (length poppedSemiconfs)}
-        forM poppedSemiconfs $ \s -> do
-          actualId <- fromJust <$> HT.lookup (graphMap globals) (decode s)
-          HT.insert (iVector globals) actualId (-1)
-          return (s, actualId)
+        forM_ poppedSemiconfs $ \id_ -> HT.insert (iVector globals) id_ (-1)
+        return poppedSemiconfs
       doEncode poppedSemiconfs = do
-        let toEncode = [QuantVariable s semiconfId_ popContxs | (s, semiconfId_) <- poppedSemiconfs]
-            sccMembers = IntSet.fromList . map snd $ poppedSemiconfs
+        let toEncode = QuantVariable (q,g) semiconfId popContxs
+            sccMembers = IntSet.fromList poppedSemiconfs
+            eqs = IntMap.fromSet (const (PushEq [])) popContxs
         liftIO $ do
           -- little optimization trick
-          forM_ toEncode (\ (QuantVariable _ id_ popContxs) ->
-            let eqs = IntMap.fromSet (const (PushEq [])) popContxs
-            in addFixpEqs (eqMap globals) id_ eqs)
-          forM_ toEncode $ \qv -> encode qv globals sIdGen delta supports sccMembers
+          addFixpEqs (eqMap globals) semiconfId eqs
+          encode toEncode globals sIdGen delta supports sccMembers
         solveSCCQuery sccMembers globals useNewton
       cases
         | iVal /= topB = return ()
@@ -545,7 +543,7 @@ encodePush globals sIdGen delta supports q qProps g qState semiconfId_ rightCnxt
       id_ <- fromJust <$> HT.lookup (graphMap globals) decoded
       encodedRCs <- retrieveRightContexts (eqMap globals) id_
       let rcs = if IntSet.member id_ sccMembers
-                    then suppEndsIds -- I might discover new variables
+                    then suppEndsIds -- I discover new variables
                     -- not all encoded RCs build a support for the current left context
                     else IntSet.intersection suppEndsIds encodedRCs 
       return (p, id_, prob_, encodedRCs, rcs)
@@ -557,7 +555,7 @@ encodePush globals sIdGen delta supports q qProps g qState semiconfId_ rightCnxt
         id_ <- fromJust <$> HT.lookup (graphMap globals) suppDecodedSemiconf
         encodedRCs <- retrieveRightContexts (eqMap globals) id_
         let rcs = if IntSet.member id_ sccMembers
-                    then rightCnxts -- I might discover new variables
+                    then rightCnxts -- I discover new variables
                     else IntSet.intersection rightCnxts encodedRCs -- I might not need all encoded right contexts
         return (s, suppEndsId, id_, encodedRCs, rcs)
 

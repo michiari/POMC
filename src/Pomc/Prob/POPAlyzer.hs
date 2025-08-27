@@ -170,7 +170,8 @@ createComponent :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show sta
 createComponent globals suppGraph precFun gn popContxs updateStrategy = do
   topB <- liftIO . IOGS.peek $ bStack globals
   iVal <- liftIO $ MV.unsafeRead (iVector globals) (gnId gn)
-  let createC = liftIO $ do
+  let gnId_ = gnId gn
+      createC = liftIO $ do
         IOGS.pop_ (bStack globals)
         sSize <- IOGS.size $ sStack globals
         poppedSemiconfs <- IOGS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is to gn
@@ -180,14 +181,13 @@ createComponent globals suppGraph precFun gn popContxs updateStrategy = do
           -> s{sccCount = acc1 + 1, largestSCCSemiconfsCount = max acc (length poppedSemiconfs)}
         return poppedSemiconfs
       doEncode poppedSemiconfs = do
-        let toEncode = [SemiconfVariables gnId_ popContxs | gnId_ <- poppedSemiconfs]
+        let toEncode = SemiconfVariables gnId_ popContxs
             sccMembers = IntSet.fromList poppedSemiconfs
+            eqs = IntMap.fromSet (const (PushEq [])) popContxs
         liftIO $ do
           -- little optimization trick
-          forM_ toEncode (\ (SemiconfVariables gnId_ popContxs) ->
-            let eqs = IntMap.fromSet (const (PushEq [])) popContxs
-            in addFixpEqs (eqMap globals) gnId_ eqs)
-          forM_ toEncode $ \svars -> encode svars globals suppGraph precFun sccMembers
+          addFixpEqs (eqMap globals) gnId_ eqs
+          encode toEncode globals suppGraph precFun sccMembers
         solveSCCQuery sccMembers globals (isNewton updateStrategy)
       cases
         | iVal /= topB = return ()

@@ -405,7 +405,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun solv = d
         forM_ poppedEdges $ \e -> liftIO $ MV.unsafeWrite (iVector globals) e (-1)
         return poppedEdges
       doEncode poppedEdges  = do
-        let toEncode = [(gnId_, rc) | gnId_ <- poppedEdges, rc <- IntSet.toList popContxs]
+        let toEncode = [(gnId gn, rc) | rc <- IntSet.toList popContxs]
             sccMembers = IntSet.fromList poppedEdges
         forM_ toEncode $ \key -> do
           var <- mkFreshRealVar $ show key
