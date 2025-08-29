@@ -7,8 +7,8 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'OPPAS'
-copyright = '2025, Michele Chiari, Francesco Pontiggia'
-author = 'Michele Chiari, Francesco Pontiggia'
+copyright = '2025, Michele Chiari and Francesco Pontiggia'
+author = 'Michele Chiari and Francesco Pontiggia'
 release = '3.1.0'
 
 # -- General configuration ---------------------------------------------------

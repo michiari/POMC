@@ -49,7 +49,7 @@ Syntax of Expressions
    comp    : "==" | "!=" | "<" | "<=" | ">" | ">="
    iexpr   : `iexpr` "+" `pexpr` | `iexpr` "-" `pexpr` | `pexpr`
    pexpr   : `pexpr` "*" `iterm` | `pexpr` "/" `iterm` | `iterm`
-   iterm   : "!" `iterm` | "(" `expr` ")" | `identifier` | `identifier` "[" `expr` "]` | `literal`
+   iterm   : "!" `iterm` | "(" `expr` ")" | `identifier` | `identifier` "[" `expr` "]" | `literal`
    literal : `intlit` | "+" `intlit` | "-" `intlit` | "true" | "false"
    intlit  : `int` | `int`"u"`int` | `int`"s"`int`
 
@@ -175,7 +175,7 @@ Comparison with WebPPL
 ~~~~~~~~~~~~~~~~~~~~~~
 
 For comparison, we show informally how constructs of a general purpose
-probabilistic programming language, WebPPL [3]_, map to MiniProb
+probabilistic programming language, WebPPL [#f2]_, map to MiniProb
 operators.
 
 Sampling
@@ -235,9 +235,9 @@ rational probabilities.
 Marginal Inference
 """"""""""""""""""
 
-(Cit.) Marginal inference (or just inference) is the process of reifying
-the distribution on return values implicitly represented by a stochastic
-computation.
+  Marginal inference (or just inference) is the process of reifying
+  the distribution on return values implicitly represented by a stochastic
+  computation. [#f2]_
 
 In WebPPL, it is expressed as, for example,
 
@@ -284,3 +284,6 @@ corresponding to ``condition(bool)`` in WebPPL.
    copied into the formal parameter when the function is called and,
    when the function returns, the value of the formal parameter is
    copied back into the actual parameter (which must be a variable).
+
+.. [#f2]
+   Docs are available at https://docs.webppl.org/en/master/sample.html
