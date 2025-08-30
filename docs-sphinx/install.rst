@@ -1,3 +1,5 @@
+.. _installation:
+
 Installation
 ============
 
@@ -43,8 +45,10 @@ followed by the usage instructions.
 The same should happen when running :code:`pomc` with the :code:`--help` flag.
 
 
+.. _compile-from-sources:
+
 Compile from Sources
-------------------------
+--------------------
 
 OPPAS has been developed in the Haskell programming language, and
 packaged with the `Haskell Tool Stack <https://www.haskellstack.org/>`__.

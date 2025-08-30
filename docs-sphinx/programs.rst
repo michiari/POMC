@@ -1,3 +1,5 @@
+.. _input-programs:
+
 Input Programs
 ==============
 
@@ -94,6 +96,21 @@ given; it will evaluate to false during the execution of all other
 functions. The expression may only refer to variables either global or
 local to the specified function, and an error is raised otherwise.
 
+OPPAS tools automatically encode programs into the appropriate kind of OPA
+defined on the following OPM:
+
+.. math::
+
+   \begin{array}{r | c c c c c}
+            & \mathbf{call}& \mathbf{ret}& \mathbf{han}& \mathbf{exc}& \mathbf{stm}\\
+   \hline
+   \mathbf{call}& \lessdot & \doteq  & \lessdot & \gtrdot & \lessdot \\
+   \mathbf{ret}& \gtrdot  & \gtrdot & \gtrdot  & \gtrdot & \gtrdot \\
+   \mathbf{han}& \lessdot & \gtrdot & \lessdot & \doteq  & \lessdot \\
+   \mathbf{exc}& \gtrdot  & \gtrdot & \gtrdot  & \gtrdot & \gtrdot \\
+   \mathbf{stm}& \gtrdot  & \gtrdot & \gtrdot  & \gtrdot & \gtrdot \\
+   \end{array}
+
 
 MiniProc Syntax
 ---------------
@@ -140,6 +157,7 @@ An example MiniProc program is given below::
   pc() { }
 
 
+.. _miniprob-syntax:
 
 MiniProb Syntax
 ---------------

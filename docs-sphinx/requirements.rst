@@ -1,3 +1,5 @@
+.. _writing-requirements:
+
 Writing Requirements
 ====================
 
