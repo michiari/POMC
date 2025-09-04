@@ -41,6 +41,7 @@ Common syntax
 An ``identifier`` is any sequence of letters, numbers, or characters
 ‘``.``’, ‘``:``’ and ‘``_``’, starting with a letter or an underscore.
 
+
 Syntax of Expressions
 ~~~~~~~~~~~~~~~~~~~~~
 
