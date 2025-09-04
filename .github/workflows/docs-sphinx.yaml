@@ -4,7 +4,7 @@ on:
   # Trigger on push to main branch
   push:
     branches: [ sphinx ]
-    paths: [ 'docs-sphinx/**' ]  # Only run when docs change
+    paths: [ 'docs-sphinx/**', '.github/workflows/docs-sphinx.yaml' ]  # Only run when docs change
 
   # Allow manual trigger
   workflow_dispatch:
