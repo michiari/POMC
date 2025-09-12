@@ -8,19 +8,23 @@
 -}
 
 module Pomc.Prob.POPAlyzer (  Globals(..)
-                           , inferenceQuery
+                           , infer
+
                            ) where
 
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.FixPoint
-import Pomc.Z3T (liftSTtoIO)
+import Pomc.Prob.SupportGraph (SupportGraph, GraphNode (..), buildSupportGraph)
+import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
+import Pomc.Prob.MiniProb (Program, programToPopa, Popa (..))
 
+import Pomc.Z3T (liftSTtoIO)
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN)
 import Pomc.Prec (Prec(..))
-import Pomc.Check(EncPrecFunc)
-import Pomc.Prob.SupportGraph (SupportGraph, GraphNode (..))
-import Pomc.Prob.OVI (ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
+import Pomc.Check(EncPrecFunc, makeOpa, InitialsComputation(..))
+import Pomc.Potl (Formula(T))
+import Pomc.MiniIR (Expr)
 
 import Pomc.IOStack(IOStack)
 import qualified Pomc.IOStack as IOGS
@@ -38,13 +42,12 @@ import qualified Data.Set as Set
 import Data.Vector((!))
 
 import Control.Monad.ST (RealWorld)
-import Data.STRef (STRef, modifySTRef')
+import Data.STRef ( STRef, modifySTRef', newSTRef, readSTRef)
 import Control.Monad(unless, foldM, forM_, forM, void)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 
 import Data.Maybe (fromJust)
 import Data.Hashable(Hashable)
-
 
 import qualified Data.Vector.Mutable as MV
 import Data.IORef (newIORef)
@@ -63,7 +66,7 @@ data Globals state = Globals
   , stats :: STRef RealWorld Stats
   }
 
-inferenceQuery :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
+inferenceQuery :: (MonadIO m, MonadLogger m, MonadFail m, Eq state, Hashable state, Show state)
     => SupportGraph state
     -> EncPrecFunc
     -> Update
@@ -117,7 +120,7 @@ retrieveInitialPush eps eqs suppGraph gn = let
     return (createLBDistr lb, createUBDistr ub)
 
 -- functions for Gabow algorithm
-dfs :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
+dfs :: (MonadIO m, MonadLogger m, MonadFail m, Eq state, Hashable state, Show state)
   => Globals state
   -> SupportGraph state
   -> EncPrecFunc
@@ -133,11 +136,11 @@ dfs globals suppGraph precFun gn updateStrategy =
       follow idx = liftIO (MV.unsafeRead (iVector globals) idx) >>= cases (suppGraph ! idx)
       transitionCases
         -- pop semiconf
-        | not . IntMap.null $ popContexts gn = liftIO $ encodePopAndSolveSCC globals gn
+        | not . IntMap.null $ popContexts gn = encodePopAndSolveSCC globals gn
         --  push/shift semiconf
         | otherwise = do
           internalPopCntxs <- IntSet.unions <$> forM (StrictIntMap.keys $ internalEdges gn) follow
-          if IntSet.null $ supportEdges gn 
+          if IntSet.null $ supportEdges gn
             then return internalPopCntxs
             else IntSet.unions <$> forM (IntSet.toList $ supportEdges gn) follow
   in do
@@ -159,7 +162,7 @@ merge globals gn = do
   -- contract the B stack, that represents the boundaries between SCCs on the current path
   IOGS.popWhile_ (bStack globals) (iVal <)
 
-createComponent :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
+createComponent :: (MonadIO m, MonadLogger m, MonadFail m, Eq state, Hashable state, Show state)
   => Globals state
   -> SupportGraph state
   -> EncPrecFunc
@@ -184,10 +187,9 @@ createComponent globals suppGraph precFun gn popContxs updateStrategy = do
         let toEncode = SemiconfVariables gnId_ popContxs
             sccMembers = IntSet.fromList poppedSemiconfs
             eqs = IntMap.fromSet (const (PushEq [])) popContxs
-        liftIO $ do
-          -- little optimization trick
-          addFixpEqs (eqMap globals) gnId_ eqs
-          encode toEncode globals suppGraph precFun sccMembers
+        -- little optimization trick
+        addFixpEqs (eqMap globals) gnId_ eqs
+        encode toEncode globals suppGraph precFun sccMembers
         solveSCCQuery sccMembers globals (isNewton updateStrategy)
       cases
         | iVal /= topB = return ()
@@ -196,13 +198,13 @@ createComponent globals suppGraph precFun gn popContxs updateStrategy = do
   cases
 
 -- encode = generate equations for termination probabilities
-encode :: (Eq state, Hashable state, Show state)
+encode :: (MonadIO m, MonadLogger m, MonadFail m, Eq state, Hashable state, Show state)
   => SemiconfVariables
   -> Globals state
   -> SupportGraph state
   -> EncPrecFunc
   -> IntSet
-  -> IO ()
+  -> m ()
 encode (SemiconfVariables id_ rightCnxts) globals suppGraph precFun sccMembers =
     let gn = suppGraph ! id_
         (q,g) = semiconf gn
@@ -218,14 +220,14 @@ encode (SemiconfVariables id_ rightCnxts) globals suppGraph precFun sccMembers =
           | otherwise = fail "unexpected prec rel"
     in cases
 
-encodePush :: (Eq state, Hashable state, Show state)
+encodePush :: (MonadIO m, MonadLogger m, MonadFail m, Eq state, Hashable state, Show state)
   => Globals state
   -> SupportGraph state
   -> GraphNode state
   -> EncPrecFunc
   -> PopCnxts
   -> IntSet
-  -> IO ()
+  -> m ()
 encodePush globals suppGraph gn precFun rightCnxts sccMembers =
   let suppEnds = map (suppGraph !) . IntSet.toList $ supportEdges gn
       suppEndsIds = IntSet.fromList . map (getId . fst . semiconf) $ suppEnds
@@ -283,14 +285,14 @@ encodePush globals suppGraph gn precFun rightCnxts sccMembers =
         addFixpEqs (eqMap globals) id_ eqs
     forM_ toEncode $ \v -> encode v globals suppGraph precFun sccMembers
 
-encodeShift :: (Eq state, Hashable state, Show state)
+encodeShift :: (MonadIO m, MonadLogger m, MonadFail m, Eq state, Hashable state, Show state)
   => Globals state
   -> SupportGraph state
   -> GraphNode state
   -> EncPrecFunc
   -> PopCnxts
   -> IntSet
-  -> IO ()
+  -> m ()
 encodeShift globals suppGraph gn precFun rightCnxts sccMembers = do
   shiftInfo <- forM (StrictIntMap.toList $ internalEdges gn) $ \(id_, prob_) -> do
     encodedRCs <- retrieveRightContexts (eqMap globals) id_
@@ -323,10 +325,10 @@ encodeShift globals suppGraph gn precFun rightCnxts sccMembers = do
       addFixpEqs (eqMap globals) id_ eqs
   forM_ shiftVarKeystoEncode $ \qv -> encode qv globals suppGraph precFun sccMembers
 
-encodePopAndSolveSCC :: (Eq state, Hashable state, Show state)
+encodePopAndSolveSCC :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
   => Globals state
   -> GraphNode state
-  -> IO IntSet
+  -> m IntSet
 encodePopAndSolveSCC globals gn =
     let distr = IntMap.map (\n -> PopEq (fromRational n, fromRational n)) $ popContexts gn
         id_ = gnId gn
@@ -334,9 +336,9 @@ encodePopAndSolveSCC globals gn =
       liftSTtoIO $ modifySTRef' (stats globals) $
         \s@Stats{sccCount = acc1, largestSCCSemiconfsCount = acc}
         -> s{sccCount = acc1 + 1, largestSCCSemiconfsCount = max acc 1}
-      IOGS.pop_ (bStack globals)
-      IOGS.pop_ (sStack globals)
-      MV.unsafeWrite (iVector globals) id_ (-1)
+      liftIO $ IOGS.pop_ (bStack globals)
+      liftIO $ IOGS.pop_ (sStack globals)
+      liftSTtoIO $ MV.unsafeWrite (iVector globals) id_ (-1)
       addFixpEqs (eqMap globals) id_ distr
       liftSTtoIO $ modifySTRef' (stats globals) $
         \s@Stats{equationsCount = acc} -> s{equationsCount = acc + length distr}
@@ -392,3 +394,31 @@ solveSCCQuery sccMembers globals useNewton = do
     let bounds = V.zip3 varKeys approxVec (oviUpperBound oviRes)
     V.mapM_ (\(varKey, l,u) -> do
       addFixpEq eqs varKey (PopEq (l,u))) bounds
+
+-- infer the posterior distribution of some expression over GLOBAL program variables
+infer :: (MonadIO m, MonadFail m, MonadLogger m)
+                   => Update -> Program -> Expr -> m ((Distr Int, Distr Int), Stats, String)
+infer updateStrategy prog expr =
+  let (_, groupBy, popa) = programToPopa prog Set.empty
+      (tsls, tprec) = popaAlphabet popa
+      (bitenc, precFunc, _, _, _, _, _, _) =
+        makeOpa T IsProb (tsls, tprec) (\_ _ -> True)
+
+      initial = popaInitial popa bitenc
+      pDelta = Delta
+               { bitenc = bitenc
+               , proBitenc = error "proBitenc used in infer function"
+               , prec = precFunc
+               , deltaPush = popaDeltaPush popa bitenc
+               , deltaShift = popaDeltaShift popa bitenc
+               , deltaPop = popaDeltaPop popa bitenc
+               , phiDeltaPush = error "phiDeltaPush used in infer function"
+               , phiDeltaShift = error "phiDeltaShift used in infer function"
+               , phiDeltaPop = error "phiDeltaPop used in infer function"
+               }
+  in do
+    stats <- liftSTtoIO $ newSTRef newStats
+    (suppGraph, _) <- liftSTtoIO $ buildSupportGraph pDelta initial stats
+    (lb, ub) <- inferenceQuery suppGraph precFunc updateStrategy stats
+    computedStats <- liftSTtoIO $ readSTRef stats
+    return ((groupBy expr lb, groupBy expr ub), computedStats, show suppGraph)

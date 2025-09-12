@@ -2,8 +2,10 @@ name:               oppas
 version:            3.1.0
 synopsis:           A tool suite for verifying recursive (probabilistic) programs.
 description:        >-
-  OPPAS contains two tools. POMC, for verifying recursive programs,
-  and POPACheck, for probabilistic programs.
+  OPPAS contains three tools:
+    - POMC, for verifying recursive programs,
+    - POPACheck, for verifying probabilistic programs,
+    - POPAlyzer, for inference queries on probabilistic programs
 category:           Formal methods
 
 author:             Davide Bergamaschi, Michele Chiari and Francesco Pontiggia
@@ -40,6 +42,7 @@ library:
   - Pomc.Prob.ProbModelChecker
   - Pomc.Prob.MiniProb
   - Pomc.Prob.ProbUtils
+  - Pomc.Prob.POPAlyzer
   ghc-options:
   - -Wall
   - -Wno-incomplete-patterns
@@ -88,6 +91,22 @@ executables:
   popacheck:
     main:           Main.hs
     source-dirs:    popacheck
+    ghc-options:
+    - -rtsopts
+    - -with-rtsopts=-H
+    - -Wall
+    - -O2
+    dependencies:
+    - oppas
+    - filepath
+    - megaparsec
+    - text
+    - containers
+    - cmdargs
+    ld-options: -Wl,-rpath -Wl,$ORIGIN/lib
+  popalyzer:
+    main:           Main.hs
+    source-dirs:    popalyzer
     ghc-options:
     - -rtsopts
     - -with-rtsopts=-H

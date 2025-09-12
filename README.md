@@ -4,7 +4,7 @@
 
 **Operator-Precedence Program Analysis Suite**
 
-OPPAS contains two tools: POMC and POPACheck.
+OPPAS contains three tools: POMC, POPACheck and POPAlyzer.
 
 
 ## POMC 🔎
@@ -21,12 +21,15 @@ It can express properties such as:
 
 ## POPACheck 🎲
 
-POAPACheck is a model-checking tool for recursive probabilistic programs formally modelled as probabilistic Operator Precedence Automata (pOPA), a subclass of probabilistic Pushdown Automata.
+POPACheck is a model-checking tool for recursive probabilistic programs formally modelled as probabilistic Operator Precedence Automata (pOPA), a subclass of probabilistic Pushdown Automata.
 POPACheck support model checking of the temporal logics LTL and a fragment of POTL.
 
 
 For usage info, including input/output formats, see the [User Guide](docs/guide.pdf) and related [Publications](#publications).
 
+## POPAlyzer 
+
+POPAlyzer is a tool for inferring the posterior distribution of a nested probabilistic program. More information is coming soon.
 
 ## Build 🏗️
 

@@ -105,7 +105,7 @@ main = do
     ProgCheckRequest phis prog -> sum <$> forM phis
       (runProg isOmega isExplicit logLevel (smt pargs) (smt_use_array_theory pargs) prog)
 
-    _ -> die "POMC only supports non-probabilistic queries. Please use the POPACheck executable for probabilistic model checking."
+    _ -> die "POMC only supports non-probabilistic queries. Please use the POPACheck executable for probabilistic model checking, or POPAlyzer for inference queries."
 
   putStrLn ("\n\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
