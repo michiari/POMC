@@ -481,7 +481,7 @@ createComponent globals (q,g) sIdGen delta supports popContxs semiconfId useNewt
         liftIO $ do
           -- little optimization trick
           addFixpEqs (eqMap globals) semiconfId eqs
-          encode toEncode globals sIdGen delta supports sccMembers
+          encode toEncode globals sIdGen delta supports (IntSet.delete semiconfId sccMembers) -- little optimization
         solveSCCQuery sccMembers globals useNewton
       cases
         | iVal /= topB = return ()

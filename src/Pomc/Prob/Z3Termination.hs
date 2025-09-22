@@ -412,7 +412,7 @@ createComponent suppGraph globals gn (popContxs, dMustReachPop) precFun solv = d
           liftIO $ HT.insert tVarMap key var
         -- delete previous assertions and encoding the new ones
         reset
-        eqsCount <- encode toEncode tVarMap eqs suppGraph precFun mkComp (useZ3 solv) sccMembers 0
+        eqsCount <- encode toEncode tVarMap eqs suppGraph precFun mkComp (useZ3 solv) (IntSet.delete (gnId gn) sccMembers) 0
         liftSTtoIO $ modifySTRef' (stats globals) $ \s@Stats{equationsCount = acc} -> s{ equationsCount = acc + eqsCount}
         logDebugN $ "Must reach pop of descendant: " ++ show dMustReachPop
         actualMustReachPop <- solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers

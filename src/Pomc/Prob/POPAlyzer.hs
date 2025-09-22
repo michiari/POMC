@@ -189,7 +189,7 @@ createComponent globals suppGraph precFun gn popContxs updateStrategy = do
             eqs = IntMap.fromSet (const (PushEq [])) popContxs
         -- little optimization trick
         addFixpEqs (eqMap globals) gnId_ eqs
-        encode toEncode globals suppGraph precFun sccMembers
+        encode toEncode globals suppGraph precFun (IntSet.delete (gnId gn) sccMembers) -- little optimization
         solveSCCQuery sccMembers globals (isNewton updateStrategy)
       cases
         | iVal /= topB = return ()
