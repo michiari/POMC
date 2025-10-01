@@ -433,7 +433,6 @@ solveSCCQuery :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Eq state, Hashable s
               => SupportGraph state -> Bool -> VarMap -> DeficientGlobals state -> EncPrecFunc -> Pomc.Prob.ProbUtils.Solver -> IntSet -> z3 Bool
 solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = do
   currentEps <- liftIO $ readIORef (eps globals)
-
   let eqs = eqMap globals
       rVarMap = rewVarMap globals
       augTolerance = 100 * defaultTolerance
@@ -473,11 +472,12 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = 
         startUpper <- startTimer
         logDebugN "Approximating via Value Iteration + z3"
         -- we don't allow using Newton here, as it is definitively worthless.
+        -- we are recomputing a lower bound using upper bounds as coefficients (that is why snd)
         approxVec <- approxFixpWithHint eqs snd defaultEps defaultMaxIters lowerBound
         let approxFracVec = toRationalProbVec defaultEps approxVec
         logDebugN "Asserting lower and upper bounds computed from value iteration, and getting a model"
         varKeys <- liveVariables eqs
-        model <- doAssert (V.zip varKeys approxFracVec) (min defaultTolerance currentEps)
+        model <- doAssert (V.zip varKeys approxFracVec) (min defaultTolerance currentEps) -- currentEps is initialized with defaultEps
 
         -- actual updates
         upperBound <- foldM (\acc (varKey, l) -> do
@@ -522,10 +522,11 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = 
   let zipSolved = zip solvedLVars solvedUvars
   forM_ zipSolved $ \((varKey, l), (_, u)) -> do
     pAST <- mkRealNum (u :: Double)
+    -- Cannot remove zero variables because they might appear in the rhs of a Z3 assertion.
     liftIO $ HT.insert tVarMap varKey pAST
     addFixpEq eqs varKey (PopEq (l,u))
 
-  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps (sccLen + 1)
+  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps sccLen
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, v) -> do

@@ -574,6 +574,8 @@ encodePush globals sIdGen delta supports q qProps g qState semiconfId_ rightCnxt
             , not $ IntSet.null toEncodeRCs
           ]
         toEncode = suppVarKeystoEncode ++ pushVarKeystoEncode
+        -- I still add equations PushEq [] because I can then identify them in the preprocessing phase and remove them
+        -- PopEq 0 would not be a live equation, and would not be considered in the preprocessing algorithm
         createTerm suppRC = PushEq 
           [(prob_, (pushId, pushRC), (suppId, suppRC)) |
               (_, suppSId, suppId, _, suppRCs) <- suppInfo
@@ -691,7 +693,7 @@ solveSCCQuery sccMembers globals useNewton = do
       updatEqMap ((k1, l), (_, u)) = addFixpEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
-  prepApprox <- preprocessZeroApproxFixp eqs fst iterEps (sccLen + 1)
+  prepApprox <- preprocessZeroApproxFixp eqs fst iterEps sccLen
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, _) -> deleteFixpEq eqs k

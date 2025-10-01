@@ -1,5 +1,4 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {- |
    Module      : Pomc.Prob.POPAlyzer
    Copyright   : 2025 Francesco Pontiggia
@@ -266,6 +265,8 @@ encodePush globals suppGraph gn precFun rightCnxts sccMembers =
             , not $ IntSet.null toEncodeRCs
           ]
         toEncode = suppVarKeystoEncode ++ pushVarKeystoEncode
+        -- I still add equations PushEq [] because I can then identify them in the preprocessing phase and remove them
+        -- PopEq 0 would not be a live equation, and would not be considered in the preprocessing algorithm
         createTerm suppRC = PushEq
           [(prob_, (pushId, pushRC), (suppId, suppRC)) |
               (suppSId, suppId, _, suppRCs) <- suppInfo
@@ -360,7 +361,7 @@ solveSCCQuery sccMembers globals useNewton = do
       updatEqMap ((k1, l), (_, u)) = addFixpEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
-  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps (sccLen + 1)
+  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps sccLen
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, _) -> deleteFixpEq eqs k
@@ -379,12 +380,12 @@ solveSCCQuery sccMembers globals useNewton = do
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
-    oviRes <- ovi defaultOVISettingsDouble eqs snd approxVec
-    unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
+    oviRes <- ovi defaultOVISettingsDouble eqs fst approxVec
+    unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities"
 
     -- certify the result and compute some statistics
-    rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
-    unless rCertified $ error $ "Cannot deduce a rational certificate for this SCC when computing fraction f: " ++ show sccMembers
+    rCertified <- oviToRational defaultOVISettingsDouble eqs fst oviRes
+    unless rCertified $ error $ "Cannot deduce a rational certificate for this SCC when computing upper bounds to the termination probabilities: " ++ show sccMembers
     logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
     tWeights <- stopTimer startWeights rCertified
     liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tWeights })

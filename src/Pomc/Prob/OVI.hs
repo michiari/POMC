@@ -82,7 +82,7 @@ defaultOVISettingsProb = OVISettings
 
 data OVIResult n = OVIResult { oviSuccess :: Bool
                              , oviIters :: Int
-                             , oviLowerBound :: ProbVec n
+                             , oviLowerBound :: ProbVec n -- note that this is the lower bound computed with upper bounds coefficients
                              , oviUpperBound :: ProbVec n
                              }
 
