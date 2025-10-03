@@ -640,6 +640,7 @@ encodeRewPush :: (MonadZ3 z3, Eq state, Hashable state, Show state)
 encodeRewPush graph m rVarMap mkComp gn var =
   let closeSummaries pushIdx (currs, unencodedVars) suppIdx = do
         let supportGn = graph ! suppIdx
+        -- if we can find a solution with upper bound coefficient, this solution holds also for the actual (uncomputable) coefficients
         maybeTermProb <- liftIO $ HT.lookup m (pushIdx, getId . fst . semiconf $ supportGn)
         if isNothing maybeTermProb
           then return (currs, unencodedVars)
