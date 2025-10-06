@@ -435,14 +435,15 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = 
   currentEps <- liftIO $ readIORef (eps globals)
   let eqs = eqMap globals
       rVarMap = rewVarMap globals
-      augTolerance = 100 * defaultTolerance
+      augTolerance = 1000 * defaultTolerance
       sccLen = IntSet.size sccMembers
       cases unsolvedVars
         | null unsolvedVars = logDebugN "No equation system has to be solved here, just propagated all the values." >> return []
         | useZ3 solv = updateLowerBound unsolvedVars >>= updateUpperBoundsZ3
         | otherwise = updateLowerBound unsolvedVars >>= updateUpperBoundsOVI
       updateLowerBound unsolvedVars
-        | useNewton solv = approxFixpNewtonWithHint eqs fst (1000 * defaultEps) defaultEps defaultMaxIters defaultMaxIters (V.map snd unsolvedVars)
+        -- apply Newton's method only up to augTolerance, Newton's methods becomes instable when dealing with very small deltas
+        | useNewton solv = approxFixpNewtonWithHint eqs fst augTolerance defaultEps defaultMaxIters defaultMaxIters (V.map snd unsolvedVars)
         | otherwise = approxFixpWithHint eqs fst defaultEps defaultMaxIters (V.map snd unsolvedVars)
 
       --

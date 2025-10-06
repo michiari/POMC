@@ -42,7 +42,7 @@ import Data.Vector((!))
 
 import Control.Monad.ST (RealWorld)
 import Data.STRef ( STRef, modifySTRef', newSTRef, readSTRef)
-import Control.Monad(unless, foldM, forM_, forM, void)
+import Control.Monad(unless, foldM, forM_, forM, void, when)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 
 import Data.Maybe (fromJust)
@@ -361,6 +361,8 @@ solveSCCQuery sccMembers globals useNewton = do
       updatEqMap ((k1, l), (_, u)) = addFixpEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
+  -- identifying variables with solution zero
+  -- the size of the (semiconf) scc might be significantly smaller that the size of the equation system, still sccLen is the max you need to iterate.
   prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps sccLen
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
@@ -380,7 +382,8 @@ solveSCCQuery sccMembers globals useNewton = do
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
-    oviRes <- ovi defaultOVISettingsDouble eqs fst approxVec
+    upperApproxVec <- approxFixpWithHint eqs snd defaultEps defaultMaxIters approxVec
+    oviRes <- ovi defaultOVISettingsDouble eqs snd upperApproxVec
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities"
 
     -- certify the result and compute some statistics
@@ -394,6 +397,7 @@ solveSCCQuery sccMembers globals useNewton = do
     varKeys <- liveVariables eqs
     let bounds = V.zip3 varKeys approxVec (oviUpperBound oviRes)
     V.mapM_ (\(varKey, l,u) -> do
+      when (u - l > 0.01) $ error $ "The upper bound is too lose: " ++ show varKey ++ " = (" ++ show l ++ "," ++ show u ++ ")"
       addFixpEq eqs varKey (PopEq (l,u))) bounds
 
 -- infer the posterior distribution of some expression over GLOBAL program variables

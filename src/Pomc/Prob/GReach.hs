@@ -712,7 +712,8 @@ solveSCCQuery sccMembers globals useNewton = do
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
-    oviRes <- ovi defaultOVISettingsDouble eqs snd approxVec
+    upperApproxVec <- approxFixpWithHint eqs snd defaultEps defaultMaxIters approxVec
+    oviRes <- ovi defaultOVISettingsDouble eqs snd upperApproxVec
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f"
 
     -- certify the result and compute some statistics

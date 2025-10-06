@@ -43,9 +43,9 @@ defaultOVISettingsDouble = OVISettings
   { oviMaxIters = 50
   , oviMaxKleeneIters = 100000000
   , oviDampingFactor = 0.5
-  , oviKleeneEps = 1e-4
+  , oviKleeneEps = defaultEps
   , oviKleeneDampingFactor = 1e-1
-  , oviPowerIterEps = 1e-4
+  , oviPowerIterEps = defaultEps
   , oviPowerIterDampingFactor = 1e-1
   , oviMaxPowerIters = 1000000
   , oviRationalApproxEps = 1e-8
@@ -57,9 +57,9 @@ defaultOVISettingsProb = OVISettings
   { oviMaxIters = 10
   , oviMaxKleeneIters = 100000000
   , oviDampingFactor = 1 % 2
-  , oviKleeneEps = 1 % 1000
+  , oviKleeneEps = defaultREps
   , oviKleeneDampingFactor = 1 % 10
-  , oviPowerIterEps = 1 % 10000
+  , oviPowerIterEps = defaultREps
   , oviPowerIterDampingFactor = 1 % 10
   , oviMaxPowerIters = 1000000
   , oviRationalApproxEps = 1 % 10^(8 :: Integer)
@@ -128,6 +128,7 @@ ovi settings augEqMap f lowerApproxInitial = do
       let currentIter = oviMaxIters settings - maxIters
       logDebugN $ "Starting OVI iteration " ++ show currentIter
 
+      -- computing eigenvector and eigenvalue
       let newLowerApprox = approxFixpFrom leqSys kleeneEps (oviMaxKleeneIters settings) lowerApprox
           (newEigenVec, eigenVal, iters) = computeEigen leqSys powerIterEps (oviMaxPowerIters settings)
                   newLowerApprox oldEigenVec
@@ -137,7 +138,9 @@ ovi settings augEqMap f lowerApproxInitial = do
                 [ "Power iteration converged after ", show ((oviMaxPowerIters settings) - iters)
                 , " iterations. Eigenvalue: ", show eigenVal
                 ]
-          guessAndCheckInductive 0 = (False, V.empty)
+      logDebugN debugMsg
+      -- guessing an inductive upper bound
+      let guessAndCheckInductive 0 = (False, V.empty)
           guessAndCheckInductive maxGuesses =
             let currentGuess = currentIter + 1 - maxGuesses
                 scaleFactor = oviPowerIterEps settings *
@@ -152,16 +155,14 @@ ovi settings augEqMap f lowerApproxInitial = do
                 else guessAndCheckInductive (maxGuesses - 1)
 
           (inductive, newUpperApprox) = guessAndCheckInductive (currentIter + 1)
-          adjustedUpperApprox = V.map (* 1.00001) newUpperApprox
-
-      logDebugN debugMsg
+          adjustedUpperApprox = approxFixpFrom leqSys defaultEps defaultMaxIters newUpperApprox
       logDebugN $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
         ++ show inductive
       if inductive
         then do
-              logDebugN $ "Lower Approximation: " ++ show newLowerApprox
+              logDebugN $ "Refined lower Approximation: " ++ show newLowerApprox
               logDebugN $ "EigenVector: " ++ show newEigenVec
-              logDebugN $ "Upper Approximation: " ++ show adjustedUpperApprox
+              logDebugN $ "Computed Upper Approximation: " ++ show adjustedUpperApprox
               return OVIResult { oviSuccess  = True
                          , oviIters = oviMaxIters settings - maxIters
                          , oviLowerBound = newLowerApprox

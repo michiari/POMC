@@ -31,6 +31,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , approxFixpWithHint
                           , approxFixpNewtonWithHint
                           , defaultEps
+                          , defaultREps
                           , defaultMaxIters
                           , toRationalProbVec
                           , preprocessApproxFixp
@@ -209,8 +210,8 @@ toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
       createEq k = do
         eq <- fromJust <$> uncurry (MM.lookupValue eqMap) k
         case eq of
-          PushEq terms -> PushLEq . (filter isPushNotZero) <$> mapM createLivePush terms
-          ShiftEq terms -> ShiftLEq . (filter isShiftNotZero) <$> mapM createLiveShift terms
+          PushEq terms -> PushLEq . filter isPushNotZero <$> mapM createLivePush terms
+          ShiftEq terms -> ShiftLEq . filter isShiftNotZero <$> mapM createLiveShift terms
           _ -> error "A supposed live variable is actually dead"
   V.mapM createEq (V.fromList $ Set.elems lVars)
 
@@ -360,6 +361,9 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
 
 defaultEps :: EqMapNumbersType
 defaultEps = 0x1p-26 -- ~ 1e-8
+
+defaultREps :: Prob
+defaultREps = 1e-8
 
 defaultMaxIters :: Int
 defaultMaxIters = 1000000
