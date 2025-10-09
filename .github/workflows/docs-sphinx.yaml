@@ -3,8 +3,8 @@ name: Build and Deploy Sphinx Documentation
 on:
   # Trigger on push to main branch
   push:
-    branches: [ sphinx ]
-    paths: [ 'docs-sphinx/**', '.github/workflows/docs-sphinx.yaml' ]  # Only run when docs change
+    branches: [ master ]
+    paths: [ 'docs/**', '.github/workflows/docs-sphinx.yaml' ]  # Only run when docs change
 
   # Allow manual trigger
   workflow_dispatch:
@@ -41,13 +41,13 @@ jobs:
 
     - name: Build Sphinx documentation
       run: |
-        cd docs-sphinx
+        cd docs
         make html
 
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v4
       with:
-        path: docs-sphinx/_build/html
+        path: docs/_build/html
 
   deploy:
     environment:
