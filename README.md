@@ -25,7 +25,7 @@ POAPACheck is a model-checking tool for recursive probabilistic programs formall
 POPACheck support model checking of the temporal logics LTL and a fragment of POTL.
 
 
-For usage info, including input/output formats, see the [User Guide](docs/guide.pdf) and related [Publications](#publications).
+For usage info, including input/output formats, see the [User Guide](https://michiari.github.io/OPPAS/) and related [Publications](#publications).
 
 
 ## Build 🏗️
