@@ -178,7 +178,7 @@ Programs may sample from
 :math:`\texttt{Bernoulli(} e_1, e_2 \texttt{)}`, which returns 1 with
 probability :math:`p = e_1 / e_2`, and 0 with probability :math:`1-p`,
 or from :math:`\texttt{Uniform(} e_1, e_2 \texttt{)}`, which samples
-uniformly among integers from :math:`e_1` to :math:`e_2 - 1`.
+uniformly among integers from :math:`e_1` to :math:`e_2`.
 
 Random assignments of the form :math:`x = e_1 \{ e_2 / e_3 \} e_4` mean that
 :math:`x` is assigned the value of :math:`e_1` with probability
