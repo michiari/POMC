@@ -8,6 +8,7 @@ dist
 dist-newstyle
 /references
 */__pycache__
+docs-sphinx/_build
 
 # History files
 .Rhistory
