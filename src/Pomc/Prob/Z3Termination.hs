@@ -436,7 +436,6 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = 
   let eqs = eqMap globals
       rVarMap = rewVarMap globals
       augTolerance = 1000 * defaultTolerance
-      sccLen = IntSet.size sccMembers
       cases unsolvedVars
         | null unsolvedVars = logDebugN "No equation system has to be solved here, just propagated all the values." >> return []
         | useZ3 solv = updateLowerBound unsolvedVars >>= updateUpperBoundsZ3
@@ -527,7 +526,7 @@ solveSCCQuery suppGraph dMustReachPop tVarMap globals precFun solv sccMembers = 
     liftIO $ HT.insert tVarMap varKey pAST
     addFixpEq eqs varKey (PopEq (l,u))
 
-  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps sccLen
+  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, v) -> do

@@ -188,10 +188,10 @@ createComponent globals suppGraph precFun gn popContxs updateStrategy = do
             eqs = IntMap.fromSet (const (PushEq [])) popContxs
         -- little optimization trick
         addFixpEqs (eqMap globals) gnId_ eqs
-        encode toEncode globals suppGraph precFun (IntSet.delete (gnId gn) sccMembers) -- little optimization
+        encode toEncode globals suppGraph precFun (IntSet.delete (gnId gn) sccMembers) -- little optimization, removing the entry semiconf from the scc
         solveSCCQuery sccMembers globals (isNewton updateStrategy)
       cases
-        | iVal /= topB = return ()
+        | iVal /= topB = return () -- this semiconf belongs to a cycle, encode all of them together at the initial node of the cycle.
         | not (IntSet.null popContxs) = createC >>= doEncode -- can reach a pop
         | otherwise = void createC -- cannot reach a pop
   cases
@@ -362,8 +362,7 @@ solveSCCQuery sccMembers globals useNewton = do
   forM_ zipSolved updatEqMap
 
   -- identifying variables with solution zero
-  -- the size of the (semiconf) scc might be significantly smaller that the size of the equation system, still sccLen is the max you need to iterate.
-  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps sccLen
+  prepApprox <- preprocessZeroApproxFixp eqs fst defaultEps
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, _) -> deleteFixpEq eqs k

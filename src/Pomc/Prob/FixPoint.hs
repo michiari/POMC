@@ -304,14 +304,15 @@ approxFixpWithHint augEqMap f eps maxIters hint = do
 -- Note that we are not allowed to use Newton's method here, as it is not guaranteed to converge for non clean systems 
 -- (cit. Computing the Least Fixed Point of Positive Polynomial Systems)
 preprocessZeroApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
-                      => AugEqMap k -> (k -> n) -> n -> Int -> m (ProbVec n)
-preprocessZeroApproxFixp augEqMap@(_, lVarsRef) f eps maxIters = do
+                      => AugEqMap k -> (k -> n) -> n -> m (ProbVec n)
+preprocessZeroApproxFixp augEqMap@(_, lVarsRef) f eps = do
   lVars <- liftIO $ readIORef lVarsRef
   if Set.null lVars
     then return V.empty
     else do
+      let len = Set.size lVars
       leqMap <- toLiveEqMapWith augEqMap f
-      return $ approxFixpFrom leqMap eps maxIters (V.replicate (Set.size lVars) 0)
+      return $ approxFixpFrom leqMap eps len (V.replicate len  0)
 
 -- preprocess live equations by propagating found values, until no value can be propagated anymore
 preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)

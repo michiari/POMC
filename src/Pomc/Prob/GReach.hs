@@ -678,8 +678,7 @@ encodePopAndSolveSCC (q,g) id_ globals sIdGen delta =
 solveSCCQuery :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
               => IntSet -> WeightedGRobals state -> Bool -> m ()
 solveSCCQuery sccMembers globals useNewton = do
-  let sccLen = IntSet.size sccMembers
-      epsVar = actualEps globals
+  let epsVar = actualEps globals
       eqs = eqMap globals
 
   currentEps <- liftIO $ readIORef epsVar
@@ -693,7 +692,7 @@ solveSCCQuery sccMembers globals useNewton = do
       updatEqMap ((k1, l), (_, u)) = addFixpEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
-  prepApprox <- preprocessZeroApproxFixp eqs fst iterEps sccLen
+  prepApprox <- preprocessZeroApproxFixp eqs fst iterEps
   varKeys <- liveVariables eqs
   let (zeroVars, unsolvedVars) = V.partition ((== 0) . snd) (V.zip varKeys prepApprox)
   forM_ zeroVars $ \(k, _) -> deleteFixpEq eqs k
