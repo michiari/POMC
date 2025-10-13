@@ -1,33 +1,11 @@
-/* Original Church program (here modelled with parameter "depth" = 11):
-( define ( sample-location )
-    ( if ( flip .55)
-        ' popular-bar
-        ' unpopular-bar ) )
-
-( define ( alice depth )
-    ( query
-        ( define alice-location ( sample-location ) )
-        alice-location
-        ( equal? alice-location ( bob (- depth 1) ) ) ) )
-
-( define ( bob depth )
-    ( query
-        ( define bob-location ( sample-location ) )
-        bob-location
-        ( or (= depth 0)
-            ( equal? bob-location ( alice depth ) ) ) ) )
-Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Conditioning: Modeling Theory of Mind with Probabilistic Programs, Cognitive Systems Research 2014.
-*/ 
-
-
-probabilistic query: approximate;
-//formula = F (ret And main And [main|res == 1u1]);
+probabilistic query: inference res;
 
 program:
 u4 p;
+bool res;
+
 main() {
-  bool res;
-  p = 11u4;
+  p = 10u4;
   query alice(res);
   // res is which cafè they have gone to
 }

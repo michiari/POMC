@@ -1,29 +1,34 @@
-var bob = function(depth) {
-  var prior_bob = sample(Bernoulli({p: 0.55}));
-  if (depth > 0) {
-    var alice_choice = sample(Infer(
-      {method: 'rejection', incremental : true},
-      function () {return alice(depth)}));
-    condition(prior_bob == alice_choice);
-  } else {}
-  return prior_bob;
+// Reference: Owain Evans, Andreas Stuhlmüller, John Salvatier, and Daniel Filan. 2017. Modeling Agents with Probabilistic Programs (Chapter VI). http://agentmodels.org. Accessed: 30/09/2025
+// "Bounded" refers to the fact that nesting of queries has an explicit bound - MiniProb supports indeed unbounded nesting.
+
+var locationPrior = function() {
+  if (flip(.55)) {
+    return 'popular-bar';
+  } else {
+    return 'unpopular-bar';
+  }
 }
 
-var alice = function(depth) {
-  var prior_alice = sample(Bernoulli({p: 0.55}));
-  var bob_choice = sample(Infer(
-    {method: 'rejection', incremental : true},
-    function () {return bob(depth - 1)}));
-  condition(prior_alice == bob_choice);
-  return prior_alice;
-}
+var alice = dp.cache(function(depth) {
+  return Infer({ model() {
+    var myLocation = locationPrior();
+    var bobLocation = sample(bob(depth - 1));
+    condition(myLocation === bobLocation);
+    return myLocation;
+  }});
+});
 
-var dist = Infer(
-  {method: 'rejection', incremental : true},
-  function () {return alice(11)});
+var bob = dp.cache(function(depth) {
+  return Infer({ model() {
+    var myLocation = locationPrior();
+    if (depth === 0) {
+      return myLocation;
+    } else {
+      var aliceLocation = sample(alice(depth));
+      condition(myLocation === aliceLocation);
+      return myLocation;
+    }
+  }});
+});
 
-console.log(dist.getDist());
-
-
-
-// export NODE_OPTIONS="--max-old-space-size=16384"
+viz(alice(10));
