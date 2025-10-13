@@ -1,0 +1,36 @@
+probabilistic query: inference learnt;
+
+
+/* Convention:
+'allSprouted' = 2; 'someSprouted' = 1; 'noneSprouted' = 0.
+State of world = how many sprouted? (ranging from 0 to 3);
+*/
+
+program:
+u10 learnt;
+
+main() {
+  query listener(0, 1, learnt);
+  // final_state is the state of the world learnt by the listener
+}
+
+listener(bool literal, u10 sentence, u10 &state){
+    u10 speaker_utterance;
+    state = uniform(0,3);
+    if (literal){
+        observe (sentence == 0 && state == 0) || (sentence == 1 && state > 0) || (sentence == 2 && state == 3);
+    } else {
+        query speaker(speaker_utterance, state);
+        observe sentence == speaker_utterance;
+    }
+}
+
+speaker(u10 &sentence, u10 state){
+    u10 listener_understanding1, listener_understanding2;
+    sentence = uniform(0,2);
+
+    // we use two calls to a literal listener to model parameter alpha = 2 in the .wppl original program
+    query listener(1, sentence, listener_understanding1);
+    query listener(1, sentence, listener_understanding2);
+    observe state == listener_understanding1 && state == listener_understanding2;
+}
