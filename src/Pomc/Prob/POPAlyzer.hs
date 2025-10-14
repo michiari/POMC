@@ -350,9 +350,7 @@ encodePopAndSolveSCC globals gn =
 solveSCCQuery :: (MonadIO m, MonadLogger m, Eq state, Hashable state, Show state)
               => IntSet -> Globals state -> Bool -> m ()
 solveSCCQuery sccMembers globals useNewton = do
-  let sccLen = IntSet.size sccMembers
-      eqs = eqMap globals
-
+  let eqs = eqMap globals
   -- preprocess by propagating already known values
   solvedLVars <- preprocessApproxFixp eqs fst
   solvedUvars <- preprocessApproxFixp eqs snd
