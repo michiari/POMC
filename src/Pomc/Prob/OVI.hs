@@ -10,17 +10,16 @@
 module Pomc.Prob.OVI ( ovi
                      , OVISettings(..)
                      , defaultOVISettingsDouble
-                     , defaultOVISettingsProb
+                     -- , defaultOVISettingsProb
                      -- , defaultOVISettingsRounded
                      , OVIResult(..)
                      , oviToRational
                      ) where
 
-import Pomc.Prob.ProbUtils (Prob)
 import Pomc.Prob.FixPoint
 import Pomc.LogUtils (MonadLogger, logDebugN)
 
-import Data.Ratio ((%), approxRational)
+import Data.Ratio (approxRational)
 import Control.Monad.IO.Class (MonadIO())
 
 import Witch.Instances (realFloatToRational)
@@ -52,19 +51,19 @@ defaultOVISettingsDouble = OVISettings
   , oviMaxKIndIters = 50
   }
 
-defaultOVISettingsProb :: OVISettings Prob
-defaultOVISettingsProb = OVISettings
-  { oviMaxIters = 10
-  , oviMaxKleeneIters = 100000000
-  , oviDampingFactor = 1 % 2
-  , oviKleeneEps = defaultREps
-  , oviKleeneDampingFactor = 1 % 10
-  , oviPowerIterEps = defaultREps
-  , oviPowerIterDampingFactor = 1 % 10
-  , oviMaxPowerIters = 1000000
-  , oviRationalApproxEps = 1 % 10^(8 :: Integer)
-  , oviMaxKIndIters = 50
-  }
+--  defaultOVISettingsProb :: OVISettings Prob
+--  defaultOVISettingsProb = OVISettings
+--    { oviMaxIters = 10
+--    , oviMaxKleeneIters = 100000000
+--    , oviDampingFactor = 1 % 2
+--    , oviKleeneEps = defaultREps
+--    , oviKleeneDampingFactor = 1 % 10
+--    , oviPowerIterEps = defaultREps
+--    , oviPowerIterDampingFactor = 1 % 10
+--    , oviMaxPowerIters = 1000000
+--    , oviRationalApproxEps = 1 % 10^(8 :: Integer)
+--    , oviMaxKIndIters = 50
+--    }
 
 -- defaultOVISettingsRounded :: OVISettings (R.Rounded 'R.TowardNearest 128)
 -- defaultOVISettingsRounded = OVISettings
@@ -149,13 +148,13 @@ ovi settings augEqMap f lowerApproxInitial = do
                 newUpperApprox = V.zipWith (\eigenV l -> l + (eigenV * scaleFactor)) newEigenVec newLowerApprox
 
             -- check if upperApprox is inductive
-                (inductive, _) = evalEqSys leqSys (<=) newUpperApprox
-            in if inductive
+                (induct, _) = evalEqSys leqSys (<=) newUpperApprox
+            in if induct
                 then (True, newUpperApprox)
                 else guessAndCheckInductive (maxGuesses - 1)
 
           (inductive, newUpperApprox) = guessAndCheckInductive (currentIter + 1)
-          adjustedUpperApprox = approxFixpFrom leqSys defaultEps defaultMaxIters newUpperApprox
+          adjustedUpperApprox = approxFixpFromAbove leqSys defaultEps defaultMaxIters newUpperApprox
       logDebugN $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
         ++ show inductive
       if inductive

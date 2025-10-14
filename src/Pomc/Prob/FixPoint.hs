@@ -28,6 +28,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , toLiveEqMapWith
                           , evalEqSys
                           , approxFixpFrom
+                          , approxFixpFromAbove
                           , approxFixpWithHint
                           , approxFixpNewtonWithHint
                           , defaultEps
@@ -292,7 +293,21 @@ approxFixpFrom leqMap eps maxIters probVec =
       (lessThanEps, newProbVec) = evalEqSys leqMap checkIter probVec
   in if lessThanEps
       then newProbVec
-      else  approxFixpFrom leqMap eps (maxIters - 1) newProbVec
+      else approxFixpFrom leqMap eps (maxIters - 1) newProbVec
+
+-- same as approxFixpFrom, but used to approximate the fixpoint from above it, hence with decreasing approximations
+approxFixpFromAbove :: (Ord n, Fractional n, Show n)
+               => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
+approxFixpFromAbove _ _ 0 probVec = probVec
+approxFixpFromAbove leqMap eps maxIters probVec =
+  -- should be oldV >= newV
+  let checkIter newV oldV =
+        -- oldV - newV <= eps -- absolute error
+        newV == 0 || (oldV - newV) / newV <= eps -- relative error
+      (lessThanEps, newProbVec) = evalEqSys leqMap checkIter probVec
+  in if lessThanEps
+      then newProbVec
+      else approxFixpFromAbove leqMap eps (maxIters - 1) newProbVec
 
 approxFixpWithHint :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
            => AugEqMap k -> (k -> n) -> n -> Int -> ProbVec n -> m (ProbVec n)

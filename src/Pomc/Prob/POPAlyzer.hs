@@ -381,8 +381,7 @@ solveSCCQuery sccMembers globals useNewton = do
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system"
-    upperApproxVec <- approxFixpWithHint eqs snd defaultEps defaultMaxIters approxVec
-    oviRes <- ovi defaultOVISettingsDouble eqs snd upperApproxVec
+    oviRes <- ovi defaultOVISettingsDouble eqs snd approxVec
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities"
 
     -- certify the result and compute some statistics
