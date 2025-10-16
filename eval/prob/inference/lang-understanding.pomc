@@ -8,14 +8,19 @@ finalState is the state of the world learnt by the listener.
 
 program:
 u4 finalState;
+u4 p;
 
 main() {
+  p = 0u4 {2u3 : 6u3} 1u4 {2u3 : 6u3} 2u4;
   query listener(0, 1, finalState);
 }
 
 listener(bool literal, u2 sentence, u4 &state){
     u2 sentence1;
+
+    // prior uniform distribution
     state = uniform(0,3);
+
     if (literal){
         observe (sentence == 0 && state == 0) || (sentence == 1 && state > 0) || (sentence == 2 && state == 3);
     } else {
@@ -26,10 +31,15 @@ listener(bool literal, u2 sentence, u4 &state){
 
 speaker(u2 &sentence, u4 state){
     u4 state1, state2;
+    bool literal; 
+
+    // prior uniform distribution
     sentence = uniform(0,2);
 
+    literal = 0u1 {p : 15u4} 1u1;
+
     // we use two calls to a literal listener to model parameter alpha = 2 in the .wppl original program
-    query listener(1, sentence, state1);
-    query listener(1, sentence, state2);
-    observe state == state1 && state == state2;
+    query listener(literal, sentence, state1);
+    query listener(literal, sentence, state2);
+    observe state == state1; // && state == state2;
 }

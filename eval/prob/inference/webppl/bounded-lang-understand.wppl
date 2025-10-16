@@ -1,4 +1,5 @@
 // Reference: Owain Evans, Andreas Stuhlmüller, John Salvatier, and Daniel Filan. 2017. Modeling Agents with Probabilistic Programs (Chapter VI). http://agentmodels.org. Accessed: 08/10/2025
+// "Bounded" refers to the fact that nesting of queries has an explicit bound - MiniProb supports indeed unbounded nesting.
 
 var alpha = 2;
 
@@ -42,4 +43,4 @@ var listener = dp.cache(function(sentence) {
   }});
 });
 
-viz.table(listener('someSprouted'));
+console.log(listener('someSprouted').getDist());

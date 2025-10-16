@@ -31,4 +31,4 @@ var bob = dp.cache(function(depth) {
   }});
 });
 
-viz(alice(10));
+console.log(alice(10).getDist());
