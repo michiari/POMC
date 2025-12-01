@@ -621,7 +621,7 @@ encodeShift globals sIdGen delta supports qProps g qState semiconfId_ rightCnxts
                       else IntSet.intersection rightCnxts encodedRCs
       return (p, id_, prob_, encodedRCs, rcs)
 
-    let shiftVarKeystoEncode = 
+    let shiftVarKeystoEncode =
           [QuantVariable (p, newG) shiftId_ toEncodeRCs |
               (p, shiftId_, _, encodedRCs, rcs) <- shiftInfo
             , IntSet.member shiftId_ sccMembers -- to optimize filtering
@@ -636,7 +636,7 @@ encodeShift globals sIdGen delta supports qProps g qState semiconfId_ rightCnxts
         terms = IntMap.fromSet createTerm rightCnxts
 
     addFixpEqs (eqMap globals) semiconfId_ terms
-    liftSTtoIO $ modifySTRef' (stats globals) 
+    liftSTtoIO $ modifySTRef' (stats globals)
       $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
     --DBG.traceM $ "Encoding shift: " ++ show semiconfId_ ++ " = ShiftEq " ++ show terms
     -- encoding new variables (these PushEq are needed as placeholders to avoid repeatedly encode them)
@@ -657,19 +657,19 @@ encodePopAndSolveSCC (q,g) id_ globals sIdGen delta =
         qState = getState q
         gState = getState . snd . fromJust $ g
     in do
-      liftSTtoIO $ modifySTRef' (stats globals) $ 
-        \s@Stats{sccCountQuant = acc1, largestSCCSemiconfsCountQuant = acc} 
+      liftSTtoIO $ modifySTRef' (stats globals) $
+        \s@Stats{sccCountQuant = acc1, largestSCCSemiconfsCountQuant = acc}
         -> s{sccCountQuant = acc1 + 1, largestSCCSemiconfsCountQuant = max acc 1}
       IOGS.pop_ (bStack globals)
       IOGS.pop_ (sStack globals)
       HT.insert (iVector globals) id_ (-1)
       distr <- mapM
-        (\(unwrapped, e) -> do 
+        (\(unwrapped, e) -> do
           p <- stToIO $ wrapState sIdGen unwrapped
           return (getId p, PopEq (fromRational e, fromRational e))
         ) ((deltaPop delta) qState gState)
       addFixpEqs (eqMap globals) id_ (IntMap.fromList distr)
-      liftSTtoIO $ modifySTRef' (stats globals) $ 
+      liftSTtoIO $ modifySTRef' (stats globals) $
         \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + length distr}
       return (IntSet.fromList (map fst distr))
 
@@ -698,9 +698,9 @@ solveSCCQuery sccMembers globals useNewton = do
   forM_ zeroVars $ \(k, _) -> deleteFixpEq eqs k
 
   unless (V.null unsolvedVars) $ do
-    liftSTtoIO $ modifySTRef' (stats globals) $ 
-      \s@Stats{nonTrivialEquationsCountQuant = acc, largestSCCNonTrivialEqsCountQuant = acc2} 
-      -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars, 
+    liftSTtoIO $ modifySTRef' (stats globals) $
+      \s@Stats{nonTrivialEquationsCountQuant = acc, largestSCCNonTrivialEqsCountQuant = acc2}
+      -> s{nonTrivialEquationsCountQuant = acc + length unsolvedVars,
           largestSCCNonTrivialEqsCountQuant = max acc2 (length unsolvedVars)}
     startWeights <- startTimer
 
