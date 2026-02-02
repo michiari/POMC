@@ -7,7 +7,6 @@
 module Pomc.Prob.RightContexts ( RightContextGlobals
                                , computeRightContexts
                                ) where
-                    
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 
@@ -18,109 +17,98 @@ import qualified Data.Vector.Mutable as MV
 import qualified Data.Strict.IntMap as StrictIntMap
 import Data.Strict.IntMap(IntMap)
 
-import Control.Monad(when, forM_)
-import Control.Monad.IO.Class (MonadIO(liftIO))
-
 import Pomc.IOStack(IOStack)
 import qualified Pomc.IOStack as IOGS
 
+import Control.Monad(when, forM_)
 import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef', newIORef)
+import Data.Maybe (mapMaybe)
 
-
--- mutable global data structure of this module
+-- mutable global data structures of this module
 data RightContextGlobals = RightContextGlobals
   { negIdSeq        :: IORef Int
   , sStack          :: IOStack Int
   , bStack          :: IOStack Int
   , iVector         :: MV.IOVector Int
-  , succSCCsMap  :: IORef (IntMap IntSet) -- (NODE, ids of successor SCCs)
+  , succSCCsMapRef  :: IORef (IntMap IntSet) -- (node id, ids of successor SCCs)
+  , accRCsMapRef :: IORef (IntMap IntSet) -- (id of the SCC, ids of right contexts where the SCC can terminate)
   }
 
-newRightContextGlobals :: (MonadIO m) => Int -> m RightContextGlobals
-newRightContextGlobals len = liftIO $ do
+newRightContextGlobals :: Int -> IO RightContextGlobals
+newRightContextGlobals len = do
   newIdSeq <- newIORef (-1)
   newSStack <- IOGS.new
   newBStack <- IOGS.new
   newIVector <- MV.replicate len 0
-  newSuccSCCsMap <- newIORef StrictIntMap.empty
+  newSuccSCCsMapRef <- newIORef StrictIntMap.empty
+  newAccRCsMapRef <- newIORef StrictIntMap.empty
   return RightContextGlobals { negIdSeq = newIdSeq
                              , sStack = newSStack
                              , bStack = newBStack
                              , iVector = newIVector
-                             , succSCCsMap = newSuccSCCsMap
+                             , succSCCsMapRef = newSuccSCCsMapRef
+                             , accRCsMapRef = newAccRCsMapRef
                              }
 
-computeRightContexts :: (MonadIO m) => Vector [Int] -> Vector IntSet -> m (Vector Int, IntMap IntSet)
+computeRightContexts :: Vector [Int] -> Vector IntSet -> IO (Vector Int, IntMap IntSet)
 computeRightContexts succVec rcsVec =
  let len = V.length succVec
  in do
     globals <- newRightContextGlobals len
     -- explore the graph
-    forM_ [0..(len-1)]  
+    forM_ [0..(len-1)]
      (\id_ -> do
-        iVal <- liftIO $ MV.unsafeRead (iVector globals) id_
-        when (iVal == 0) $ do 
-         liftIO $ addtoPath globals id_
-         dfs globals succVec id_
-     ) 
+        iVal <- MV.unsafeRead (iVector globals) id_
+        when (iVal == 0) $ do
+         addtoPath globals id_
+         dfs globals succVec rcsVec id_
+     )
+    fIVector <- V.freeze (iVector globals)
+    rcMap <- readIORef (accRCsMapRef globals)
+    return (fIVector, rcMap)
 
-    --aggregate results
-    fIVector <- liftIO $ V.freeze (iVector globals)
-    fsuccSCCsMap <- liftIO $ readIORef (succSCCsMap globals)
-    let rcMap = StrictIntMap.fromListWith IntSet.union . V.toList . V.zip fIVector $ rcsVec
-        -- it is fundamental to ensure correctness that SCCs are adjusted in descending order 
-        -- indeed, each SCC depends only on SCCs with a higher id 
-        -- recall that SCCs are assigned negative ids
-        succSCCsList = StrictIntMap.toDescList $ StrictIntMap.mapKeysWith IntSet.union (fIVector V.!) fsuccSCCsMap
-        -- adjust = add to a SCC all right contexts of descendant SCCs
-        adjustMap m [] = m
-        adjustMap m ((id_, succSCCs):l) =
-            let succSCCRCs = IntSet.unions $ map (m StrictIntMap.!) (IntSet.toList succSCCs)
-                adjusted = StrictIntMap.adjust (IntSet.union succSCCRCs) id_ m
-            in adjustMap adjusted l
-        rcReMap = adjustMap rcMap succSCCsList
-
-    return (fIVector, rcReMap)
-
-dfs :: (MonadIO m) => RightContextGlobals -> Vector [Int] -> Int -> m ()
-dfs globals succVec id_ =
+dfs :: RightContextGlobals -> Vector [Int] -> Vector IntSet -> Int -> IO ()
+dfs globals succVec rcsVec id_ =
     let cases nextId_ nextIVal
             | (nextIVal == 0) = do
-                liftIO $ addtoPath globals nextId_
-                dfs globals succVec nextId_
-                -- add the successor to our list
-                updatedIval <- liftIO $ MV.unsafeRead (iVector globals) nextId_
-                when (updatedIval < 0) $ liftIO $ modifyIORef' (succSCCsMap globals)
-                    (StrictIntMap.insertWith IntSet.union id_ (IntSet.singleton updatedIval))  
+                addtoPath globals nextId_
+                dfs globals succVec rcsVec nextId_
+                -- mark the SCC as successor of the current node
+                updatedIval <- MV.unsafeRead (iVector globals) nextId_
+                when (updatedIval < 0) $ modifyIORef' (succSCCsMapRef globals)
+                    (StrictIntMap.insertWith IntSet.union id_ (IntSet.singleton updatedIval))
 
-            | (nextIVal < 0)  = liftIO $ modifyIORef' (succSCCsMap globals)
+            | (nextIVal < 0)  = modifyIORef' (succSCCsMapRef globals)
                 (StrictIntMap.insertWith IntSet.union id_ (IntSet.singleton nextIVal))
-            | (nextIVal > 0)  = liftIO $ merge globals nextId_
+            | (nextIVal > 0)  = merge globals nextId_
             | otherwise = error "unreachable error"
 
-        follow nextId_ = do
-            nextIVal <- liftIO $ MV.unsafeRead (iVector globals) nextId_
-            cases nextId_ nextIVal
+        follow nextId_ = MV.unsafeRead (iVector globals) nextId_ >>= cases nextId_
     in do
         mapM_ follow (succVec V.! id_)
-        createComponent globals id_
+        createComponent globals rcsVec id_
 
-createComponent :: (MonadIO m) => RightContextGlobals -> Int -> m ()
-createComponent globals currentId_ = do
-    topB <- liftIO . IOGS.peek $ bStack globals
-    iVal <- liftIO $ MV.unsafeRead (iVector globals)  currentId_
-    let createC = liftIO $ do
-            -- update data structures of Gabow algorithm
-            sccId <- freshIONegId (negIdSeq globals)
-            IOGS.pop_ (bStack globals)
-            sSize <- IOGS.size $ sStack globals
-            poppedSemiconfs <- IOGS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is the current semiconfId_
-            forM_ poppedSemiconfs $ \id_ -> MV.unsafeWrite (iVector globals) id_ sccId
-        cases
+createComponent :: RightContextGlobals -> Vector IntSet -> Int -> IO ()
+createComponent globals rcsVec currentId_ = do
+    topB <- IOGS.peek $ bStack globals
+    iVal <- MV.unsafeRead (iVector globals)  currentId_
+    let cases
             | iVal /= topB = return ()
-            | otherwise = createC -- cannot reach a pop 
+            | otherwise = do
+                -- updating data structures of Gabow algorithm
+                sccId <- freshIONegId (negIdSeq globals)
+                IOGS.pop_ (bStack globals)
+                sSize <- IOGS.size $ sStack globals
+                poppedSemiconfs <- IOGS.multPop (sStack globals) (sSize - iVal + 1) -- the last one is the current semiconfId_
+                forM_ poppedSemiconfs $ \id_ -> MV.unsafeWrite (iVector globals) id_ sccId
+                -- keeping track of right contexts for each SCC
+                succSCCsMap <- readIORef (succSCCsMapRef globals)
+                accRCsMap <- readIORef (accRCsMapRef globals)
+                let rcs = IntSet.unions . map (rcsVec V.!) $ poppedSemiconfs -- right contexts of the current SCC
+                    succSCCs = IntSet.toList . IntSet.unions . mapMaybe (`StrictIntMap.lookup` succSCCsMap) $ poppedSemiconfs -- successor SCCs of the current SCC
+                    succSCCsRCs = IntSet.unions . mapMaybe (`StrictIntMap.lookup` accRCsMap) $ succSCCs -- right contexts of successor SCCs
+                modifyIORef' (accRCsMapRef globals) (StrictIntMap.insert sccId (IntSet.union rcs succSCCsRCs)) -- adding right contexts to the current SCC
     cases
-
 addtoPath :: RightContextGlobals -> Int -> IO ()
 addtoPath globals id_ = do
   IOGS.push (sStack globals) id_
