@@ -195,7 +195,7 @@ addtoPath globals (scId_, succInfo) = do
 
 merge :: GWeightGlobals -> Int -> IO ()
 merge globals scId_ = do
-  iVal <- lookupIValue globals scId_
+  iVal <- fromJust <$> HT.lookup (iVector globals) scId_
   -- contract the B stack, that represents the boundaries between SCCs on the current path
   IOGS.popWhile_ (bStack globals) (iVal <)
 
@@ -398,7 +398,7 @@ dfs globals sIdGen delta suppStarts suppEnds (q,g) scId_ useNewton =
         | (iVal == 0) = do
             --liftIO $ addtoPath globals nSCId
             cntxs <- dfs globals sIdGen delta suppStarts suppEnds nextSemiconf nSCId useNewton
-            updatedIVal <- liftIO $ lookupIValue globals nSCId
+            updatedIVal <- liftIO $ fromJust <$> HT.lookup (iVector globals) nSCId
             -- small performance optimization to avoid unions between overlapping sets
             if updatedIVal > 0 then return IntSet.empty else return cntxs
 
@@ -418,7 +418,7 @@ createComponent :: (MonadIO m, MonadLogger m)
   -> m IntSet
 createComponent globals scId_ useNewton rightContexts = do
   topB <- liftIO . IOGS.peek $ bStack globals
-  iVal <- liftIO $ lookupIValue globals scId_
+  iVal <- liftIO $ fromJust <$> HT.lookup (iVector globals) scId_
   let defaultEqs = IntMap.fromSet (const (PopEq (0,0))) rightContexts
       createC = liftIO $ do
         -- update data structures from Gabow algorithm
