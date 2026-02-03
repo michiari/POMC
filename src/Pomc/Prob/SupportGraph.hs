@@ -11,6 +11,7 @@ module Pomc.Prob.SupportGraph ( SupportGraph
                               , GraphNode(..)
                               ) where
 import Pomc.Prob.ProbUtils
+import Pomc.SatUtil(freshPosId)
 import Pomc.Prec (Prec(..))
 
 import qualified Pomc.CustoMap as CM
@@ -38,9 +39,6 @@ import Data.Maybe (fromJust, isNothing, mapMaybe)
 
 import Data.Hashable (Hashable)
 import qualified Data.HashTable.ST.Basic as BH
--- a basic open-addressing hashtable using linear probing
--- s = thread state, k = key, v = value.
-type HashTable s k v = BH.HashTable s k v
 
 -- a node in the support graph, corresponding to a semiconfiguration
 data GraphNode state = GraphNode

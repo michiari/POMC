@@ -14,6 +14,9 @@ module Pomc.SatUtil( SatState(..)
                    , wrapStates
                    , debug
                    , freshPosId
+                   , freshNegId
+                   , freshIOPosId 
+                   , freshIONegId
                    , decode
                    , decodeStateId
                    , decodeStack
@@ -31,8 +34,7 @@ import qualified Data.Vector as V
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
-
-import Debug.Trace(trace)
+import Data.IORef (IORef, readIORef, modifyIORef')
 
 -- a basic open-addressing hashtable using linear probing
 -- s = thread state, k = key, v = value.
@@ -109,6 +111,24 @@ freshPosId :: STRef s Int -> ST.ST s Int
 freshPosId idSeq = do
   curr <- readSTRef idSeq
   modifySTRef' idSeq (+1);
+  return curr
+
+freshNegId :: STRef s Int -> ST.ST s Int
+freshNegId idSeq = do
+  curr <- readSTRef idSeq
+  modifySTRef' idSeq (\i -> i - 1);
+  return curr
+
+freshIOPosId :: IORef Int -> IO Int
+freshIOPosId idSeq = do
+  curr <- readIORef idSeq
+  modifyIORef' idSeq (+1)
+  return curr
+
+freshIONegId :: IORef Int -> IO Int
+freshIONegId idSeq = do
+  curr <- readIORef idSeq
+  modifyIORef' idSeq (+ (-1))
   return curr
 
 decode :: (StateId state, Stack state) -> (Int,Int,Int)

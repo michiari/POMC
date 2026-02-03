@@ -33,7 +33,8 @@ import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 import qualified Pomc.Encoding as E
 
 import Pomc.Prob.SupportGraph (buildSupportGraph)
-import qualified Pomc.Prob.GGraph as GG
+import qualified Pomc.Prob.GQualitative as GQual
+import qualified Pomc.Prob.GQuantitative as GQuant
 import qualified Pomc.Prob.ProbEncoding as PE
 import Pomc.Prob.Z3Termination (terminationQuerySCC)
 import Pomc.Prob.ProbUtils hiding (sIdMap)
@@ -242,7 +243,7 @@ qualitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDeltaP
       ]
 
     startGGTime <- startTimer
-    almostSurely <- GG.qualitativeModelCheck wrapper (normalize phi) phiInitials sc sIdMap pendVector stats
+    almostSurely <- GQual.qualitativeModelCheck wrapper (normalize phi) phiInitials sc sIdMap pendVector stats
     tGG <- stopTimer startGGTime almostSurely
 
     updatedStats <- liftSTtoIO $ readSTRef stats
@@ -377,7 +378,7 @@ quantitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDelta
     logInfoN "Conclusive analysis!"
     logInfoN $ "Size of the Support Chain: " ++ show (V.foldl (flip ((+) . fromEnum)) 0 pendVector)
 
-    (ub, lb) <- GG.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain pendVector lbProbs ubProbs sIdMap stats solv
+    (ub, lb) <- GQuant.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain pendVector lbProbs ubProbs sIdMap stats solv
     computedStats <- liftSTtoIO $ readSTRef stats
     return ((ub, lb), computedStats, show supportChain ++ show pendVector)
 

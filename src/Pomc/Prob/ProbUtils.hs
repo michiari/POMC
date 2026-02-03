@@ -8,6 +8,7 @@
 -}
 
 module Pomc.Prob.ProbUtils ( Prob
+                           , HashTable
                            , EqMapNumbersType
                            , Distr(..)
                            , RichDistr
@@ -26,8 +27,6 @@ module Pomc.Prob.ProbUtils ( Prob
                            , sIdCount
                            , sIdMap
                            , wrapState
-                           , freshPosId
-                           , freshNegId
                            , decode
                            , defaultTolerance
                            , defaultRTolerance
@@ -52,44 +51,36 @@ import Pomc.State(Input, State)
 import Pomc.Encoding (nat)
 import Pomc.Check (EncPrecFunc)
 import Pomc.Prec (Prec(..))
-
+import Pomc.Z3T (liftSTtoIO)
+import Pomc.PropConv (APType)
+import Pomc.Potl (Formula(..), Prop (Prop, End))
+import Pomc.SatUtil(freshPosId)
 import qualified Pomc.Encoding as E
 import qualified Pomc.Prob.ProbEncoding as PE
-
-import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
-import GHC.Generics (Generic)
-import Control.DeepSeq (NFData)
-import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
 
 import Data.Map(Map)
+import qualified Data.Strict.Map as StrictMap
 
 import qualified Data.Set as Set
 
+import qualified Control.Monad.ST as ST
+import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
+import GHC.Generics (Generic)
+import Control.DeepSeq (NFData)
+import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
 import Data.Maybe (fromJust, isNothing, catMaybes)
-
 import Control.Monad.ST (RealWorld)
-
 import Control.Monad.IO.Class (MonadIO (liftIO))
-
 import Data.Bifunctor(second)
-
-import qualified Data.Strict.Map as StrictMap
-
 import Data.Char (isLower, toLower)
-
 import Data.Text.IO (appendFile)
 import qualified Data.Text as T
-
 import Z3.Monad hiding (Solver)
 import Control.Monad (when)
-import Pomc.Z3T (liftSTtoIO)
-import Pomc.PropConv (APType)
-import Pomc.Potl (Formula(..), Prop (Prop, End))
 
 type Prob = Rational
 type EqMapNumbersType = Double
@@ -170,18 +161,6 @@ data DeltaWrapper pState = Delta
   , phiDeltaShift :: State -> [State]
   , phiDeltaPop :: State -> State -> [State]
   }
-
-freshPosId :: STRef s Int -> ST.ST s Int
-freshPosId idSeq = do
-  curr <- readSTRef idSeq
-  modifySTRef' idSeq (+1);
-  return curr
-
-freshNegId :: STRef s Int -> ST.ST s Int
-freshNegId idSeq = do
-  curr <- readSTRef idSeq
-  modifySTRef' idSeq (\i -> i - 1);
-  return curr
 
 decode :: (StateId state, Stack state) -> (Int,Int,Int)
 decode (s1, Nothing) = (getId s1, 0, 0)
@@ -327,6 +306,7 @@ debug :: String -> a -> a
 --debug = DBG.trace
 debug _ x = x
 
+-------------------------------------------------------------------------------
 -- generate a string representing a flattened version of a pOPA (a DTMC),
 -- where the stack is unfolded into the model up to a parameter (depth) 
 -- When stack's depth = max depth a state will just have a self loop.

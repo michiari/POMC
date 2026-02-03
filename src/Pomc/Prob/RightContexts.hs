@@ -5,6 +5,10 @@
    Maintainer  : Francesco Pontiggia
 -}
 module Pomc.Prob.RightContexts (computeRightContexts) where
+import Pomc.SatUtil(freshIONegId)
+import Pomc.IOStack(IOStack)
+import qualified Pomc.IOStack as IOGS
+
 import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 
@@ -14,9 +18,6 @@ import qualified Data.Vector.Mutable as MV
 
 import qualified Data.Strict.IntMap as StrictIntMap
 import Data.Strict.IntMap(IntMap)
-
-import Pomc.IOStack(IOStack)
-import qualified Pomc.IOStack as IOGS
 
 import Control.Monad(when, forM_)
 import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef', newIORef)
@@ -122,9 +123,3 @@ merge globals id_ = do
   iVal <- MV.unsafeRead (iVector globals) id_
   -- contract the B stack, that represents the boundaries between SCCs on the current path
   IOGS.popWhile_ (bStack globals) (iVal <)
-
-freshIONegId :: IORef Int -> IO Int
-freshIONegId idSeq = do
-  curr <- readIORef idSeq
-  modifyIORef' idSeq (+ (-1))
-  return curr
