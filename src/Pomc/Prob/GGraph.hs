@@ -583,6 +583,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
 
     -- preparing the global variables for the computation of the fractions f
     freezedSuppEnds <- liftIO $ GR.freezeSuppEnds (grGlobals gGlobals)
+    freezedSuppStarts <- liftIO $ GR.freezeSuppStarts (grGlobals gGlobals)
 
     lenHashtables <- liftSTtoIO $ GR.nrSemiconfs (grGlobals gGlobals)
     globals <- GR.newWeightedGRobals lenHashtables stats
@@ -591,7 +592,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
     -- encodings (2b) and (2c)
     encs1 <- concat <$> mapM
       (\gNode -> encode
-          globals (GR.sIdGen (grGlobals gGlobals)) freezedSuppEnds delta
+          globals (GR.sIdGen (grGlobals gGlobals)) freezedSuppStarts freezedSuppEnds delta
           (newlMap, newuMap) suppGraph freezedGGraph (prec delta) isInH gNode
           pendProbsLowerBounds pendProbsUpperBounds sIdMap (useNewton solv)
       ) (V.filter isInH freezedGGraph)
@@ -664,7 +665,8 @@ encodeTransition prob_ num den toVar = do
 encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
       => GR.WeightedGRobals (AugState pstate)
       -> SIdGen RealWorld (AugState pstate)
-      -> Vector (Set (SU.StateId (AugState pstate)))
+      -> Vector [SU.Stack (AugState pstate)]
+      -> Vector (Vector (SU.StateId (AugState pstate)))
       -> DeltaWrapper pstate
       -> (TypicalVarMap, TypicalVarMap)
       -> SupportGraph pstate
@@ -677,7 +679,7 @@ encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate
       -> StrictMap.Map pstate Int
       -> Bool
       -> z3 [AST]
-encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB sIdMap useNewton =
+encode wGrobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB sIdMap useNewton =
   let gn = suppGraph ! graphNode gNode
       (q,g) = semiconf gn
       qLabel = getLabel q
@@ -685,7 +687,7 @@ encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph 
       cases
         -- this case includes the initial push
         | isNothing g || precRel == Just Yield =
-            encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph
+            encodePush wGrobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppGraph
               gGraph isInH gNode gn pendProbsLB pendProbsUB sIdMap useNewton
 
         | precRel == Just Equal =
@@ -698,7 +700,8 @@ encode wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph 
 encodePush :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
   => GR.WeightedGRobals (AugState pstate)
   -> SIdGen RealWorld (AugState pstate)
-  -> Vector (Set(SU.StateId (AugState pstate)))
+  -> Vector [SU.Stack (AugState pstate)]
+  -> Vector (Vector(SU.StateId (AugState pstate)))
   -> DeltaWrapper pstate
   -> (TypicalVarMap, TypicalVarMap)
   -> SupportGraph pstate
@@ -711,7 +714,7 @@ encodePush :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable ps
   -> StrictMap.Map pstate Int
   -> Bool
   -> z3 [AST]
-encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB sIdMap useNewton =
+encodePush wGrobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB sIdMap useNewton =
   let edgesInH = Set.toList . Set.filter (isInH . (gGraph V.!). toG) . edges $ g
       trivialSCC [] = error "there must be at least one edge in H"
       trivialSCC [e] = (toG e) == (gId g)
@@ -768,7 +771,7 @@ encodePush wGrobals sIdGen supports delta (lTypVarMap, uTypVarMap) suppGraph gGr
             encodeSupportTrans = do
               logInfoN $ "encountered a support transition - launching call to inner computation of fraction f from H node "
                 ++ show (gId g) ++ " to H node " ++ show toIdx
-              (lW, uW) <- GR.weightQuerySCC wGrobals sIdGen cDelta supports leftContext rightContext useNewton
+              (lW, uW) <- GR.weightQuerySCC wGrobals sIdGen cDelta suppStarts supports leftContext rightContext useNewton
               lT <- encodeTransition (lW) (pendProbsLB V.! (graphNode destG)) (pendProbsUB V.! (graphNode g)) tolVar
               uT <- encodeTransition (uW) (pendProbsUB V.! (graphNode destG)) (pendProbsLB V.! (graphNode g)) touVar
               return [(lT, uT)]
