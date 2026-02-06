@@ -19,7 +19,6 @@ module Pomc.Prob.GReach ( GReachGlobals(..)
 import Pomc.Prob.ProbEncoding (ProbEncodedSet, ProBitencoding)
 import qualified Pomc.Prob.ProbEncoding as PE
 import Pomc.Prob.ProbUtils(HashTable)
-
 import Pomc.Encoding (BitEncoding)
 import Pomc.Prec (Prec(..))
 import Pomc.Check(EncPrecFunc)
@@ -30,31 +29,28 @@ import qualified Pomc.SetMap as SM
 import Pomc.MapMap (MapMap)
 import qualified Pomc.MapMap as MM
 import qualified Data.Map as Map
-
 import Data.Vector(Vector)
 import qualified Data.Vector as V
-
 import qualified Data.Set as Set
+import qualified Data.HashTable.ST.Basic as BH
+import qualified Data.HashTable.Class as BC
 
 import Control.Monad.ST (ST, RealWorld)
 import qualified Control.Monad.ST as ST
 import Data.STRef (STRef, readSTRef)
 import Control.Monad(unless, when)
-
 import Data.Maybe
 import Data.Hashable(Hashable)
 import Data.Bifunctor(first)
-
-import qualified Data.HashTable.ST.Basic as BH
-import qualified Data.HashTable.Class as BC
 import GHC.IO (stToIO)
 
 -- global variables for detecting reachable right contexts of suppEnds edges in graph G
 data GReachGlobals s state = GReachGlobals
   { sIdGen :: SIdGen s state
-  , visited :: HashTable s (Int,Int,Int) ProbEncodedSet -- we store the recorded sat set as well
+  , visited :: HashTable s (Int,Int,Int) ProbEncodedSet
   , suppStarts :: STRef s (SetMap s (Stack state))
-  , suppEnds :: STRef s (MapMap s (StateId state) ProbEncodedSet) -- we store the formulae satisfied in the support
+  -- we store the formulae satisfied in the support as weel
+  , suppEnds :: STRef s (MapMap s (StateId state) ProbEncodedSet)
   }
 
 showGReachGlobals :: (Show state) => GReachGlobals s state -> ST s String
@@ -63,17 +59,6 @@ showGReachGlobals globals = do
   s2 <- MM.showMapMap =<< readSTRef (suppEnds globals)
   s3 <- concatMap show <$> BC.toList (visited globals)
   return $ "SuppStarts: " ++ s1 ++ "---- SuppEnds: " ++ s2 ++ "---- Visited: " ++ s3
-
--- a type for the delta relation, parametric with respect to the type of the state
-data Delta state = Delta
-  { bitenc :: BitEncoding
-  , proBitenc :: ProBitencoding
-  , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
-  , deltaPush :: state -> [state] -- deltaPush relation
-  , deltaShift :: state -> [state] -- deltaShift relation
-  , deltaPop :: state -> state -> [state] -- deltapop relation
-  , consistentFilter :: state -> Bool
-  }
 
 newGReachGlobals :: ST.ST s (GReachGlobals s state)
 newGReachGlobals = do
@@ -100,6 +85,17 @@ freezeSuppStarts globals = stToIO $ do
   computedSuppStarts <- readSTRef (suppStarts globals)
   V.map Set.toList <$> V.freeze computedSuppStarts
 
+-- a type for the delta relation, parametric with respect to the type of the state
+data Delta state = Delta
+  { bitenc :: BitEncoding
+  , proBitenc :: ProBitencoding
+  , prec :: EncPrecFunc -- precedence function which replaces the precedence matrix
+  , deltaPush :: state -> [state] -- deltaPush relation
+  , deltaShift :: state -> [state] -- deltaShift relation
+  , deltaPop :: state -> state -> [state] -- deltapop relation
+  , consistentFilter :: state -> Bool
+  }
+
 reachableStates :: (SatState state, Eq state, Hashable state, Show state)
   => GReachGlobals s state
   -> Delta state -- delta relation of the opa
@@ -108,15 +104,16 @@ reachableStates :: (SatState state, Eq state, Hashable state, Show state)
 reachableStates globals delta state = do
   q <- wrapState (sIdGen globals) state
   currentSuppEnds <- MM.lookup (suppEnds globals) (getId q)
+  let filterSuppEnds = filter ((consistentFilter delta) . fst) . map (first getState)
   if not (null currentSuppEnds)
-    then return $ filter ((consistentFilter delta) . fst) . map (first getState) $ currentSuppEnds
+    then return $ filterSuppEnds currentSuppEnds
     else do
       let newStateSatSet = PE.encodeSatState (proBitenc delta) state
       BH.insert (visited globals) (decode (q,Nothing)) newStateSatSet
       reach globals delta (q,Nothing) newStateSatSet
       updatedSuppEnds <- MM.lookup (suppEnds globals) (getId q)
-      -- the are no Pop semiconfs in graph G -> filter out nonconsistent states
-      return $ filter ((consistentFilter delta) . fst) .  map (first getState) $ updatedSuppEnds
+      -- the are no Pop semiconfs in graph G -_> filter out nonconsistent states
+      return $ filterSuppEnds updatedSuppEnds
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
   => GReachGlobals s state -- global variables of the algorithm
@@ -149,17 +146,21 @@ reachPush :: (SatState state, Eq state, Hashable state, Show state)
   -> ProbEncodedSet
   -> ST s ()
 reachPush globals delta q g qState pathSatSet =
-  let qProps = getStateProps (bitenc delta) qState
+  let gInput = fst . fromJust $ g
+      qProps = getStateProps (bitenc delta) qState
       doPush p = reachTransition globals delta Nothing Nothing (p, Just (qProps, q))
-      isConsistentOrPop p = let s = getState p in
-          (isJust g && prec delta (fst . fromJust $ g) (getStateProps (bitenc delta) s) == Just Take)
-          || (consistentFilter delta) s
+      isConsistentOrPop p = let 
+          s = getState p
+          sProps = getStateProps (bitenc delta) s
+        in (isJust g && (prec delta) gInput sProps == Just Take)
+            || (consistentFilter delta) s
   in do
     SM.insert (suppStarts globals) (getId q) g
     newStates <- wrapStates (sIdGen globals) $ (deltaPush delta) qState
     mapM_ doPush newStates
     currentSuppEnds <- MM.lookup (suppEnds globals) (getId q)
-    mapM_ (\(s, supportSatSet) -> reachTransition globals delta (Just pathSatSet) (Just supportSatSet) (s,g))
+    mapM_ (\(s, supportSatSet) -> 
+      reachTransition globals delta (Just pathSatSet) (Just supportSatSet) (s,g))
       $ filter (isConsistentOrPop . fst) currentSuppEnds
 
 reachShift :: (SatState state, Eq state, Hashable state, Show state)
@@ -172,7 +173,8 @@ reachShift :: (SatState state, Eq state, Hashable state, Show state)
       -> ST s ()
 reachShift globals delta _ g qState pathSatSet =
   let qProps = getStateProps (bitenc delta) qState
-      doShift p = reachTransition globals delta (Just pathSatSet) Nothing (p, Just (qProps, snd . fromJust $ g))
+      doShift p = reachTransition globals delta (Just pathSatSet) 
+        Nothing (p, Just (qProps, snd . fromJust $ g))
   in wrapStates (sIdGen globals) ((deltaShift delta) qState) >>= mapM_ doShift
 
 reachPop :: (SatState state, Eq state, Hashable state, Show state)
@@ -189,9 +191,11 @@ reachPop globals delta _ g qState pathSatSet =
         let r = snd . fromJust $ g
             pState = getState p
             pProps = getStateProps (bitenc delta) pState
-            -- careful, do not explore more than current support!! do not explore semiconfs with Nothing stack symbol
-            isJustAndisConsistentOrPop g' = isJust g' && ((prec delta (fst . fromJust $ g') pProps == Just Take)
-              || (consistentFilter delta) pState)
+            -- careful, do not explore more than current support!! 
+            -- i.e., do not explore semiconfs with Nothing stack symbol
+            isJustAndisConsistentOrPop g' = isJust g' && 
+                ((prec delta (fst . fromJust $ g') pProps == Just Take)
+                  || (consistentFilter delta) pState)
             closeSupports g' = when (isJustAndisConsistentOrPop g') $ do
               lcSatSet <- fromJust <$> BH.lookup (visited globals) (decode (r,g'))
               reachTransition globals delta (Just lcSatSet) (Just pathSatSet) (p, g')
@@ -223,9 +227,10 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
       reach globals delta dest newPathSatSet
     else do
       let recordedSatSet = fromJust maybeSatSet
-      let augmentedPathSatSet = PE.unions (recordedSatSet : catMaybes [pathSatSet, mSuppSatSet])
+          augmentedPathSatSet = PE.unions (recordedSatSet : catMaybes [pathSatSet, mSuppSatSet])
       unless (recordedSatSet `PE.subsumes` augmentedPathSatSet) $ do
-        -- dest semiconf has been visited, but with a set of sat formulae that does not subsume the current ones
+        -- dest semiconf has been visited, 
+        -- but with a set of sat formulae that does not subsume the current ones
         BH.insert (visited globals) decodedDest augmentedPathSatSet
         reach globals delta dest augmentedPathSatSet
         

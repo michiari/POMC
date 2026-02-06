@@ -28,14 +28,16 @@ import qualified Data.IntMap as IntMap
 import Data.Hashable (Hashable)
 import qualified Data.HashTable.ST.Basic as BH
 
-import Control.Monad(when)
+import Control.Monad(when, forM_)
 import Data.Bifunctor (first)
 import Control.Monad.ST (ST)
 import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
 import Data.Maybe (fromJust, isNothing, mapMaybe)
 
 -- information about successor semiconfigurations
-data TransitionInfo = Push IntSet (IntMap.IntMap Prob) | Shift (IntMap.IntMap Prob) | Pop (IntMap.IntMap Prob)
+data TransitionInfo = Push IntSet (IntMap.IntMap Prob) 
+  | Shift (IntMap.IntMap Prob) 
+  | Pop (IntMap.IntMap Prob)
   deriving Show
 
 -- a node in the support graph, corresponding to a semiconfiguration
@@ -57,7 +59,7 @@ type SupportGraph state = Vector (GraphNode state)
 type SidMap state = Map state Int
 
 -- the global variables in the algorithm
-data Globals s state = Globals
+data SuppGraphGlobals s state = SuppGraphGlobals
   { sIdGen     :: SIdGen s state
   , idSeq      :: STRef s Int
   , graphMap   :: HashTable s (Int,Int,Int) Int
@@ -67,7 +69,7 @@ data Globals s state = Globals
   }
 
 lookupId :: (Eq state, Hashable state, Show state)
-  => Globals s state
+  => SuppGraphGlobals s state
   -> (Prob, (StateId state, Stack state))
   -> ST s (Int, Prob, Maybe (StateId state, Stack state))
 lookupId globals (prob_, dest) = do
@@ -77,7 +79,7 @@ lookupId globals (prob_, dest) = do
   return (actualId, prob_, if isNothing maybeId then Just dest else Nothing)
 
 lookupIdSupp :: (Eq state, Hashable state, Show state)
-  => Globals s state
+  => SuppGraphGlobals s state
   -> (StateId state, Stack state)
   -> ST s (Int, Maybe (StateId state, Stack state))
 lookupIdSupp globals dest = do
@@ -104,7 +106,7 @@ buildSupportGraph probDelta (i, iLabel) stats = do
   emptyGraph <- CM.empty
   initialId <- freshPosId newIdSequence
   BH.insert emptyGraphMap (decode initialNode) initialId
-  let globals = Globals { sIdGen = newSig
+  let globals = SuppGraphGlobals { sIdGen = newSig
                         , idSeq = newIdSequence
                         , graphMap = emptyGraphMap
                         , suppStarts = emptySuppStarts
@@ -121,7 +123,7 @@ buildSupportGraph probDelta (i, iLabel) stats = do
   return (suppGraph, sidMap)
 
 build :: (Eq state, Hashable state, Show state)
-      => Globals s state -- global variables of the algorithm
+      => SuppGraphGlobals s state -- global variables of the algorithm
       -> DeltaWrapper state -- delta relation of the popa
       -> (Int, (StateId state, Stack state)) -- current semiconfiguration
       -> ST s ()
@@ -144,7 +146,7 @@ build globals probDelta (scId_, (q,g)) =
   in cases
 
 buildPush :: (Eq state, Hashable state, Show state)
-          => Globals s state
+          => SuppGraphGlobals s state
           -> DeltaWrapper state
           -> StateId state
           -> Stack state
@@ -178,7 +180,7 @@ buildPush globals probDelta q g qState qLabel scId_ =
       $ mapMaybe (\(id_,maybeDest) -> fmap (id_,) maybeDest) suppSuccs
 
 buildShift :: (Eq state, Hashable state, Show state)
-           => Globals s state
+           => SuppGraphGlobals s state
            -> DeltaWrapper state
            -> StateId state
            -> Stack state
@@ -200,10 +202,11 @@ buildShift globals probDelta q g qState qLabel scId_ =
     CM.insert (graph globals) scId_
       $ GraphNode {gnId=scId_, semiconf=(q,g), gnEdges = shiftInfo}
     -- exploring Shift transitions of the Support Graph
-    mapM_ (build globals probDelta) $ mapMaybe (\(id_,_, maybeDest) -> fmap (id_,) maybeDest) shiftSuccs
+    mapM_ (build globals probDelta) 
+      $ mapMaybe (\(id_,_, maybeDest) -> fmap (id_,) maybeDest) shiftSuccs
 
 buildPop :: (Eq state, Hashable state, Show state)
-         => Globals s state
+         => SuppGraphGlobals s state
          -> DeltaWrapper state
          -> StateId state
          -> Stack state
@@ -211,26 +214,23 @@ buildPop :: (Eq state, Hashable state, Show state)
          -> Int
          -> ST s ()
 buildPop globals probDelta q g qState scId_ =
-  let addSupp suppId_ g@GraphNode{gnEdges = Push suppSet pushMap} = 
-        g{gnEdges = Push (IntSet.insert suppId_ suppSet) pushMap}
+  let addSupp suppId_ gn@GraphNode{gnEdges = Push suppSet pushMap} = 
+        gn{gnEdges = Push (IntSet.insert suppId_ suppSet) pushMap}
       r = snd . fromJust $ g
-      wrapPop (p, pLabel, prob_) = do
-        newState <- wrapState (sIdGen globals) p pLabel
-        return (newState, prob_)
-      doPop (newState, _) =
-        let closeSupports g' = do 
-              fromId <- fromJust <$> BH.lookup (graphMap globals) (decode (r,g'))
-              suppSucc <- lookupIdSupp globals (newState, g')
-              CM.modify (graph globals) (addSupp (fst suppSucc)) fromId
-              case suppSucc of 
-                (suppId, Just dest) -> build globals probDelta (suppId, dest)
-                _ -> return ()
-        in do
-          SM.insert (suppEnds globals) (getId r) newState
-          currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
-          mapM_ closeSupports currentSuppStarts
+      wrapPop (p, pLabel, prob_) = (, prob_) <$> wrapState (sIdGen globals) p pLabel
+      doPop (newState, _) = do
+        SM.insert (suppEnds globals) (getId r) newState
+        currentSuppStarts <- SM.lookup (suppStarts globals) (getId r)
+        forM_ currentSuppStarts $ \g' -> do
+          fromId <- fromJust <$> BH.lookup (graphMap globals) (decode (r,g'))
+          suppSucc <- lookupIdSupp globals (newState, g')
+          CM.modify (graph globals) (addSupp (fst suppSucc)) fromId
+          case suppSucc of 
+            (suppId, Just dest) -> build globals probDelta (suppId, dest)
+            _ -> return ()
   in do
-    popCntxs <- mapM wrapPop $ (deltaPop probDelta) qState (getState . snd . fromJust $ g)
+    popCntxs <- mapM wrapPop 
+      $ (deltaPop probDelta) qState (getState . snd . fromJust $ g)
     -- adding current Pop semiconf to the Support Graph
     let popInfo = Pop (IntMap.fromListWith (+) $ map (first getId) popCntxs)
     CM.insert (graph globals) scId_
