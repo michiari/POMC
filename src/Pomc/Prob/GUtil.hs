@@ -17,21 +17,15 @@ module Pomc.Prob.GUtil ( GNode(..)
 import Pomc.SatUtil(SatState(..))
 import Pomc.State(State(..))
 import Pomc.GStack(GStack)
-
 import Pomc.Prob.ProbUtils hiding (sIdMap, SIdGen)
 import qualified Pomc.CustoMap as CM
-import qualified Pomc.Prob.GReach as GR
 import Pomc.Prob.ProbEncoding(ProbEncodedSet)
-
 import  Data.Strict.IntMap(IntMap)
-
 import Data.Set(Set)
 import Data.IntSet(IntSet)
 import Data.STRef (STRef)
-
 import GHC.Generics (Generic)
 import Data.Hashable
--- import qualified Debug.Trace as DBG
 
 -- A data type for nodes in the augmented graph G
 data GNode = GNode
@@ -60,7 +54,9 @@ data AugState pstate =  AugState (StateId pstate) State deriving (Generic, Eq, S
 instance Hashable (AugState state) where
   hashWithSalt salt (AugState sId phiState) = hashWithSalt salt $ pack phiState
     where
-      pack WState{current = curr, pending = pend, stack = st, mustPush = mP, mustShift = mS, afterPop = aP} = (getId sId, curr, pend, st, mP, mS, aP)
+      pack WState{current = curr, pending = pend, stack = st, 
+              mustPush = mP, mustShift = mS, afterPop = aP} = 
+        (getId sId, curr, pend, st, mP, mS, aP)
       pack _ = error "state for finite-string model checking"
 
 instance SatState (AugState s) where
@@ -96,6 +92,7 @@ data GGlobals s pstate = GGlobals
   , bStack     :: GStack s Int
   , cGabow     :: STRef s Int
   -- bottom SCCs of subgraph H
-  -- in qualitative model checking, we store only those reachable from an initial state where input formula phi does not hold
+  -- in qualitative model checking, we store only those reachable 
+  -- from an initial state where input formula phi does not hold
   , bottomHSCCs  :: STRef s (IntMap GraphNodesSCC)
   }
