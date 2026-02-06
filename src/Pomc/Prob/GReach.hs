@@ -38,7 +38,7 @@ import qualified Data.Set as Set
 
 import Control.Monad.ST (ST, RealWorld)
 import qualified Control.Monad.ST as ST
-import Data.STRef (STRef, newSTRef, writeSTRef, readSTRef)
+import Data.STRef (STRef, readSTRef)
 import Control.Monad(unless, when)
 
 import Data.Maybe
@@ -55,7 +55,6 @@ data GReachGlobals s state = GReachGlobals
   , visited :: HashTable s (Int,Int,Int) ProbEncodedSet -- we store the recorded sat set as well
   , suppStarts :: STRef s (SetMap s (Stack state))
   , suppEnds :: STRef s (MapMap s (StateId state) ProbEncodedSet) -- we store the formulae satisfied in the support
-  , currentInitial :: STRef s Int -- stateId of the current initial state
   }
 
 showGReachGlobals :: (Show state) => GReachGlobals s state -> ST s String
@@ -82,12 +81,10 @@ newGReachGlobals = do
   emptyVisited <- BH.new
   emptySuppStarts <- SM.empty
   emptySuppEnds <- MM.empty
-  noInitial <- newSTRef (-1 :: Int)
   return $ GReachGlobals { sIdGen = newSig
                    , visited = emptyVisited
                    , suppStarts = emptySuppStarts
                    , suppEnds = emptySuppEnds
-                   , currentInitial = noInitial
                    }
 
 nrSemiconfs :: GReachGlobals s state -> ST.ST s Int
@@ -114,11 +111,11 @@ reachableStates globals delta state = do
   if not (null currentSuppEnds)
     then return $ filter ((consistentFilter delta) . fst) . map (first getState) $ currentSuppEnds
     else do
-      writeSTRef (currentInitial globals) (getId q)
       let newStateSatSet = PE.encodeSatState (proBitenc delta) state
       BH.insert (visited globals) (decode (q,Nothing)) newStateSatSet
       reach globals delta (q,Nothing) newStateSatSet
       updatedSuppEnds <- MM.lookup (suppEnds globals) (getId q)
+      -- the are no Pop semiconfs in graph G -> filter out nonconsistent states
       return $ filter ((consistentFilter delta) . fst) .  map (first getState) $ updatedSuppEnds
 
 reach :: (SatState state, Eq state, Hashable state, Show state)
@@ -131,27 +128,17 @@ reach globals delta (q,g) pathSatSet = do
   let qState = getState q
       qProps = getStateProps (bitenc delta) qState
       precRel = (prec delta) (fst . fromJust $ g) qProps
-      cases i
-        -- semiconfigurations with empty stack but not the initial one
-        | (isNothing g) && (getId q /= i) = return ()
-            --unless ((consistentFilter delta) qState) $ error $ "inconsistent AugState in a push with empty stack in GReach " ++  show qState
-
+      cases
         -- this case includes the initial push
-        | (isNothing g) || (precRel == Just Yield ) =
-            --unless ((consistentFilter delta) qState) $ error $ "inconsistent AugState in a push in GReach " ++  show qState ++ "; " ++ show g ++ ";\n\n\nPREC " ++ show precRel
+        | isNothing g || precRel == Just Yield =
             reachPush globals delta q g qState pathSatSet
 
         | precRel == Just Equal =
-            --unless ((consistentFilter delta) qState) $ error $ "inconsistent AugState in a shift in GReach " ++  show qState
             reachShift globals delta q g qState pathSatSet
 
         | precRel == Just Take =
             reachPop globals delta q g qState pathSatSet
-
-        | otherwise = return ()
-
-  iniId <- readSTRef (currentInitial globals)
-  cases iniId
+  cases
 
 reachPush :: (SatState state, Eq state, Hashable state, Show state)
   => GReachGlobals s state
@@ -202,9 +189,10 @@ reachPop globals delta _ g qState pathSatSet =
         let r = snd . fromJust $ g
             pState = getState p
             pProps = getStateProps (bitenc delta) pState
-            isConsistentOrPop g' = (isJust g' && prec delta (fst . fromJust $ g') pProps == Just Take)
-              || (consistentFilter delta) pState
-            closeSupports g' = when (isConsistentOrPop g') $ do
+            -- careful, do not explore more than current support!! do not explore semiconfs with Nothing stack symbol
+            isJustAndisConsistentOrPop g' = isJust g' && ((prec delta (fst . fromJust $ g') pProps == Just Take)
+              || (consistentFilter delta) pState)
+            closeSupports g' = when (isJustAndisConsistentOrPop g') $ do
               lcSatSet <- fromJust <$> BH.lookup (visited globals) (decode (r,g'))
               reachTransition globals delta (Just lcSatSet) (Just pathSatSet) (p, g')
         in do
@@ -240,3 +228,4 @@ reachTransition globals delta pathSatSet mSuppSatSet dest =
         -- dest semiconf has been visited, but with a set of sat formulae that does not subsume the current ones
         BH.insert (visited globals) decodedDest augmentedPathSatSet
         reach globals delta dest augmentedPathSatSet
+        
