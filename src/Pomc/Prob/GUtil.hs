@@ -19,6 +19,7 @@ import Pomc.State(State(..))
 import Pomc.GStack(GStack)
 import Pomc.Prob.ProbUtils hiding (sIdMap, SIdGen)
 import qualified Pomc.CustoMap as CM
+import qualified Pomc.Prob.GReach as GR
 import Pomc.Prob.ProbEncoding(ProbEncodedSet)
 import  Data.Strict.IntMap(IntMap)
 import Data.Set(Set)
