@@ -326,6 +326,9 @@ encode globals useNewton scId_ rightCnxts poppedSemiconfs =
         | [(id_, succInfo)] <- poppedSemiconfs = do
           unless (id_ == scId_) $ error "Encoding a different semiconf w.r.t. the current one."
           unless (IntSet.null rightCnxts) $ do
+            logDebugN "Preadding all equations to the system..."
+            -- this is needed in case of self edges
+            liftIO $ addFixpEqs (eqMap globals) id_ (defaultEqs rightCnxts)
             enc succInfo id_ rightCnxts
             solveSCCQuery globals useNewton
           return rightCnxts
