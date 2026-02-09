@@ -61,10 +61,7 @@ import qualified Pomc.Prob.ProbEncoding as PE
 import Data.Hashable
 import qualified Data.HashTable.ST.Basic as BH
 import qualified Data.HashTable.Class as H
-
-import Data.Map(Map)
 import qualified Data.Strict.Map as StrictMap
-
 import qualified Data.Set as Set
 
 import qualified Control.Monad.ST as ST
@@ -81,6 +78,7 @@ import Data.Text.IO (appendFile)
 import qualified Data.Text as T
 import Z3.Monad hiding (Solver)
 import Control.Monad (when)
+import Data.Vector (Vector)
 
 type Prob = Rational
 type EqMapNumbersType = Double
@@ -227,7 +225,7 @@ solver (ApproxSingleQuery s) = s
 -- TermSat and TermUnsat correspond to, respectively, True and False answers to a CompQuery.
 -- ApproxAllResult represents the approximated probabilities to terminate of all the semiconfs of the popa 
 -- ApproxSingleResult represents the approximate probability to terminate of the popa 
-data TermResult = TermSat | TermUnsat | ApproxAllResult (Map (Int,Int) Prob, Map (Int,Int) Prob) | ApproxSingleResult (Prob, Prob)
+data TermResult = TermSat | TermUnsat | ApproxAllResult (Vector Prob, Vector Prob) | ApproxSingleResult (Prob, Prob)
   deriving (Show, Eq, Generic, NFData)
 
 toBool :: TermResult -> Bool
