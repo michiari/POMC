@@ -28,19 +28,15 @@ import Pomc.Prob.ProbUtils hiding (sIdMap, SIdGen)
 import qualified Pomc.Prob.GReach as GR
 import qualified Pomc.Prob.GWeight as GW
 import Pomc.Prob.SupportGraph(GraphNode(..), SupportGraph)
-import Pomc.Prob.FixPoint(VarKey)
 
-import Data.Map(Map)
 import qualified Data.Strict.IntMap as StrictIntMap
 import qualified Data.Strict.Map as StrictMap
-import qualified Data.Map as Map
 
 import qualified Data.Set as Set
 import qualified Data.IntSet as IntSet
 
 import Data.Vector(Vector, (!))
 import qualified Data.Vector as V
-import Data.Bifunctor(first)
 import Data.Ratio ((%))
 
 import Control.Monad.IO.Class (MonadIO(liftIO))
@@ -65,13 +61,13 @@ quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord pstate, Ha
   -> [State] -- initial states of the phiOpa
   -> SupportGraph pstate
   -> Vector Bool
-  -> Map VarKey Prob
-  -> Map VarKey Prob
+  -> Vector Prob
+  -> Vector Prob
   -> StrictMap.Map pstate Int
   -> STRef RealWorld Stats
   -> Pomc.Prob.ProbUtils.Solver
   -> m (Prob, Prob)
-quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds upperBounds sIdMap stats solv = do
+quantitativeModelCheck delta phi phiInitials suppGraph pendVector lbPendProbs ubPendProbs sIdMap stats solv = do
   startGGTime <- startTimer
 
   -- globals data structures for qualitative model checking
@@ -134,12 +130,6 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
 
   -- computing the probability of satisfying the temporal formula
   let isInH = not . IntSet.null . IntSet.intersection hSCCs . descSccs
-      genPendProbs bounds = V.generate (V.length suppGraph) (\idx -> 1 - StrictIntMap.findWithDefault 0 idx boundsMap)
-        where boundsMap = StrictIntMap.fromListWith (+) . map (first fst) . Map.toList $ bounds
-
-      pendProbsUpperBounds = genPendProbs lowerBounds
-      pendProbsLowerBounds = genPendProbs upperBounds
-
       insert var Nothing         = (Just [var], ())
       insert var (Just old_vars) = (Just (var:old_vars), ())
 
@@ -172,7 +162,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lowerBounds up
       (\gNode -> encode
           gWeightGlobals (GR.sIdGen (grGlobals gGlobals)) freezedSuppStarts freezedSuppEnds delta
           (newlMap, newuMap) suppGraph freezedGGraph (prec delta) isInH gNode
-          pendProbsLowerBounds pendProbsUpperBounds sIdMap (useNewton solv)
+          lbPendProbs ubPendProbs sIdMap (useNewton solv)
       ) (V.filter isInH freezedGGraph)
 
     logInfoN "Encoding conditions (2a) from [Etessami and Yannakakis, TOCL 2012,Lemmas 34 and 35]"
@@ -241,22 +231,22 @@ encodeTransition prob_ num den toVar = do
   mkDiv mul rtDen
 
 encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
-      => GW.GWeightGlobals
-      -> SIdGen RealWorld (AugState pstate)
-      -> Vector [SU.Stack (AugState pstate)]
-      -> Vector (Vector (SU.StateId (AugState pstate)))
-      -> DeltaWrapper pstate
-      -> (TypicalVarMap, TypicalVarMap)
-      -> SupportGraph pstate
-      -> Vector GNode
-      -> EncPrecFunc
-      -> (GNode -> Bool)
-      -> GNode
-      -> Vector Prob
-      -> Vector Prob
-      -> StrictMap.Map pstate Int
-      -> Bool
-      -> z3 [AST]
+  => GW.GWeightGlobals
+  -> SIdGen RealWorld (AugState pstate)
+  -> Vector [SU.Stack (AugState pstate)]
+  -> Vector (Vector (SU.StateId (AugState pstate)))
+  -> DeltaWrapper pstate
+  -> (TypicalVarMap, TypicalVarMap)
+  -> SupportGraph pstate
+  -> Vector GNode
+  -> EncPrecFunc
+  -> (GNode -> Bool)
+  -> GNode
+  -> Vector Prob
+  -> Vector Prob
+  -> StrictMap.Map pstate Int
+  -> Bool
+  -> z3 [AST]
 encode gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB sIdMap useNewton =
   let gn = suppGraph ! graphNode gNode
       (q,g) = semiconf gn
@@ -272,7 +262,7 @@ encode gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppG
             encodeShift (lTypVarMap, uTypVarMap) gGraph isInH gNode pendProbsLB pendProbsUB
 
         | otherwise = fail "unexpected prec rel"
-   in cases
+  in cases
 
 -- encoding helpers --
 encodePush :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
@@ -385,7 +375,6 @@ encodePush gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) s
         eqUString <- astToString uEq
         logInfoN $ "Asserting Push/Support equation (upper bound): " ++ eqUString
         return [lEq, uEq, soundness]
-
 
 encodeShift :: (MonadZ3 z3, MonadLogger z3)
   => (TypicalVarMap, TypicalVarMap)

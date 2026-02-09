@@ -36,7 +36,7 @@ import Pomc.Prob.SupportGraph (buildSupportGraph)
 import qualified Pomc.Prob.GQualitative as GQual
 import qualified Pomc.Prob.GQuantitative as GQuant
 import qualified Pomc.Prob.ProbEncoding as PE
-import Pomc.Prob.Z3Termination (terminationQuerySCC)
+import Pomc.Prob.Z3Termination (terminationQuery)
 import Pomc.Prob.ProbUtils hiding (sIdMap)
 import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..), ExprProp)
 
@@ -137,10 +137,11 @@ terminationExplicit query popa =
             }
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta (fst . epInitial $ popa, E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
+    (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta
+      (fst . epInitial $ popa, E.encodeInput bitenc . Set.map (encodeProp pconv) . snd . epInitial $ popa) stats
 
     (res, _) <- evalZ3TWith (chooseLogic $ solver query) stdOpts
-      $ terminationQuerySCC sc precFunc query stats
+      $ terminationQuery sc query stats
     logInfoN $ "Computed termination probability: " ++ show res
     computedStats <- liftSTtoIO $ readSTRef stats
     return (res, computedStats, show sc)
@@ -171,7 +172,7 @@ programTermination solv prog =
     stats <- liftSTtoIO $ newSTRef newStats
     (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta initial stats
     (res, _) <- evalZ3TWith (chooseLogic solv) stdOpts
-      $ terminationQuerySCC sc precFunc (ApproxSingleQuery solv) stats
+      $ terminationQuery sc (ApproxSingleQuery solv) stats
     logInfoN $ "Computed termination probabilities: " ++ show res
     computedStats <- liftSTtoIO $ readSTRef stats
     return (res, computedStats, show sc)
@@ -211,20 +212,18 @@ qualitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDeltaP
     stats <- liftSTtoIO $ newSTRef newStats
     (sc, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (bInitials bitenc) stats
     logInfoN $ "Size of the Support Graph: " ++ show (V.length sc)
-    (ApproxAllResult (_, ubMap), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solv) stdOpts
-      $ terminationQuerySCC sc precFunc (ApproxAllQuery solv) stats
-    let ubTermMap = Map.mapKeysWith (+) fst ubMap
-        ubVec =  V.generate (V.length sc) (\idx -> Map.findWithDefault 0 idx ubTermMap)
-        cases i k
+    (ApproxAllResult (_, ubTermVec), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solv) stdOpts
+      $ terminationQuery sc (ApproxAllQuery solv) stats
+    let cases i k
           | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs =
             -- inconsistent result
-            error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k
+            error $ "semiconf " ++ show i ++ " has a PAST certificate with termination probability equal to " ++ show k
           | k < (1 - 100 * defaultRTolerance) = True
           | IntSet.member i mustReachPopIdxs = False
           | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k
                         ++ " but it is not certified to be PAST." -- inconclusive result
-        pendVector = V.imap cases ubVec
-    logDebugN $ "Computed termination probabilities: " ++ show ubVec
+        pendVector = V.imap cases ubTermVec
+    logDebugN $ "Computed termination probabilities: " ++ show ubTermVec
     logDebugN $ "Pending Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
     logInfoN $ "Size of the Support Chain: " ++ show (V.foldl (flip ((+) . fromEnum)) 0 pendVector)
@@ -358,29 +357,31 @@ quantitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDelta
 
   in do
     stats <- liftSTtoIO $ newSTRef newStats
-    (supportChain, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (bInitials bitenc) stats
-    logInfoN $ "Size of the Support Graph: " ++ show (V.length supportChain)
-    (ApproxAllResult (lbProbs, ubProbs), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
-      $ terminationQuerySCC supportChain precFunc (ApproxAllQuery solv) stats
-    let ubTermMap = Map.mapKeysWith (+) fst ubProbs
-        ubVec =  V.generate (V.length supportChain) (\idx -> Map.findWithDefault 0 idx ubTermMap)
-        cases i k
+    (supportGraph, sIdMap) <- liftSTtoIO $ buildSupportGraph wrapper (bInitials bitenc) stats
+    logInfoN $ "Size of the Support Graph: " ++ show (V.length supportGraph)
+    (ApproxAllResult (lbTermVec, ubTermVec), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
+      $ terminationQuery supportGraph (ApproxAllQuery solv) stats
+    let cases i k
           | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs =
             -- inconsistent result
-            error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to" ++ show k
+            error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to " ++ show k
           | k < (1 - 100 * defaultRTolerance) = True
           | IntSet.member i mustReachPopIdxs = False
           | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k
                         ++ " but it is not certified to be PAST." -- inconclusive result
-        pendVector = V.imap cases ubVec
-    logInfoN $ "Computed upper bounds on termination probabilities: " ++ show ubVec
+        pendVector = V.imap cases ubTermVec
+        lbPendVec = V.map (1 -) ubTermVec
+        ubPendVec = V.map (1 -) lbTermVec
+
+    logInfoN $ "Computed upper bounds on termination probabilities: " ++ show ubTermVec
     logDebugN $ "Pending Upper Bounds Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
     logInfoN $ "Size of the Support Chain: " ++ show (V.foldl (flip ((+) . fromEnum)) 0 pendVector)
 
-    (ub, lb) <- GQuant.quantitativeModelCheck wrapper (normalize phi) phiInitials supportChain pendVector lbProbs ubProbs sIdMap stats solv
+    (ub, lb) <- GQuant.quantitativeModelCheck wrapper 
+      (normalize phi) phiInitials supportGraph pendVector lbPendVec ubPendVec sIdMap stats solv
     computedStats <- liftSTtoIO $ readSTRef stats
-    return ((ub, lb), computedStats, show supportChain ++ show pendVector)
+    return ((ub, lb), computedStats, show supportGraph ++ show pendVector)
 
 quantitativeModelCheckProgram :: (MonadIO m, MonadFail m, MonadLogger m)
                               => Solver
