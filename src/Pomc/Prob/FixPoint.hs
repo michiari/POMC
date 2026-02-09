@@ -36,9 +36,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , defaultMaxIters
                           , toRationalProbVec
                           , preprocessApproxFixp
-                          , preprocessZeroApproxFixp
                           , containsEquation
-                          , retrieveEquation
                           , retrieveEquations
                           , retrieveEquationsMap
                           , retrieveRightContexts
@@ -182,7 +180,8 @@ addFixpEqs  (eqMap, lEqs) semiconfId_ eqs = liftIO $ do
   modifyIORef' lEqs (Set.union . Set.fromList . map (semiconfId_, ) . IntMap.keys $ liveEqs)
   modifyIORef' lEqs (\s -> Set.difference s (Set.fromList . map (semiconfId_, ) . IntMap.keys $ popEqs))
 
-constructEitherWith :: (MonadIO m, Fractional k, Show n) => AugEqMap n -> VarKey -> Set VarKey -> (n -> k) -> m (Either Int k)
+constructEitherWith :: (MonadIO m, Fractional k, Show n)
+  => AugEqMap n -> VarKey -> Set VarKey -> (n -> k) -> m (Either Int k)
 constructEitherWith (eqMap, _) k lVars f
   | (Just idx) <- Set.lookupIndex k lVars = return (Left idx)
   | otherwise = liftIO $ do
@@ -237,7 +236,8 @@ evalEqSysNewton jMatrix leqMap checkRes src =
       (checkDest, evalDest) = evalEqSys leqMap checkRes dest
 
       msg = "NaN result." ++ "\nSource: " ++ show src ++ "\nDelta: " ++ show delta
-        ++  "\nRHS: " ++ show rhs ++ "\nJacobiEval: " ++ show jacobiEval ++ "\nJMatrix:" ++ show jMatrix
+        ++  "\nRHS: " ++ show rhs ++ "\nJacobiEval: " 
+        ++ show jacobiEval ++ "\nJMatrix:" ++ show jMatrix
 
   in if checkNaN
       then error msg
@@ -315,23 +315,9 @@ approxFixpWithHint augEqMap f eps maxIters hint = do
   leqMap <- toLiveEqMapWith augEqMap f
   return $ approxFixpFrom leqMap eps maxIters hint
 
--- determine variables for which zero is a fixpoint by iterating the system
--- Note that we are not allowed to use Newton's method here, as it is not guaranteed to converge for non clean systems 
--- (cit. Computing the Least Fixed Point of Positive Polynomial Systems)
-preprocessZeroApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
-                      => AugEqMap k -> (k -> n) -> n -> m (ProbVec n)
-preprocessZeroApproxFixp augEqMap@(_, lVarsRef) f eps = do
-  lVars <- liftIO $ readIORef lVarsRef
-  if Set.null lVars
-    then return V.empty
-    else do
-      let len = Set.size lVars
-      leqMap <- toLiveEqMapWith augEqMap f
-      return $ approxFixpFrom leqMap eps len (V.replicate len  0)
-
 -- preprocess live equations by propagating found values, until no value can be propagated anymore
 preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
-                      => AugEqMap k -> (k -> n) -> m [(VarKey, n)]
+  => AugEqMap k -> (k -> n) -> m [(VarKey, n)]
 preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
   lVars <- liftIO $ readIORef lVarsRef
   if Set.null lVars
@@ -354,8 +340,6 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
           solvePush killedVars (Just acc) (p, Left k, Right v1) = solvePush killedVars (Just acc) (p, Right v1, Left k)
           solvePush killedVars (Just acc) (p, Left idx1, Left idx2)
             | (Just v1) <- M.lookup k1 killedVars, (Just v2) <- M.lookup k2 killedVars = Just $ acc + p * v1 * v2
-            | (Just 0) <- M.lookup k1 killedVars = Just acc
-            | (Just 0) <- M.lookup k2 killedVars = Just acc
             | otherwise = Nothing
               where k1 = Set.elemAt idx1 lVars
                     k2 = Set.elemAt idx2 lVars
@@ -376,7 +360,7 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
       return upVars
 
 defaultEps :: EqMapNumbersType
-defaultEps = 0x1p-26 -- ~ 1e-8
+defaultEps = 0x1p-10 -- ~ 1e-8
 
 defaultREps :: Prob
 defaultREps = 1e-8
