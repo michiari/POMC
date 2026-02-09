@@ -60,28 +60,10 @@ qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate,
   -> STRef RealWorld Stats
   -> m Bool
 qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector stats = do
-  -- global data structures for constructing graph G and for qualitative model checking
-  gGlobals <- liftSTtoIO $ do
-    let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
-    newIdSequence <- newSTRef (0 :: Int)
-    emptyGGraphMap <- BH.newSized numPendingSemiconfs
-    emptyGGraph <- CM.emptySized numPendingSemiconfs
-    emptyGRGlobals <- GR.newGReachGlobals
-    -- -1 is reserved for trivial (that is, single node that does not depend on itself) SCCs
-    sccCounter <- newSTRef (-2 :: Int)
-    newSS         <- GS.new
-    newBS         <- GS.new
-    newFoundSCCs <- newSTRef StrictIntMap.empty
-    return GGlobals { idSeq = newIdSequence
-                    , ggraphMap = emptyGGraphMap
-                    , gGraph = emptyGGraph
-                    , grGlobals = emptyGRGlobals
-                    , sStack = newSS
-                    , bStack = newBS
-                    , cGabow = sccCounter
-                    , bottomHSCCs = newFoundSCCs
-                    }
 
+    -- globals data structures for qualitative model checking
+  let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
+  gGlobals <- liftSTtoIO $ newGGlobals numPendingSemiconfs
   logInfoN "Building and Analyzing graph G..."
   let iniGn = suppGraph ! 0
       iniLabel = getLabel . fst . semiconf $ iniGn
@@ -110,7 +92,9 @@ qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector stats = 
       BH.insert (ggraphMap gGlobals) (gnId iniGn, s) newId
       let node = GNode {gId= newId, graphNode = gnId iniGn, phiNode = s, edges = Set.empty, iValue = 0, descSccs = IntSet.empty}
       CM.insert (gGraph gGlobals) newId node
-      addtoPath gGlobals node (Internal 0 newId) >>= dfs suppGraph gGlobals delta (pendVector V.!) True sIdMap >> return ()
+      newNode <- addtoPath gGlobals node (Internal 0 newId)
+      _ <- dfs suppGraph gGlobals delta (pendVector V.!) True sIdMap newNode
+      return ()
 
   -- some statistics about graph G
   idx <- liftSTtoIO $ readSTRef . idSeq $ gGlobals

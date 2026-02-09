@@ -13,6 +13,7 @@ module Pomc.Prob.GUtil ( GNode(..)
                         , GGlobals(..)
                         , HashTable
                         , GraphNodesSCC
+                        , newGGlobals
                         ) where
 import Pomc.SatUtil(SatState(..))
 import Pomc.State(State(..))
@@ -24,9 +25,13 @@ import Pomc.Prob.ProbEncoding(ProbEncodedSet)
 import  Data.Strict.IntMap(IntMap)
 import Data.Set(Set)
 import Data.IntSet(IntSet)
-import Data.STRef (STRef)
+import Data.STRef (STRef, newSTRef)
+import Control.Monad.ST(ST)
 import GHC.Generics (Generic)
 import Data.Hashable
+import qualified Pomc.GStack as GS
+import qualified Data.Strict.IntMap as IntMap
+import qualified Data.HashTable.ST.Basic as BH
 
 -- A data type for nodes in the augmented graph G
 data GNode = GNode
@@ -97,3 +102,24 @@ data GGlobals s pstate = GGlobals
   -- from an initial state where input formula phi does not hold
   , bottomHSCCs  :: STRef s (IntMap GraphNodesSCC)
   }
+
+newGGlobals :: Int -> ST s (GGlobals s pstate)
+newGGlobals numPendingSemiconfs = do 
+  newIdSequence <- newSTRef (0 :: Int)
+  emptyGGraphMap <- BH.newSized numPendingSemiconfs
+  emptyGGraph <- CM.emptySized numPendingSemiconfs
+  emptyGRGlobals <- GR.newGReachGlobals
+  -- -1 is reserved for useless (i.e. single node) SCCs
+  sccCounter   <- newSTRef (-2 :: Int)
+  newSS        <- GS.new
+  newBS        <- GS.new
+  newFoundSCCs <- newSTRef IntMap.empty
+  return GGlobals { idSeq = newIdSequence
+                  , ggraphMap = emptyGGraphMap
+                  , gGraph = emptyGGraph
+                  , grGlobals = emptyGRGlobals
+                  , sStack = newSS
+                  , bStack = newBS
+                  , cGabow = sccCounter
+                  , bottomHSCCs = newFoundSCCs
+                  }

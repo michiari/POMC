@@ -71,26 +71,8 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lbPendProbs ub
   startGGTime <- startTimer
 
   -- globals data structures for qualitative model checking
-  -- -1 is reserved for useless (i.e. single node) SCCs
-  gGlobals <- liftSTtoIO $ do
-    newIdSequence <- newSTRef (0 :: Int)
-    let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
-    emptyGGraphMap <- BH.newSized numPendingSemiconfs
-    emptyGGraph <- CM.emptySized numPendingSemiconfs
-    emptyGRGlobals <- GR.newGReachGlobals
-    sccCounter   <- newSTRef (-2 :: Int)
-    newSS        <- GS.new
-    newBS        <- GS.new
-    newFoundSCCs <- newSTRef StrictIntMap.empty
-    return GGlobals { idSeq = newIdSequence
-                    , ggraphMap = emptyGGraphMap
-                    , gGraph = emptyGGraph
-                    , grGlobals = emptyGRGlobals
-                    , sStack = newSS
-                    , bStack = newBS
-                    , cGabow = sccCounter
-                    , bottomHSCCs = newFoundSCCs
-                    }
+  let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
+  gGlobals <- liftSTtoIO $ newGGlobals numPendingSemiconfs
   logInfoN "Building and Analyzing graph G..."
   let iniGn = suppGraph ! 0
       iniLabel = getLabel . fst . semiconf $ iniGn
@@ -146,16 +128,13 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lbPendProbs ub
       liftIO $ HT.insert newuMap (gId g) newuVar
       liftIO $ HT.mutate newlGroupedMap (graphNode g) (insert newlVar)
       liftIO $ HT.mutate newuGroupedMap (graphNode g) (insert newuVar)
-
     logInfoN "Generated z3 vars for encoding (2) from [Etessami and Yannakakis, TOCL 2012,Lemmas 34 and 35]"
 
     -- preparing the global variables for the computation of the fractions f
     freezedSuppEnds <- liftIO $ GR.freezeSuppEnds (grGlobals gGlobals)
     freezedSuppStarts <- liftIO $ GR.freezeSuppStarts (grGlobals gGlobals)
-
     lenHashtables <- liftSTtoIO $ GR.nrSemiconfs (grGlobals gGlobals)
     gWeightGlobals <- GW.newGWeightGlobals lenHashtables stats
-
     logInfoN "Encoding conditions (2b) and (2c) from [Etessami and Yannakakis, TOCL 2012,Lemmas 34 and 35]"
     -- encodings (2b) and (2c)
     encs1 <- concat <$> mapM
