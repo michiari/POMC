@@ -37,6 +37,7 @@ module Pomc.Prob.FixPoint ( VarKey
                           , toRationalProbVec
                           , preprocessApproxFixp
                           , containsEquation
+                          , retrieveEquation
                           , retrieveEquations
                           , retrieveEquationsMap
                           , retrieveRightContexts
@@ -191,16 +192,7 @@ constructEitherWith (eqMap, _) k lVars f
 toLiveEqMapWith :: (MonadIO m, Fractional k, Show n, Eq k) => AugEqMap n -> (n -> k) -> m (LEqSys k)
 toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
   lVars <- readIORef lEqs
-  let -- the first element cannot be zero because of the pOPA parsing
-      isPushNotZero :: (Fractional k, Eq k) => (k, Either Int k, Either Int k) -> Bool
-      isPushNotZero (_, Right 0, _) = False
-      isPushNotZero (_, _, Right 0) = False
-      isPushNotZero _ = True
-      -- the first element cannot be zero because of the pOPA parsing
-      isShiftNotZero :: (Fractional k, Eq k) => (k, Either Int k) -> Bool
-      isShiftNotZero (_, Right 0) = False
-      isShiftNotZero _ = True
-      createLivePush (p, k1, k2) = do
+  let createLivePush (p, k1, k2) = do
         eitherK1 <- constructEitherWith (eqMap, lEqs) k1 lVars f
         eitherK2 <- constructEitherWith (eqMap, lEqs) k2 lVars f
         return (fromRational p, eitherK1, eitherK2)
@@ -210,8 +202,8 @@ toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
       createEq k = do
         eq <- fromJust <$> uncurry (MM.lookupValue eqMap) k
         case eq of
-          PushEq terms -> PushLEq . filter isPushNotZero <$> mapM createLivePush terms
-          ShiftEq terms -> ShiftLEq . filter isShiftNotZero <$> mapM createLiveShift terms
+          PushEq terms -> PushLEq <$> mapM createLivePush terms
+          ShiftEq terms -> ShiftLEq <$> mapM createLiveShift terms
           _ -> error "A supposed live variable is actually dead"
   V.mapM createEq (V.fromList $ Set.elems lVars)
 
