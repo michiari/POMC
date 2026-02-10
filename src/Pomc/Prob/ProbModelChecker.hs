@@ -57,6 +57,7 @@ import Z3.Opts
 import qualified Data.Vector as V
 import Data.STRef (newSTRef, readSTRef)
 import Numeric (showEFloat)
+import Pomc.Prob.UnfoldStack (showFlatModel)
 
 -- import qualified Debug.Trace as DBG
 
