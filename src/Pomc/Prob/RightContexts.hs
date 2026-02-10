@@ -4,7 +4,9 @@
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}
-module Pomc.Prob.RightContexts (computeRightContexts) where
+module Pomc.Prob.RightContexts ( RightContexts
+                               , computeRightContexts
+                               ) where
 import Pomc.SatUtil(freshIONegId)
 import Pomc.IOStack(IOStack)
 import qualified Pomc.IOStack as IOGS
@@ -23,6 +25,7 @@ import Control.Monad(when, forM_)
 import Data.IORef (IORef, modifyIORef', readIORef, modifyIORef', newIORef)
 import Data.Maybe (mapMaybe)
 
+type RightContexts = IntSet
 -- mutable global data structures of this module
 data RightContextGlobals = RightContextGlobals
   { negIdSeq        :: IORef Int

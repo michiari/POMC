@@ -15,7 +15,7 @@ import Pomc.Prob.SupportGraph
 import Pomc.Prob.FixPoint
 import Pomc.Prob.OVI(ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
 import Pomc.Prob.Runtime
-import Pomc.Prob.RightContexts(computeRightContexts)
+import Pomc.Prob.RightContexts(RightContexts, computeRightContexts)
 
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
@@ -46,8 +46,6 @@ import Data.STRef (STRef, modifySTRef')
 import Data.List (sort, foldl')
 
 type TermVarMap = IORef (IOMapMap AST)
--- set of states where a semiconf terminates with positive prob.
-type RightContexts = IntSet
 -- global mutable data structures of this module
 data TermGlobals = TermGlobals
   { sStack     :: IOStack Int

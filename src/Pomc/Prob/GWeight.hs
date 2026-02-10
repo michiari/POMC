@@ -15,7 +15,7 @@ module Pomc.Prob.GWeight ( Delta(..)
 import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..), defaultTolerance)
 import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProBitencoding)
-import Pomc.Prob.RightContexts(computeRightContexts)
+import Pomc.Prob.RightContexts(RightContexts, computeRightContexts)
 import Pomc.Z3T (liftSTtoIO)
 
 import Pomc.TimeUtils (startTimer, stopTimer)
@@ -61,7 +61,6 @@ data Delta state = Delta
   , consistentFilter :: state -> Bool
   }
 
-type RightContexts = IntSet
 -- either info for a push, or info for a shift
 -- in the push info, tuples are pais (suppStateId_, suppSemiconfId_), 
 -- where suppStateId_ is the id of the state in the suppSemiconf

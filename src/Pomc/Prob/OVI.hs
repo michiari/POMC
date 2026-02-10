@@ -1,4 +1,3 @@
-{-# LANGUAGE TupleSections #-}
 -- {-# LANGUAGE DataKinds #-} -- For Rounded
 {- |
    Module      : Pomc.Prob.OVI
@@ -211,4 +210,3 @@ oviToRational settings augEqMap@(_, _) f oviRes = do
       logDebugN $ unwords ["k-induction with function realFloatToRational failed in", show maxIters, "- Trying k-induction with function approxRational + eps."]
       logDebugN $ unwords ["Is k-induction with function approxRational + eps successful?", show successF2, "- Number of iterations:", show itersF2]
       return successF2
-

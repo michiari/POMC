@@ -8,7 +8,7 @@
 
 module Pomc.Prob.POPAlyzer (infer) where
 
-import Pomc.Prob.RightContexts (computeRightContexts)
+import Pomc.Prob.RightContexts (RightContexts, computeRightContexts)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.FixPoint
 import Pomc.Prob.SupportGraph (SupportGraph, GraphNode (..), buildSupportGraph, TransitionInfo (..))
@@ -44,8 +44,6 @@ import Data.Ratio (approxRational)
 import Data.Bifunctor(bimap)
 import Data.List (sort)
 
--- set of states where a semiconf terminates with positive prob.
-type RightContexts = IntSet
 -- global mutable data structures of this module
 data InfGlobals = InfGlobals
   { sStack     :: IOStack Int
