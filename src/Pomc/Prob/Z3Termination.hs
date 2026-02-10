@@ -598,7 +598,6 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
     , "Computed upper bounds on termination probabilities: " ++ show ubTermProbs
     , "Do all the descendant terminate almost surely? " ++ show dPAST
     , "Are the upper bounds proving not AST? " ++ show nonPASTprobs
-    , "DefaultTolerance: " ++ show defaultTolerance
     ]
 
   pASTCertCases
