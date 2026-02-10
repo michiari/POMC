@@ -44,7 +44,6 @@ import Z3.Monad hiding (Solver)
 import Data.IORef (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import Data.STRef (STRef, modifySTRef')
 import Data.List (sort, foldl')
-import qualified Debug.Trace as DBG
 
 type TermVarMap = IORef (IOMapMap AST)
 -- set of states where a semiconf terminates with positive prob.
@@ -302,7 +301,6 @@ encode globals mkComp suppGraph gnId_ rightCnxts solv dPAST poppedSemiconfs =
             enc succInfo id_ rightCnxts
             isPAST <- solveSCCQuery globals poppedSemiconfs suppGraph dPAST solv
             when isPAST $ do 
-              DBG.trace ("These semiconfs are PAST: " ++ show poppedSemiconfs) $ return ()
               liftIO $ modifyIORef' (pastSemiconfs globals) $ IntSet.insert id_
             return (rightCnxts, isPAST)
 
@@ -335,9 +333,7 @@ encode globals mkComp suppGraph gnId_ rightCnxts solv dPAST poppedSemiconfs =
 
           logDebugN "Solving the equation system..."
           isPAST <- solveSCCQuery globals semiconfs suppGraph dPAST solv
-          when isPAST $ do 
-            DBG.trace ("These semiconfs are PAST: " ++ show poppedSemiconfs) $ return ()
-            liftIO 
+          when isPAST $ liftIO 
             $ modifyIORef' (pastSemiconfs globals) $ IntSet.union (IntSet.fromList semiconfs)
           unless (gnId_ == semiconfsVec V.! 0)
             $ error "The entry semiconf to this SCC is not the smallest one in the ordering."
@@ -606,4 +602,3 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
     ]
 
   pASTCertCases
-
