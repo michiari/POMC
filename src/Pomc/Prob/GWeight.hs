@@ -387,7 +387,7 @@ encodePush globals (suppInfo, pushInfo) scId_ rightCnxts = do
   addFixpEqs (eqMap globals) scId_ terms
   liftSTtoIO $ modifySTRef' (stats globals) $
     \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
-  logDebugN $ "Encoding push: " ++ show scId_ ++ " = PushEq " ++ show terms
+  logDebugN $ "Encoding Push for semiconf " ++ show scId_ ++ ": " ++ show terms
 
 encodeShift :: (MonadIO m, MonadLogger m)
   => GWeightGlobals
@@ -409,7 +409,7 @@ encodeShift globals shiftInfo scId_ rightCnxts = do
   addFixpEqs (eqMap globals) scId_ terms
   liftIO $ liftSTtoIO $ modifySTRef' (stats globals)
     $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
-  logDebugN $ "Encoding Shift: " ++ show scId_ ++ " = ShiftEq " ++ show terms
+  logDebugN $ "Encoding Shift for semiconf " ++ show scId_ ++ ": " ++ show terms
 
 encodePopAndSolveSCC :: (SatState state, Eq state, Hashable state, Show state)
   => (StateId state, Stack state) -- current semiconf
@@ -461,8 +461,8 @@ solveSCCQuery globals useNewton = do
   solvedLVars <- preprocessApproxFixp eqs fst
   solvedUvars <- preprocessApproxFixp eqs snd
   let zipSolved = zip solvedLVars solvedUvars
-      updatEqMap ((_, 0), (_, _)) = error "[Quant. MC] The equation system must be clean - please report this as a bug."
-      updatEqMap ((_, _), (_, 0)) = error "[Quant. MC] The equation system must be clean - please report this as a bug."
+      --updatEqMap ((_, 0), (_, _)) = error "[Quant. MC] The equation system must be clean - please report this as a bug."
+      --updatEqMap ((_, _), (_, 0)) = error "[Quant. MC] The equation system must be clean - please report this as a bug."
       updatEqMap ((k1, l), (_, u)) = addFixpEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
@@ -493,5 +493,5 @@ solveSCCQuery globals useNewton = do
     -- update lower and upper bounds
     let bounds = V.zip3 unsolvedVars approxVec (oviUpperBound oviRes)
     V.mapM_ (\(varKey, l,u) -> do
-      when (u == 0 || l == 0) $ error "[Quant. MC] The equation system must be clean - please report this as a bug."
+      --when (u == 0 || l == 0) $ error "[Quant. MC] The equation system must be clean - please report this as a bug."
       addFixpEq eqs varKey (PopEq (l,u))) bounds

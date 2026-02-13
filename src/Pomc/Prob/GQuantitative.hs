@@ -9,9 +9,9 @@ module Pomc.Prob.GQuantitative ( GNode(..)
                         , quantitativeModelCheck
                         ) where
 import Pomc.SatUtil(SIdGen, freshPosId)
+import qualified Pomc.SatUtil as SU
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logInfoN)
-import qualified Pomc.SatUtil as SU
 import Pomc.State(State(..))
 import Pomc.Prec (Prec(..))
 import Pomc.Potl(Formula(..))
@@ -19,7 +19,6 @@ import Pomc.PropConv(APType)
 import Pomc.Check (EncPrecFunc)
 import qualified Pomc.Encoding as E
 import Pomc.Z3T
-import qualified Pomc.GStack as GS
 import qualified Pomc.CustoMap as CM
 
 import qualified Pomc.Prob.GQualitative as GQual
@@ -31,25 +30,20 @@ import Pomc.Prob.SupportGraph(GraphNode(..), SupportGraph)
 
 import qualified Data.Strict.IntMap as StrictIntMap
 import qualified Data.Strict.Map as StrictMap
-
 import qualified Data.Set as Set
 import qualified Data.IntSet as IntSet
-
-import Data.Vector(Vector, (!))
+import Data.Vector(Vector)
 import qualified Data.Vector as V
-import Data.Ratio ((%))
-
-import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad (when, forM_, foldM, forM)
-import Control.Monad.ST (RealWorld)
-
-import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
-import Data.Maybe (fromJust, isNothing, catMaybes)
-
 import Data.Hashable
 import qualified Data.HashTable.IO as HT
 import qualified Data.HashTable.ST.Basic as BH
 
+import Data.Ratio ((%))
+import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad (when, forM_, foldM, forM)
+import Control.Monad.ST (RealWorld)
+import Data.STRef (STRef, readSTRef, modifySTRef')
+import Data.Maybe (fromJust, isNothing, catMaybes)
 import Z3.Monad
 
 -- quantitative model checking --
@@ -74,7 +68,7 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lbPendProbs ub
   let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
   gGlobals <- liftSTtoIO $ newGGlobals numPendingSemiconfs
   logInfoN "Building and Analyzing graph G..."
-  let iniGn = suppGraph ! 0
+  let iniGn = suppGraph V.! 0
       iniLabel = getLabel . fst . semiconf $ iniGn
       isPhiState = E.member (bitenc delta) phi . current
       phiInitialsFilter s = iniLabel == E.extractInput (bitenc delta) (current s)
@@ -209,6 +203,11 @@ encodeTransition prob_ num den toVar = do
   mul <- mkMul $ rtProb_:rtNum:[toVar]
   mkDiv mul rtDen
 
+trivialSCC :: [HEdge] -> GNode -> Bool
+trivialSCC [] _= error "There must be at least one edge in H."
+trivialSCC [e] g = (toG e) == (gId g)
+trivialSCC _ _ = False
+
 encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate, Show pstate)
   => GW.GWeightGlobals
   -> SIdGen RealWorld (AugState pstate)
@@ -227,7 +226,7 @@ encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate
   -> Bool
   -> z3 [AST]
 encode gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB sIdMap useNewton =
-  let gn = suppGraph ! graphNode gNode
+  let gn = suppGraph V.! graphNode gNode
       (q,g) = semiconf gn
       qLabel = getLabel q
       precRel = precFun (fst . fromJust $ g) qLabel -- safe due to laziness
@@ -261,21 +260,24 @@ encodePush :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable ps
   -> StrictMap.Map pstate Int
   -> Bool
   -> z3 [AST]
-encodePush gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph isInH g gn pendProbsLB pendProbsUB sIdMap useNewton =
+encodePush gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) 
+  suppGraph gGraph isInH g gn pendProbsLB pendProbsUB sIdMap useNewton =
   let edgesInH = Set.toList . Set.filter (isInH . (gGraph V.!). toG) . edges $ g
-      trivialSCC [] = error "there must be at least one edge in H"
-      trivialSCC [e] = (toG e) == (gId g)
-      trivialSCC _ = False
-
       pushEnc e = do
         let toIdx = toG e
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
         touVar <- liftIO $ fromJust <$> HT.lookup uTypVarMap toIdx
-        let destG = gGraph ! toIdx
+        let destG = gGraph V.! toIdx
+            destGnId_ = graphNode destG
+            pendPDestGnLB = pendProbsLB V.! destGnId_
+            pendPDestGnUB = pendProbsUB V.! destGnId_
+            gnId_ = gnId gn
+            pendPGnLB = pendProbsLB V.! gnId_
+            pendPGnUB = pendProbsUB V.! gnId_
             -- push edges in the support Graph
             encodePushTrans = do
-              lT <- encodeTransition (probInt e) (pendProbsLB ! (graphNode destG)) (pendProbsUB V.! (graphNode g)) tolVar
-              uT <- encodeTransition (probInt e) (pendProbsUB ! (graphNode destG)) (pendProbsLB V.! (graphNode g)) touVar
+              lT <- encodeTransition (probInt e) pendPDestGnLB pendPGnUB tolVar
+              uT <- encodeTransition (probInt e) pendPDestGnUB pendPGnLB touVar
               return [(lT, uT)]
             -- supports edges in the Support Graph
             supportGn = suppGraph V.! (graphNode destG)
@@ -319,23 +321,23 @@ encodePush gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) s
               logInfoN $ "encountered a support transition - launching call to inner computation of fraction f from H node "
                 ++ show (gId g) ++ " to H node " ++ show toIdx
               (lW, uW) <- GW.weightQuerySCC gwGlobals sIdGen cDelta suppStarts supports leftContext rightContext useNewton
-              lT <- encodeTransition lW (pendProbsLB V.! (graphNode destG)) (pendProbsUB V.! (graphNode g)) tolVar
-              uT <- encodeTransition uW (pendProbsUB V.! (graphNode destG)) (pendProbsLB V.! (graphNode g)) touVar
+              lT <- encodeTransition lW pendPDestGnLB pendPGnUB tolVar
+              uT <- encodeTransition uW pendPDestGnUB pendPGnLB touVar
               return [(lT, uT)]
-            cases
-              | (SupportAndInternal {}) <- e = do
-                  pushEncs <- encodePushTrans
-                  suppEncs <- encodeSupportTrans
-                  return (pushEncs ++ suppEncs)
-              | (Internal _ _) <- e = encodePushTrans
-              | (Support _ _) <- e = encodeSupportTrans
-        cases
+        case e of
+          (SupportAndInternal {}) -> do
+            pushEncs <- encodePushTrans
+            suppEncs <- encodeSupportTrans
+            return (pushEncs ++ suppEncs)
+          (Internal _ _) -> encodePushTrans
+          (Support _ _) -> encodeSupportTrans
+
   in do
     -- a sanity check
     --unless (graphNode g == gnId gn) $ error "encodePush corresponding to non consistent pair GNode - graphNode"
     lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
     uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
-    if trivialSCC edgesInH
+    if trivialSCC edgesInH g
       then do
         -- this would give an equation x = x, which has necessarily solution 1,
         -- otherwise it would violate uniqueness of solution
@@ -365,9 +367,6 @@ encodeShift :: (MonadZ3 z3, MonadLogger z3)
   -> z3 [AST]
 encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g pendProbsLB pendProbsUB =
   let edgesInH = Set.toList . Set.filter (isInH . (gGraph V.!). toG) . edges $ g
-      trivialSCC [] = error "there must be at least one edge in H"
-      trivialSCC [e] = toG e == gId g
-      trivialSCC _ = False
       shiftEnc (Internal prob_ toIdx) = do
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
         touVar <- liftIO $ fromJust <$> HT.lookup uTypVarMap toIdx
@@ -380,7 +379,7 @@ encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g pendProbsLB pendProbsUB =
   --unless (graphNode g == gnId gn) $ error "encodeShift encountered a non consistent pair GNode - graphNode"
   lvar <- liftIO $ fromJust <$> HT.lookup lTypVarMap (gId g)
   uvar <- liftIO $ fromJust <$> HT.lookup uTypVarMap (gId g)
-  if trivialSCC edgesInH
+  if trivialSCC edgesInH g
     then do
       lEqOne <- mkEq lvar =<< mkRational (1 :: Prob)
       uEqOne <- mkEq uvar =<< mkRational (1 :: Prob)

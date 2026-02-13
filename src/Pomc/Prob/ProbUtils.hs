@@ -150,12 +150,6 @@ decode :: (StateId state, Stack state) -> (Int,Int,Int)
 decode (s1, Nothing) = (getId s1, 0, 0)
 decode (s1, Just (i, s2)) = (getId s1, nat i, getId s2)
 
-decodeFullStack :: (StateId state, [Stack state]) -> (Int,[(Int,Int)])
-decodeFullStack (s1, s) = (getId s1, map dec s)
-  where dec Nothing = (0,0)
-        dec (Just (i, s2)) = (nat i, getId s2)
-
-
 -- Strategy to update successive iterations of fixpoint equations
 -- GS : Value Iteration with Gauss-Seidel update
 -- Newton: Newton's Method
