@@ -1,5 +1,4 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {- |
    Module      : Pomc.Prob.GReach
    Copyright   : 2023-2026 Francesco Pontiggia

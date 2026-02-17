@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 {- |
    Module      : Pomc.Prob.GQuantitative
    Copyright   : 2026 Francesco Pontiggia
@@ -225,7 +224,8 @@ encode :: (MonadZ3 z3, MonadFail z3, MonadLogger z3, Ord pstate, Hashable pstate
   -> StrictMap.Map pstate Int
   -> Bool
   -> z3 [AST]
-encode gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB sIdMap useNewton =
+encode gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) 
+  suppGraph gGraph precFun isInH gNode pendProbsLB pendProbsUB sIdMap useNewton =
   let gn = suppGraph V.! graphNode gNode
       (q,g) = semiconf gn
       qLabel = getLabel q

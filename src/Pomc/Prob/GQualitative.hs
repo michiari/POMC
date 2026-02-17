@@ -45,7 +45,7 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad (when, forM_, foldM, forM)
 import Control.Monad.ST (ST, RealWorld)
 
-import Data.STRef (STRef, newSTRef, readSTRef, modifySTRef')
+import Data.STRef (STRef, readSTRef, modifySTRef')
 import Data.Maybe (fromJust, isNothing, mapMaybe)
 
 -- requires: the initial semiconfiguration has id 0, and it is not reachable from itself

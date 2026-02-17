@@ -59,8 +59,6 @@ import Data.STRef (newSTRef, readSTRef)
 import Numeric (showEFloat)
 import Pomc.Prob.UnfoldStack (showFlatModel)
 
--- import qualified Debug.Trace as DBG
-
 data ExplicitPopa s a = ExplicitPopa
   { epAlphabet       :: Alphabet a -- OP alphabet
   , epInitial        :: (s, Set (Prop a)) -- initial state of the POPA
@@ -73,25 +71,30 @@ data ExplicitPopa s a = ExplicitPopa
 -- is the probability to terminate respectively <, <=, >=, > than the given probability?
 -- (the return String is a debugging message for developing purposes)
 terminationLTExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
-                      => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
-terminationLTExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Lt bound solv) popa
+  => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
+terminationLTExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) 
+  <$> terminationExplicit (CompQuery Lt bound solv) popa
 
 terminationLEExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
-                      => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
-terminationLEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Le bound solv) popa
+  => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
+terminationLEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) 
+  <$> terminationExplicit (CompQuery Le bound solv) popa
 
 terminationGTExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
-                      => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
-terminationGTExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Gt bound solv) popa
+  => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
+terminationGTExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) 
+  <$> terminationExplicit (CompQuery Gt bound solv) popa
 
 terminationGEExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
-                      => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
-terminationGEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) <$> terminationExplicit (CompQuery Ge bound solv) popa
+  => ExplicitPopa s a -> Prob -> Solver -> m (Bool, Stats, String)
+terminationGEExplicit popa bound solv = (\(res, s, str) -> (toBool res, s, str)) 
+  <$> terminationExplicit (CompQuery Ge bound solv) popa
 
 -- what is the probability that the input POPA terminates?
 terminationApproxExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
-                          => ExplicitPopa s a -> Solver -> m ((Prob, Prob), Stats, String)
-terminationApproxExplicit popa solv = (\(ApproxSingleResult res, s, str) -> (res, s, str)) <$> terminationExplicit (ApproxSingleQuery solv) popa
+  => ExplicitPopa s a -> Solver -> m ((Prob, Prob), Stats, String)
+terminationApproxExplicit popa solv = (\(ApproxSingleResult res, s, str) -> (res, s, str)) 
+  <$> terminationExplicit (ApproxSingleQuery solv) popa
 
 terminationExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
                     => TermQuery
@@ -112,7 +115,7 @@ terminationExplicit query popa =
     -- generate the delta relation of the input opa
     encodeDistr = map (\(s, b, p) -> (s, E.encodeInput bitenc (Set.map (encodeProp pconv) b), p))
     makeDeltaMapI delta = Map.fromListWith (++) $
-      map (\(q, distr) -> (q, encodeDistr  distr))
+      map (second encodeDistr)
           delta
     deltaPush  = makeDeltaMapI  (epopaDeltaPush popa)
     deltaShift  = makeDeltaMapI  (epopaDeltaShift popa)
@@ -155,7 +158,6 @@ programTermination solv prog =
       (tsls, tprec) = popaAlphabet popa
       (bitenc, precFunc, _, _, _, _, _, _) =
         makeOpa T IsProb (tsls, tprec) (\_ _ -> True)
-
       initial = popaInitial popa bitenc
       pDelta = Delta
                { bitenc = bitenc
@@ -168,7 +170,6 @@ programTermination solv prog =
                , phiDeltaShift = error "phiDeltaShift used in program termination"
                , phiDeltaPop = error "phiDeltaPop used in program termination"
                }
-
   in do
     stats <- liftSTtoIO $ newSTRef newStats
     (sc, _) <- liftSTtoIO $ buildSupportGraph pDelta initial stats
@@ -195,9 +196,8 @@ qualitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDeltaP
       makeOpa phi IsProb alphabet (\_ _ -> True)
 
     proEnc = PE.makeProBitEncoding cl phiIsFinalW
-    phiPush p = (phiDeltaPush p Nothing)
-    phiShift p = (phiDeltaShift p Nothing)
-
+    phiPush p = phiDeltaPush p Nothing
+    phiShift p = phiDeltaShift p Nothing
     wrapper = Delta
       { bitenc = bitenc
       , proBitenc = proEnc
@@ -241,11 +241,9 @@ qualitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDeltaP
       , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount computedStats
       , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount computedStats
       ]
-
     startGGTime <- startTimer
     almostSurely <- GQual.qualitativeModelCheck wrapper (normalize phi) phiInitials sc sIdMap pendVector stats
     tGG <- stopTimer startGGTime almostSurely
-
     updatedStats <- liftSTtoIO $ readSTRef stats
     return (almostSurely, updatedStats { gGraphTime = tGG }, show sc ++ show pendVector)
 
@@ -258,7 +256,8 @@ qualitativeModelCheckProgram solv phi prog =
   let
     (pconv, _, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
-  in qualitativeModelCheck solv transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
+  in qualitativeModelCheck solv transPhi
+    (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
 qualitativeModelCheckExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s)
                               => Solver
@@ -269,15 +268,12 @@ qualitativeModelCheckExplicit solv phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
     essentialAP = Set.fromList $ End : (fst $ epAlphabet popa) ++ (getProps phi)
-
     maybeList Nothing = []
     maybeList (Just l) = l
-
     -- generate the delta relation of the input opa
     encodeDistr bitenc = map (\(s, b, p) -> (s, E.encodeInput bitenc (Set.intersection essentialAP b), p))
     makeDeltaMapI delta bitenc = Map.fromListWith (++) $
-      map (\(q, distr) -> (q, encodeDistr bitenc distr))
-          delta
+      map (second (encodeDistr bitenc)) delta
     deltaPush  = makeDeltaMapI  (epopaDeltaPush popa)
     deltaShift  = makeDeltaMapI  (epopaDeltaShift popa)
     popaDeltaPush bitenc q = maybeList $ Map.lookup q (deltaPush bitenc)
@@ -292,7 +288,6 @@ qualitativeModelCheckExplicit solv phi popa =
     initial bitenc = (fst . epInitial $ popa, E.encodeInput bitenc . Set.intersection essentialAP . snd .  epInitial $ popa)
   in qualitativeModelCheck solv phi (epAlphabet popa) initial popaDeltaPush popaDeltaShift popaDeltaPop
 
-
 qualitativeModelCheckExplicitGen :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
                                  => Solver
                                  -> Formula a -- phi: input formula to check
@@ -303,17 +298,10 @@ qualitativeModelCheckExplicitGen solv phi popa =
     (sls, prec) = epAlphabet popa
     essentialAP = Set.fromList $ End : sls ++ getProps phi
     (tphi, tprec, [tsls], pconv) = convProps phi prec [sls]
-    transDelta = map (second
-                        (map (\(a, b, p) ->
-                            (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
-                        )
-                     )
-    transDeltaPop = map ( \(q,q0, distr) -> (q,q0,
-                                                  map (\(a, b, p) ->
-                                                    (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
-                                                  distr
-                                            )
-                        )
+    transDelta = map (second (map (\(a, b, p) ->
+      (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))))
+    transDeltaPop = map ( \(q,q0, distr) -> (q,q0, map (\(a, b, p) ->
+      (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p)) distr))
     transInitial = second (Set.map (encodeProp pconv) . Set.intersection essentialAP)
     tPopa = popa { epAlphabet   = (tsls, tprec)
                 , epInitial = transInitial (epInitial popa)
@@ -322,7 +310,6 @@ qualitativeModelCheckExplicitGen solv phi popa =
                  , epopaDeltaPop = transDeltaPop (epopaDeltaPop popa)
                  }
   in qualitativeModelCheckExplicit solv tphi tPopa
-
 
 -- QUANTITATIVE MODEL CHECKING
 -- what is the probability that the POPA satisfies phi?
@@ -341,8 +328,8 @@ quantitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDelta
       makeOpa phi IsProb alphabet (\_ _ -> True)
 
     proEnc = PE.makeProBitEncoding cl phiIsFinalW
-    phiPush p = (phiDeltaPush p Nothing)
-    phiShift p = (phiDeltaShift p Nothing)
+    phiPush p = phiDeltaPush p Nothing
+    phiShift p = phiDeltaShift p Nothing
 
     wrapper = Delta
       { bitenc = bitenc
@@ -379,7 +366,7 @@ quantitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDelta
     logInfoN "Conclusive analysis!"
     logInfoN $ "Size of the Support Chain: " ++ show (V.foldl (flip ((+) . fromEnum)) 0 pendVector)
 
-    (ub, lb) <- GQuant.quantitativeModelCheck wrapper 
+    (ub, lb) <- GQuant.quantitativeModelCheck wrapper
       (normalize phi) phiInitials supportGraph pendVector lbPendVec ubPendVec sIdMap stats solv
     computedStats <- liftSTtoIO $ readSTRef stats
     return ((ub, lb), computedStats, show supportGraph ++ show pendVector)
@@ -393,13 +380,14 @@ quantitativeModelCheckProgram solv phi prog =
   let
     (pconv, _, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
-  in quantitativeModelCheck solv transPhi (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
+  in quantitativeModelCheck solv transPhi
+    (popaAlphabet popa) (popaInitial popa) (popaDeltaPush popa) (popaDeltaShift popa) (popaDeltaPop popa)
 
 quantitativeModelCheckExplicit :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s)
-                               => Solver
-                               -> Formula APType -- phi: input formula to check
-                               -> ExplicitPopa s APType -- input OPA
-                               -> m ((Prob,Prob), Stats, String)
+  => Solver
+  -> Formula APType -- phi: input formula to check
+  -> ExplicitPopa s APType -- input OPA
+  -> m ((Prob,Prob), Stats, String)
 quantitativeModelCheckExplicit solv phi popa =
   let
     -- all the structural labels + all the labels which appear in phi
@@ -411,7 +399,7 @@ quantitativeModelCheckExplicit solv phi popa =
     -- generate the delta relation of the input opa
     encodeDistr bitenc = map (\(s, b, p) -> (s, E.encodeInput bitenc (Set.intersection essentialAP b), p))
     makeDeltaMapI delta bitenc = Map.fromListWith (++) $
-      map (\(q, distr) -> (q, encodeDistr bitenc distr))
+      map (second (encodeDistr bitenc))
           delta
     deltaPush  = makeDeltaMapI  (epopaDeltaPush popa)
     deltaShift  = makeDeltaMapI  (epopaDeltaShift popa)
@@ -429,26 +417,19 @@ quantitativeModelCheckExplicit solv phi popa =
 
 
 quantitativeModelCheckExplicitGen :: (MonadIO m, MonadFail m, MonadLogger m, Ord s, Hashable s, Show s, Ord a)
-                                  => Solver
-                                  -> Formula a -- phi: input formula to check
-                                  -> ExplicitPopa s a -- input OPA
-                                  -> m ((Prob, Prob), Stats, String)
+  => Solver
+  -> Formula a -- phi: input formula to check
+  -> ExplicitPopa s a -- input OPA
+  -> m ((Prob, Prob), Stats, String)
 quantitativeModelCheckExplicitGen solv phi popa =
   let
     (sls, prec) = epAlphabet popa
     essentialAP = Set.fromList $ End : sls ++ getProps phi
     (tphi, tprec, [tsls], pconv) = convProps phi prec [sls]
-    transDelta = map (second
-                        (map (\(a, b, p) ->
-                            (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
-                        )
-                     )
-    transDeltaPop = map ( \(q,q0, distr) -> (q,q0,
-                                                  map (\(a, b, p) ->
-                                                    (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))
-                                                  distr
-                                            )
-                        )
+    transDelta = map (second (map (\(a, b, p) ->
+      (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p))))
+    transDeltaPop = map (\(q,q0, distr) -> (q,q0, map (\(a, b, p) ->
+      (a, Set.map (encodeProp pconv) $ Set.intersection essentialAP b, p)) distr))
     transInitial = second (Set.map (encodeProp pconv) . Set.intersection essentialAP)
     tPopa = popa { epAlphabet   = (tsls, tprec)
                 , epInitial = transInitial (epInitial popa)
@@ -464,20 +445,18 @@ chooseLogic _ = Just QF_NRA
 
 -- export a Markov Chain representation of the pOPA with unfolded stack up to depth = bound
 exportMarkovChain :: (MonadIO m, MonadFail m, MonadLogger m)
-            => Formula ExprProp -- phi: input formula to keep track of symbols
-            -> Program -- input program
-            -> Int -- a bound on stack's depth
-            -> FilePath
-            -> FilePath
-            -> m ()
+  => Formula ExprProp -- phi: input formula to keep track of symbols
+  -> Program -- input program
+  -> Int -- a bound on stack's depth
+  -> FilePath
+  -> FilePath
+  -> m ()
 exportMarkovChain phi prog depth transFile labFile =
   let
     (pconv, _, popa) = programToPopa prog (Set.fromList $ getProps phi)
     transPhi = encodeFormula pconv phi
     (bitencPhi, precFunc, _, (_, _), _, _, _, _) =
       makeOpa transPhi IsProb (popaAlphabet popa) (\_ _ -> True)
-
-
     initial = (popaInitial popa) bitencPhi
 
     -- some are not initialized because they are not needed
