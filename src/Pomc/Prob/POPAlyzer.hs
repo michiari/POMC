@@ -362,20 +362,19 @@ solveSCCQuery globals newton = do
   solvedLVars <- preprocessApproxFixp eqs fst
   solvedUvars <- preprocessApproxFixp eqs snd
   let zipSolved = zip solvedLVars solvedUvars
-      --updatEqMap ((_, 0), (_, _)) = error "[Preprocessed equations] The equation system must be clean - please report this as a bug."
-      --updatEqMap ((_, _), (_, 0)) = error "[Preprocessed equations] The equation system must be clean - please report this as a bug."
       updatEqMap ((k1, l), (_, u)) = addPopEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
   unsolvedVars <- liveVariables eqs
   unless (V.null unsolvedVars) $ do
     let varSize = V.length unsolvedVars
+        zeroVec = V.replicate varSize 0
     startWeights <- startTimer
 
     -- compute lower bounds
     approxVec <- if newton
-      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) defaultEps defaultMaxIters defaultMaxIters (V.replicate varSize 0)
-      else approxFixpWithHint eqs fst defaultEps defaultMaxIters (V.replicate varSize 0)
+      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) defaultEps defaultMaxIters defaultMaxIters zeroVec
+      else approxFixpWithHint eqs fst defaultEps defaultMaxIters zeroVec
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system."
@@ -395,5 +394,4 @@ solveSCCQuery globals newton = do
     let bounds = V.zip3 unsolvedVars approxVec (oviUpperBound oviRes)
     V.mapM_ (\(varKey, l,u) -> do
       when (u - l > 0.02) $ error $ "The upper bound is too lose: " ++ show varKey ++ " = (" ++ show l ++ "," ++ show u ++ ")"
-      --when (u == 0 || l == 0) $ error "[POPAlyzer] The equation system must be clean - please report this as a bug."
       addPopEq eqs varKey (PopEq (l,u))) bounds
