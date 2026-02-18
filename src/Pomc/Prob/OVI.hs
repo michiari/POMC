@@ -16,7 +16,6 @@ module Pomc.Prob.OVI ( ovi
                      ) where
 
 import Pomc.Prob.FixPoint
-import Pomc.Prob.ProbUtils(defaultEps)
 import Pomc.LogUtils (MonadLogger, logDebugN)
 
 import Data.Ratio (approxRational)
@@ -37,17 +36,17 @@ data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviMaxKIndIters :: Int
                                  }
 
-defaultOVISettingsDouble :: OVISettings Double
-defaultOVISettingsDouble = OVISettings
+defaultOVISettingsDouble :: Double -> OVISettings Double
+defaultOVISettingsDouble eps = OVISettings
   { oviMaxIters = 50
   , oviMaxKleeneIters = 100000000
   , oviDampingFactor = 0.5
-  , oviKleeneEps = defaultEps
+  , oviKleeneEps = eps
   , oviKleeneDampingFactor = 1e-1
-  , oviPowerIterEps = defaultEps
+  , oviPowerIterEps = eps
   , oviPowerIterDampingFactor = 1e-1
   , oviMaxPowerIters = 1000000
-  , oviRationalApproxEps = 1e-8
+  , oviRationalApproxEps = 10 * eps
   , oviMaxKIndIters = 50
   }
 
@@ -139,13 +138,14 @@ ovi settings augEqMap f lowerApproxInitial = do
                 ]
       logDebugN debugMsg
       -- guessing an inductive upper bound
-      let guessAndCheckInductive 0 = (False, V.empty)
+      let guessAndCheckInductive 0 = (False, newLowerApprox)
           guessAndCheckInductive maxGuesses =
             let currentGuess = currentIter + 1 - maxGuesses
                 scaleFactor = oviPowerIterEps settings *
                   (oviDampingFactor settings)^currentGuess
             -- upperApprox <- lowerApprox + eigenVal * scaleFactor
-                newUpperApprox = V.zipWith (\eigenV l -> l + (eigenV * scaleFactor)) newEigenVec newLowerApprox
+                newUpperApprox = V.zipWith (\eigenV l -> l + (eigenV * scaleFactor)) 
+                  newEigenVec newLowerApprox
 
             -- check if upperApprox is inductive
                 (induct, _) = evalEqSys leqSys (<=) newUpperApprox
@@ -154,7 +154,7 @@ ovi settings augEqMap f lowerApproxInitial = do
                 else guessAndCheckInductive (maxGuesses - 1)
 
           (inductive, newUpperApprox) = guessAndCheckInductive (currentIter + 1)
-          adjustedUpperApprox = approxFixpFromAbove leqSys defaultEps defaultMaxIters newUpperApprox
+          adjustedUpperApprox = approxFixpFromAbove leqSys kleeneEps defaultMaxIters newUpperApprox
       logDebugN $ "Finished iteration " ++ show currentIter ++ ". Inductive? "
         ++ show inductive
       if inductive
@@ -174,11 +174,11 @@ ovi settings augEqMap f lowerApproxInitial = do
              adjustedUpperApprox
              (maxIters - 1)
              newEigenVec
-
-  go (oviKleeneEps settings) (oviPowerIterEps settings) lowerApproxInitial lowerApproxInitial (oviMaxIters settings) eigenVecInitial
+  go (oviKleeneEps settings) (oviPowerIterEps settings) 
+    lowerApproxInitial lowerApproxInitial (oviMaxIters settings) eigenVecInitial
 
 oviToRational :: (MonadIO m, MonadLogger m, Ord n, RealFrac n, Show n, RealFloat n, Show k)
-                       => OVISettings n -> AugEqMap k -> (k -> n) -> OVIResult n -> m Bool
+  => OVISettings n -> AugEqMap k -> (k -> n) -> OVIResult n -> m Bool
 oviToRational settings augEqMap@(_, _) f oviRes = do
   let eps = oviRationalApproxEps settings
       -- two solutions for approximating the floating point upper bound with rational values

@@ -465,14 +465,15 @@ solveSCCQuery globals useNewton = do
     approxVec <- if useNewton
       then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) defaultEps defaultMaxIters defaultMaxIters zeroVec
       else approxFixpWithHint eqs fst defaultEps defaultMaxIters zeroVec
+    logDebugN $ "Lower Approx: " ++ show approxVec
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system."
-    oviRes <- ovi defaultOVISettingsDouble eqs snd approxVec
+    oviRes <- ovi (defaultOVISettingsDouble defaultEps) eqs snd approxVec
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f."
 
     -- certify the result and compute some statistics
-    rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
+    rCertified <- oviToRational (defaultOVISettingsDouble defaultEps) eqs snd oviRes
     unless rCertified $ error "Cannot deduce a rational certificate for this SCC when computing fraction f."
     logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
     tWeights <- stopTimer startWeights rCertified

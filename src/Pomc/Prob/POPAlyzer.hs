@@ -381,11 +381,11 @@ solveSCCQuery globals eps newton = do
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system."
-    oviRes <- ovi defaultOVISettingsDouble eqs snd approxVec
+    oviRes <- ovi (defaultOVISettingsDouble eps) eqs snd approxVec
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities."
 
     -- certify the result and compute some statistics
-    rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
+    rCertified <- oviToRational (defaultOVISettingsDouble eps) eqs snd oviRes
     unless rCertified $ error "Cannot deduce a rational certificate for this SCC when computing upper bounds to the termination probabilities."
     logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
     tWeights <- stopTimer startWeights rCertified

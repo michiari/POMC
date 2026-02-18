@@ -447,15 +447,16 @@ encodePopAndSolveSCC globals gnId_ popMap useZ3 =
     return (IntMap.keysSet distr, True)
 
 updateUpperBoundsOVI :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
- => TermGlobals
+  => TermGlobals
+  -> Double
   -> ProbVec EqMapNumbersType
   -> z3 [((Int,Int), Double)]
-updateUpperBoundsOVI globals lowerBound = do 
+updateUpperBoundsOVI globals eps lowerBound = do 
   let eqs = eqMap globals
   startUpper <- startTimer
   logDebugN "Using OVI to update upper bounds..."
-  oviRes <- ovi defaultOVISettingsDouble eqs snd lowerBound
-  rCertified <- oviToRational defaultOVISettingsDouble eqs snd oviRes
+  oviRes <- ovi (defaultOVISettingsDouble eps) eqs snd lowerBound
+  rCertified <- oviToRational (defaultOVISettingsDouble eps) eqs snd oviRes
   unless rCertified $ error "Cannot deduce a rational certificate for this semiconf."
   unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bound on the termination probabilities."
 
@@ -568,7 +569,7 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
       cases
         | null unsolvedVars = return []
         | useZ3 solv = updateLowerBound >>= updateUpperBoundsZ3 globals
-        | otherwise = updateLowerBound >>= updateUpperBoundsOVI globals
+        | otherwise = updateLowerBound >>= updateUpperBoundsOVI globals defaultEps
       
   upperBound <- cases
   
