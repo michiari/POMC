@@ -28,8 +28,6 @@ module Pomc.Prob.ProbUtils ( Prob
                            , sIdMap
                            , wrapState
                            , decode
-                           , defaultTolerance
-                           , defaultRTolerance
                            , exactComputation
                            , useZ3
                            , useNewton
@@ -178,12 +176,6 @@ useNewton _ = False
 isNewton :: Update -> Bool 
 isNewton Newton = True 
 isNewton _ = False 
-
-defaultTolerance :: EqMapNumbersType
-defaultTolerance = 1e-7
-
-defaultRTolerance :: Prob
-defaultRTolerance = 1e-7
 
 -- termination query
 -- CompQuery asks whether the probability to terminate is <, <=, >, >= than the given probability

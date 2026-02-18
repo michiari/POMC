@@ -12,7 +12,7 @@ module Pomc.Prob.GWeight ( Delta(..)
                          , weightQuerySCC
                          ) where
 
-import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..), defaultTolerance)
+import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..))
 import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProBitencoding)
 import Pomc.Prob.RightContexts(RightContexts, computeRightContexts)

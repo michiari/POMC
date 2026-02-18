@@ -39,6 +39,8 @@ import qualified Pomc.Prob.ProbEncoding as PE
 import Pomc.Prob.Z3Termination (terminationQuery)
 import Pomc.Prob.ProbUtils hiding (sIdMap)
 import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..), ExprProp)
+import Pomc.Prob.UnfoldStack (showFlatModel)
+import Pomc.Prob.FixPoint (defaultREps)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -46,10 +48,8 @@ import qualified Data.IntSet as IntSet
 import qualified Data.Map as Map
 
 import Data.Bifunctor(second)
-
 import Data.Hashable (Hashable)
 import Control.Monad.IO.Class (MonadIO)
-
 import Pomc.Z3T
 import Z3.Monad (Logic(..))
 import Z3.Opts
@@ -57,7 +57,6 @@ import Z3.Opts
 import qualified Data.Vector as V
 import Data.STRef (newSTRef, readSTRef)
 import Numeric (showEFloat)
-import Pomc.Prob.UnfoldStack (showFlatModel)
 
 data ExplicitPopa s a = ExplicitPopa
   { epAlphabet       :: Alphabet a -- OP alphabet
@@ -216,10 +215,10 @@ qualitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDeltaP
     (ApproxAllResult (_, ubTermVec), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solv) stdOpts
       $ terminationQuery sc (ApproxAllQuery solv) stats
     let cases i k
-          | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs =
+          | k < (1 - 1000 * defaultREps) && IntSet.member i mustReachPopIdxs =
             -- inconsistent result
             error $ "semiconf " ++ show i ++ " has a PAST certificate with termination probability equal to " ++ show k
-          | k < (1 - 100 * defaultRTolerance) = True
+          | k < (1 - 1000 * defaultREps) = True
           | IntSet.member i mustReachPopIdxs = False
           | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k
                         ++ " but it is not certified to be PAST." -- inconclusive result
@@ -350,10 +349,10 @@ quantitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDelta
     (ApproxAllResult (lbTermVec, ubTermVec), mustReachPopIdxs) <- evalZ3TWith (Just QF_LRA) stdOpts
       $ terminationQuery supportGraph (ApproxAllQuery solv) stats
     let cases i k
-          | k < (1 - 100 * defaultRTolerance) && IntSet.member i mustReachPopIdxs =
+          | k < (1 - 1000 * defaultREps) && IntSet.member i mustReachPopIdxs =
             -- inconsistent result
             error $ "semiconf " ++ show i ++ "has a PAST certificate with termination probability equal to " ++ show k
-          | k < (1 - 100 * defaultRTolerance) = True
+          | k < (1 - 1000 * defaultREps) = True
           | IntSet.member i mustReachPopIdxs = False
           | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k
                         ++ " but it is not certified to be PAST." -- inconclusive result

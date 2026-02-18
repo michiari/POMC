@@ -44,34 +44,30 @@ module Pomc.Prob.FixPoint ( VarKey
                           , liveVariables
                           ) where
 
-import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType)
+import Pomc.Prob.ProbUtils (Prob)
 import Pomc.LogUtils (MonadLogger)
-
-import Data.Maybe (fromJust)
-import Data.Ratio (approxRational)
-import Control.Monad.IO.Class (MonadIO(liftIO))
-import Data.IORef (modifyIORef', readIORef, IORef)
 
 import Pomc.IOMapMap(IOMapMap)
 import qualified Pomc.IOMapMap as MM
-
 import Data.Set (Set)
 import qualified Data.Set as Set
-
 import qualified Data.Strict.Map as M
-import Data.Foldable (foldl', foldMap')
-import Data.Either (isLeft)
-import Data.Monoid (Sum(..))
-import Data.Bifunctor(second)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-
 import Data.IntSet (IntSet)
 import Data.IntMap(IntMap)
 import qualified Data.IntMap as IntMap
 
 import qualified Numeric.LinearAlgebra as LA
 import qualified Numeric.LinearAlgebra.Data as LAD
+import Data.Foldable (foldl', foldMap')
+import Data.Maybe (fromJust)
+import Data.Either (isLeft)
+import Data.Monoid (Sum(..))
+import Data.Bifunctor(second)
+import Data.Ratio (approxRational)
+import Control.Monad.IO.Class (MonadIO(liftIO))
+import Data.IORef (modifyIORef', readIORef, IORef)
 
 type VarKey = (Int, Int)
 data FixpEq n = PushEq [(Prob, VarKey, VarKey)]
@@ -346,7 +342,7 @@ preprocessApproxFixp augEqMap f = do
           upVars = go (True, M.empty, vars)
       return upVars
 
-defaultEps :: EqMapNumbersType
+defaultEps :: Double
 defaultEps = 0x1p-26 -- ~ 1e-8
 
 defaultREps :: Prob

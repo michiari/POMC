@@ -510,7 +510,7 @@ updateUpperBoundsZ3 globals lowerBound =
     let approxFracVec = toRationalProbVec defaultEps approxVec
     logDebugN "Asserting lower and upper bounds computed from value iteration, and getting a model"
     varKeys <- liveVariables eqs
-    model <- doAssert (V.zip varKeys approxFracVec) (min defaultTolerance currentEps) -- currentEps is initialized with defaultEps
+    model <- doAssert (V.zip varKeys approxFracVec) (min defaultEps currentEps)
 
     -- actual updates
     upperBound <- foldM (\acc (varKey, l) -> do
@@ -540,7 +540,7 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
   let eqs = eqMap globals
       tVarMap = termVarMap globals
       rVarMap = rewVarMap globals
-      augTolerance = 1000 * defaultTolerance
+      augEps = 1000 * defaultEps
 
   -- preprocessing to solve variables by backpropagating
   solvedLVars <- preprocessApproxFixp eqs fst
@@ -562,8 +562,8 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
   let len = V.length unsolvedVars
       zVec = V.replicate len 0
       updateLowerBound
-        -- apply Newton's method only up to augTolerance, Newton's methods becomes instable when dealing with very small deltas
-        | useNewton solv = approxFixpNewtonWithHint eqs fst augTolerance defaultEps defaultMaxIters defaultMaxIters zVec
+        -- apply Newton's method only up to augEps, Newton's methods becomes instable when dealing with very small deltas
+        | useNewton solv = approxFixpNewtonWithHint eqs fst augEps defaultEps defaultMaxIters defaultMaxIters zVec
         | otherwise = approxFixpWithHint eqs fst defaultEps defaultMaxIters zVec
       cases
         | null unsolvedVars = return []
@@ -575,9 +575,9 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
   -- computing the PAST certificate (if needed)
   let addProb m ((scId_, _), b) = IntMap.insertWith (+) scId_ b m
       ubTermProbs = IntMap.toList $ foldl' addProb IntMap.empty (upperBound ++ solvedUvars)
-      nonPASTprobs = null ubTermProbs || all (\(_,ub) -> ub < 1 - augTolerance) ubTermProbs
-      pASTprobs = not (null ubTermProbs) && all (\(_,ub) -> ub > 1 - augTolerance) ubTermProbs
-      exactPASTprobs = not (null ubTermProbs) && all (\(_,ub) -> ub > 1 - defaultTolerance) ubTermProbs
+      nonPASTprobs = null ubTermProbs || all (\(_,ub) -> ub < 1 - augEps) ubTermProbs
+      pASTprobs = not (null ubTermProbs) && all (\(_,ub) -> ub > 1 - augEps) ubTermProbs
+      exactPASTprobs = not (null ubTermProbs) && all (\(_,ub) -> ub > 1 - defaultEps) ubTermProbs
       pASTCertCases
         | exactComputation solv = return exactPASTprobs
         | not dPAST && pASTprobs =
