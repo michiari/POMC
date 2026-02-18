@@ -373,7 +373,7 @@ encodePush globals mkComp suppGraph suppSet pushMap useZ3 gnId_ rightCnxts = do
       terms :: IntMap.IntMap (FixpEq (EqMapNumbersType, EqMapNumbersType))
       terms = IntMap.fromSet createTerm rightCnxts
   -- add equations
-  addFixpEqs (eqMap globals) gnId_ terms
+  addLiveVars (eqMap globals) gnId_ terms
   liftSTtoIO $ modifySTRef' (stats globals) $
     \s@Stats{equationsCount = acc} -> s{equationsCount = acc + IntMap.size terms}
   logDebugN $ "Encoding Push: " ++ show gnId_ ++ " = PushEq " ++ show terms
@@ -406,7 +406,7 @@ encodeShift globals mkComp shiftMap useZ3 gnId_ rightCnxts = do
       terms :: IntMap.IntMap (FixpEq (EqMapNumbersType, EqMapNumbersType))
       terms = IntMap.fromSet createTerm rightCnxts
   -- add equations and compute some statistics
-  addFixpEqs (eqMap globals) gnId_ terms
+  addLiveVars (eqMap globals) gnId_ terms
   liftSTtoIO $ modifySTRef' (stats globals)
     $ \s@Stats{equationsCount = acc} -> s{equationsCount = acc + IntMap.size terms}
   logDebugN $ "Encoding Shift: " ++ show gnId_ ++ " = ShiftEq " ++ show terms
@@ -463,7 +463,7 @@ updateUpperBoundsOVI globals lowerBound = do
   varKeys <- liveVariables eqs
   let bounds = V.zip3 varKeys lowerBound (oviUpperBound oviRes)
   upperBoundWithKeys <- V.mapM ( \(varKey, l, p) -> do
-      addFixpEq eqs varKey (PopEq (l,p))
+      addPopEq eqs varKey (PopEq (l,p))
       return (varKey, p)
     ) bounds
   tUpper <- stopTimer startUpper True
@@ -518,7 +518,7 @@ updateUpperBoundsZ3 globals lowerBound =
       ubAST <- fromJust <$> eval model varAST
       ubDouble <- extractUpperDouble ubAST
       liftIO $ uncurry (IOMM.insert tVarMap) varKey ubAST
-      addFixpEq eqs varKey (PopEq (l, ubDouble))
+      addPopEq eqs varKey (PopEq (l, ubDouble))
       return ((varKey, ubDouble):acc)
       ) [] (V.zip varKeys lowerBound)
 
@@ -547,7 +547,7 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
   solvedUvars <- preprocessApproxFixp eqs snd
   let zipSolved = zip solvedLVars solvedUvars
   forM_ zipSolved $ \((varKey, l), (_, u)) -> do
-    addFixpEq eqs varKey (PopEq (l,u))
+    addPopEq eqs varKey (PopEq (l,u))
     when (useZ3 solv) $ do
       ubAST <- mkRealNum (u :: Double)
       liftIO $ uncurry (IOMM.insert tVarMap) varKey ubAST

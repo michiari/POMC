@@ -22,8 +22,8 @@ module Pomc.Prob.FixPoint ( VarKey
                           , evalPolySys
                           , jacobiTimesX
                           , pminusXjacobi
-                          , addFixpEq
-                          , deleteFixpEq
+                          , addPopEq
+                          , addLiveVars
                           , addFixpEqs
                           , toLiveEqMapWith
                           , evalEqSys
@@ -72,7 +72,6 @@ import qualified Data.IntMap as IntMap
 
 import qualified Numeric.LinearAlgebra as LA
 import qualified Numeric.LinearAlgebra.Data as LAD
-import Control.Applicative ((<|>))
 
 type VarKey = (Int, Int)
 data FixpEq n = PushEq [(Prob, VarKey, VarKey)]
@@ -154,32 +153,26 @@ pminusXjacobi leqSys =
       jShift acc (p, Left k1) = addMonomial (Const p) k1 acc
       jShift acc _ = acc
 
-      sparseJacobi k (PushLEq terms) = M.toList . M.mapKeys (k,) . foldl' jPush (M.singleton k [Const (-1)]) $ terms
-      sparseJacobi k (ShiftLEq terms) =  M.toList . M.mapKeys (k,) . foldl' jShift (M.singleton k [Const (-1)]) $ terms
+      jacobi k f = M.toList . M.mapKeys (k,) . foldl' f (M.singleton k [Const (-1)])
+      sparseJacobi k (PushLEq terms) = jacobi k jPush terms
+      sparseJacobi k (ShiftLEq terms) = jacobi k jShift terms
 
   in concat . V.imap sparseJacobi $ leqSys
 
-addFixpEq :: MonadIO m => AugEqMap n -> VarKey -> FixpEq n -> m ()
-addFixpEq (eqMap, lEqs) varKey eq@(PopEq _) = liftIO $ do
+addPopEq :: MonadIO m => AugEqMap n -> VarKey -> FixpEq n -> m ()
+addPopEq (eqMap, lEqs) varKey eq@(PopEq _) = liftIO $ do
   uncurry (MM.insert eqMap) varKey eq
   modifyIORef' lEqs (Set.delete varKey)
-addFixpEq (eqMap, lEqs) varKey eq = liftIO $ do
-  uncurry (MM.insert eqMap) varKey eq
-  modifyIORef' lEqs (Set.insert varKey)
+addPopEq _ _ _ = error "This equation is not a Pop."
 
-deleteFixpEq :: MonadIO m => AugEqMap n -> VarKey -> m ()
-deleteFixpEq (eqMap, lEqs) varKey = liftIO $ do
-  uncurry (MM.delete eqMap) varKey
-  modifyIORef' lEqs (Set.delete varKey)
+addLiveVars :: (MonadIO m) => AugEqMap n -> Int -> IntMap (FixpEq n) -> m ()
+addLiveVars  (eqMap, lEqs) semiconfId_ eqs = liftIO $ do
+  MM.insertMap eqMap semiconfId_ eqs
+  modifyIORef' lEqs (Set.union . Set.fromList . map (semiconfId_, ) . IntMap.keys $ eqs)
 
 addFixpEqs :: (MonadIO m) => AugEqMap n -> Int -> IntMap (FixpEq n) -> m ()
-addFixpEqs  (eqMap, lEqs) semiconfId_ eqs = liftIO $ do
+addFixpEqs  (eqMap, _) semiconfId_ eqs = liftIO $
   MM.insertMap eqMap semiconfId_ eqs
-  let isPopEq (PopEq _) = True
-      isPopEq _ = False
-      (popEqs, liveEqs) = IntMap.partition isPopEq eqs
-  modifyIORef' lEqs (Set.union . Set.fromList . map (semiconfId_, ) . IntMap.keys $ liveEqs)
-  modifyIORef' lEqs (\s -> Set.difference s (Set.fromList . map (semiconfId_, ) . IntMap.keys $ popEqs))
 
 constructEitherWith :: (MonadIO m, Fractional k, Show n)
   => AugEqMap n -> VarKey -> Set VarKey -> (n -> k) -> m (Either Int k)
@@ -187,7 +180,7 @@ constructEitherWith (eqMap, _) k lVars f
   | (Just idx) <- Set.lookupIndex k lVars = return (Left idx)
   | otherwise = liftIO $ do
     maybeVal <- uncurry (MM.lookupValue eqMap) k
-    return . Right . fromJust $ fmap (\(PopEq n) -> f n) maybeVal <|> Just 0
+    return $ Right $ (\(PopEq n) -> f n) (fromJust maybeVal)
 
 toLiveEqMapWith :: (MonadIO m, Fractional k, Show n, Eq k) => AugEqMap n -> (n -> k) -> m (LEqSys k)
 toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
@@ -228,7 +221,7 @@ evalEqSysNewton jMatrix leqMap checkRes src =
       (checkDest, evalDest) = evalEqSys leqMap checkRes dest
 
       msg = "NaN result." ++ "\nSource: " ++ show src ++ "\nDelta: " ++ show delta
-        ++  "\nRHS: " ++ show rhs ++ "\nJacobiEval: " 
+        ++  "\nRHS: " ++ show rhs ++ "\nJacobiEval: "
         ++ show jacobiEval ++ "\nJMatrix:" ++ show jMatrix
 
   in if checkNaN
@@ -310,9 +303,9 @@ approxFixpWithHint augEqMap f eps maxIters hint = do
 -- preprocess live equations by propagating found values, until no value can be propagated anymore
 preprocessApproxFixp :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
   => AugEqMap k -> (k -> n) -> m [(VarKey, n)]
-preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
-  lVars <- liftIO $ readIORef lVarsRef
-  if Set.null lVars
+preprocessApproxFixp augEqMap f = do
+  lVars <- liveVariables augEqMap
+  if V.null lVars
     then return []
     else do
       leqMap <- toLiveEqMapWith augEqMap f
@@ -321,20 +314,20 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
           solveShift killedVars (Just acc) (p, Left idx)
             | (Just v) <- M.lookup k killedVars = Just $ acc + p * v
             | otherwise = Nothing
-              where k = Set.elemAt idx lVars
+              where k = lVars V.! idx
 
           solvePush _ Nothing _ = Nothing
           solvePush _ (Just acc) (p, Right v1, Right v2) = Just $ acc + p * v1 * v2
           solvePush killedVars (Just acc) (p, Right v1, Left idx)
             | (Just v) <- M.lookup k killedVars = Just $ acc + p * v1 * v
             | otherwise = Nothing
-              where k = Set.elemAt idx lVars
+              where k = lVars V.! idx
           solvePush killedVars (Just acc) (p, Left k, Right v1) = solvePush killedVars (Just acc) (p, Right v1, Left k)
           solvePush killedVars (Just acc) (p, Left idx1, Left idx2)
             | (Just v1) <- M.lookup k1 killedVars, (Just v2) <- M.lookup k2 killedVars = Just $ acc + p * v1 * v2
             | otherwise = Nothing
-              where k1 = Set.elemAt idx1 lVars
-                    k2 = Set.elemAt idx2 lVars
+              where k1 = lVars V.! idx1
+                    k2 = lVars V.! idx2
 
           solveEq killedVars eq = case eq of
             PushLEq terms ->  foldl' (solvePush killedVars)  (Just 0) terms
@@ -347,12 +340,12 @@ preprocessApproxFixp augEqMap@(_, lVarsRef) f = do
               Just v  -> (True, M.insert varKey v upVars, lVars)
             ) (False, updatedVars, []) liveVars
 
-          vars = zip (Set.elems lVars) (V.toList leqMap)
+          vars = V.toList $ V.zip lVars leqMap
           upVars = go (True, M.empty, vars)
       return upVars
 
 defaultEps :: EqMapNumbersType
-defaultEps = 0x1p-10 -- ~ 1e-8
+defaultEps = 0x1p-26 -- ~ 1e-8
 
 defaultREps :: Prob
 defaultREps = 1e-8

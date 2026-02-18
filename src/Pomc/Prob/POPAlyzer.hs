@@ -305,7 +305,7 @@ encodePush globals suppGraph suppSet pushMap gnId_ rightCnxts = do
       terms :: IntMap.IntMap (FixpEq (EqMapNumbersType, EqMapNumbersType))
       terms = IntMap.fromSet createTerm rightCnxts
   -- add equations
-  addFixpEqs (eqMap globals) gnId_ terms
+  addLiveVars (eqMap globals) gnId_ terms
   liftSTtoIO $ modifySTRef' (stats globals) $
     \s@Stats{equationsCount = acc} -> s{equationsCount = acc + IntMap.size terms}
   logDebugN $ "Encoding Push: " ++ show gnId_ ++ " = PushEq " ++ show terms
@@ -327,7 +327,7 @@ encodeShift globals shiftMap gnId_ rightCnxts = do
       terms :: IntMap.IntMap (FixpEq (EqMapNumbersType, EqMapNumbersType))
       terms = IntMap.fromSet createTerm rightCnxts
   -- add equations
-  addFixpEqs (eqMap globals) gnId_ terms
+  addLiveVars (eqMap globals) gnId_ terms
   liftSTtoIO $ modifySTRef' (stats globals)
     $ \s@Stats{equationsCount = acc} -> s{equationsCount = acc + IntMap.size terms}
   logDebugN $ "Encoding Shift: " ++ show gnId_ ++ " = ShiftEq " ++ show terms
@@ -362,9 +362,9 @@ solveSCCQuery globals newton = do
   solvedLVars <- preprocessApproxFixp eqs fst
   solvedUvars <- preprocessApproxFixp eqs snd
   let zipSolved = zip solvedLVars solvedUvars
-      updatEqMap ((_, 0), (_, _)) = error "[Preprocessed equations] The equation system must be clean - please report this as a bug."
-      updatEqMap ((_, _), (_, 0)) = error "[Preprocessed equations] The equation system must be clean - please report this as a bug."
-      updatEqMap ((k1, l), (_, u)) = addFixpEq eqs k1 (PopEq (l,u))
+      --updatEqMap ((_, 0), (_, _)) = error "[Preprocessed equations] The equation system must be clean - please report this as a bug."
+      --updatEqMap ((_, _), (_, 0)) = error "[Preprocessed equations] The equation system must be clean - please report this as a bug."
+      updatEqMap ((k1, l), (_, u)) = addPopEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
   unsolvedVars <- liveVariables eqs
@@ -395,5 +395,5 @@ solveSCCQuery globals newton = do
     let bounds = V.zip3 unsolvedVars approxVec (oviUpperBound oviRes)
     V.mapM_ (\(varKey, l,u) -> do
       when (u - l > 0.02) $ error $ "The upper bound is too lose: " ++ show varKey ++ " = (" ++ show l ++ "," ++ show u ++ ")"
-      when (u == 0 || l == 0) $ error "[POPAlyzer] The equation system must be clean - please report this as a bug."
-      addFixpEq eqs varKey (PopEq (l,u))) bounds
+      --when (u == 0 || l == 0) $ error "[POPAlyzer] The equation system must be clean - please report this as a bug."
+      addPopEq eqs varKey (PopEq (l,u))) bounds

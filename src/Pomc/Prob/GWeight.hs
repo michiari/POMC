@@ -384,7 +384,7 @@ encodePush globals (suppInfo, pushInfo) scId_ rightCnxts = do
       terms = IntMap.fromSet createTerm rightCnxts
 
   -- add equations
-  addFixpEqs (eqMap globals) scId_ terms
+  addLiveVars (eqMap globals) scId_ terms
   liftSTtoIO $ modifySTRef' (stats globals) $
     \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
   logDebugN $ "Encoding Push for semiconf " ++ show scId_ ++ ": " ++ show terms
@@ -406,7 +406,7 @@ encodeShift globals shiftInfo scId_ rightCnxts = do
       terms :: IntMap.IntMap (FixpEq (EqMapNumbersType, EqMapNumbersType))
       terms = IntMap.fromSet createTerm rightCnxts
   -- add equations
-  addFixpEqs (eqMap globals) scId_ terms
+  addLiveVars (eqMap globals) scId_ terms
   liftIO $ liftSTtoIO $ modifySTRef' (stats globals)
     $ \s@Stats{equationsCountQuant = acc} -> s{equationsCountQuant = acc + IntMap.size terms}
   logDebugN $ "Encoding Shift for semiconf " ++ show scId_ ++ ": " ++ show terms
@@ -463,18 +463,19 @@ solveSCCQuery globals useNewton = do
   let zipSolved = zip solvedLVars solvedUvars
       --updatEqMap ((_, 0), (_, _)) = error "[Quant. MC] The equation system must be clean - please report this as a bug."
       --updatEqMap ((_, _), (_, 0)) = error "[Quant. MC] The equation system must be clean - please report this as a bug."
-      updatEqMap ((k1, l), (_, u)) = addFixpEq eqs k1 (PopEq (l,u))
+      updatEqMap ((k1, l), (_, u)) = addPopEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
   unsolvedVars <- liveVariables eqs
   unless (V.null unsolvedVars) $ do
     let varSize = V.length unsolvedVars
+        zeroVec = V.replicate varSize 0
     startWeights <- startTimer
 
     -- compute lower bounds
     approxVec <- if useNewton
-      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) iterEps defaultMaxIters defaultMaxIters (V.replicate varSize 0)
-      else approxFixpWithHint eqs fst iterEps defaultMaxIters (V.replicate varSize 0)
+      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) iterEps defaultMaxIters defaultMaxIters zeroVec
+      else approxFixpWithHint eqs fst iterEps defaultMaxIters zeroVec
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system."
@@ -494,4 +495,5 @@ solveSCCQuery globals useNewton = do
     let bounds = V.zip3 unsolvedVars approxVec (oviUpperBound oviRes)
     V.mapM_ (\(varKey, l,u) -> do
       --when (u == 0 || l == 0) $ error "[Quant. MC] The equation system must be clean - please report this as a bug."
-      addFixpEq eqs varKey (PopEq (l,u))) bounds
+      addPopEq eqs varKey (PopEq (l,u))) bounds
+
