@@ -1,4 +1,3 @@
-{-# LANGUAGE HexFloatLiterals #-}
 {-# LANGUAGE TupleSections #-}
 {- |
    Module      : Pomc.Prob.FixPoint
@@ -31,8 +30,6 @@ module Pomc.Prob.FixPoint ( VarKey
                           , approxFixpFromAbove
                           , approxFixpWithHint
                           , approxFixpNewtonWithHint
-                          , defaultEps
-                          , defaultREps
                           , defaultMaxIters
                           , toRationalProbVec
                           , preprocessApproxFixp
@@ -341,12 +338,6 @@ preprocessApproxFixp augEqMap f = do
           vars = V.toList $ V.zip lVars leqMap
           upVars = go (True, M.empty, vars)
       return upVars
-
-defaultEps :: Double
-defaultEps = 0x1p-26 -- ~ 1e-8
-
-defaultREps :: Prob
-defaultREps = 1e-8
 
 defaultMaxIters :: Int
 defaultMaxIters = 1000000

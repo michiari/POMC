@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE HexFloatLiterals #-}
 
 {- |
    Module      : Pomc.Prob.ProbUtils.hs
@@ -32,6 +33,8 @@ module Pomc.Prob.ProbUtils ( Prob
                            , useZ3
                            , useNewton
                            , isNewton
+                           , defaultEps
+                           , defaultREps
                            , solver
                            , toBool
                            , toTermResult
@@ -176,6 +179,12 @@ useNewton _ = False
 isNewton :: Update -> Bool 
 isNewton Newton = True 
 isNewton _ = False 
+
+defaultEps :: Double
+defaultEps = 0x1p-26 -- ~ 1e-8
+
+defaultREps :: Prob
+defaultREps = 1e-8
 
 -- termination query
 -- CompQuery asks whether the probability to terminate is <, <=, >, >= than the given probability

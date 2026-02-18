@@ -12,7 +12,7 @@ module Pomc.Prob.GWeight ( Delta(..)
                          , weightQuerySCC
                          ) where
 
-import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..))
+import Pomc.Prob.ProbUtils (Prob, EqMapNumbersType, Stats(..), defaultEps)
 import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProBitencoding)
 import Pomc.Prob.RightContexts(RightContexts, computeRightContexts)
@@ -45,7 +45,7 @@ import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Maybe(catMaybes, fromJust, isJust, isNothing, mapMaybe )
 import Data.Hashable(Hashable)
 import GHC.IO (stToIO)
-import Data.IORef (IORef, readIORef, newIORef)
+import Data.IORef (IORef, newIORef)
 import Data.Ratio (approxRational, (%))
 import Control.Applicative ((<|>))
 import Data.List (sort)

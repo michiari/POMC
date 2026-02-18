@@ -40,7 +40,6 @@ import Pomc.Prob.Z3Termination (terminationQuery)
 import Pomc.Prob.ProbUtils hiding (sIdMap)
 import Pomc.Prob.MiniProb (Program, programToPopa, Popa(..), ExprProp)
 import Pomc.Prob.UnfoldStack (showFlatModel)
-import Pomc.Prob.FixPoint (defaultREps)
 
 import Data.Set (Set)
 import qualified Data.Set as Set

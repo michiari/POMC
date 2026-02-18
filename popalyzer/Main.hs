@@ -10,10 +10,11 @@
 module Main (main) where
 
 import Pomc.Prob.POPAlyzer (infer)
-import Pomc.Prob.ProbUtils (Solver(..), Stats(..), Update(..), TermResult(..), Distr(..))
+import Pomc.Prob.ProbUtils (Stats(..), Update(..), Distr(..))
 import Pomc.Parse.Parser (checkRequestP, spaceP, CheckRequest(..), preprocess)
 import Pomc.TimeUtils (timeAction, timeToString)
 import Pomc.LogUtils (LogLevel(..), selectLogVerbosity)
+import Pomc.Prob.ProbUtils(defaultEps)
 
 import Prelude hiding (readFile)
 import Numeric (showEFloat, showFFloat)
@@ -24,12 +25,12 @@ import System.Console.CmdArgs
 import Control.Monad (when)
 import Text.Megaparsec
 import Data.Text.IO (readFile)
-import Data.Bifunctor(second)
 
 data POPAlyzerArgs = POPAlyzerArgs
   { gauss :: Bool
   , stats :: Bool
   , verbose :: Int
+  , eps :: Double
   , fileName :: FilePath
   } deriving (Data, Typeable, Show, Eq)
 
@@ -38,6 +39,7 @@ popalyzerArgs = POPAlyzerArgs
   { gauss = False &= help "Use Gauss-Seidel Value Iteration instead of Newton's method to iterate the Least Fixed point solution of the equation systems."
   , stats = False &= help "Print detailed results containing technical stats."
   , verbose = 0 &= help "Print more info about model checking progress. 0 = no logging (default), 1 = show info, 2 = debug mode"
+  , eps = defaultEps &= help ("Stopping criterion for iterative numerical methods: bound on the absolute difference between consecutive approximations. Default: " ++ show defaultEps)
   , fileName = def &= args &= typFile
   }
   &= program "popalyzer"
@@ -64,19 +66,19 @@ main = do
             Left  errBundle -> die (errorBundlePretty errBundle)
             Right creq      -> return creq
   totalTime <- case creq of
-    ProbInferenceRequest prog expr -> runProbInference printStats logLevel updateStrategy prog expr
+    ProbInferenceRequest prog expr -> runProbInference printStats logLevel updateStrategy prog (eps pargs) expr
     _ -> die "POPAlyzer only supports inference queries. Please use the pomc or the popacheck executables for model checking."
 
   putStrLn ("\nTotal elapsed time: " ++ timeToString totalTime ++
             " (" ++ showEFloat (Just 4) totalTime " s)")
   where
-    runProbInference printStats logLevel strat prog expr = do
+    runProbInference printStats logLevel strat prog eps expr = do
       putStrLn "Posterior Distribution Inference Query"
       when printStats $ putStrLn $ "Query: InferenceQuery " ++ (show strat)
       putStr "Result: "
       ((tres@(Distr lb, Distr ub), stats, _), time) <- timeAction fst3
         $ selectLogVerbosity logLevel
-        $ infer strat prog expr
+        $ infer strat prog eps expr
       if printStats
         then do
         putStr $ show tres

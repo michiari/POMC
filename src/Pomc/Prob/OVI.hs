@@ -16,6 +16,7 @@ module Pomc.Prob.OVI ( ovi
                      ) where
 
 import Pomc.Prob.FixPoint
+import Pomc.Prob.ProbUtils(defaultEps)
 import Pomc.LogUtils (MonadLogger, logDebugN)
 
 import Data.Ratio (approxRational)

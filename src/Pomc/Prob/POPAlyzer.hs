@@ -55,8 +55,8 @@ data InfGlobals = InfGlobals
 
 -- infer the posterior distribution of some expression over GLOBAL program variables
 infer :: (MonadIO m, MonadFail m, MonadLogger m)
-  => Update -> Program -> Expr -> m ((Distr Int, Distr Int), Stats, String)
-infer upStr prog expr =
+  => Update -> Program -> Double -> Expr -> m ((Distr Int, Distr Int), Stats, String)
+infer upStr prog eps expr =
   let (_, groupBy, popa) = programToPopa prog Set.empty
       (tsls, tprec) = popaAlphabet popa
       (bitenc, precFunc, _, _, _, _, _, _) =
@@ -95,10 +95,10 @@ infer upStr prog expr =
         Push suppSet pushMap = gnEdges gn
     -- compute all termination probabilities via SCC decomposition with Gabow's algorithm.
     liftIO $ addtoPath globals 0
-    _ <- dfs globals suppGraph gn upStr
+    _ <- dfs globals eps suppGraph gn upStr
 
     -- returning termination probabilities of the initial semiconf
-    (lb, ub) <- retrieveValue defaultEps (eqMap globals) suppGraph suppSet pushMap
+    (lb, ub) <- retrieveValue eps (eqMap globals) suppGraph suppSet pushMap
     computedStats <- liftSTtoIO $ readSTRef statistics
     --let probMass (Distr l) = fromRational (sum $ map snd l) :: Double
     --DBG.trace ("Probability of returning(lower bound): " ++ show (probMass lb)) $ return ()
@@ -150,11 +150,12 @@ merge globals gnId_  = do
 -- functions for Gabow algorithm
 dfs :: (MonadIO m, MonadLogger m, MonadFail m)
   => InfGlobals
+  -> Double
   -> SupportGraph state
   -> GraphNode state
   -> Update
   -> m RightContexts
-dfs globals suppGraph gn upStr =
+dfs globals eps suppGraph gn upStr =
   let gnId_ = gnId gn
       (_,g) = semiconf gn
       transitionCases (Pop popMap) = encodePopAndSolveSCC globals gnId_ popMap
@@ -163,7 +164,7 @@ dfs globals suppGraph gn upStr =
         liftIO $ addtoPath globals gnId_
         -- explore shift transitions
         rightCnxts <- IntSet.unions <$> V.mapM follow (V.fromList . IntMap.keys $ shiftMap)
-        createComponent globals suppGraph gnId_ rightCnxts upStr
+        createComponent globals eps suppGraph gnId_ rightCnxts upStr
       transitionCases (Push suppSet pushMap) = do 
         -- add current graphNode to the path
         liftIO $ addtoPath globals gnId_
@@ -172,11 +173,11 @@ dfs globals suppGraph gn upStr =
         -- explore support transitions 
         if isNothing g then return IntSet.empty else do
           rightContexts <- IntSet.unions <$> V.mapM follow (V.fromList . IntSet.elems $ suppSet)
-          createComponent globals suppGraph gnId_ rightContexts upStr
+          createComponent globals eps suppGraph gnId_ rightContexts upStr
 
       cases nextGn iVal
         | (iVal == 0) = do 
-            cntxs <-  dfs globals suppGraph nextGn upStr
+            cntxs <-  dfs globals eps suppGraph nextGn upStr
             updatedIVal <- liftIO (MV.unsafeRead (iVector globals) (gnId nextGn))
             -- small performance optimization to avoid unions between overlapping sets
             if updatedIVal > 0 then return IntSet.empty else return cntxs
@@ -189,12 +190,13 @@ dfs globals suppGraph gn upStr =
 
 createComponent :: (MonadIO m, MonadLogger m, MonadFail m)
   => InfGlobals
+  -> Double
   -> SupportGraph state
   -> Int
   -> RightContexts
   -> Update
   -> m RightContexts
-createComponent globals suppGraph gnId_ rightCnxts upStr = do
+createComponent globals eps suppGraph gnId_ rightCnxts upStr = do
   topB <- liftIO . IOGS.peek $ bStack globals
   iVal <- liftIO $ MV.unsafeRead (iVector globals) gnId_
   let defaultEqs = IntMap.fromSet (const (PopEq (0,0))) rightCnxts
@@ -211,19 +213,20 @@ createComponent globals suppGraph gnId_ rightCnxts upStr = do
         return poppedSemiconfs
       cases
         | iVal /= topB = addFixpEqs (eqMap globals) gnId_ defaultEqs >> return rightCnxts
-        | otherwise = createC >>= encode globals suppGraph (isNewton upStr) gnId_ rightCnxts
+        | otherwise = createC >>= encode globals eps suppGraph (isNewton upStr) gnId_ rightCnxts
   cases
 
 -- encode = generate equations for termination probabilities
 encode :: (MonadIO m, MonadLogger m, MonadFail m)
   => InfGlobals
+  -> Double
   -> SupportGraph state
   -> Bool
   -> Int
   -> IntSet
   -> [Int]
   -> m RightContexts
-encode globals suppGraph newton gnId_ rightCnxts poppedSemiconfs =
+encode globals eps suppGraph newton gnId_ rightCnxts poppedSemiconfs =
   let defaultEqs = IntMap.fromSet (const (PopEq (0,0)))
       semiconfs = sort poppedSemiconfs
       semiconfsVec = V.fromList semiconfs
@@ -244,7 +247,7 @@ encode globals suppGraph newton gnId_ rightCnxts poppedSemiconfs =
             -- this is needed in case of self edges
             liftIO $ addFixpEqs (eqMap globals) id_ (defaultEqs rightCnxts)
             enc succInfo id_ rightCnxts
-            solveSCCQuery globals newton
+            solveSCCQuery globals eps newton
           return rightCnxts
         | otherwise = do
           -- need to recompute right contexts
@@ -267,7 +270,7 @@ encode globals suppGraph newton gnId_ rightCnxts poppedSemiconfs =
             in unless (IntSet.null rcs) $ enc succInfo id_ rcs
 
           logDebugN "Solving the equation system..."
-          solveSCCQuery globals newton
+          solveSCCQuery globals eps newton
           unless (gnId_ == semiconfsVec V.! 0)
             $ error "The entry semiconf to this SCC is not the smallest one in the ordering."
           return (rcsMap 0)
@@ -355,8 +358,8 @@ encodePopAndSolveSCC globals gnId_ popMap =
 -- each SCC in the graph might correspond to multiple SCCs in the equation system
 -- however, Newton's method is guaranteed to converge in this case as well.
 solveSCCQuery :: (MonadIO m, MonadLogger m)
-              => InfGlobals -> Bool -> m ()
-solveSCCQuery globals newton = do
+              => InfGlobals -> Double -> Bool -> m ()
+solveSCCQuery globals eps newton = do
   let eqs = eqMap globals
   -- preprocess by propagating already known values
   solvedLVars <- preprocessApproxFixp eqs fst
@@ -373,8 +376,8 @@ solveSCCQuery globals newton = do
 
     -- compute lower bounds
     approxVec <- if newton
-      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) defaultEps defaultMaxIters defaultMaxIters zeroVec
-      else approxFixpWithHint eqs fst defaultEps defaultMaxIters zeroVec
+      then approxFixpNewtonWithHint eqs fst (1000 * eps) eps defaultMaxIters defaultMaxIters zeroVec
+      else approxFixpWithHint eqs fst eps defaultMaxIters zeroVec
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system."
