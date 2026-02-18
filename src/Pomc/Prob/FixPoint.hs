@@ -182,7 +182,8 @@ constructEitherWith (eqMap, _) k lVars f
     maybeVal <- uncurry (MM.lookupValue eqMap) k
     return $ Right $ (\(PopEq n) -> f n) (fromJust maybeVal)
 
-toLiveEqMapWith :: (MonadIO m, Fractional k, Show n, Eq k) => AugEqMap n -> (n -> k) -> m (LEqSys k)
+toLiveEqMapWith :: (MonadIO m, Fractional k, Show n, Eq k) 
+  => AugEqMap n -> (n -> k) -> m (LEqSys k)
 toLiveEqMapWith (eqMap, lEqs) f = liftIO $ do
   lVars <- readIORef lEqs
   let createLivePush (p, k1, k2) = do
@@ -233,7 +234,8 @@ checkIterNewton newtonEps newV oldV =
   -- delta <= eps -- absolute error
   (newV - oldV) / newV <= newtonEps -- relative error 
 
-approxFixpFromNewton :: SparseMatrix Double -> LEqSys Double -> Double -> Double -> Int -> Int -> ProbVec Double -> ProbVec Double
+approxFixpFromNewton :: SparseMatrix Double -> LEqSys Double -> Double -> Double 
+  -> Int -> Int -> ProbVec Double -> ProbVec Double
 approxFixpFromNewton _ leqMap _ viEps 0 maxItersVI probVec = approxFixpFrom leqMap viEps maxItersVI probVec
 approxFixpFromNewton jMatrix leqMap newtonEps viEps maxItersNewton maxItersVI probVec =
   let (lessThanEps, newProbVec) = evalEqSysNewton jMatrix leqMap (checkIterNewton newtonEps) probVec
@@ -242,7 +244,7 @@ approxFixpFromNewton jMatrix leqMap newtonEps viEps maxItersNewton maxItersVI pr
         else approxFixpFromNewton jMatrix leqMap newtonEps viEps (maxItersNewton - 1) maxItersVI newProbVec
 
 approxFixpNewtonWithHint :: (MonadIO m, MonadLogger m, Show k)
-           => AugEqMap k -> (k -> Double) -> Double -> Double -> Int -> Int -> ProbVec Double -> m (ProbVec Double)
+  => AugEqMap k -> (k -> Double) -> Double -> Double -> Int -> Int -> ProbVec Double -> m (ProbVec Double)
 approxFixpNewtonWithHint augEqMap f eps viEps maxIters maxItersVI hint = do
   leqMap <- toLiveEqMapWith augEqMap f
   let (checkHint, evalHint) = evalEqSys leqMap (checkIterNewton viEps) hint
@@ -254,7 +256,7 @@ approxFixpNewtonWithHint augEqMap f eps viEps maxIters maxItersVI hint = do
 
 -- Gauss-Seidel method --
 evalEqSys :: (Show n, Ord n, Fractional n)
-          => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
+  => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
 evalEqSys leqMap checkRes src =
   let -- Gauss-Seidel update (read from dest values for already evaluated eqs)
       -- for plain value iteration, always read from source
@@ -268,7 +270,7 @@ evalEqSys leqMap checkRes src =
   in (checkDest, dest)
 
 approxFixpFrom :: (Ord n, Fractional n, Show n)
-               => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
+  => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
 approxFixpFrom _ _ 0 probVec = probVec
 approxFixpFrom leqMap eps maxIters probVec =
   -- should be newV >= oldV
@@ -282,7 +284,7 @@ approxFixpFrom leqMap eps maxIters probVec =
 
 -- same as approxFixpFrom, but used to approximate the fixpoint from above it, hence with decreasing approximations
 approxFixpFromAbove :: (Ord n, Fractional n, Show n)
-               => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
+  => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
 approxFixpFromAbove _ _ 0 probVec = probVec
 approxFixpFromAbove leqMap eps maxIters probVec =
   -- should be oldV >= newV
@@ -295,7 +297,7 @@ approxFixpFromAbove leqMap eps maxIters probVec =
       else approxFixpFromAbove leqMap eps (maxIters - 1) newProbVec
 
 approxFixpWithHint :: (MonadIO m, MonadLogger m, Ord n, Fractional n, Show n, Show k)
-           => AugEqMap k -> (k -> n) -> n -> Int -> ProbVec n -> m (ProbVec n)
+  => AugEqMap k -> (k -> n) -> n -> Int -> ProbVec n -> m (ProbVec n)
 approxFixpWithHint augEqMap f eps maxIters hint = do
   leqMap <- toLiveEqMapWith augEqMap f
   return $ approxFixpFrom leqMap eps maxIters hint
