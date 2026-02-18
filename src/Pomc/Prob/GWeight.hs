@@ -75,7 +75,6 @@ data GWeightGlobals = GWeightGlobals
   , bStack     :: IOStack Int
   , iVector    :: HT.BasicHashTable Int Int
   , eqMap :: AugEqMap (EqMapNumbersType,EqMapNumbersType)
-  , actualEps :: IORef EqMapNumbersType
   , stats :: STRef RealWorld Stats
   }
 
@@ -88,14 +87,12 @@ newGWeightGlobals len stats = liftIO $ do
   newIVector <- HT.newSized len
   newLowerEqMap <- IOMM.emptySized len
   newLowerLiveVars <- newIORef Set.empty
-  newEps <- newIORef defaultTolerance
   return GWeightGlobals { idSeq = newIdSeq
                          , graphMap = newGraphMap
                          , sStack = newSStack
                          , bStack = newBStack
                          , iVector = newIVector
                          , eqMap = (newLowerEqMap, newLowerLiveVars)
-                         , actualEps = newEps
                          , stats = stats
                          }
 
@@ -121,15 +118,13 @@ weightQuerySCC globals sIdGen delta suppStarts suppEnds current target useNewton
   (lb, ub) <- case maybeSemiconfId of
     Just _ -> do
       -- directly reading the result
-      eps <- liftIO $ readIORef (actualEps globals)
-      liftIO $ approx eps <$> retrieveValue globals sIdGen delta q targetId
+      liftIO $ approx defaultEps <$> retrieveValue globals sIdGen delta q targetId
     Nothing -> do
       newId <- liftIO $ freshIOPosId (idSeq globals)
       liftIO $ HT.insert (graphMap globals) decodedSemiconf newId
       -- encoding the whole support
       _ <- dfs globals sIdGen delta suppStarts suppEnds semiconf newId useNewton
-      eps <- liftIO $ readIORef (actualEps globals)
-      liftIO $ approx eps <$> retrieveValue globals sIdGen delta q targetId
+      liftIO $ approx defaultEps <$> retrieveValue globals sIdGen delta q targetId
 
   let truncatedLB = min 1 lb
       truncatedUB = min 1 ub
@@ -451,18 +446,12 @@ encodePopAndSolveSCC (q,g) scId_ globals sIdGen delta suppStarts =
 solveSCCQuery :: (MonadIO m, MonadLogger m)
  => GWeightGlobals -> Bool -> m ()
 solveSCCQuery globals useNewton = do
-  let epsVar = actualEps globals
-      eqs = eqMap globals
-
-  currentEps <- liftIO $ readIORef epsVar
-  let iterEps = min defaultEps $ currentEps * currentEps
+  let eqs = eqMap globals
 
   -- preprocess by propagating already known values
   solvedLVars <- preprocessApproxFixp eqs fst
   solvedUvars <- preprocessApproxFixp eqs snd
   let zipSolved = zip solvedLVars solvedUvars
-      --updatEqMap ((_, 0), (_, _)) = error "[Quant. MC] The equation system must be clean - please report this as a bug."
-      --updatEqMap ((_, _), (_, 0)) = error "[Quant. MC] The equation system must be clean - please report this as a bug."
       updatEqMap ((k1, l), (_, u)) = addPopEq eqs k1 (PopEq (l,u))
   forM_ zipSolved updatEqMap
 
@@ -474,8 +463,8 @@ solveSCCQuery globals useNewton = do
 
     -- compute lower bounds
     approxVec <- if useNewton
-      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) iterEps defaultMaxIters defaultMaxIters zeroVec
-      else approxFixpWithHint eqs fst iterEps defaultMaxIters zeroVec
+      then approxFixpNewtonWithHint eqs fst (1000 * defaultEps) defaultEps defaultMaxIters defaultMaxIters zeroVec
+      else approxFixpWithHint eqs fst defaultEps defaultMaxIters zeroVec
 
     -- compute upper bounds
     logDebugN "Running OVI to compute an upper bound to the equation system."
@@ -494,6 +483,4 @@ solveSCCQuery globals useNewton = do
     -- update lower and upper bounds
     let bounds = V.zip3 unsolvedVars approxVec (oviUpperBound oviRes)
     V.mapM_ (\(varKey, l,u) -> do
-      --when (u == 0 || l == 0) $ error "[Quant. MC] The equation system must be clean - please report this as a bug."
       addPopEq eqs varKey (PopEq (l,u))) bounds
-
