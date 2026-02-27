@@ -17,7 +17,7 @@ listener(u2 sentence, u4 &state){
     bool literal;
     u2 sentence1;
     state = uniform(0,3);
-    // decide probabilistically whether taking it literally (p = 0.50)
+    // decide probabilistically whether taking it literally
     literal = 1 {1 : 9} 0;
 
     if (literal){

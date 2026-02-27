@@ -16,7 +16,6 @@ Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Co
 u4 choice;
 
 main (){
-    u4 grid_choice;
     u4[9] grid;
     grid[0] = 1;
 	grid[1] = 0;
@@ -29,8 +28,7 @@ main (){
 	grid[8] = 0;
     
     // O plays first
-    query act(1u4, grid_choice, grid);
-    choice = grid_choice;
+    query act(1u4, choice, grid);
 }
 
 move_prior(u4 &grid_choice, u4[9] grid) {
@@ -118,7 +116,7 @@ simulate(u4 current_player, u4 grid_choice, u4[9] &grid) {
     is_not_complete = grid[0u4] == 0u4 || grid[1u4] == 0u4 || grid[2u4] == 0u4 || grid[3u4] == 0u4 || grid[4u4] == 0u4 || grid[5u4] == 0u4 || grid[6u4] == 0u4 || grid[7u4] == 0u4 || grid[8u4] == 0u4;
     compute_winner(final_winner, grid);
 
-    // if nobody has won and there is another turn to play, let's pass the turn
+    // if nobody has won and there are free cells, pass the turn
     if (final_winner == 0u4 && is_not_complete) {    
         if (current_player == 1u4) {
             other_player = 2u4;
