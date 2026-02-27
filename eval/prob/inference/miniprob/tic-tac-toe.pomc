@@ -12,7 +12,7 @@ Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Co
 */ 
 
 // I need everything to be u4 because the final choice has type u4
-//--eps=0.000000000001
+//Run with --eps=0.000000000001
 u4 choice;
 
 main (){

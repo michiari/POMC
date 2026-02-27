@@ -77,6 +77,7 @@ var makeGridTransition_ = function(gridMap, options) {
     var state = options.noReverse ? addPrevious(state) : state;
     var state = !getFeature(state).name ? advanceStateTime(state) : state;
 
+    // first move state, and then set whether terminating there.
     var state = !getFeature(state).name ? moveState(gridMap, state, action) : state;
     var state = getFeature(state).name ? advanceRestaurant(state, options.maxTimeAtRestaurant) : state;
 
@@ -241,6 +242,11 @@ var makeGridWorldMDP = function(options) {
       if (feature.name) {
         return utilityTable[feature.name];
       }
+
+      if (state.terminateAfterAction){
+        return utilityTable.terminalState
+      }
+
       return utilityTable.timeCost;
     };
   };
@@ -251,7 +257,8 @@ var makeGridWorldMDP = function(options) {
 
 
 ///////////////////////////////////////////////////////////////////////////
-// adapted from the "Hiking with stochastic transitions" example from https://agentmodels.org/chapters/3b-mdp-gridworld.html
+// adapted from the "Hiking with stochastic transitions" example 
+// from https://agentmodels.org/chapters/3b-mdp-gridworld.html
 
 var makeMDPAgent = function(params, world) {
   var stateToActions = world.stateToActions;
@@ -263,9 +270,9 @@ var makeMDPAgent = function(params, world) {
       return Infer({ model() {
         var action = uniformDraw(stateToActions(state));
         var eu = expectedUtility(state, action);
-        // case of pairs (state,action) which don't lead to any particular outcome
-        var correctedEu = eu == 0 ? 0.001 : eu
-        observe(Bernoulli({p: correctedEu}), true); // we don't support factor statements, equavalent to condition(flip(correctedEu))
+        // we don't support factor statements
+        // this stmt is equivalent to condition(flip(correctedEu))
+        observe(Bernoulli({p: eu}), true);
         return action;
       }});
     });
@@ -274,9 +281,11 @@ var makeMDPAgent = function(params, world) {
     function(state, action){
       var u = utility(state, action);
       if (state.terminateAfterAction){
+        assert.ok(u > 0);
         return u;
       } else {
-        assert.ok(u == 0); // note there is no discount factor here.
+        assert.ok(u == 0);
+        // note there is no discount factor here.
         return expectation(Infer({ model() {
           var nextState = transition(state, action);
           var nextAction = sample(act(nextState));
@@ -287,22 +296,6 @@ var makeMDPAgent = function(params, world) {
 
   return { params, expectedUtility, act };
 };
-
-var simulate = function(startState, world, agent) {
-  var act = agent.act;
-  var transition = world.transition;
-  var sampleSequence = function(state) {
-    var action = sample(act(state));
-    var nextState = transition(state, action);
-    if (state.terminateAfterAction) {
-      return [state];
-    } else {
-      return [state].concat(sampleSequence(nextState));
-    }
-  };
-  return sampleSequence(startState);
-};
-
 
 // Set up world
 var makeHikeMDP = function(options) {
@@ -322,7 +315,7 @@ var makeHikeMDP = function(options) {
 
 var mdp = makeHikeMDP({
   start: [0, 1],
-  totalTime: 12,
+  totalTime: 6,
   transitionNoiseProbability: 0.02
 });
 
@@ -331,12 +324,13 @@ var mdp = makeHikeMDP({
 var makeUtilityFunction = mdp.makeUtilityFunction;
 var utility = makeUtilityFunction({
   East: 1,
-  West: 0.1,
-  Hill: 0.00001,
-  timeCost: 0
+  West: 0.5,
+  Hill: 0.001,
+  timeCost: 0,
+  terminalState: 0.05
 });
 
-// alpha is not used, we simulate the softmax with hard conditioning without using alpha
+// we simulate the softmax with hard conditioning without using alpha
 var agent = makeMDPAgent({ utility}, mdp.world);
 
 var act = agent.act
