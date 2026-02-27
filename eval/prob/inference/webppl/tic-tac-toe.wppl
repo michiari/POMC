@@ -59,7 +59,7 @@ var utility = function(state, player) {
   } else if (isDraw(state)) {
     return 0.01;
   } else {
-    return 0.0005;
+    return 0.0005; // simulating factor statements
   }
 };
 
@@ -83,15 +83,16 @@ var otherPlayer = function(player) {
 var act = dp.cache(function(state, player) {
   return Infer({ model() {
     var move = sample(movePrior(state));
-    /*
+    
     var eu = expectation(Infer({ model() {
       var outcome = simulate(state, move, player);
       return utility(outcome, player);
     }}));
-    */
+    /* equivalent to
     var outcome = simulate(state, move, player);
     var eu = utility(outcome, player);
-    condition(flip(eu));    
+    */
+    observe(Bernoulli({p: eu}), true); // also equivalent to condition(flip(eu)) 
     return move;
   }});
 });
