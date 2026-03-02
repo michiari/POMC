@@ -1,0 +1,223 @@
+probabilistic query: inference actionChoice;
+
+program:
+/*  
+    MDP Grid: 
+    H = 1
+    W = 2 
+    E = 3
+    O = initial state
+    
+    |      |      |      |      |      |      |
+    |      |   X  |      |      |      |      |
+    |      |   X  |      |      |  X   |      |
+    |      |   X  |  X   |  W   |  X   |  E   |
+    |  O   |      |      |      |      |      |
+    |  H   |  H   |  H   |  H   |  H   |  H   |
+An infinite-horizon version of the MDP planning problem from the following reference
+"Hiking with stochastic transitions" (https://agentmodels.org/chapters/3b-mdp-gridworld.html)
+from the book "Modeling Agents with Probabilistic Programs"
+Owain Evans, Andreas Stuhlmüller, John Salvatier, and Daniel Filan
+
+(The GridWorld MDP has been expanded in this experiment w.r.t mdp-small.pomc)
+*/ 
+
+u2 actionChoice;
+u2[36] grid;
+
+main (){
+    grid[0] = 0;
+	grid[1] = 0;
+	grid[2] = 0;
+    grid[3] = 0;
+	grid[4] = 0;
+	grid[5] = 0;
+    grid[6] = 0;
+    //grid[7] = X;
+	grid[8] = 0;
+    grid[9] = 0;
+    grid[10] = 0;
+    grid[11] = 0;
+    grid[12] = 0;
+    //grid[13] = X;
+    grid[14] = 0;
+    grid[15] = 0;
+    //grid[16] = X;
+    grid[17] = 0;
+    grid[18] = 0;
+    //grid[19] = X;
+    //grid[20] = X;
+    grid[21] = 2;
+    //grid[22] = X;
+    grid[23] = 3;
+    grid[24] = 0;
+    grid[25] = 0;
+    grid[26] = 0;
+    grid[27] = 0;
+    grid[28] = 0;
+    grid[29] = 0;
+    grid[30] = 1;
+    grid[31] = 1;
+    grid[32] = 1;
+    grid[33] = 1;
+    grid[34] = 1;
+    grid[35] = 1;
+    
+    // initial state is cell [4,0]
+    query act(actionChoice, 24);
+}
+
+/* Notation of action choices:
+0 = W 
+1 = N 
+2 = E 
+3 = S 
+*/
+tryWest (u6 &nextState, u6 state) {
+    if (state == 0 || state == 6 || state == 8 || state == 12 || state == 14 || state == 17 || state == 18 || state == 24) {
+        // cannot go west
+        nextState = state;
+    } else {
+        nextState = state -1;
+    }
+}
+
+tryNorth (u6 &nextState, u6 state) {
+    if (state <= 5 || state == 25 || state == 26 || state == 28) {
+        // cannot go north
+        nextState = state;
+    } else {
+        nextState = state - 6;
+    }
+}
+
+tryEast (u6 &nextState, u6 state) {
+    if (state == 5 || state == 6 || state == 11 || state == 12 || state == 15 || state == 17 || state == 18 || state == 29) {
+        // cannot go east
+        nextState = state;
+    } else {
+        nextState = state + 1;
+    }
+}
+
+trySouth (u6 &nextState, u6 state) {
+    if (state == 1 || state == 10 || state == 14) {
+        // cannot go south
+        nextState = state;
+    } else {
+        nextState = state + 6;
+    }
+}
+
+// with probability 0.02, the agent slips orthogonally
+transition(u6 &nextState, u6 state, u2 action) {
+    bool slip;
+    u6 slipState, intendedNextState;
+
+    slip = 1 {1 : 2} 0;
+    if (action == 0) { // go west
+        tryWest(intendedNextState, state);
+        if (slip){
+            tryNorth(slipState, state);
+        } else {
+            trySouth(slipState, state);
+        }
+    } else {
+        if (action == 1) { // go north
+            tryNorth(intendedNextState, state);
+            if (slip){
+                tryWest(slipState, state);
+            } else {
+                tryEast(slipState, state);
+            }
+        } else {
+            if (action == 2){ // go east
+                tryEast(intendedNextState, state);
+                if (slip){
+                    tryNorth(slipState, state);
+                } else {
+                    trySouth(slipState, state);
+                }
+            } else {
+                if (action == 3) { // go south
+                    trySouth(intendedNextState, state);
+                    if (slip){
+                        tryWest(slipState, state);
+                    } else {
+                        tryEast(slipState, state);
+                    }
+                } else {}
+            }
+        }
+    }
+
+    // ensure some progress
+    observe intendedNextState != state;
+    nextState = intendedNextState {98 : 100} slipState;
+}
+
+utility(u2 outcome) {
+    bool coinFlip;
+    u50 utility;
+
+    observe outcome > 0;
+    if (outcome == 3) {
+        utility = 1000; // East Montain
+    } else {
+        if (outcome == 2) {
+        utility = 500; // West Mountain
+        } else {
+            if (outcome == 1) {
+            utility =  1; // Hill
+            } else {
+              // outcome == 0 (in case of abortion because of discounting)
+                utility = 50; 
+            }
+        }
+    }
+    // simulate a "factor" statement through hard conditioning
+    coinFlip = 1u1 {utility : 1000} 0u1;
+    observe coinFlip;
+}
+
+computeOutcome(u2 &outcome, u6 state, u2 action) {
+    bool discount;
+    u6 nextState;
+    u2 nextAction;
+
+    if (grid[state] > 0) {
+        outcome = grid[state]; // terminal state
+    } else {
+        // probabilistic transition
+        transition(nextState, state, action);
+        // discount factor gamma = 0.95
+        discount = 1 {1: 20} 0;
+        if (discount) {
+            outcome = 0;
+        } else {
+            query plan(outcome, nextState);    
+        } 
+    }
+}
+
+plan(u2 &outcome, u6 state) {
+    u2 action;
+
+    // sample an action from the priori
+    action = uniform(0, 3);
+
+    // estimate the outcome of that action
+    computeOutcome(outcome, state, action);
+    utility(outcome);
+}
+
+act(u2 &action, u6 state) {
+    u2 outcome;
+
+    // sample an action from the priori
+    action = uniform(0, 3);
+
+    // estimate the outcome of that action
+    computeOutcome(outcome, state, action);
+    utility(outcome);
+}

@@ -315,7 +315,7 @@ var makeHikeMDP = function(options) {
 
 var mdp = makeHikeMDP({
   start: [0, 1],
-  totalTime: 6,
+  totalTime: 8,
   transitionNoiseProbability: 0.02
 });
 

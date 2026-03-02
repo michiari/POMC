@@ -84,15 +84,16 @@ var act = dp.cache(function(state, player) {
   return Infer({ model() {
     var move = sample(movePrior(state));
     
-    var eu = expectation(Infer({ model() {
-      var outcome = simulate(state, move, player);
-      return utility(outcome, player);
-    }}));
     /* equivalent to
     var outcome = simulate(state, move, player);
     var eu = utility(outcome, player);
     */
-    observe(Bernoulli({p: eu}), true); // also equivalent to condition(flip(eu)) 
+    var eu = expectation(Infer({ model() {
+      var outcome = simulate(state, move, player);
+      return utility(outcome, player);
+    }}));
+    //equivalent to condition(flip(eu)) 
+    observe(Bernoulli({p: eu}), true);
     return move;
   }});
 });

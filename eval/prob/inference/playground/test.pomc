@@ -1,0 +1,24 @@
+probabilistic query: quantitative;
+formula = F [|a == 1/2];
+
+program:
+bool res;
+u50 a;
+
+main() {
+  query bob(res);
+  // res is which cafè they have gone to
+}
+
+bob(bool &prior_bob) {
+    bool recurse;
+    a = 1/2;
+    recurse = 1 { a : 2 } 0;
+    if (recurse) {
+        while (recurse) {
+            recurse = 1;
+        }
+    } else {
+        prior_bob = 1;
+    }
+}

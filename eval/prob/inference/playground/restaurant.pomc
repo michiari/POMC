@@ -1,0 +1,42 @@
+probabilistic query: inference choice;
+program:
+
+bool choice;
+
+main (){
+    bool rest_choice;
+    
+    query choose(rest_choice);
+    choice = rest_choice;
+}
+
+choose(bool &rest_choice) {
+    bool storm;
+    rest_choice = uniform(0,1);
+    storm = uniform(0,1);
+
+    utility(rest_choice, storm);
+}
+
+
+utility(bool rest_choice, bool storm) {
+    bool coin_flip;
+    u50 utility;
+
+    if (rest_choice && storm) {
+        utility = 1; // o and s
+    } else {
+        if (rest_choice && !storm){
+            utility = 60000; // o and ns
+        } else {
+            utility = 22000;
+        }
+        
+    }
+
+
+    // factor statement simulated through a hard conditioning statement
+    coin_flip = 1u1 {utility : 60000} 0u1;
+    observe coin_flip;
+}
+

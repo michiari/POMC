@@ -1,0 +1,182 @@
+probabilistic query: inference choice;
+program:
+/*  
+    0 = non assigned - '?' in the .wppl program
+    1 = O (player 1)
+    2 = X (player 2)
+    Initial Condition: 
+    |  O  |  X  |     |
+    |  X  |  O  |     |
+    |  O  |  X  |  X  |
+Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Conditioning: Modeling Theory of Mind with Probabilistic Programs, Cognitive Systems Research 2014.
+*/ 
+
+// I need everything to be u4 because the final choice has type u4
+u4 choice;
+
+main (){
+    u4 grid_choice;
+    u4[9] grid;
+    grid[0] = 0;
+	grid[1] = 0;
+	grid[2] = 2;
+    grid[3] = 2;
+	grid[4] = 0;
+	grid[5] = 2;
+    grid[6] = 1;
+	grid[7] = 2;
+	grid[8] = 1;
+    
+    // O plays first
+    query act(1u4, grid_choice, grid);
+    choice = grid_choice;
+}
+
+move_prior(u4 &grid_choice, u4[9] grid) {
+
+    grid_choice = 0u4 {1u4 : 9u4} 1u4 {1u4: 9u4} 2u4 {1u4 : 9u4} 3u4 {1u4 : 9u4} 4u4 {1u4 : 9u4} 5u4 {1u4 : 9u4} 6u4 {1u4 : 9u4} 7u4 {1u4 : 9u4} 8u4;
+
+    // observe that the choice is feasible
+    observe grid[grid_choice] == 0u4;
+}
+
+// return the winner (0 if nobody)
+compute_winner(u4 &final_winner, u4[9] grid) {
+    u4 cc, rc; // column counter and row counter
+    final_winner = 0u4;
+
+    // check columns
+    cc = 0;
+    while (cc <= 6){
+        if (grid[cc] == grid[cc +1] && grid[cc +1] == grid[cc +2] && grid[cc] > 0u4) {
+            final_winner = grid[cc]; 
+        } else {}
+        cc = cc + 3;
+    }
+
+    // check rows
+    rc = 0;
+    while (rc <= 2){
+        if (grid[rc] == grid[rc +3] && grid[rc +3] == grid[rc +6] && grid[rc] > 0u4) {
+            final_winner = grid[rc]; 
+        } else {}
+        rc = rc + 1;
+    }
+
+    // check diagonals
+    if (grid[0u4] == grid[4u4] && grid[4u4] == grid[8u4] && grid[0u4] > 0u4) {
+        final_winner = grid[0u4]; //diag1
+    } else {
+        if (grid[2u4] == grid[4u4] && grid[4u4] == grid[6u4] && grid[2u4] > 0u4) {
+            final_winner = grid[2u4]; //diag2
+        } else {}
+    }
+}
+
+// in the original .wppl program, they use e, which is an irrational number not supported by our tool. 
+// Also, e^-10 is a too small number, and creates various numerical issues..
+// Instead, I use the following scores: WIN=6, DRAW=3, LOSE=0. 
+// I use the following rational approximations: e^6 ~ 2824/7, e^3 ~ 703/35.
+// I use the normalization factor e^6.
+utility(u4 current_player, u4 final_winner) {
+    bool coin_flip;
+    u50 utility;
+
+    if (final_winner == current_player) {
+        utility = 2824/7; // factor(6)
+    } else {
+        if (final_winner == 0u4) {
+        utility = 703/35; // factor(3)
+        } else {
+            utility = 1; // factor(0)
+        }
+    }
+
+    // factor statement simulated through a hard conditioning statement
+    coin_flip = 1u1 {utility : 2824/7} 0u1;
+    observe coin_flip;
+}
+
+cacheDistributions(u4 current_player, u4[9] &cachedChoices, u4[9] grid){
+    u4 count, idx;
+    u4 other_player;
+    u4 temp;
+
+    // check how many free spots are there
+    count = 0;
+    while (idx <= 8){
+        if (grid[idx] == 0){
+            count = count +1;
+        } else {}
+        idx = idx + 1;
+    }
+
+    // compute other player 
+    if (current_player == 1u4) {
+            other_player = 2u4;
+        } else {
+            other_player = 1u4;
+        }
+
+    // cache all choices
+    idx = 0;
+    if (count > 1){
+        while (idx <= 8){
+            if (grid[idx] == 0){
+                grid[idx] = current_player;
+                query act(other_player, temp, grid);
+                cachedChoices[idx] = temp;
+                grid[idx] = 0;
+            } else {}
+            idx = idx + 1;
+        }
+    } else {}
+}
+
+act(u4 current_player, u4 &grid_choice, u4[9] grid) {
+    u4[9] cachedChoices;
+
+    cacheDistributions(current_player, cachedChoices, grid);
+    query actInternal(current_player, grid_choice, grid, cachedChoices);
+     
+}
+
+actInternal(u4 current_player, u4 &grid_choice, u4[9] grid, u4[9] cachedChoices) {
+    u4 final_winner;
+
+    // sample a choice from the priori
+    query move_prior(grid_choice, grid);
+    simulate(current_player, grid_choice, grid, cachedChoices, 1);
+    compute_winner(final_winner, grid);
+    utility(current_player, final_winner);
+}
+
+simulate(u4 current_player, u4 grid_choice, u4[9] &grid, u4[9] cacheDistributions, bool recurse) {
+    bool is_not_complete;
+    u4 other_player;
+    u4 final_winner;
+    u4 otherPlayerGridChoice; 
+
+    //transition
+    grid[grid_choice] = current_player;
+
+    // is there a final_winner or is the grid filled?
+    
+    is_not_complete = grid[0u4] == 0u4 || grid[1u4] == 0u4 || grid[2u4] == 0u4 || grid[3u4] == 0u4 || grid[4u4] == 0u4 || grid[5u4] == 0u4 || grid[6u4] == 0u4 || grid[7u4] == 0u4 || grid[8u4] == 0u4;
+    compute_winner(final_winner, grid);
+
+    // if nobody has won and there is another turn to play, let's pass the turn
+    if (final_winner == 0u4 && is_not_complete) {    
+        if (current_player == 1u4) {
+            other_player = 2u4;
+        } else {
+            other_player = 1u4;
+        }
+
+        //query act(other_player, otherPlayerGridChoice, grid);
+
+        if (recurse) {
+            simulate(other_player, cacheDistributions[grid_choice], grid, cacheDistributions, 0);
+        } else {}
+    } else {}
+}
