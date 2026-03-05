@@ -1,0 +1,55 @@
+probabilistic query: inference [|crash];
+program:
+u2[10] ego_lane, ncp_lane;
+u4 time;
+bool crash;
+
+scenario() {
+  ego_lane[0] = 1; // ego is in lane 1 at time 0
+  ncp_lane[0] = 3; // ncp is in lane 3 at time 0
+  crash = false;
+  time = 0;
+  while (time < 9) {
+    ego();
+    ncp();
+    time = time + 1;
+    crash = crash || ego_lane[time] == ncp_lane[time];
+  }
+}
+
+ego() {
+  u2 ncp_lane_sim;
+  query ncp_sim(ncp_lane_sim);
+  if (ncp_lane_sim != ego_lane[time]) {
+    ego_lane[time + 1] = ego_lane[time];
+  } else {
+    if (ego_lane[time] < 3) {
+      ego_lane[time + 1] = ego_lane[time] + 1;
+    } else {
+      ego_lane[time + 1] = ego_lane[time] - 1;
+    }
+  }
+}
+
+ncp() {
+  bool change_lane, distracted;
+  u2 new_lane;
+  change_lane = true {1:2} false;
+  distracted = true {1:10} false;
+  ncp_impl(change_lane, distracted, new_lane);
+  ncp_lane[time + 1] = new_lane;
+}
+
+ncp_sim(u2 &new_lane) {
+  bool change_lane;
+  change_lane = true {1:2} false;
+  ncp_impl(change_lane, false, new_lane);
+}
+
+ncp_impl(bool change_lane, bool distracted, u2 &new_lane) {
+  if (change_lane && ncp_lane[time] > 1 && (distracted || ego_lane[time] != ncp_lane[time] - 1)) {
+    new_lane = ncp_lane[time] - 1;
+  } else {
+    new_lane = ncp_lane[time];
+  }
+}
