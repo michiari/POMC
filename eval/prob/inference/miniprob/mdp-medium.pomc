@@ -1,5 +1,6 @@
 probabilistic query: inference actionChoice;
 
+// run with --eps=0.000001
 program:
 /*  
     MDP Grid: 
