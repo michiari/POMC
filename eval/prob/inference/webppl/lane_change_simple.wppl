@@ -1,0 +1,52 @@
+
+var timeHorizon = 9;
+
+var startState = {
+  crash: false,
+  ego_lane: 1,
+  ncp_lane: 3
+}
+
+// ego's simulation of ncp
+var act_ncp_sim = dp.cache(function(state) {
+  return Infer({ model() {
+    var change_lane = flip(0.5);
+    var distracted = false;
+    var new_ncp_lane = change_lane && state.ncp_lane > 1 
+      && (distracted || state.ego_lane != state.ncp_lane - 1) ? state.ncp_lane -1 : state.ncp_lane;
+    return new_ncp_lane;
+  }});
+});
+
+var act = function(state) {
+  // progress of ego
+  var new_ncp_lane_sim = sample(act_ncp_sim(state));
+  var move_away_lane = state.ego_lane < 3 ? state.ego_lane + 1 : state.ego_lane - 1;
+  var new_ego_lane = new_ncp_lane_sim != state.ego_lane ? state.ego_lane : move_away_lane;
+  // progress of ncp
+  var change_lane = flip();
+  var distracted = flip(0.1);
+  var new_ncp_lane = change_lane && state.ncp_lane > 1 
+      && (distracted || state.ego_lane != state.ncp_lane - 1) ? state.ncp_lane -1 : state.ncp_lane;
+  return {
+    crash: state.crash || new_ego_lane == new_ncp_lane,
+    ego_lane: new_ego_lane,
+    ncp_lane: new_ncp_lane
+  }
+};
+
+
+var scenario = function(startState) {
+  // We need method: 'enumerate' to avoid setting maxRuntimeInMS=5000
+  return Infer({method: 'enumerate', model() {
+    var recurse = function(time, state){
+      return time == 0 ? state : recurse(time -1, act(state))
+    }
+    var finalState = recurse(timeHorizon, startState);
+    return finalState.crash
+  }});
+}
+
+var actDist = scenario(startState)
+// plot distribution on actions in the initial state.
+console.log(actDist.getDist());

@@ -3,7 +3,7 @@ program:
 bool finalLoc;
 
 main() {
-  query alice(finalLoc);
+    query alice(finalLoc);
 }
 
 alice(bool &prior_alice) {

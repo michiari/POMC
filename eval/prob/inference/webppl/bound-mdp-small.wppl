@@ -271,7 +271,7 @@ var makeMDPAgent = function(params, world) {
         var action = uniformDraw(stateToActions(state));
         var eu = expectedUtility(state, action);
         // we don't support factor statements
-        // this stmt is equivalent to condition(flip(correctedEu))
+        // this observe is equivalent to condition(flip(correctedEu))
         observe(Bernoulli({p: eu}), true);
         return action;
       }});
@@ -286,6 +286,11 @@ var makeMDPAgent = function(params, world) {
       } else {
         assert.ok(u == 0);
         // note there is no discount factor here.
+        /* equivalent to
+          var nextState = transition(state, action);
+          var nextAction = sample(act(nextState));
+          return expectedUtility(nextState, nextAction);
+        */
         return expectation(Infer({ model() {
           var nextState = transition(state, action);
           var nextAction = sample(act(nextState));
