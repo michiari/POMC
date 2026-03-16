@@ -11,7 +11,7 @@ var startState = {
 var act_ncp_sim = dp.cache(function(state) {
   return Infer({ model() {
     var change_lane = flip(0.5);
-    var distracted = false;
+    var distracted = flip(0.1);
     var new_ncp_lane = change_lane && state.ncp_lane > 1 
       && (distracted || state.ego_lane != state.ncp_lane - 1) ? state.ncp_lane -1 : state.ncp_lane;
     return new_ncp_lane;
@@ -24,8 +24,8 @@ var act = function(state) {
   var move_away_lane = state.ego_lane < 3 ? state.ego_lane + 1 : state.ego_lane - 1;
   var new_ego_lane = new_ncp_lane_sim != state.ego_lane ? state.ego_lane : move_away_lane;
   // progress of ncp
-  var change_lane = flip();
-  var distracted = flip(0.1);
+  var change_lane = flip(0.5);
+  var distracted = flip(0.2);
   var new_ncp_lane = change_lane && state.ncp_lane > 1 
       && (distracted || state.ego_lane != state.ncp_lane - 1) ? state.ncp_lane -1 : state.ncp_lane;
   return {
@@ -40,7 +40,7 @@ var scenario = function(startState) {
   // We need method: 'enumerate' to avoid setting maxRuntimeInMS=5000
   return Infer({method: 'enumerate', model() {
     var recurse = function(time, state){
-      return time == 0 ? state : recurse(time -1, act(state))
+      return time == 0 || state.crash? state : recurse(time -1, act(state))
     }
     var finalState = recurse(timeHorizon, startState);
     return finalState.crash
