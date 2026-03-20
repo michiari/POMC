@@ -11,7 +11,7 @@ program:
 Reference: A. Stuhlmueller, N.D. Goodman, Reasoning about Reasoning by Nested Conditioning: Modeling Theory of Mind with Probabilistic Programs, Cognitive Systems Research 2014.
 */ 
 
-// I need everything to be u4 because the final choice has type u4
+// We need everything to have type u4 because the final choice has type u4
 //Run with --eps=0.000000000001
 u4 choice;
 

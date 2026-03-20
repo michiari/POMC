@@ -37,7 +37,7 @@ var act = function(state) {
 
 
 var scenario = function(startState) {
-  // We need method: 'enumerate' to avoid setting maxRuntimeInMS=5000
+  // We need method: 'enumerate' to avoid default setting maxRuntimeInMS=5000
   return Infer({method: 'enumerate', model() {
     var recurse = function(time, state){
       return time == 0 || state.crash? state : recurse(time -1, act(state))
