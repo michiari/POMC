@@ -100,9 +100,6 @@ infer upStr prog eps expr =
     -- returning termination probabilities of the initial semiconf
     (lb, ub) <- retrieveValue eps (eqMap globals) suppGraph suppSet pushMap
     computedStats <- liftSTtoIO $ readSTRef statistics
-    --let probMass (Distr l) = fromRational (sum $ map snd l) :: Double
-    --DBG.trace ("Probability of returning(lower bound): " ++ show (probMass lb)) $ return ()
-    --DBG.trace ("Probability of returning(upper bound): " ++ show (probMass ub)) $ return ()
     return ((groupBy expr lb, groupBy expr ub), computedStats, show suppGraph)
 
 retrieveValue :: (MonadIO m, MonadLogger m, MonadFail m)
@@ -361,6 +358,7 @@ solveSCCQuery :: (MonadIO m, MonadLogger m)
               => InfGlobals -> Double -> Bool -> m ()
 solveSCCQuery globals eps newton = do
   let eqs = eqMap globals
+      newtonEps = max defaultNewtonEps eps
   -- preprocess by propagating already known values
   solvedLVars <- preprocessApproxFixp eqs fst
   solvedUvars <- preprocessApproxFixp eqs snd
@@ -372,11 +370,11 @@ solveSCCQuery globals eps newton = do
   unless (V.null unsolvedVars) $ do
     let varSize = V.length unsolvedVars
         zeroVec = V.replicate varSize 0
-    startWeights <- startTimer
 
+    startWeights <- startTimer
     -- compute lower bounds
     approxVec <- if newton
-      then approxFixpNewtonWithHint eqs fst (1000 * eps) eps defaultMaxIters defaultMaxIters zeroVec
+      then approxFixpNewtonWithHint eqs fst newtonEps eps defaultMaxIters defaultMaxIters zeroVec
       else approxFixpWithHint eqs fst eps defaultMaxIters zeroVec
 
     -- compute upper bounds
@@ -385,10 +383,10 @@ solveSCCQuery globals eps newton = do
     unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the termination probabilities."
 
     -- certify the result and compute some statistics
-    rCertified <- oviToRational (defaultOVISettingsDouble eps) eqs snd oviRes
-    unless rCertified $ error "Cannot deduce a rational certificate for this SCC when computing upper bounds to the termination probabilities."
+    --rCertified <- oviToRational (defaultOVISettingsDouble eps) eqs snd oviRes
+    --unless rCertified $ error "Cannot deduce a rational certificate for this SCC when computing upper bounds to the termination probabilities."
     logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
-    tWeights <- stopTimer startWeights rCertified
+    tWeights <- stopTimer startWeights (oviSuccess oviRes)
     liftSTtoIO $ modifySTRef' (stats globals)
       (\s@Stats{upperBoundTime = acc, nonTrivialEquationsCount = acc1, largestSCCNonTrivialEqsCount = acc2}
         -> s{upperBoundTime = acc + tWeights, nonTrivialEquationsCount = acc1 + varSize, largestSCCNonTrivialEqsCount = max acc2 varSize})

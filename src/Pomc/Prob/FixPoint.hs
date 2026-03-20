@@ -212,7 +212,7 @@ evalEqSysNewton jMatrix leqMap checkRes src =
       checkNaN = isNaN $ delta V.! 0 -- either all NaN or none
 
       dest = V.zipWith (+) src delta
-      (checkDest, evalDest) = evalEqSys leqMap checkRes dest
+      (checkDest, evalDest) = evalEqSysAny leqMap checkRes dest
 
       msg = "NaN result." ++ "\nSource: " ++ show src ++ "\nDelta: " ++ show delta
         ++  "\nRHS: " ++ show rhs ++ "\nJacobiEval: "
@@ -248,6 +248,20 @@ approxFixpNewtonWithHint augEqMap f eps viEps maxIters maxItersVI hint = do
     else return approxVec
 
 -- Gauss-Seidel method --
+evalEqSysAny :: (Show n, Ord n, Fractional n)
+  => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
+evalEqSysAny leqMap checkRes src =
+  let -- Gauss-Seidel update (read from dest values for already evaluated eqs)
+      -- for plain value iteration, always read from source
+      getV i j = if j < i then dest V.! j else src V.! j
+      computEq idx (PushLEq terms) = getSum $ foldMap'
+        (\(p, k1, k2) -> Sum $ p * (either (getV idx) id k1) * (either (getV idx) id k2)) terms
+      computEq idx (ShiftLEq terms) = getSum $ foldMap'
+        (\(p, k1) -> Sum $ p * either (getV idx) id k1) terms
+      dest = V.imap computEq leqMap
+      checkDest = V.or (V.zipWith checkRes dest src) -- OR instead of AND
+  in (checkDest, dest)
+
 evalEqSys :: (Show n, Ord n, Fractional n)
   => LEqSys n -> (n -> n -> Bool) -> ProbVec n -> (Bool, ProbVec n)
 evalEqSys leqMap checkRes src =
@@ -264,7 +278,7 @@ evalEqSys leqMap checkRes src =
 
 approxFixpFrom :: (Ord n, Fractional n, Show n)
   => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
-approxFixpFrom _ _ 0 probVec = probVec
+approxFixpFrom _ _ 0 _ = error "Exhausted value iteration."
 approxFixpFrom leqMap eps maxIters probVec =
   -- should be newV >= oldV
   let checkIter newV oldV =

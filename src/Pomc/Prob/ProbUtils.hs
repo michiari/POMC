@@ -34,6 +34,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , useNewton
                            , isNewton
                            , defaultEps
+                           , defaultNewtonEps
                            , defaultREps
                            , solver
                            , toBool
@@ -185,6 +186,9 @@ defaultEps = 0x1p-26 -- ~ 1e-8
 
 defaultREps :: Prob
 defaultREps = 1e-8
+
+defaultNewtonEps :: Double
+defaultNewtonEps = 0x1p-13 -- ~ 1e-4
 
 -- termination query
 -- CompQuery asks whether the probability to terminate is <, <=, >, >= than the given probability

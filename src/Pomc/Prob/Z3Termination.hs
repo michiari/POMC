@@ -564,7 +564,7 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
       zVec = V.replicate len 0
       updateLowerBound
         -- apply Newton's method only up to augEps, Newton's methods becomes instable when dealing with very small deltas
-        | useNewton solv = approxFixpNewtonWithHint eqs fst augEps defaultEps defaultMaxIters defaultMaxIters zVec
+        | useNewton solv = approxFixpNewtonWithHint eqs fst augEps defaultNewtonEps defaultMaxIters defaultMaxIters zVec
         | otherwise = approxFixpWithHint eqs fst defaultEps defaultMaxIters zVec
       cases
         | null unsolvedVars = return []
