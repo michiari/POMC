@@ -168,12 +168,13 @@ main = do
           , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
           , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
           , "\nSize of graph G: ", show $ gGraphSize stats
-          --
+          -- quantitative mc
+          , "\nSCC count in the support graph for quantitative mc: ", show $ sccCountSemiconfGraphQuant stats
+          , "\nSize of the largest SCC in the support graph for quantitative mc: ", show $ largestSCCSemiconfGraphSizeQuant stats
           , "\nEquations solved for quant mc: ", show $ equationsCountQuant stats
           , "\nNon-trivial equations solved for quant mc: ", show $ nonTrivialEquationsCountQuant stats
-          , "\nSCC count in quant mc weight computation: ", show $ sccCountQuant stats
-          , "\nSize of the largest SCC in quant mc weight computation: ", show $ largestSCCSemiconfsCountQuant stats
-          , "\nLargest number of non trivial equations in an SCC in quant mc weight computation: ", show $ largestSCCNonTrivialEqsCountQuant stats
+          , "\nSCC count in the equation system for quant mc weight computation: ", show $ sccCountEqSysQuant stats
+          , "\nSize of the largest SCC in the equation system for quant mc weight computation: ", show $ largestSCCEqSysSizeQuant stats
           ]
         else putStrLn $ concat
              [ "\n  Lower bound: "
