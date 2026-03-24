@@ -48,7 +48,7 @@ data GReachGlobals s state = GReachGlobals
   { sIdGen :: SIdGen s state
   , visited :: HashTable s (Int,Int,Int) ProbEncodedSet
   , suppStarts :: STRef s (SetMap s (Stack state))
-  -- we store the formulae satisfied in the support as weel
+  -- we store the formulae satisfied in the support as well
   , suppEnds :: STRef s (MapMap s (StateId state) ProbEncodedSet)
   }
 
@@ -190,7 +190,7 @@ reachPop globals delta _ g qState pathSatSet =
         let r = snd . fromJust $ g
             pState = getState p
             pProps = getStateProps (bitenc delta) pState
-            -- careful, do not explore more than current support!! 
+            -- careful, do not explore more than current outer support!! 
             -- i.e., do not explore semiconfs with Nothing stack symbol
             isJustAndisConsistentOrPop g' = isJust g' && 
                 ((prec delta (fst . fromJust $ g') pProps == Just Take)
