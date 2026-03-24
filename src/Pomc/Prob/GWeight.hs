@@ -17,7 +17,7 @@ import Pomc.Prob.FixPoint
 import Pomc.Prob.ProbEncoding (ProBitencoding)
 import Pomc.Prob.RightContexts(RightContexts, computeRightContexts)
 import Pomc.Prob.EqSolver (solveEqSystem)
-import Pomc.Prob.OVI (ovi, defaultOVISettingsDouble, OVIResult(..))
+import Pomc.Prob.OVI (ovi, defaultOVISettingsDouble, OVIResult(..), oviToRational)
 
 import Pomc.Z3T (liftSTtoIO)
 import Pomc.TimeUtils (startTimer, stopTimer)
@@ -502,8 +502,8 @@ solveSCCQuery globals newton varKeys = do
   unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bounds on the fraction f."
 
   -- certify the result and compute some statistics
-  --rCertified <- oviToRational (defaultOVISettingsDouble defaultEps) eqs snd oviRes
-  --unless rCertified $ error "Cannot deduce a rational certificate for this SCC when computing fraction f."
+  rCertified <- oviToRational (defaultOVISettingsDouble defaultEps) eqsUpper oviRes
+  unless rCertified $ error "Cannot deduce a rational certificate for this SCC when computing fraction f."
   logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
   tWeights <- stopTimer startWeights (oviSuccess oviRes)
   liftSTtoIO $ modifySTRef' (stats globals) 

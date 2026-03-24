@@ -17,12 +17,13 @@ module Pomc.Prob.OVI ( ovi
 
 import Pomc.Prob.FixPoint
 import Pomc.LogUtils (MonadLogger, logDebugN)
+import Pomc.Prob.ProbUtils (defaultMaxIters)
 
 import Data.Ratio (approxRational)
 import Control.Monad.IO.Class (MonadIO())
-
 import Witch.Instances (realFloatToRational)
 import qualified Data.Vector as V
+
 
 data OVISettings n = OVISettings { oviMaxIters :: Int
                                  , oviMaxKleeneIters :: Int
@@ -108,11 +109,9 @@ computeEigen leqSys eps maxIters lowerApprox eigenVec =
       (newEigenVec, eigenVal, iters) = powerIterate eps maxIters matrix eigenVec
   in (newEigenVec, eigenVal - 1, iters) -- -1 because we added the identity matrix
 
-ovi :: (MonadIO m, MonadLogger m, Show k)
-    => OVISettings Double -> AugEqMap k -> (k -> Double) -> ProbVec Double -> m (OVIResult Double)
-ovi settings augEqMap f lowerApproxInitial = do
-  -- create system containing only live equations
-  leqSys <- toLiveEqMapWith augEqMap f
+ovi :: (MonadIO m, MonadLogger m)
+    => OVISettings Double -> LEqSys Double -> ProbVec Double -> m (OVIResult Double)
+ovi settings leqSys lowerApproxInitial = do
   logDebugN $ "Identified " ++ show (V.length leqSys) ++ " live variables..."
   let
     vecLength = V.length leqSys
@@ -144,7 +143,7 @@ ovi settings augEqMap f lowerApproxInitial = do
                 scaleFactor = oviPowerIterEps settings *
                   (oviDampingFactor settings)^currentGuess
             -- upperApprox <- lowerApprox + eigenVal * scaleFactor
-                newUpperApprox = V.zipWith (\eigenV l -> l + (eigenV * scaleFactor)) 
+                newUpperApprox = V.zipWith (\eigenV l -> l + (eigenV * scaleFactor))
                   newEigenVec newLowerApprox
 
             -- check if upperApprox is inductive
@@ -174,22 +173,23 @@ ovi settings augEqMap f lowerApproxInitial = do
              adjustedUpperApprox
              (maxIters - 1)
              newEigenVec
-  go (oviKleeneEps settings) (oviPowerIterEps settings) 
+  go (oviKleeneEps settings) (oviPowerIterEps settings)
     lowerApproxInitial lowerApproxInitial (oviMaxIters settings) eigenVecInitial
 
-oviToRational :: (MonadIO m, MonadLogger m, Ord n, RealFrac n, Show n, RealFloat n, Show k)
-  => OVISettings n -> AugEqMap k -> (k -> n) -> OVIResult n -> m Bool
-oviToRational settings augEqMap@(_, _) f oviRes = do
+oviToRational :: (MonadIO m, MonadLogger m, Ord n, RealFrac n, Show n, RealFloat n, Show n)
+  => OVISettings n -> LEqSys n -> OVIResult n -> m Bool
+oviToRational settings leqSys oviRes = do
   let eps = oviRationalApproxEps settings
       -- two solutions for approximating the floating point upper bound with rational values
       f1 p = case realFloatToRational p of
         (Right v) -> v
         (Left exc) -> error $ "error when converting to rational upper bound " ++ show p ++ " - " ++ show exc
       f2eps p = approxRational (p + eps) eps
+      rleqSys :: LEqSys Rational
+      rleqSys = V.map (fmap f1) leqSys
 
-  rleqSys <- toLiveEqMapWith augEqMap (f1 . f)
   -- Convert upper bound to rational
-  let initialRub1 = V.map f1 $ oviUpperBound oviRes
+      initialRub1 = V.map f1 $ oviUpperBound oviRes
       initialRub2 = V.map f2eps $ oviUpperBound oviRes
       maxIters = oviMaxKIndIters settings
       checkWithKInd _ 0 = (False, maxIters)

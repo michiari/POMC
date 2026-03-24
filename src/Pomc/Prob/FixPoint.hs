@@ -1,4 +1,5 @@
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE InstanceSigs #-}
 {- |
    Module      : Pomc.Prob.FixPoint
    Copyright   : 2023-2026 Michele Chiari, Francesco Pontiggia
@@ -72,6 +73,13 @@ data LiveEq n = PushLEq [(n, Either Int n, Either Int n)]
               | ShiftLEq [(n, Either Int n)]
               deriving Show
 
+instance Functor LiveEq where
+  fmap :: (a -> b) -> LiveEq a -> LiveEq b
+  fmap f (PushLEq l) = PushLEq (map fPush l)
+    where fPush (p, eith1, eith2) = (f p, fmap f eith1, fmap f eith2)
+  fmap f (ShiftLEq l) = ShiftLEq (map fShift l)
+    where fShift (p, eith1) = (f p, fmap f eith1)
+    
 type LEqSys n = Vector (LiveEq n)
 type ProbVec n = Vector n
 type SparseMatrix n = [(VarKey, Polynomial2 n)]
