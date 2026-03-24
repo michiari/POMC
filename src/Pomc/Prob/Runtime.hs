@@ -13,7 +13,7 @@ module Pomc.Prob.Runtime( certifyPAST
 import Prelude hiding (LT, GT)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.SupportGraph
-import Pomc.Prob.FixPoint (AugEqMap, retrieveEquations, FixpEq (PopEq))
+import Pomc.Prob.FixPoint (retrieveEquations, FixpEq (PopEq), EqMap)
 import Pomc.LogUtils (logDebugN, MonadLogger)
 
 import Data.IntSet(IntSet)
@@ -36,13 +36,13 @@ type RewVarMap = HT.BasicHashTable Int AST
 
 certifyPAST :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
   => [Int]
-  -> AugEqMap (EqMapNumbersType, EqMapNumbersType)
+  -> EqMap (Double, Double)
   -> RewVarMap
   -> SupportGraph state
   -> (AST -> AST -> z3 AST)
   -> Bool
   -> z3 Bool
-certifyPAST sccMembers augEqMap rVarMap suppGraph mkComp expectPAST = do 
+certifyPAST sccMembers eqMap rVarMap suppGraph mkComp expectPAST = do 
   -- preadding all equations
   forM_ sccMembers $ \k -> do
     (_, alreadyEnc) <- lookupRewVar rVarMap k
@@ -50,7 +50,7 @@ certifyPAST sccMembers augEqMap rVarMap suppGraph mkComp expectPAST = do
       error "Encoding reward variable for a semiconf that has already been encoded."
   -- encoding all equations
   reset
-  encodeReward sccMembers augEqMap rVarMap suppGraph mkComp
+  encodeReward sccMembers eqMap rVarMap suppGraph mkComp
   withModel (\model -> forM sccMembers $ \id_ -> do
                           var <- liftIO $ fromJust <$> HT.lookup rVarMap id_
                           evaluated <- fromJust <$> eval model var
@@ -83,17 +83,17 @@ encodeTransition prob_ toAST = do
 
 encodeReward :: (MonadZ3 z3, MonadFail z3)
   => [RewVarKey]
-  -> AugEqMap (EqMapNumbersType, EqMapNumbersType)
+  -> EqMap (Double, Double)
   -> RewVarMap
   -> SupportGraph state
   -> (AST -> AST -> z3 AST)
   -> z3 ()
 encodeReward [] _ _ _ _ = return ()
-encodeReward (gnId_:unencoded) augEqMap rVarMap suppGraph mkComp = do
+encodeReward (gnId_:unencoded) eqMap rVarMap suppGraph mkComp = do
   rewVar <- liftIO $ fromJust <$> HT.lookup rVarMap gnId_
   let gn = suppGraph ! gnId_
       transitionCases (Push suppSet pushMap) = 
-        encodeRewPush suppGraph augEqMap rVarMap mkComp suppSet pushMap rewVar
+        encodeRewPush suppGraph eqMap rVarMap mkComp suppSet pushMap rewVar
       transitionCases (Shift shiftMap) = 
         encodeRewShift rVarMap mkComp shiftMap rewVar
       transitionCases (Pop _) = do -- reward is trivially 1
@@ -101,24 +101,24 @@ encodeReward (gnId_:unencoded) augEqMap rVarMap suppGraph mkComp = do
         return []
 
   newUnencoded <- transitionCases (gnEdges gn)
-  encodeReward (newUnencoded ++ unencoded) augEqMap rVarMap suppGraph mkComp
+  encodeReward (newUnencoded ++ unencoded) eqMap rVarMap suppGraph mkComp
 
 -- encoding helpers --
 encodeRewPush :: (MonadZ3 z3)
   => SupportGraph state
-  -> AugEqMap (EqMapNumbersType, EqMapNumbersType)
+  -> EqMap (Double, Double)
   -> RewVarMap
   -> (AST -> AST -> z3 AST)
   -> IntSet
   -> IntMap Prob
   -> AST
   -> z3 [RewVarKey]
-encodeRewPush suppGraph augEqMap rVarMap mkComp suppSet pushMap var = do
+encodeRewPush suppGraph eqMap rVarMap mkComp suppSet pushMap var = do
   pushInfo <- forM (IntMap.toList pushMap) (\(id_, prob_) -> do
     (pushVar, alrEnc) <- lookupRewVar rVarMap id_
     -- if we can find a solution with upper bound coefficient, 
     -- this solution holds also for the actual (uncomputable) coefficients
-    rcs <- liftIO $ retrieveEquations augEqMap id_ 
+    rcs <- liftIO $ retrieveEquations eqMap id_ 
     encodedRcs <- forM rcs $ \(pushRC, PopEq (_,ub)) -> do 
       ubAST <- mkRealNum (ub :: Double)
       return (pushRC, ubAST)
