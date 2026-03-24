@@ -265,22 +265,25 @@ extractLowerProb ast = extractLowerAst ast >>= getReal
 
 data Stats = Stats { upperBoundTime :: Double
                    , pastTime :: Double
-                   , gGraphTime :: Double
                    , popaStatesCount :: Int
+                   -- support graph of the pOPA stats
+                   , sccCountSuppGraph :: Int
+                   , largestSCCSuppGraphSize :: Int
+                   -- termination probabilities stats
                    , equationsCount :: Int
                    , nonTrivialEquationsCount :: Int
-                   , sccCount :: Int
-                   , largestSCCSemiconfsCount :: Int
-                   , largestSCCNonTrivialEqsCount :: Int
+                   , sccCountEqSys :: Int
+                   , largestSCCEqSysSize :: Int
                    -- qualitative model checking stats
                    , suppGraphLen :: Int
+                   , gGraphTime :: Double
                    , gGraphSize :: Int
                    -- quantitative model checking stats
                    , quantWeightTime :: Double
                    , quantSolTime :: Double
                    -- support graph of the cross product
-                   , sccCountSemiconfGraphQuant :: Int
-                   , largestSCCSemiconfGraphSizeQuant :: Int
+                   , sccCountSuppGraphQuant :: Int
+                   , largestSCCSuppGraphSizeQuant :: Int
                    -- equation system for quantitative model checking
                    , equationsCountQuant :: Int
                    , nonTrivialEquationsCountQuant :: Int
@@ -289,7 +292,7 @@ data Stats = Stats { upperBoundTime :: Double
                    }
 
 newStats :: Stats
-newStats = Stats 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+newStats = Stats 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
 debug :: String -> a -> a
 --debug = DBG.trace
