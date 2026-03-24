@@ -82,7 +82,6 @@ dfs globals succVec rcsVec id_ =
         | (nextIVal < 0)  = modifyIORef' (succSCCsMapRef globals)
             (StrictIntMap.insertWith IntSet.union id_ (IntSet.singleton nextIVal))
         | (nextIVal > 0)  = merge globals nextId_
-        | otherwise = error "unreachable error"
      follow nextId_ = MV.unsafeRead (iVector globals) nextId_ >>= cases nextId_
  in do
   mapM_ follow (succVec V.! id_)
