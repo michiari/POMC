@@ -211,9 +211,9 @@ approxFixpFromNewton :: SparseMatrix Double -> LEqSys Double -> Double -> Double
 approxFixpFromNewton _ leqMap _ viEps 0 maxItersVI probVec = approxFixpFrom leqMap viEps maxItersVI probVec
 approxFixpFromNewton jMatrix leqMap newtonEps viEps maxItersNewton maxItersVI probVec =
   let (lessThanEps, newProbVec) = evalEqSysNewton jMatrix leqMap (checkIterNewton newtonEps) probVec
-    in if lessThanEps
-        then approxFixpFrom leqMap viEps maxItersVI newProbVec
-        else approxFixpFromNewton jMatrix leqMap newtonEps viEps (maxItersNewton - 1) maxItersVI newProbVec
+  in if lessThanEps
+      then approxFixpFrom leqMap viEps maxItersVI newProbVec
+      else approxFixpFromNewton jMatrix leqMap newtonEps viEps (maxItersNewton - 1) maxItersVI newProbVec
 
 approxFixpNewtonWithHint :: LEqSys Double -> Double -> Double -> Int -> Int -> ProbVec Double -> ProbVec Double
 approxFixpNewtonWithHint lEqMap eps viEps maxIters maxItersVI hint = do
