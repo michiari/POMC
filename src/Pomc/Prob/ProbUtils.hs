@@ -10,7 +10,6 @@
 
 module Pomc.Prob.ProbUtils ( Prob
                            , HashTable
-                           , EqMapNumbersType
                            , Distr(..)
                            , RichDistr
                            , Label
@@ -36,6 +35,7 @@ module Pomc.Prob.ProbUtils ( Prob
                            , defaultEps
                            , defaultNewtonEps
                            , defaultREps
+                           , defaultMaxIters
                            , solver
                            , toBool
                            , toTermResult
@@ -69,7 +69,6 @@ import Z3.Monad hiding (Solver)
 import Data.Vector (Vector)
 
 type Prob = Rational
-type EqMapNumbersType = Double
 newtype Distr a = Distr [(a, Prob)] deriving (Generic, Show, NFData)
 -- a distribution over elements of type a
 -- with some additional labels of type b
@@ -189,6 +188,9 @@ defaultREps = 1e-8
 
 defaultNewtonEps :: Double
 defaultNewtonEps = 0x1p-13 -- ~ 1e-4
+
+defaultMaxIters :: Int
+defaultMaxIters = 1000000
 
 -- termination query
 -- CompQuery asks whether the probability to terminate is <, <=, >, >= than the given probability
