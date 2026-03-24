@@ -356,21 +356,21 @@ encodePopAndSolveSCC globals gnId_ popMap =
     -- compute some statistics
     -- compute some statistics
     liftSTtoIO $ modifySTRef' (stats globals) $
-          \s@Stats{ sccCountSuppGraph = acc
-                  , largestSCCSuppGraphSize = acc1
-                  , equationsCount = acc2
-                  , sccCountEqSys = acc3
-                  , largestSCCEqSysSize = acc4
-                  }
-          -> s{ sccCountSuppGraph = acc + 1
-              , largestSCCSuppGraphSize = max acc1 1
-              , equationsCount = acc2 + length distr
-              , sccCountEqSys = acc3 + length distr
-              , largestSCCEqSysSize = max acc4 1
+      \s@Stats{ sccCountSuppGraph = acc
+              , largestSCCSuppGraphSize = acc1
+              , equationsCount = acc2
+              , sccCountEqSys = acc3
+              , largestSCCEqSysSize = acc4
               }
+      -> s{ sccCountSuppGraph = acc + 1
+          , largestSCCSuppGraphSize = max acc1 1
+          , equationsCount = acc2 + length distr
+          , sccCountEqSys = acc3 + length distr
+          , largestSCCEqSysSize = max acc4 1
+          }
     return (IntMap.keysSet distr)
 
--- just propagate already know equations
+-- just propagate already know values
 evalEq :: (MonadIO m, MonadLogger m)
   => STRef RealWorld Stats -> EqMap (Double, Double) -> VarKey -> FixpEq (Double, Double) -> m ()
 evalEq _ _ _ (PopEq _) = error "Unexpected dead equation."

@@ -226,18 +226,20 @@ qualitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDeltaP
     logDebugN $ "Pending Vector: " ++ show pendVector
     logInfoN "Conclusive analysis!"
     logInfoN $ "Size of the Support Chain: " ++ show (V.foldl (flip ((+) . fromEnum)) 0 pendVector)
-    computedStats <- liftSTtoIO $ readSTRef stats
+    stats_ <- liftSTtoIO $ readSTRef stats
     logInfoN $ "Stats so far: " ++ concat [
         "Times: "
-      , showEFloat (Just 4) (upperBoundTime computedStats) " s (upper bounds), "
-      , showEFloat (Just 4) (pastTime computedStats) " s (PAST certificates), "
-      , "\nInput pOPA state count: ", show $ popaStatesCount computedStats
-      , "\nSupport graph size: ", show $ suppGraphLen computedStats
-      , "\nEquations solved for termination probabilities: ", show $ equationsCount computedStats
-      , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount computedStats
-      , "\nSCC count in the support graph: ", show $ sccCount computedStats
-      , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount computedStats
-      , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount computedStats
+      , showEFloat (Just 4) (upperBoundTime stats_) " s (upper bounds), "
+      , showEFloat (Just 4) (pastTime stats_) " s (PAST certificates), "
+      , "\nInput pOPA state count: ", show $ popaStatesCount stats_
+      , "\nSupport graph size: ", show $ suppGraphLen stats_
+      -- termination probabilities
+      , "\nSCC count in the support graph: ", show $ sccCountSuppGraph stats_
+      , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSuppGraphSize stats_
+      , "\nEquations solved for termination probabilities: ", show $ equationsCount stats_
+      , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats_
+      , "\nSCC count in the equation system for termination probabilities: ", show $ sccCountEqSys stats_
+      , "\nSize of the largest SCC in the equation system for termination probabilities: ", show $ largestSCCSuppGraphSize stats_
       ]
     startGGTime <- startTimer
     almostSurely <- GQual.qualitativeModelCheck wrapper (normalize phi) phiInitials sc sIdMap pendVector stats

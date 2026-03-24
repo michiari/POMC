@@ -13,9 +13,9 @@ import Prelude hiding (LT, GT)
 import Pomc.Prob.ProbUtils
 import Pomc.Prob.SupportGraph
 import Pomc.Prob.FixPoint
-import Pomc.Prob.OVI(ovi, oviToRational, defaultOVISettingsDouble, OVIResult(..))
 import Pomc.Prob.Runtime
 import Pomc.Prob.RightContexts(RightContexts, computeRightContexts)
+import Pomc.Prob.OVI (defaultOVISettingsDouble, ovi, oviUpperBound, oviToRational, oviSuccess)
 
 import Pomc.TimeUtils (startTimer, stopTimer)
 import Pomc.LogUtils (MonadLogger, logDebugN, logInfoN)
@@ -31,7 +31,7 @@ import qualified Data.HashTable.IO as HT
 import Data.IntMap(IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.Vector.Mutable as MV
-import Data.Vector((!))
+import Data.Vector((!), Vector)
 import qualified Data.Vector as V
 
 import Control.Monad.IO.Class (MonadIO(liftIO))
@@ -44,6 +44,9 @@ import Z3.Monad hiding (Solver)
 import Data.IORef (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import Data.STRef (STRef, modifySTRef')
 import Data.List (sort, foldl')
+import Data.Monoid (Sum(..))
+import Data.Foldable (foldMap')
+import Pomc.Prob.EqSolver (solveEqSystem)
 
 type TermVarMap = IORef (IOMapMap AST)
 -- global mutable data structures of this module
@@ -54,8 +57,8 @@ data TermGlobals = TermGlobals
   , pastSemiconfs :: IORef IntSet
   , termVarMap :: TermVarMap
   , rewVarMap :: RewVarMap
-  , eqMap :: AugEqMap (EqMapNumbersType, EqMapNumbersType)
-  , eps :: IORef EqMapNumbersType
+  , eqMap :: EqMap (Double, Double)
+  , eps :: IORef Double
   , stats :: STRef RealWorld Stats
   }
 
@@ -66,7 +69,6 @@ newTermGlobals len s = liftIO $ do
   newIVec <- MV.replicate len 0
   newtermMap <- IOMM.emptySized len
   newEqMap <- IOMM.emptySized len
-  newLiveVars <- newIORef Set.empty
   emptyMustReachPop <- newIORef IntSet.empty
   newRewVarMap <- HT.new
   newEps <- newIORef defaultEps
@@ -76,7 +78,7 @@ newTermGlobals len s = liftIO $ do
                       , pastSemiconfs = emptyMustReachPop
                       , termVarMap = newtermMap
                       , rewVarMap = newRewVarMap
-                      , eqMap = (newEqMap, newLiveVars)
+                      , eqMap = newEqMap
                       , eps = newEps
                       , stats = s
                       }
@@ -124,7 +126,7 @@ terminationQuery suppGraph query oldStats = do
       readResults (ApproxAllQuery _) True = do
         varsVec <- liftIO $ IOMM.values (termVarMap globals)
         rUBVec <- V.mapM (fmap sum . mapM extractUpperProb) varsVec
-        probMap <- liftIO $ IOMM.valuesWith (fst $ eqMap globals) (\(PopEq d) -> d)
+        probMap <- liftIO $ IOMM.valuesWith (eqMap globals) (\(PopEq d) -> d)
         let lowerProbRationalMap = V.map (sum . map approxL) probMap
         return (ApproxAllResult (lowerProbRationalMap, rUBVec))
       readResults (ApproxSingleQuery _) True = do
@@ -135,7 +137,7 @@ terminationQuery suppGraph query oldStats = do
         return $ toTermResult $ intervalLogic (lb,ub) comp bound
       -- results computed with OVI
       readResults (ApproxAllQuery _) False = liftIO $ do
-        probMap <- liftIO $ IOMM.valuesWith (fst $ eqMap globals) (\(PopEq d) -> d)
+        probMap <- liftIO $ IOMM.valuesWith (eqMap globals) (\(PopEq d) -> d)
         let upperProbRationalMap = V.map (sum . map approxU) probMap
         let lowerProbRationalMap = V.map (sum . map approxL) probMap
         return (ApproxAllResult (lowerProbRationalMap, upperProbRationalMap))
@@ -150,8 +152,8 @@ terminationQuery suppGraph query oldStats = do
 
 -- encoding helpers --
 retrieveInitialPush :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
-  => EqMapNumbersType
-  -> AugEqMap (EqMapNumbersType, EqMapNumbersType)
+  => Double
+  -> EqMap (Double, Double)
   -> GraphNode state
   -> z3 (Prob, Prob)
 retrieveInitialPush eps eqs gn = let
@@ -208,10 +210,10 @@ dfs globals suppGraph gn solv =
         (pushRightContexts, pushdPAST) <- V.unzip <$> V.mapM follow (V.fromList . IntMap.keys $ pushMap)
         -- explore support transitions 
         (suppRightContexts, suppdPAST) <- V.unzip <$> V.mapM follow (V.fromList . IntSet.elems $ suppSet)
-        if gnId gn == 0 
-          then do 
-            return (IntSet.unions pushRightContexts, V.and pushdPAST) 
-          else createComponent globals suppGraph gnId_ solv 
+        if gnId gn == 0
+          then do
+            return (IntSet.unions pushRightContexts, V.and pushdPAST)
+          else createComponent globals suppGraph gnId_ solv
             (IntSet.unions suppRightContexts, V.and suppdPAST && V.and pushdPAST)
 
       cases nextGn iVal
@@ -248,8 +250,12 @@ createComponent globals suppGraph gnId_ solv (rightCnxts, dPAST) = do
         forM_ poppedSemiconfs $ \id_ -> liftIO $ MV.unsafeWrite (iVector globals) id_ (-1)
         -- update statistics
         liftSTtoIO $ modifySTRef' (stats globals) $
-          \s@Stats{sccCount = acc, largestSCCSemiconfsCount = acc1}
-          -> s{sccCount = acc + 1, largestSCCSemiconfsCount = max acc1 (length poppedSemiconfs)}
+            \s@Stats{ sccCountSuppGraph = acc
+                    , largestSCCSuppGraphSize = acc1
+                    } 
+            -> s{ sccCountSuppGraph = acc + 1
+                , largestSCCSuppGraphSize = acc1 + length poppedSemiconfs
+                }
         return poppedSemiconfs
       cases
         | iVal /= topB = addFixpEqs (eqMap globals) gnId_ defaultEqs >> return (rightCnxts, dPAST)
@@ -281,7 +287,6 @@ encode globals mkComp suppGraph gnId_ rightCnxts solv dPAST poppedSemiconfs =
       cases
         -- already know right contexts
         | [id_] <- poppedSemiconfs = do
-          unless (id_ == gnId_) $ error "Encoding a different semiconf w.r.t. the current one."
           let succInfo = gnEdges $ suppGraph V.! id_
           if IntSet.null rightCnxts
             then return (rightCnxts, False)
@@ -297,8 +302,11 @@ encode globals mkComp suppGraph gnId_ rightCnxts solv dPAST poppedSemiconfs =
 
             -- we need to solve the SCC
             enc succInfo id_ rightCnxts
-            isPAST <- solveSCCQuery globals poppedSemiconfs suppGraph dPAST solv
-            when isPAST $ do 
+            let liveVars = Set.fromAscList . map (id_, ) . IntSet.toAscList $ rightCnxts
+            solveEqSystem (eqMap globals) liveVars (evalEq (stats globals) (termVarMap globals) (useZ3 solv)) 
+              (solveSCCQuery globals solv)
+            isPAST <- checkPAST globals poppedSemiconfs suppGraph dPAST solv
+            when isPAST $ do
               liftIO $ modifyIORef' (pastSemiconfs globals) $ IntSet.insert id_
             return (rightCnxts, isPAST)
 
@@ -313,7 +321,7 @@ encode globals mkComp suppGraph gnId_ rightCnxts solv dPAST poppedSemiconfs =
 
           logDebugN "Preadding all equations to the system..."
           when (useZ3 solv) reset
-          V.iforM_ semiconfsVec $ \vecId_ id_ ->
+          liveVars <- V.ifoldM' (\vars vecId_ id_ ->
             let rcs = rcsMap vecId_
             in do
               liftIO $ addFixpEqs (eqMap globals) id_ (defaultEqs rcs)
@@ -322,6 +330,8 @@ encode globals mkComp suppGraph gnId_ rightCnxts solv dPAST poppedSemiconfs =
                 varList <- forM (IntSet.elems rcs) $ \rc -> do
                   (rc,) <$> mkFreshRealVar (show (id_, rc))
                 liftIO $ IOMM.insertMap (termVarMap globals) id_ (IntMap.fromAscList varList)
+              return (Set.union vars (Set.fromAscList . map (id_,) . IntSet.toAscList $ rcs)) 
+              ) Set.empty semiconfsVec
 
           logDebugN "Constructing the equation system for each SCC member..."
           V.iforM_ semiconfsVec $ \vecId_ id_ ->
@@ -330,8 +340,10 @@ encode globals mkComp suppGraph gnId_ rightCnxts solv dPAST poppedSemiconfs =
             in unless (IntSet.null rcs) $ enc succInfo id_ rcs
 
           logDebugN "Solving the equation system..."
-          isPAST <- solveSCCQuery globals semiconfs suppGraph dPAST solv
-          when isPAST $ liftIO 
+          solveEqSystem (eqMap globals) liveVars (evalEq (stats globals) (termVarMap globals) (useZ3 solv)) 
+            (solveSCCQuery globals solv)
+          isPAST <- checkPAST globals poppedSemiconfs suppGraph dPAST solv
+          when isPAST $ liftIO
             $ modifyIORef' (pastSemiconfs globals) $ IntSet.union (IntSet.fromList semiconfs)
           unless (gnId_ == semiconfsVec V.! 0)
             $ error "The entry semiconf to this SCC is not the smallest one in the ordering."
@@ -361,7 +373,7 @@ encodePush globals mkComp suppGraph suppSet pushMap useZ3 gnId_ rightCnxts = do
     in do
       encodedRCs <- retrieveRightContexts (eqMap globals) id_
       return (suppEndsId, id_, encodedRCs)
-      
+
   let createTerm suppRC = PushEq
         [(prob_, (pushId_, pushRC), (suppId_, suppRC)) |
             (suppStateId_, suppId_, suppRCs) <- augSuppInfo
@@ -370,10 +382,10 @@ encodePush globals mkComp suppGraph suppSet pushMap useZ3 gnId_ rightCnxts = do
           , pushRC <- IntSet.toList pushRCs
           , pushRC == suppStateId_
         ]
-      terms :: IntMap.IntMap (FixpEq (EqMapNumbersType, EqMapNumbersType))
+      terms :: IntMap.IntMap (FixpEq (Double, Double))
       terms = IntMap.fromSet createTerm rightCnxts
   -- add equations
-  addLiveVars (eqMap globals) gnId_ terms
+  addFixpEqs (eqMap globals) gnId_ terms
   liftSTtoIO $ modifySTRef' (stats globals) $
     \s@Stats{equationsCount = acc} -> s{equationsCount = acc + IntMap.size terms}
   logDebugN $ "Encoding Push: " ++ show gnId_ ++ " = PushEq " ++ show terms
@@ -403,10 +415,10 @@ encodeShift globals mkComp shiftMap useZ3 gnId_ rightCnxts = do
                                 (shiftId_, prob_, shiftRCs) <- augShiftInfo,
                                 IntSet.member rc shiftRCs
                               ]
-      terms :: IntMap.IntMap (FixpEq (EqMapNumbersType, EqMapNumbersType))
+      terms :: IntMap.IntMap (FixpEq (Double, Double))
       terms = IntMap.fromSet createTerm rightCnxts
   -- add equations and compute some statistics
-  addLiveVars (eqMap globals) gnId_ terms
+  addFixpEqs (eqMap globals) gnId_ terms
   liftSTtoIO $ modifySTRef' (stats globals)
     $ \s@Stats{equationsCount = acc} -> s{equationsCount = acc + IntMap.size terms}
   logDebugN $ "Encoding Shift: " ++ show gnId_ ++ " = ShiftEq " ++ show terms
@@ -441,41 +453,50 @@ encodePopAndSolveSCC globals gnId_ popMap useZ3 =
 
     -- compute some statistics
     liftSTtoIO $ modifySTRef' (stats globals) $
-      \s@Stats{sccCount = acc, largestSCCSemiconfsCount = acc1, equationsCount = acc2}
-      -> s{sccCount = acc + 1, largestSCCSemiconfsCount = max acc1 1, equationsCount = acc2 + length distr}
+      \s@Stats{ sccCountSuppGraph = acc
+              , largestSCCSuppGraphSize = acc1
+              , equationsCount = acc2
+              , sccCountEqSys = acc3
+              , largestSCCEqSysSize = acc4
+              }
+      -> s{ sccCountSuppGraph = acc + 1
+          , largestSCCSuppGraphSize = max acc1 1
+          , equationsCount = acc2 + length distr
+          , sccCountEqSys = acc3 + length distr
+          , largestSCCEqSysSize = max acc4 1
+          }
     logDebugN $ "Encoding Pop: " ++ show gnId_ ++ " = PopEq " ++ show distr
     return (IntMap.keysSet distr, True)
 
 updateUpperBoundsOVI :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
   => TermGlobals
   -> Double
-  -> ProbVec EqMapNumbersType
-  -> z3 [((Int,Int), Double)]
-updateUpperBoundsOVI globals eps lowerBound = do 
+  -> LEqSys Double
+  -> Vector VarKey
+  -> ProbVec Double
+  -> z3 (ProbVec Double)
+updateUpperBoundsOVI globals eps eqsUpper lVars lowerBound = do
   let eqs = eqMap globals
-  startUpper <- startTimer
   logDebugN "Using OVI to update upper bounds..."
-  oviRes <- ovi (defaultOVISettingsDouble eps) eqs snd lowerBound
-  rCertified <- oviToRational (defaultOVISettingsDouble eps) eqs snd oviRes
+  oviRes <- ovi (defaultOVISettingsDouble defaultEps) eqsUpper lowerBound
+  rCertified <- oviToRational (defaultOVISettingsDouble eps) eqsUpper oviRes
   unless rCertified $ error "Cannot deduce a rational certificate for this semiconf."
   unless (oviSuccess oviRes) $ error "OVI was not successful in computing an upper bound on the termination probabilities."
 
   -- adding upper bounds to the system
-  varKeys <- liveVariables eqs
-  let bounds = V.zip3 varKeys lowerBound (oviUpperBound oviRes)
-  upperBoundWithKeys <- V.mapM ( \(varKey, l, p) -> do
-      addPopEq eqs varKey (PopEq (l,p))
-      return (varKey, p)
+  let bounds = V.zip3 lVars lowerBound (oviUpperBound oviRes)
+  V.mapM ( \(varKey, lb, ub) -> do
+      addPopEq eqs varKey (lb,ub)
+      return ub
     ) bounds
-  tUpper <- stopTimer startUpper True
-  liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper})
-  return $ V.toList upperBoundWithKeys
 
 updateUpperBoundsZ3 :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
- => TermGlobals
-  -> ProbVec EqMapNumbersType
-  -> z3 [((Int,Int), Double)]
-updateUpperBoundsZ3 globals lowerBound = 
+  => TermGlobals
+  -> LEqSys Double
+  -> Vector VarKey
+  -> ProbVec Double
+  -> z3 (ProbVec Double)
+updateUpperBoundsZ3 globals eqsUpper lVars lowerBound =
   let eqs = eqMap globals
       tVarMap = termVarMap globals
       doAssert approxFracVec currentEps = do
@@ -501,84 +522,115 @@ updateUpperBoundsZ3 globals lowerBound =
                 doAssert approxFracVec (2 * currentEps) -- backtrack one point and restart
             | otherwise -> error "Maximum tolerance reached when solving SCC."
           _ -> error "Undefinite result when checking an SCC."
-  in do 
+  in do
     currentEps <- liftIO $ readIORef (eps globals)
-    startUpper <- startTimer
     logDebugN "Approximating via Value Iteration + z3"
     -- we don't allow using Newton here, as it is definitively worthless.
     -- we are recomputing a lower bound using upper bounds as coefficients (that is why snd)
-    approxVec <- approxFixpWithHint eqs snd defaultEps defaultMaxIters lowerBound
+    let approxVec = approxFixpFrom eqsUpper defaultEps defaultMaxIters lowerBound
     let approxFracVec = toRationalProbVec defaultEps approxVec
     logDebugN "Asserting lower and upper bounds computed from value iteration, and getting a model"
-    varKeys <- liveVariables eqs
-    model <- doAssert (V.zip varKeys approxFracVec) (min defaultEps currentEps)
+    model <- doAssert (V.zip lVars approxFracVec) (min defaultEps currentEps)
 
     -- actual updates
-    upperBound <- foldM (\acc (varKey, l) -> do
+    V.mapM (\(varKey, l) -> do
       varAST <- liftIO $ fromJust <$> uncurry (IOMM.lookupValue tVarMap) varKey
       ubAST <- fromJust <$> eval model varAST
       ubDouble <- extractUpperDouble ubAST
       liftIO $ uncurry (IOMM.insert tVarMap) varKey ubAST
-      addPopEq eqs varKey (PopEq (l, ubDouble))
-      return ((varKey, ubDouble):acc)
-      ) [] (V.zip varKeys lowerBound)
+      addPopEq eqs varKey (l, ubDouble)
+      return ubDouble
+      ) (V.zip lVars lowerBound)
 
-    tUpper <- stopTimer startUpper upperBound
-    liftSTtoIO $ modifySTRef' (stats globals) (\s -> s { upperBoundTime = upperBoundTime s + tUpper })
-    return upperBound
+-- just propagate already know values
+evalEq :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
+  => STRef RealWorld Stats -> TermVarMap -> Bool -> EqMap (Double, Double) -> VarKey -> FixpEq (Double, Double) -> z3 ()
+evalEq _ _ _ _ _ (PopEq _) = error "Unexpected dead equation."
+evalEq stats tVarMap z3 eqMap_ varKey (ShiftEq l) = do
+  (lbSum, ubSum) <- foldM (\(lbAcc,ubAcc) (prob_, varKey1) -> do
+    PopEq (lb,ub) <- fromJust <$> retrieveEquation eqMap_ varKey1
+    return (fromRational prob_ * lb + lbAcc, fromRational prob_ * ub + ubAcc)
+    ) (0,0) l
+  addPopEq eqMap_ varKey (lbSum, ubSum)
+  liftSTtoIO $ modifySTRef' stats
+    (\s@Stats{ sccCountEqSys = acc2} 
+      -> s{ sccCountEqSys = acc2 + 1})
+  when z3 $ do
+    ubAST <- mkRealNum (ubSum :: Double)
+    liftIO $ uncurry (IOMM.insert tVarMap) varKey ubAST
 
--- note that we consider SCCs in the semiconfiguration graph:
--- each SCC in the graph might correspond to multiple SCCs in the equation system
--- however, Newton's method is guaranteed to converge in this case as well.
+evalEq stats tVarMap z3 eqMap_ varKey (PushEq l) = do
+  (lbSum, ubSum) <- foldM (\(lbAcc,ubAcc) (prob_, varKey1, varKey2) -> do
+    PopEq (lb1,ub1) <- fromJust <$> retrieveEquation eqMap_ varKey1
+    PopEq (lb2,ub2) <- fromJust <$> retrieveEquation eqMap_ varKey2
+    return (fromRational prob_ * lb1 * lb2 + lbAcc, fromRational prob_ * ub1 * ub2 + ubAcc)
+    ) (0,0) l
+  addPopEq eqMap_ varKey (lbSum, ubSum)
+  liftSTtoIO $ modifySTRef' stats
+    (\s@Stats{ sccCountEqSys = acc2} 
+      -> s{ sccCountEqSys = acc2 + 1})
+  when z3 $ do
+    ubAST <- mkRealNum (ubSum :: Double)
+    liftIO $ uncurry (IOMM.insert tVarMap) varKey ubAST
+
+-- solve a SCC in the equation system
 solveSCCQuery :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
+  => TermGlobals
+  -> Solver
+  -> [VarKey]
+  -> z3 ()
+solveSCCQuery globals solv vars = do
+  let lVars = Set.fromList vars
+      varSize = Set.size lVars
+      zeroVec = V.replicate varSize 0
+
+
+  eqsLower <- toLiveEqMapWith (eqMap globals) lVars fst
+  eqsUpper <- toLiveEqMapWith (eqMap globals) lVars snd
+  startWeights <- startTimer
+  let lowerBound
+        -- apply Newton's method only up to a greater eps, Newton's methods becomes instable when dealing with very small deltas
+        | useNewton solv = approxFixpNewtonWithHint eqsLower defaultNewtonEps defaultEps defaultMaxIters defaultMaxIters zeroVec
+        | otherwise = approxFixpFrom eqsLower defaultEps defaultMaxIters zeroVec
+      cases
+        | useZ3 solv = updateUpperBoundsZ3 globals eqsUpper (V.fromList $ Set.elems lVars) lowerBound
+        | otherwise =  updateUpperBoundsOVI globals defaultEps eqsUpper (V.fromList $ Set.elems lVars) lowerBound
+
+  upperBound <- cases
+
+  logDebugN $ "Computed upper bounds: " ++ show upperBound
+  tWeights <- stopTimer startWeights upperBound
+  liftSTtoIO $ modifySTRef' (stats globals) 
+    (\s@Stats{ upperBoundTime = acc
+             , nonTrivialEquationsCount = acc1
+             , sccCountEqSys = acc2
+             , largestSCCEqSysSize = acc3
+             } 
+    -> s{ upperBoundTime = acc + tWeights
+        , nonTrivialEquationsCount = acc1 + varSize
+        , sccCountEqSys = acc2 + 1
+        , largestSCCEqSysSize = max acc3 varSize})
+
+checkPAST :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
   => TermGlobals
   -> [Int]
   -> SupportGraph state
   -> Bool
   -> Solver
   -> z3 Bool
-solveSCCQuery globals sccMembers suppGraph dPAST solv = do
+checkPAST globals sccMembers suppGraph dPAST solv = do
   let eqs = eqMap globals
-      tVarMap = termVarMap globals
       rVarMap = rewVarMap globals
       augEps = 1000 * defaultEps
+      customSum popEqsMap = getSum $ foldMap' (\(PopEq (_,ub)) -> Sum ub) (IntMap.elems popEqsMap)
 
-  -- preprocessing to solve variables by backpropagating
-  solvedLVars <- preprocessApproxFixp eqs fst
-  solvedUvars <- preprocessApproxFixp eqs snd
-  let zipSolved = zip solvedLVars solvedUvars
-  forM_ zipSolved $ \((varKey, l), (_, u)) -> do
-    addPopEq eqs varKey (PopEq (l,u))
-    when (useZ3 solv) $ do
-      ubAST <- mkRealNum (u :: Double)
-      liftIO $ uncurry (IOMM.insert tVarMap) varKey ubAST
-    
-  unsolvedVars <- liveVariables eqs
-  liftSTtoIO $ modifySTRef' (stats globals) $ 
-    \s@Stats{ largestSCCNonTrivialEqsCount = acc, nonTrivialEquationsCount = acc1} 
-      -> s{largestSCCNonTrivialEqsCount = max acc (length unsolvedVars), 
-          nonTrivialEquationsCount = acc1 + length unsolvedVars}
+  -- termination probabilities of each semiconfiguration
+  ubTermProbs <- mapM (fmap customSum . retrieveEquationsMap eqs) sccMembers
 
-  -- solving remaining variables and compute upper bounds
-  let len = V.length unsolvedVars
-      zVec = V.replicate len 0
-      updateLowerBound
-        -- apply Newton's method only up to augEps, Newton's methods becomes instable when dealing with very small deltas
-        | useNewton solv = approxFixpNewtonWithHint eqs fst augEps defaultNewtonEps defaultMaxIters defaultMaxIters zVec
-        | otherwise = approxFixpWithHint eqs fst defaultEps defaultMaxIters zVec
-      cases
-        | null unsolvedVars = return []
-        | useZ3 solv = updateLowerBound >>= updateUpperBoundsZ3 globals
-        | otherwise = updateLowerBound >>= updateUpperBoundsOVI globals defaultEps
-      
-  upperBound <- cases
-  
   -- computing the PAST certificate (if needed)
-  let addProb m ((scId_, _), b) = IntMap.insertWith (+) scId_ b m
-      ubTermProbs = IntMap.toList $ foldl' addProb IntMap.empty (upperBound ++ solvedUvars)
-      nonPASTprobs = null ubTermProbs || all (\(_,ub) -> ub < 1 - augEps) ubTermProbs
-      pASTprobs = not (null ubTermProbs) && all (\(_,ub) -> ub > 1 - augEps) ubTermProbs
-      exactPASTprobs = not (null ubTermProbs) && all (\(_,ub) -> ub > 1 - defaultEps) ubTermProbs
+  let nonPASTprobs = null ubTermProbs || all (\ub -> ub < 1 - augEps) ubTermProbs
+      pASTprobs = not (null ubTermProbs) && all (\ub -> ub > 1 - augEps) ubTermProbs
+      exactPASTprobs = not (null ubTermProbs) && all (\ub -> ub > 1 - defaultEps) ubTermProbs
       pASTCertCases
         | exactComputation solv = return exactPASTprobs
         | not dPAST && pASTprobs =
@@ -592,8 +644,7 @@ solveSCCQuery globals sccMembers suppGraph dPAST solv = do
           return True
 
   logDebugN $ unlines
-    [ "Computed upper bounds: " ++ show upperBound
-    , "SCC Members: " ++ show sccMembers
+    [ "SCC Members: " ++ show sccMembers
     , "Computed upper bounds on termination probabilities: " ++ show ubTermProbs
     , "Do all the descendant terminate almost surely? " ++ show dPAST
     , "Are the upper bounds proving not AST? " ++ show nonPASTprobs
