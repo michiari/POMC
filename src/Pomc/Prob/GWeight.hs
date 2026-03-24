@@ -231,7 +231,7 @@ dfs globals sIdGen delta suppStarts suppEnds (q,g) scId_ useNewton =
             if isNothing g 
               then do 
                 liftSTtoIO $ modifySTRef' (stats globals) $
-                  \s@Stats{sccCountSemiconfGraphQuant = acc} -> s{sccCountSemiconfGraphQuant = acc + 1}
+                  \s@Stats{sccCountSuppGraphQuant = acc} -> s{sccCountSuppGraphQuant = acc + 1}
                 return IntSet.empty 
               else do
               rightContexts <- IntSet.unions <$> V.mapM follow (V.zip suppSemiconfs suppSCIds)
@@ -288,11 +288,11 @@ createComponent globals scId_ useNewton rightCnxts = do
         forM_ (map fst poppedSemiconfs) $ \id_ -> HT.insert (iVector globals) id_ (-1)
         -- update statistics
         liftSTtoIO $ modifySTRef' (stats globals) $
-            \s@Stats{ sccCountSemiconfGraphQuant = acc
-                    , largestSCCSemiconfGraphSizeQuant = acc1
+            \s@Stats{ sccCountSuppGraphQuant = acc
+                    , largestSCCSuppGraphSizeQuant = acc1
                     } 
-            -> s{ sccCountSemiconfGraphQuant = acc + 1
-                , largestSCCSemiconfGraphSizeQuant = acc1 + length poppedSemiconfs
+            -> s{ sccCountSuppGraphQuant = acc + 1
+                , largestSCCSuppGraphSizeQuant = acc1 + length poppedSemiconfs
                 }
         return poppedSemiconfs
       cases
@@ -439,14 +439,14 @@ encodePopAndSolveSCC (q,g) scId_ globals sIdGen delta suppStarts =
     addFixpEqs (eqMap globals) scId_ (IntMap.fromList distr)
     -- compute some statistics
     liftSTtoIO $ modifySTRef' (stats globals) $
-          \s@Stats{ sccCountSemiconfGraphQuant = acc
-                  , largestSCCSemiconfGraphSizeQuant = acc1
+          \s@Stats{ sccCountSuppGraphQuant = acc
+                  , largestSCCSuppGraphSizeQuant = acc1
                   , equationsCountQuant = acc2
                   , sccCountEqSysQuant = acc3
                   , largestSCCEqSysSizeQuant = acc4
                   }
-          -> s{ sccCountSemiconfGraphQuant = acc + 1
-              , largestSCCSemiconfGraphSizeQuant = max acc1 1
+          -> s{ sccCountSuppGraphQuant = acc + 1
+              , largestSCCSuppGraphSizeQuant = max acc1 1
               , equationsCountQuant = acc2 + length distr
               , sccCountEqSysQuant = acc3 + length distr
               , largestSCCEqSysSizeQuant = max acc4 1

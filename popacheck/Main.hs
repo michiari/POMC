@@ -169,8 +169,8 @@ main = do
           , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
           , "\nSize of graph G: ", show $ gGraphSize stats
           -- quantitative mc
-          , "\nSCC count in the support graph for quantitative mc: ", show $ sccCountSemiconfGraphQuant stats
-          , "\nSize of the largest SCC in the support graph for quantitative mc: ", show $ largestSCCSemiconfGraphSizeQuant stats
+          , "\nSCC count in the support graph of the cross product for quantitative mc: ", show $ sccCountSuppGraphQuant stats
+          , "\nSize of the largest SCC in the support graph of the cross product for quantitative mc: ", show $ largestSCCSuppSizeQuant stats
           , "\nEquations solved for quant mc: ", show $ equationsCountQuant stats
           , "\nNon-trivial equations solved for quant mc: ", show $ nonTrivialEquationsCountQuant stats
           , "\nSCC count in the equation system for quant mc weight computation: ", show $ sccCountEqSysQuant stats
