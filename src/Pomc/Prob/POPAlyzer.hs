@@ -380,8 +380,8 @@ evalEq stats eqMap_ varKey (ShiftEq l) = liftIO $ do
       return (fromRational prob_ * lb + lbAcc, fromRational prob_ * ub + ubAcc)
     ) (0,0) l >>= addPopEq eqMap_ varKey
   liftSTtoIO $ modifySTRef' stats
-    (\s@Stats{ sccCountEqSysQuant = acc2} 
-      -> s{ sccCountEqSysQuant = acc2 + 1})
+    (\s@Stats{ sccCountEqSys = acc2} 
+      -> s{ sccCountEqSys = acc2 + 1})
           
 evalEq stats eqMap_ varKey (PushEq l) = liftIO $ do 
   foldM (\(lbAcc,ubAcc) (prob_, varKey1, varKey2) -> do
@@ -390,8 +390,8 @@ evalEq stats eqMap_ varKey (PushEq l) = liftIO $ do
       return (fromRational prob_ * lb1 * lb2 + lbAcc, fromRational prob_ * ub1 * ub2 + ubAcc)
     ) (0,0) l >>= addPopEq eqMap_ varKey
   liftSTtoIO $ modifySTRef' stats
-    (\s@Stats{ sccCountEqSysQuant = acc2} 
-      -> s{ sccCountEqSysQuant = acc2 + 1})
+    (\s@Stats{ sccCountEqSys = acc2} 
+      -> s{ sccCountEqSys = acc2 + 1})
 
 -- solve a SCC in the equation system
 solveSCC :: (MonadIO m, MonadLogger m)
