@@ -93,11 +93,13 @@ main = do
           , showEFloat (Just 4) (pastTime stats) " s (PAST certificates), "
           , "\nInput pOPA state count: ", show $ popaStatesCount stats
           , "\nSupport graph size: ", show $ suppGraphLen stats
+          -- termination probabilities
+          , "\nSCC count in the support graph: ", show $ sccCountSuppGraph stats
+          , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSuppGraphSize stats
           , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
           , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
-          , "\nSCC count in the support graph: ", show $ sccCount stats
-          , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-          , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
+          , "\nSCC count in the equation system for termination probabilities: ", show $ sccCountEqSys stats
+          , "\nSize of the largest SCC in the equation system for termination probabilities: ", show $ largestSCCSuppGraphSize stats
           ]
         else putStrLn $ concat
              [ "\n Lower bounds Distribution:"

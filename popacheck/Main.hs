@@ -100,11 +100,13 @@ main = do
           , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis)."
           , "\nInput pOPA state count: ", show $ popaStatesCount stats
           , "\nSupport graph size: ", show $ suppGraphLen stats
+          -- termination probabilities
+          , "\nSCC count in the support graph: ", show $ sccCountSuppGraph stats
+          , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSuppGraphSize stats
           , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
           , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
-          , "\nSCC count in the support graph: ", show $ sccCount stats
-          , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-          , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
+          , "\nSCC count in the equation system for termination probabilities: ", show $ sccCountEqSys stats
+          , "\nSize of the largest SCC in the equation system for termination probabilities: ", show $ largestSCCSuppGraphSize stats
           ]
         else putStrLn $ concat
              [ "\n  Lower bound: "
@@ -131,11 +133,14 @@ main = do
              , showEFloat (Just 4) (gGraphTime stats) " s (graph analysis)."
              , "\nInput pOPA state count: ", show $ popaStatesCount stats
              , "\nSupport graph size: ", show $ suppGraphLen stats
+             -- termination probabilities
+             , "\nSCC count in the support graph: ", show $ sccCountSuppGraph stats
+             , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSuppGraphSize stats
              , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
              , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
-             , "\nSCC count in the support graph: ", show $ sccCount stats
-             , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-             , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
+             , "\nSCC count in the equation system for termination probabilities: ", show $ sccCountEqSys stats
+             , "\nSize of the largest SCC in the equation system for termination probabilities: ", show $ largestSCCSuppGraphSize stats
+             -- qualitative model checking
              , "\nSize of (the explored portion of) graph G: ", show $ gGraphSize stats -- we may abort exploration if we have already established True.
              ]
         else putChar '\n'
@@ -162,11 +167,14 @@ main = do
           , showEFloat (Just 4) (quantSolTime stats) " s (eq system for quant MC)."
           , "\nInput pOPA state count: ", show $ popaStatesCount stats
           , "\nSupport graph size: ", show $ suppGraphLen stats
+          -- termination probabilities
+          , "\nSCC count in the support graph: ", show $ sccCountSuppGraph stats
+          , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSuppGraphSize stats
           , "\nEquations solved for termination probabilities: ", show $ equationsCount stats
           , "\nNon-trivial equations solved for termination probabilities: ", show $ nonTrivialEquationsCount stats
-          , "\nSCC count in the support graph: ", show $ sccCount stats
-          , "\nSize of the largest SCC in the support graph: ", show $ largestSCCSemiconfsCount stats
-          , "\nLargest number of non trivial equations in an SCC in the Support Graph: ", show $ largestSCCNonTrivialEqsCount stats
+          , "\nSCC count in the equation system for termination probabilities: ", show $ sccCountEqSys stats
+          , "\nSize of the largest SCC in the equation system for termination probabilities: ", show $ largestSCCSuppGraphSize stats
+          -- qualitative model checking
           , "\nSize of graph G: ", show $ gGraphSize stats
           -- quantitative mc
           , "\nSCC count in the support graph of the cross product for quantitative mc: ", show $ sccCountSuppGraphQuant stats
