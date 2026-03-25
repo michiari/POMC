@@ -481,6 +481,7 @@ solveSCCQuery :: (MonadIO m, MonadLogger m)
   => GWeightGlobals -> Bool -> [VarKey] -> m ()
 solveSCCQuery globals newton varKeys = do
   let eqs = eqMap globals
+      -- careful, varKeys might be duplicated in case of self-dependencies
       lVars = Set.fromList varKeys
       varSize = Set.size lVars
       zeroVec = V.replicate varSize 0

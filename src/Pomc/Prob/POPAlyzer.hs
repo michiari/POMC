@@ -399,6 +399,7 @@ solveSCC :: (MonadIO m, MonadLogger m)
 solveSCC globals eps newton vars = do
   let eqs = eqMap globals
       newtonEps = max defaultNewtonEps eps
+      -- careful, vars might have duplicated variables in case of self-dependencies
       lVars = Set.fromList vars
       varSize = Set.size lVars
       zeroVec = V.replicate varSize 0

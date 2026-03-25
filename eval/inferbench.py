@@ -10,7 +10,7 @@ import csv
 from tabulate import tabulate
 import os
 
-eps_dict = {"bound-mdp-large"  : '0.000000000000001', 
+eps_dict = {"bound-mdp-large"  : '0.000000000000002', 
             "bound-mdp-medium" : '0.0000000000001', 
             "bound-mdp-small"  : '0.0000000001',
             "mdp-medium"       : '0.000001',
@@ -27,9 +27,8 @@ states_pattern = re.compile(r"Input (OPA|pOPA) state count: ([0-9]+)")
 supp_pattern = re.compile(r"Support graph size: ([0-9]+)")
 eqs_pattern = re.compile(r"Equations solved for termination probabilities: ([0-9]+)")
 non_trivial_eqs_pattern = re.compile(r"Non-trivial equations solved for termination probabilities: ([0-9]+)")
-sccs_pattern = re.compile(r"SCC count in the support graph: ([0-9]+)")
-maxscc_pattern = re.compile(r"Size of the largest SCC in the support graph: ([0-9]+)")
-maxeqs_pattern = re.compile(r"Largest number of non trivial equations in an SCC in the Support Graph: ([0-9]+)")
+sccs_pattern = re.compile(r"SCC count in the equation system for termination probabilities: ([0-9]+)")
+maxeqs_pattern = re.compile(r"Size of the largest SCC in the equation system for termination probabilities: ([0-9]+)")
 
 ub_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(upper bounds\)")
 past_pattern = re.compile(r"([0-9]+\.[0-9]+e[\+\-0-9]+) s \(PAST certificates\)")
@@ -37,7 +36,7 @@ memgc_pattern = re.compile(r'\("max_bytes_used", "([0-9]+)"\)')
 pomc_pattern = re.compile(r".*\.pomc$")
 
 
-benchmark_pattern = re.compile(r".*/miniprob/(\S+).pomc$")
+benchmark_pattern = re.compile(r".*/cprGCL-programs/(\S+).pomc$")
 
 if platform.system() == 'Darwin':
     time_bin = 'gtime'
@@ -109,7 +108,6 @@ def exec_bench(fname, args):
     eqs_match = eqs_pattern.search(raw_out)
     non_trivial_eqs_match = non_trivial_eqs_pattern.search(raw_out)
     sccs_match = sccs_pattern.search(raw_out)
-    maxscc_match = maxscc_pattern.search(raw_out)
     maxeqs_match = maxeqs_pattern.search(raw_out)
     
     ub_match = ub_pattern.search(raw_out)
@@ -128,7 +126,6 @@ def exec_bench(fname, args):
         'eqs': int(check_match(eqs_match)),
         'non_trivial_eqs': int(check_match(non_trivial_eqs_match)),
         'sccs': int(check_match(sccs_match)),
-        'maxscc': int(check_match(maxscc_match)),
         'maxeqs': int(check_match(maxeqs_match)),
     }
 
@@ -156,7 +153,6 @@ def iter_bench(fname, args):
         'eqs': results[0]['eqs'],
         'non_trivial_eqs': results[0]['non_trivial_eqs'],
         'sccs': results[0]['sccs'],
-        'maxscc': results[0]['maxscc'],
         'maxeqs': results[0]['maxeqs'],
     }
 
@@ -197,9 +193,9 @@ if __name__ == '__main__':
     print(f'Running benchmarks...')
     results = exec_all(expand_files(args.benchmarks), args)
 
-    key_list = ['name', 'states', 'supp_size', 'eqs', 'non_trivial_eqs', 'sccs', 'maxscc', 'maxeqs', 'ub_time', 'time', 'mem_tot','quant_result']
+    key_list = ['name', 'states', 'supp_size', 'eqs', 'non_trivial_eqs', 'sccs', 'maxeqs', 'ub_time', 'time', 'mem_tot','quant_result']
     results_matrix = to_list(results, list(map(lambda k: (k,  lambda x: x), key_list)))
-    header = ["Name",  "|Q_A|", "|SG|", "|f|", "|f_NT|", "#SCC", "|SCC|max", "|f(SCC)_NT|max", "UB Time (s)", "Time (s)", "Memory (KiB)","Distr."]
+    header = ["Name",  "|Q_A|", "|SG|", "|f|", "|f_NT|", "#SCC(f)", "|SCC(f)|max", "UB Time (s)", "Time (s)", "Memory (KiB)","Distr."]
 
     # store raw results somewhere
     if args.raw_csv:

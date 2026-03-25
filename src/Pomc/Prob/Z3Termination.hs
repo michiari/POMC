@@ -580,10 +580,10 @@ solveSCCQuery :: (MonadZ3 z3, MonadFail z3, MonadLogger z3)
   -> [VarKey]
   -> z3 ()
 solveSCCQuery globals solv vars = do
+  -- careful, vars might have duplicated variables in case of self-dependencies
   let lVars = Set.fromList vars
       varSize = Set.size lVars
       zeroVec = V.replicate varSize 0
-
 
   eqsLower <- toLiveEqMapWith (eqMap globals) lVars fst
   eqsUpper <- toLiveEqMapWith (eqMap globals) lVars snd
