@@ -96,7 +96,8 @@ dfs globals solveSingle solveSCC lVars varKey =
             liftIO $ addtoPath globals nextVarKey
             dfs globals solveSingle solveSCC lVars nextVarKey
         | (nextIVal < 0)  = return ()
-        | (nextIVal > 0)  = liftIO $ merge globals nextVarKey
+        -- I need to push anyway because I want to keep track of self cycles in createComponent
+        | (nextIVal > 0)  = liftIO $ IOGS.push (sStack globals) nextVarKey >> merge globals nextVarKey
 
       follow nextVarKey = (liftIO (lookupIValue globals nextVarKey) >>= cases nextVarKey)
   in do

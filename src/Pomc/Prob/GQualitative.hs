@@ -256,7 +256,8 @@ reachEdges gGlobals delta suppGraph fromPhi isPending sIdMap fromId intDests sup
       let cases
             | iValue nextNode == 0 = addtoPath gGlobals nextNode e >>= dfs suppGraph gGlobals delta isPending fromPhi sIdMap
             | iValue nextNode < 0  = return (descSccs nextNode)
-            -- I need to push anyway because I want to keep track of cycles in createComponent
+            -- I need to push anyway because I want to keep track of cycles in createComponent,
+            -- and because it might be a support edge determining acceptance
             | iValue nextNode > 0  = GS.push (sStack gGlobals) e >> merge gGlobals (iValue nextNode) >> return IntSet.empty
             | otherwise = error "unreachable error"
       cases)

@@ -267,6 +267,7 @@ data Stats = Stats { upperBoundTime :: Double
                    , pastTime :: Double
                    , popaStatesCount :: Int
                    -- support graph of the pOPA stats
+                   , suppGraphLen :: Int
                    , sccCountSuppGraph :: Int
                    , largestSCCSuppGraphSize :: Int
                    -- termination probabilities stats
@@ -275,7 +276,6 @@ data Stats = Stats { upperBoundTime :: Double
                    , sccCountEqSys :: Int
                    , largestSCCEqSysSize :: Int
                    -- qualitative model checking stats
-                   , suppGraphLen :: Int
                    , gGraphTime :: Double
                    , gGraphSize :: Int
                    -- quantitative model checking stats
