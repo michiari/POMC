@@ -436,5 +436,5 @@ solveSCC globals eps newton vars = do
   -- update lower and upper bounds
   let bounds = V.zip3 (V.fromList $ Set.elems lVars) approxVec (oviUpperBound oviRes)
   V.mapM_ (\(varKey, l,u) -> do
-    when (u - l > 0.02) $ error $ "The upper bound is too lose: " ++ show varKey ++ " = (" ++ show l ++ "," ++ show u ++ ")"
+    when (u - l > 0.02) $ error $ "Bounds are too lose: " ++ show varKey ++ " = (" ++ show l ++ "," ++ show u ++ "). Please rerun this program with an increased accuracy."
     addPopEq eqs varKey (l,u)) bounds

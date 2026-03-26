@@ -214,10 +214,10 @@ qualitativeModelCheck solv phi alphabet bInitials bDeltaPush bDeltaShift bDeltaP
     (ApproxAllResult (_, ubTermVec), mustReachPopIdxs) <- evalZ3TWith (chooseLogic solv) stdOpts
       $ terminationQuery sc (ApproxAllQuery solv) stats
     let cases i k
-          | k < (1 - 1000 * defaultREps) && IntSet.member i mustReachPopIdxs =
+          | k < (1 - defaultREps) && IntSet.member i mustReachPopIdxs =
             -- inconsistent result
             error $ "semiconf " ++ show i ++ " has a PAST certificate with termination probability equal to " ++ show k
-          | k < (1 - 1000 * defaultREps) = True
+          | k < (1 - defaultREps) = True
           | IntSet.member i mustReachPopIdxs = False
           | otherwise = error $ "Semiconf " ++ show i ++ " has termination probability " ++ show k
                         ++ " but it is not certified to be PAST." -- inconclusive result
