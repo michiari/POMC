@@ -36,9 +36,9 @@ module Pomc.Prob.FixPoint ( VarKey
                           ) where
 
 import Pomc.Prob.ProbUtils (Prob)
-
 import Pomc.IOMapMap(IOMapMap)
 import qualified Pomc.IOMapMap as MM
+
 import Data.Set (Set)
 import qualified Data.Set as Set
 import qualified Data.Strict.Map as M
@@ -46,7 +46,6 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Data.IntSet (IntSet)
 import Data.IntMap(IntMap)
-
 import qualified Numeric.LinearAlgebra as LA
 import qualified Numeric.LinearAlgebra.Data as LAD
 import Data.Foldable (foldl', foldMap')
@@ -79,7 +78,7 @@ instance Functor LiveEq where
     where fPush (p, eith1, eith2) = (f p, fmap f eith1, fmap f eith2)
   fmap f (ShiftLEq l) = ShiftLEq (map fShift l)
     where fShift (p, eith1) = (f p, fmap f eith1)
-    
+
 type LEqSys n = Vector (LiveEq n)
 type ProbVec n = Vector n
 type SparseMatrix n = [(VarKey, Polynomial2 n)]
@@ -128,7 +127,8 @@ jacobiTimesX leqSys v =
 
   in V.imap sparseJTimesX leqSys
 
--- compute symbolically (i.e., not evaluated) J(P - x), the Jacobian J of leqSys P minus the vector of all variables x
+-- compute symbolically (i.e., not evaluated) J(P - x), 
+-- i.e. the Jacobian J of leqSys P minus the vector of all variables x
 pminusXjacobi :: Num n => LEqSys n -> SparseMatrix n
 pminusXjacobi leqSys =
   let addMonomial dPdx k = M.insertWith (++) k [dPdx]
@@ -185,12 +185,14 @@ evalEqSysNewton :: SparseMatrix Double -> LEqSys Double
   -> (Double -> Double -> Bool) -> ProbVec Double -> (Bool, ProbVec Double)
 evalEqSysNewton jMatrix leqMap checkRes src =
   let computEq oldV (PushLEq terms) = oldV - getSum (foldMap'
-        (\(p, k1, k2) -> Sum $ p * (either (src V.!) id k1) * (either (src V.!) id k2)) terms)
+        (\(p, k1, k2) -> Sum $ p * either (src V.!) id k1 * either (src V.!) id k2) terms)
       computEq oldV (ShiftLEq terms)  = oldV - getSum (foldMap'
         (\(p, k1) -> Sum $ p * either (src V.!) id k1) terms)
 
-      rhs = V.zipWith computEq src leqMap -- x - P(x) (right-hand-side)
-      jacobiEval = evalSparseMatrix jMatrix src -- J(P(x) - x) (matrix of coefficients in sparse form)
+      -- x - P(x) (right-hand-side)
+      rhs = V.zipWith computEq src leqMap
+      -- J(P(x) - x) (matrix of coefficients in sparse form)
+      jacobiEval = evalSparseMatrix jMatrix src
       delta = V.fromList . LAD.toList
         . LA.cgSolve False (LAD.mkSparse jacobiEval)
         . LAD.vector . V.toList
@@ -240,7 +242,7 @@ evalEqSysAny leqMap checkRes src =
       -- for plain value iteration, always read from source
       getV i j = if j < i then dest V.! j else src V.! j
       computEq idx (PushLEq terms) = getSum $ foldMap'
-        (\(p, k1, k2) -> Sum $ p * (either (getV idx) id k1) * (either (getV idx) id k2)) terms
+        (\(p, k1, k2) -> Sum $ p * either (getV idx) id k1 * either (getV idx) id k2) terms
       computEq idx (ShiftLEq terms) = getSum $ foldMap'
         (\(p, k1) -> Sum $ p * either (getV idx) id k1) terms
       dest = V.imap computEq leqMap
@@ -254,7 +256,7 @@ evalEqSys leqMap checkRes src =
       -- for plain value iteration, always read from source
       getV i j = if j < i then dest V.! j else src V.! j
       computEq idx (PushLEq terms) = getSum $ foldMap'
-        (\(p, k1, k2) -> Sum $ p * (either (getV idx) id k1) * (either (getV idx) id k2)) terms
+        (\(p, k1, k2) -> Sum $ p * either (getV idx) id k1 * either (getV idx) id k2) terms
       computEq idx (ShiftLEq terms) = getSum $ foldMap'
         (\(p, k1) -> Sum $ p * either (getV idx) id k1) terms
       dest = V.imap computEq leqMap
@@ -274,7 +276,7 @@ approxFixpFrom leqMap eps maxIters probVec =
       then newProbVec
       else approxFixpFrom leqMap eps (maxIters - 1) newProbVec
 
--- same as approxFixpFrom, but used to approximate the fixpoint from above it, hence with decreasing approximations
+-- same as approxFixpFrom, but approximate the fixpoint from above it
 approxFixpFromAbove :: (Ord n, Fractional n, Show n)
   => LEqSys n -> n -> Int -> ProbVec n -> ProbVec n
 approxFixpFromAbove _ _ 0 probVec = probVec

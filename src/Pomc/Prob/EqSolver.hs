@@ -96,8 +96,10 @@ dfs globals solveSingle solveSCC lVars varKey =
             liftIO $ addtoPath globals nextVarKey
             dfs globals solveSingle solveSCC lVars nextVarKey
         | (nextIVal < 0)  = return ()
-        -- I need to push anyway because I want to keep track of self cycles in createComponent
-        | (nextIVal > 0)  = liftIO $ IOGS.push (sStack globals) nextVarKey >> merge globals nextVarKey
+        | (nextIVal > 0)  = liftIO $ do
+          -- push to keep track of self cycles in createComponent
+          IOGS.push (sStack globals) nextVarKey
+          merge globals nextVarKey
 
       follow nextVarKey = (liftIO (lookupIValue globals nextVarKey) >>= cases nextVarKey)
   in do
@@ -118,17 +120,17 @@ createComponent globals solveSingle solveSCC eq varKey = do
   let cases
         | iVal /= topB = return ()
         | otherwise = do
-            -- updating data structures of Gabow algorithm
-            sccId <- liftIO $ freshIONegId (negIdSeq globals)
-            liftIO $ IOGS.pop_ (bStack globals)
-            sSize <- liftIO $ IOGS.size $ sStack globals
-            -- the last one is the current varKey
-            poppedVarKeys <- liftIO $ IOGS.multPop (sStack globals) (sSize - iVal + 1)
-            liftIO $ forM_ poppedVarKeys $ \k -> BH.insert (iVector globals) k sccId
-            -- solve the SCC
-            case poppedVarKeys of
-              [varKey] -> solveSingle (eqMap globals) varKey eq
-              _ -> solveSCC poppedVarKeys
+          -- updating data structures of Gabow algorithm
+          sccId <- liftIO $ freshIONegId (negIdSeq globals)
+          liftIO $ IOGS.pop_ (bStack globals)
+          sSize <- liftIO $ IOGS.size $ sStack globals
+          -- the last one is the current varKey
+          poppedVarKeys <- liftIO $ IOGS.multPop (sStack globals) (sSize - iVal + 1)
+          liftIO $ forM_ poppedVarKeys $ \k -> BH.insert (iVector globals) k sccId
+          -- solve the SCC
+          case poppedVarKeys of
+            [varKey] -> solveSingle (eqMap globals) varKey eq
+            _ -> solveSCC poppedVarKeys
   cases
 
 -- Gabow helpers
@@ -147,5 +149,5 @@ addtoPath globals varKey = do
 merge ::  SolverGlobals -> VarKey -> IO ()
 merge globals varKey = do
   iVal <- lookupIValue globals varKey
-  -- contract the B stack, that represents the boundaries between SCCs on the current path
+  -- contract the B stack, carrying boundaries between SCCs on the current path
   IOGS.popWhile_ (bStack globals) (iVal <)

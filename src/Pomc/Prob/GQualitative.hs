@@ -9,6 +9,12 @@ module Pomc.Prob.GQualitative ( qualitativeModelCheck
                               , dfs 
                               , addtoPath
                               ) where
+import Pomc.Prob.GUtil
+import Pomc.Prob.ProbUtils hiding (sIdMap, SIdGen)
+import qualified Pomc.Prob.GReach as GR
+import Pomc.Prob.SupportGraph(GraphNode(..), SupportGraph, TransitionInfo (..))
+import Pomc.Prob.ProbEncoding(ProbEncodedSet)
+import qualified Pomc.Prob.ProbEncoding as PE
 import Pomc.LogUtils (MonadLogger, logInfoN)
 import Pomc.SatUtil(freshPosId, freshNegId)
 import Pomc.State(State(..))
@@ -20,13 +26,6 @@ import Pomc.Z3T
 import qualified Pomc.GStack as GS
 import qualified Pomc.CustoMap as CM
 
-import Pomc.Prob.GUtil
-import Pomc.Prob.ProbUtils hiding (sIdMap, SIdGen)
-import qualified Pomc.Prob.GReach as GR
-import Pomc.Prob.SupportGraph(GraphNode(..), SupportGraph, TransitionInfo (..))
-import Pomc.Prob.ProbEncoding(ProbEncodedSet)
-import qualified Pomc.Prob.ProbEncoding as PE
-
 import qualified Data.Strict.IntMap as StrictIntMap
 import qualified Data.Strict.Map as StrictMap
 import Data.IntMap(IntMap)
@@ -36,7 +35,6 @@ import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 import Data.Hashable(Hashable)
 import qualified Data.HashTable.ST.Basic as BH
-
 import Data.List(partition)
 import Data.Vector(Vector, (!))
 import qualified Data.Vector as V
@@ -44,11 +42,10 @@ import Data.Bifunctor(first)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad (when, forM_, foldM, forM)
 import Control.Monad.ST (ST, RealWorld)
-
 import Data.STRef (STRef, readSTRef, modifySTRef')
 import Data.Maybe (fromJust, isNothing, mapMaybe)
 
--- requires: the initial semiconfiguration has id 0, and it is not reachable from itself
+-- requires: the initial semiconfiguration has id 0
 -- pstate: a parametric type for states of the input popa
 qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate, Show pstate)
   => DeltaWrapper pstate
@@ -60,7 +57,6 @@ qualitativeModelCheck :: (MonadIO m, MonadLogger m, Ord pstate, Hashable pstate,
   -> STRef RealWorld Stats
   -> m Bool
 qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector stats = do
-
     -- globals data structures for qualitative model checking
   let numPendingSemiconfs = foldl (flip ((+) . fromEnum)) 0 pendVector
   gGlobals <- liftSTtoIO $ newGGlobals numPendingSemiconfs
@@ -76,10 +72,12 @@ qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector stats = 
       -- create a new GNode 
     newId <- freshPosId (idSeq gGlobals)
     BH.insert (ggraphMap gGlobals) (gnId iniGn, s) newId
-    let node =
-          GNode {gId= newId, graphNode = gnId iniGn, phiNode = s, edges = Set.empty, iValue = 0, descSccs = IntSet.empty}
+    let node = GNode { gId= newId, graphNode = gnId iniGn, phiNode = s, 
+                       edges = Set.empty, iValue = 0, descSccs = IntSet.empty
+                     }
     CM.insert (gGraph gGlobals) newId node
-    addtoPath gGlobals node (Internal 0 newId) >>= dfs suppGraph gGlobals delta (pendVector V.!) False sIdMap
+    newNode <- addtoPath gGlobals node (Internal 0 newId)
+    dfs suppGraph gGlobals delta (pendVector V.!) False sIdMap newNode
 
   -- explore nodes where phi holds
   forM_ phiStates $ \s -> do
@@ -90,7 +88,9 @@ qualitativeModelCheck delta phi phiInitials suppGraph sIdMap pendVector stats = 
       -- create a new GNode 
       newId <- freshPosId (idSeq gGlobals)
       BH.insert (ggraphMap gGlobals) (gnId iniGn, s) newId
-      let node = GNode {gId= newId, graphNode = gnId iniGn, phiNode = s, edges = Set.empty, iValue = 0, descSccs = IntSet.empty}
+      let node = GNode { gId= newId, graphNode = gnId iniGn, phiNode = s, 
+                         edges = Set.empty, iValue = 0, descSccs = IntSet.empty
+                       }
       CM.insert (gGraph gGlobals) newId node
       newNode <- addtoPath gGlobals node (Internal 0 newId)
       _ <- dfs suppGraph gGlobals delta (pendVector V.!) True sIdMap newNode
@@ -181,8 +181,6 @@ reachPush gGlobals delta suppGraph fromPhi isPending sIdMap gnId_ q p suppSet pu
     fSuppAugStates <- if not . null $ fSuppGns
                         then GR.reachableStates (grGlobals gGlobals) cDelta leftContext
                         else return []
-    -- a sanity check
-    -- unless (all (consistentFilter. fst) fSuppAugStates) $ error "a support Augmented State is inconsistent"
     let fSuppGnodes =
           [(gn1, p1, suppSatSet) |
             gn1 <- fSuppGns
@@ -237,7 +235,9 @@ reachEdges gGlobals delta suppGraph fromPhi isPending sIdMap fromId intDests sup
         when (isNothing maybeId) $ do
             BH.insert (ggraphMap gGlobals) (gnId gn, p) actualId
             CM.insert (gGraph gGlobals) actualId
-              $ GNode {gId= actualId, graphNode = gnId gn, phiNode = p, edges = Set.empty, iValue = 0, descSccs = IntSet.empty}
+              $ GNode { gId= actualId, graphNode = gnId gn, phiNode = p, 
+                        edges = Set.empty, iValue = 0, descSccs = IntSet.empty
+                      }
         return actualId
   in do
     intEs <- StrictIntMap.fromList <$> forM intDests ( \(prob_, gn1, p1) -> do
@@ -254,11 +254,16 @@ reachEdges gGlobals delta suppGraph fromPhi isPending sIdMap fromId intDests sup
     IntSet.unions <$> forM edges_ ( \e -> do
       nextNode <- CM.lookup (gGraph gGlobals) (toG e)
       let cases
-            | iValue nextNode == 0 = addtoPath gGlobals nextNode e >>= dfs suppGraph gGlobals delta isPending fromPhi sIdMap
+            | iValue nextNode == 0 = do 
+              newNode <- addtoPath gGlobals nextNode e
+              dfs suppGraph gGlobals delta isPending fromPhi sIdMap newNode
             | iValue nextNode < 0  = return (descSccs nextNode)
-            -- I need to push anyway because I want to keep track of self cycles in createComponent,
-            -- and because it might be a support edge determining acceptance
-            | iValue nextNode > 0  = GS.push (sStack gGlobals) e >> merge gGlobals (iValue nextNode) >> return IntSet.empty
+            -- push to keep track of self cycles in createComponent,
+            -- and because a support edge may determine acceptance
+            | iValue nextNode > 0  = do 
+              GS.push (sStack gGlobals) e
+              merge gGlobals (iValue nextNode)
+              return IntSet.empty
             | otherwise = error "unreachable error"
       cases)
 

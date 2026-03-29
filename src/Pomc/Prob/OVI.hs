@@ -1,6 +1,6 @@
 {- |
    Module      : Pomc.Prob.OVI
-   Copyright   : 2023-2025 Michele Chiari, Francesco Pontiggia
+   Copyright   : 2023-2026 Michele Chiari, Francesco Pontiggia
    License     : MIT
    Maintainer  : Francesco Pontiggia
 -}

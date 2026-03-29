@@ -7,6 +7,12 @@
 module Pomc.Prob.GQuantitative ( GNode(..)
                         , quantitativeModelCheck
                         ) where
+import qualified Pomc.Prob.GQualitative as GQual
+import Pomc.Prob.GUtil
+import Pomc.Prob.ProbUtils hiding (sIdMap, SIdGen)
+import qualified Pomc.Prob.GReach as GR
+import qualified Pomc.Prob.GWeight as GW
+import Pomc.Prob.SupportGraph(GraphNode(..), SupportGraph)
 import Pomc.SatUtil(SIdGen, freshPosId)
 import qualified Pomc.SatUtil as SU
 import Pomc.TimeUtils (startTimer, stopTimer)
@@ -19,13 +25,6 @@ import Pomc.Check (EncPrecFunc)
 import qualified Pomc.Encoding as E
 import Pomc.Z3T
 import qualified Pomc.CustoMap as CM
-
-import qualified Pomc.Prob.GQualitative as GQual
-import Pomc.Prob.GUtil
-import Pomc.Prob.ProbUtils hiding (sIdMap, SIdGen)
-import qualified Pomc.Prob.GReach as GR
-import qualified Pomc.Prob.GWeight as GW
-import Pomc.Prob.SupportGraph(GraphNode(..), SupportGraph)
 
 import qualified Data.Strict.IntMap as StrictIntMap
 import qualified Data.Strict.Map as StrictMap
@@ -46,7 +45,7 @@ import Data.Maybe (fromJust, isNothing, catMaybes)
 import Z3.Monad
 
 -- quantitative model checking --
--- requires: the initial semiconfiguration has id 0, and it is not reachable from itself
+-- requires: the initial semiconfiguration has id 0
 -- pstate: a parametric type for states of the input popa
 quantitativeModelCheck :: (MonadIO m, MonadFail m, MonadLogger m, Ord pstate, Hashable pstate, Show pstate)
   => DeltaWrapper pstate
@@ -77,9 +76,12 @@ quantitativeModelCheck delta phi phiInitials suppGraph pendVector lbPendProbs ub
       -- create a new GNode 
     newId <-  freshPosId (idSeq gGlobals)
     BH.insert (ggraphMap gGlobals) (gnId iniGn, s) newId
-    let node = GNode {gId= newId, graphNode = gnId iniGn, phiNode = s, edges = Set.empty, iValue = 0, descSccs = IntSet.empty}
+    let node = GNode { gId= newId, graphNode = gnId iniGn, phiNode = s, 
+                       edges = Set.empty, iValue = 0, descSccs = IntSet.empty
+                     }
     CM.insert (gGraph gGlobals) newId node
-    -- we always set fromPhi to False because we want to keep track of ALL BSCCs of subgraph H, contrarily to qualitative mc.
+    -- always set fromPhi to False to keep track of ALL BSCCs of subgraph H, 
+    -- contrarily to qualitative mc.
     updatedNode <- GQual.addtoPath gGlobals node (Internal 0 newId) 
     _ <- GQual.dfs suppGraph gGlobals delta (pendVector V.!) False sIdMap updatedNode
     if isPhiState s
