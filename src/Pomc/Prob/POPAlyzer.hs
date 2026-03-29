@@ -97,7 +97,6 @@ infer upStr prog eps expr =
     let gn = suppGraph ! 0
         Push suppSet pushMap = gnEdges gn
     -- compute all termination probabilities via SCC decomposition with Gabow's algorithm.
-    liftIO $ addtoPath globals 0
     _ <- dfs globals eps suppGraph gn upStr
 
     -- returning termination probabilities of the initial semiconf
