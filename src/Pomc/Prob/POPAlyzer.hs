@@ -15,7 +15,7 @@ import Pomc.Prob.FixPoint
 import Pomc.Prob.SupportGraph (SupportGraph, GraphNode (..), buildSupportGraph, TransitionInfo (..))
 import Pomc.Prob.MiniProb (Program, programToPopa, Popa (..))
 import Pomc.Prob.EqSolver (solveEqSystem)
-import Pomc.Prob.OVI (defaultOVISettingsDouble, ovi, oviSuccess, oviUpperBound, oviToRational)
+import Pomc.Prob.OVI (defaultOVISettingsDouble, ovi, oviSuccess, oviUpperBound)
 
 import Pomc.Z3T (liftSTtoIO)
 import Pomc.TimeUtils (startTimer, stopTimer)
@@ -418,7 +418,8 @@ solveSCC globals eps newton vars = do
 
   -- certify the result and compute some statistics
   --rCertified <- oviToRational (defaultOVISettingsDouble eps) eqsUpper oviRes
-  --unless rCertified $ error "Cannot deduce a rational certificate for this SCC when computing upper bounds to the termination probabilities."
+  --unless rCertified $ error "Cannot deduce a rational certificate for this SCC"
+  -- ++ "when computing upper bounds to the termination probabilities."
   logDebugN $ "Computed upper bounds: " ++ show (oviUpperBound oviRes)
   tWeights <- stopTimer startWeights (oviSuccess oviRes)
   liftSTtoIO $ modifySTRef' (stats globals) 
@@ -435,5 +436,7 @@ solveSCC globals eps newton vars = do
   -- update lower and upper bounds
   let bounds = V.zip3 (V.fromList $ Set.elems lVars) approxVec (oviUpperBound oviRes)
   V.mapM_ (\(varKey, l,u) -> do
-    when (u - l > 0.02) $ error $ "Bounds are too lose: " ++ show varKey ++ " = (" ++ show l ++ "," ++ show u ++ "). Please rerun this program with an increased accuracy."
+    when (u - l > 0.02) $ error $ "Bounds are too lose: " ++ show varKey 
+      ++ " = (" ++ show l ++ "," ++ show u 
+      ++ "). Please rerun this program with an increased accuracy."
     addPopEq eqs varKey (l,u)) bounds

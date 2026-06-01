@@ -145,7 +145,7 @@ reachPush gGlobals delta suppGraph fromPhi isPending sIdMap gnId_ q p suppSet pu
       precRel = prec delta
       leftContext = AugState q p
       cDeltaPush (AugState (StateId _ q0 lab0) p0)  =
-        [AugState (StateId id1 q1 lab1) p1 |
+        [ AugState (StateId id1 q1 lab1) p1 |
             (q1, lab1, _) <- (deltaPush delta) q0
           , p1 <- (phiDeltaPush delta) p0
           , (precRel lab0 lab1 == Just Take) || lab1 == currentInput p1
@@ -158,8 +158,8 @@ reachPush gGlobals delta suppGraph fromPhi isPending sIdMap gnId_ q p suppSet pu
           , (precRel lab0 lab1 == Just Take) || lab1 == currentInput p1
           , let id1 = sIdMap StrictMap.! q1
         ]
-      cDeltaPop (AugState (StateId _ q0 _) p0) (AugState (StateId _ q1 _) p1)  =
-        [AugState (StateId id2 q2 lab2) p2 |
+      cDeltaPop (AugState (StateId _ q0 _) p0) (AugState (StateId _ q1 _) p1) =
+        [ AugState (StateId id2 q2 lab2) p2 |
             (q2, lab2, _) <- (deltaPop delta) q0 q1
           , let id2 = sIdMap StrictMap.! q2
           , p2 <- (phiDeltaPop delta) p0 p1
@@ -281,17 +281,27 @@ dfs suppGraph gGlobals delta isPending fromPhi sIdMap gnode =
       p = phiNode gnode
       (q,_) = semiconf gn
       -- this case includes the initial push
-      buildCases (Push suppSet pushMap) = reachPush gGlobals delta suppGraph fromPhi isPending sIdMap (gnId gn) q p suppSet pushMap
-      buildCases (Shift shiftMap) = reachShift gGlobals delta suppGraph fromPhi isPending sIdMap (gnId gn) p shiftMap
-      buildCases (Pop _) =  error
-        $ "A pop transition cannot be reached in the augmented graph of pending semiconfs, as it terminates almost surely: " ++ show gn
+      buildCases (Push suppSet pushMap) = reachPush gGlobals delta suppGraph 
+        fromPhi isPending sIdMap (gnId gn) q p suppSet pushMap
+      buildCases (Shift shiftMap) = reachShift gGlobals delta suppGraph 
+        fromPhi isPending sIdMap (gnId gn) p shiftMap
+      buildCases (Pop _) =  error $ "A pop transition cannot be reached "
+        ++ "in the augmented graph of pending semiconfs, as it terminates almost surely: " 
+        ++ show gn
   in do
     descendantSCCs <- buildCases (gnEdges gn)
     if fromPhi
       then createComponentPhi gGlobals gnode descendantSCCs
       else createComponent suppGraph gGlobals delta isPending gnode descendantSCCs
 
-createComponent :: SupportGraph pstate -> GGlobals s pstate -> DeltaWrapper pstate -> (Int -> Bool) -> GNode -> IntSet -> ST s IntSet
+createComponent 
+  :: SupportGraph pstate 
+  -> GGlobals s pstate 
+  -> DeltaWrapper pstate 
+  -> (Int -> Bool) 
+  -> GNode 
+  -> IntSet 
+  -> ST s IntSet
 createComponent suppGraph gGlobals delta isPending g descendantSCCs = do
   topB <- GS.peek $ bStack gGlobals
   if (iValue g) == topB
@@ -306,7 +316,8 @@ createComponent suppGraph gGlobals delta isPending g descendantSCCs = do
         else do
           -- discard all descendants that share a semiconf with the current one
           let sccEdges = init poppedEdges
-          sccSemiconfs <- IntSet.fromList <$> forM sccEdges (\e -> graphNode <$> CM.lookup (gGraph gGlobals) (toG e))
+          sccSemiconfs <- IntSet.fromList <$> forM sccEdges 
+            (\e -> graphNode <$> CM.lookup (gGraph gGlobals) (toG e))
           filtDescs <- deleteDescendants gGlobals sccSemiconfs descendantSCCs
           -- check if current SCC is a candidate bottom SCC of H
           let isBott = isBottom suppGraph sccSemiconfs isPending
@@ -316,10 +327,12 @@ createComponent suppGraph gGlobals delta isPending g descendantSCCs = do
               newSCCId <- freshNegId (cGabow gGlobals)
               modifySTRef' (bottomHSCCs gGlobals) $ StrictIntMap.insert newSCCId sccSemiconfs
               let newDescs = IntSet.insert newSCCId filtDescs
-              forM_ sccEdges $ \e -> CM.modify (gGraph gGlobals) (\g_ -> g_{iValue = newSCCId, descSccs = newDescs}) (toG e)
+              forM_ sccEdges $ \e -> CM.modify (gGraph gGlobals) 
+                (\g_ -> g_{iValue = newSCCId, descSccs = newDescs}) (toG e)
               return newDescs
             else do
-              forM_ sccEdges $ \e -> CM.modify (gGraph gGlobals) (\g_ -> g_{iValue = -1, descSccs = filtDescs}) (toG e)
+              forM_ sccEdges $ \e -> CM.modify (gGraph gGlobals) 
+                (\g_ -> g_{iValue = -1, descSccs = filtDescs}) (toG e)
               return filtDescs
     else return descendantSCCs
 
@@ -337,9 +350,11 @@ createComponentPhi gGlobals g descendantSCCs = do
           return descendantSCCs
         else do
           -- discard all descendants that share a semiconf with the current one
-          sccSemiconfs <- IntSet.fromList <$> forM sccEdges (\e -> graphNode <$> CM.lookup (gGraph gGlobals) (toG e))
+          sccSemiconfs <- IntSet.fromList <$> forM sccEdges 
+            (\e -> graphNode <$> CM.lookup (gGraph gGlobals) (toG e))
           filteredDescendants <- deleteDescendants gGlobals sccSemiconfs descendantSCCs
-          forM_ sccEdges $ \e -> CM.modify (gGraph gGlobals) (\g -> g{iValue = -1, descSccs = filteredDescendants}) (toG e)
+          forM_ sccEdges $ \e -> CM.modify (gGraph gGlobals) 
+            (\g -> g{iValue = -1, descSccs = filteredDescendants}) (toG e)
           return filteredDescendants
     else return descendantSCCs
 
@@ -348,30 +363,36 @@ createComponentPhi gGlobals g descendantSCCs = do
 deleteDescendants :: GGlobals s pstate -> GraphNodesSCC -> IntSet -> ST s IntSet
 deleteDescendants gGlobals sccSemiconfs descendants = do
   modifySTRef' (bottomHSCCs gGlobals) $
-    StrictIntMap.filterWithKey (\idx scc -> not (IntSet.member idx descendants) || IntSet.disjoint sccSemiconfs scc)
+    StrictIntMap.filterWithKey (\idx scc -> not (IntSet.member idx descendants) 
+    || IntSet.disjoint sccSemiconfs scc)
   -- returning filtered descendants
   (\m -> IntSet.filter (`StrictIntMap.member` m) descendants) <$> readSTRef (bottomHSCCs gGlobals)
 
--- first necessary condition for an SCC of G to be a BSCC of H from [Etessami and Yannakakis, TOCL 2012, Theo 30]
+-- first necessary condition for an SCC of G to be a BSCC of H from 
+-- [Etessami and Yannakakis, TOCL 2012, Theo 30]
 isBottom :: SupportGraph pstate -> IntSet -> (Int -> Bool) -> Bool
 isBottom suppGraph suppGraphSCC isPending =
   let gns = map (suppGraph !) (IntSet.toList suppGraphSCC)
       bottomCheck = all (`IntSet.member` suppGraphSCC) . filter isPending
-      checkTransitions (Push suppSet pushMap) = (bottomCheck . IntMap.keys) pushMap && (bottomCheck . IntSet.elems) suppSet
+      checkTransitions (Push suppSet pushMap) = (bottomCheck . IntMap.keys) pushMap 
+        && (bottomCheck . IntSet.elems) suppSet
       checkTransitions (Shift shiftMap) = (bottomCheck . IntMap.keys) shiftMap
       checkTransitions (Pop _) = error "Pop Semiconfs cannot occurr in graph G."
   in all (checkTransitions . gnEdges) gns
 
--- third necessary condition for an SCC of G to be a BSCC of H from [Etessami and Yannakakis, TOCL 2012, Theo 30]
+-- third necessary condition for an SCC of G to be a BSCC of H from 
+-- [Etessami and Yannakakis, TOCL 2012, Theo 30]
 isAccepting :: GGlobals s pstate -> DeltaWrapper pstate -> [HEdge] -> ST s Bool
 isAccepting gGlobals delta sccEdges = do
   gs <- mapM (CM.lookup (gGraph gGlobals) . toG) sccEdges
   let maybeSupport (Internal _ _) = Nothing
       maybeSupport (Support _ sss) = Just sss
       maybeSupport (SupportAndInternal _ _ sss) = Just sss
-      acceptanceBitVector = PE.unions $ map (PE.encodeSatState (proBitenc delta) . phiNode) gs ++ mapMaybe maybeSupport sccEdges
+      acceptanceBitVector = PE.unions $ map (PE.encodeSatState (proBitenc delta) . phiNode) gs 
+        ++ mapMaybe maybeSupport sccEdges
   return $ PE.isSatisfying acceptanceBitVector
 
--- condition (2) from [Etessami and Yannakakis, TOCL 2012, Theo 30] is checked via the topological decomposition
+-- condition (2) from [Etessami and Yannakakis, TOCL 2012, Theo 30] is checked 
+-- via the topological decomposition
 --
 -- end helpers for the construction of subgraph H
