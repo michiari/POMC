@@ -215,6 +215,7 @@ computeOutcome(u2 &outcome, u6 state, u2 action) {
     }
 }
 
+// careful: plan returns an outcome, act returns an action, they are not duplicatewe
 plan(u2 &outcome, u6 state) {
     u2 action;
 
