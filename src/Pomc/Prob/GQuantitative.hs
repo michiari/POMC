@@ -238,8 +238,7 @@ encode gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap)
             encodePush gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap) suppGraph
               gGraph isInH gNode gn pendProbsLB pendProbsUB sIdMap useNewton
 
-        | precRel == Just Equal =
-            encodeShift (lTypVarMap, uTypVarMap) gGraph isInH gNode pendProbsLB pendProbsUB
+        | precRel == Just Equal = encodeShift (lTypVarMap, uTypVarMap) gGraph isInH gNode
 
         | otherwise = fail "unexpected prec rel"
   in cases
@@ -320,9 +319,11 @@ encodePush gwGlobals sIdGen suppStarts supports delta (lTypVarMap, uTypVarMap)
               , GW.consistentFilter = consistentFilter
               }
             encodeSupportTrans = do
-              logInfoN $ "encountered a support transition - launching call to inner computation of fraction f from H node "
+              logInfoN $ "encountered a support transition - "
+                ++ "launching call to inner computation of fraction f from H node "
                 ++ show (gId g) ++ " to H node " ++ show toIdx
-              (lW, uW) <- GW.weightQuerySCC gwGlobals sIdGen cDelta suppStarts supports leftContext rightContext useNewton
+              (lW, uW) <- GW.weightQuerySCC gwGlobals sIdGen cDelta suppStarts supports 
+                leftContext rightContext useNewton
               lT <- encodeTransition lW pendPDestGnLB pendPGnUB tolVar
               uT <- encodeTransition uW pendPDestGnUB pendPGnLB touVar
               return [(lT, uT)]
@@ -364,17 +365,16 @@ encodeShift :: (MonadZ3 z3, MonadLogger z3)
   -> Vector GNode
   -> (GNode -> Bool)
   -> GNode
-  -> Vector Prob
-  -> Vector Prob
   -> z3 [AST]
-encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g pendProbsLB pendProbsUB =
+encodeShift (lTypVarMap, uTypVarMap) gGraph isInH g =
   let edgesInH = Set.toList . Set.filter (isInH . (gGraph V.!). toG) . edges $ g
       shiftEnc (Internal prob_ toIdx) = do
         tolVar <- liftIO $ fromJust <$> HT.lookup lTypVarMap toIdx
         touVar <- liftIO $ fromJust <$> HT.lookup uTypVarMap toIdx
-        let destG = gGraph V.! toIdx
-        lT <- encodeTransition (prob_) (pendProbsLB V.! (graphNode destG)) (pendProbsUB V.! (graphNode g)) tolVar
-        uT <- encodeTransition (prob_) (pendProbsUB V.! (graphNode destG)) (pendProbsLB V.! (graphNode g)) touVar
+        -- shift moves are part of the same support, they have the same termination probability 
+        -- hence we can use 1 and 1       
+        lT <- encodeTransition (prob_) 1 1 tolVar
+        uT <- encodeTransition (prob_) 1 1 touVar
         return (lT, uT)
   in do
   -- a sanity check
