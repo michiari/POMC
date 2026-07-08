@@ -1,0 +1,40 @@
+
+// export NODE_OPTIONS="--max-old-space-size=8192"
+var locationPrior = function() {
+  if (flip(.55)) {
+    return 'popular-bar';
+  } else {
+    return 'unpopular-bar';
+  }
+}
+
+var alice = function() {
+  return Infer({method: 'rejection', samples: 10, incremental : true, model : function() {
+    var myLocation = locationPrior();
+    var recurse = flip(0.5);
+    if (!recurse) {
+      return myLocation;
+    } else {
+      var bobLocation = sample(bob());
+      condition(myLocation === bobLocation);
+      return myLocation;
+    }
+  }});
+};
+
+var bob = function() {
+  return Infer({ method: 'rejection', samples: 10, incremental : true, model: function() {
+    var myLocation = locationPrior();
+    var recurse = flip(0.5);
+    if (!recurse) {
+      return myLocation;
+    } else {
+      var aliceLocation = sample(alice());
+      condition(myLocation === aliceLocation);
+      return myLocation;
+    }
+  }});
+};
+
+
+console.log(alice().getDist());

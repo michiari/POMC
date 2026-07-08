@@ -1,5 +1,4 @@
 // Reference: Owain Evans, Andreas Stuhlmüller, John Salvatier, and Daniel Filan. 2017. Modeling Agents with Probabilistic Programs (Chapter VI). http://agentmodels.org. Accessed: 30/09/2025
-// "Bound" refers to the fact that nesting of queries has an explicit bound - MiniProb supports indeed unbounded nesting.
 
 var locationPrior = function() {
   if (flip(.55)) {

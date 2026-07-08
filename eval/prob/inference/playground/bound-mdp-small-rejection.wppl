@@ -257,8 +257,7 @@ var makeGridWorldMDP = function(options) {
 
 
 ///////////////////////////////////////////////////////////////////////////
-// adapted from the "Hiking with stochastic transitions" example
-// The Gridworld MDP has been expanded with respect to bounded-mdp-small.wppl
+// adapted from the "Hiking with stochastic transitions" example 
 // from https://agentmodels.org/chapters/3b-mdp-gridworld.html
 
 var makeMDPAgent = function(params, world) {
@@ -268,11 +267,11 @@ var makeMDPAgent = function(params, world) {
 
   var act = dp.cache(
     function(state) {
-      return Infer({ model() {
+      return Infer({method: 'rejection', samples: 10, incremental : true, model() {
         var action = uniformDraw(stateToActions(state));
         var eu = expectedUtility(state, action);
         // we don't support factor statements
-        // this stmt is equivalent to condition(flip(eu))
+        // this observe is equivalent to condition(flip(eu))
         observe(Bernoulli({p: eu}), true);
         return action;
       }});
@@ -294,7 +293,7 @@ var makeMDPAgent = function(params, world) {
           careful: to remove the expectation, 
           you must put a outer Infer if you want to keep the caching.
         */
-        return expectation(Infer({ model() {
+        return expectation(Infer({method: "enumerate", model() {
           var nextState = transition(state, action);
           var nextAction = sample(act(nextState));
           return expectedUtility(nextState, nextAction);
@@ -311,21 +310,19 @@ var makeHikeMDP = function(options) {
   var W = { name: 'West' };
   var E = { name: 'East' };
   var ___ = ' ';
-  // expandend GriWorld MDP
   var grid = [
-    [___, ___, ___, ___, ___, ___],
-    [___, '#', ___, ___, ___, ___],
-    [___, '#', ___, ___, '#', ___],
-    [___, '#', '#',  W , '#',  E ],
-    [___, ___, ___, ___, ___, ___],
-    [ H ,  H ,  H ,  H ,  H ,  H ]
+    [___, ___, ___, ___, ___],
+    [___, '#', ___, ___, ___],
+    [___, '#',  W , '#',  E ],
+    [___, ___, ___, ___, ___],
+    [ H ,  H ,  H ,  H ,  H ]
   ];
   return makeGridWorldMDP(_.assign({ grid }, options));
 };
 
 var mdp = makeHikeMDP({
   start: [0, 1],
-  totalTime: 10,
+  totalTime: 8,
   transitionNoiseProbability: 0.02
 });
 

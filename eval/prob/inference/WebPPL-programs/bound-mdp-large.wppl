@@ -272,7 +272,7 @@ var makeMDPAgent = function(params, world) {
         var action = uniformDraw(stateToActions(state));
         var eu = expectedUtility(state, action);
         // we don't support factor statements
-        // this stmt is equivalent to condition(flip(correctedEu))
+        // this stmt is equivalent to condition(flip(eu))
         observe(Bernoulli({p: eu}), true);
         return action;
       }});
@@ -291,6 +291,8 @@ var makeMDPAgent = function(params, world) {
           var nextState = transition(state, action);
           var nextAction = sample(act(nextState));
           return expectedUtility(nextState, nextAction);
+          careful: to remove the expectation, 
+          you must put a outer Infer if you want to keep the caching.
         */
         return expectation(Infer({ model() {
           var nextState = transition(state, action);
